@@ -19,7 +19,7 @@
     const pool = [];
     let poolUsed = 0, suppressed = 0;
     let matrixActive = 0, matrixRadius = 0, matrixTime = 0, matrixDensity = 0, matrixOriginX = 0, matrixOriginZ = 0, matrixSurfaces = 0, matrixLivingSurfaces = 0, matrixArea = 0, matrixSamples = 0, matrixSampleStep = 1, matrixCulled = 0;
-    let matrixCaves = null, matrixCaveBounds = null, matrixCaveNear = Infinity, matrixPointX = 0, matrixPointY = 0;
+    let matrixCaves = null, matrixCaveBounds = null, matrixCaveNear = Infinity, matrixPermanentCave = 0, matrixPointX = 0, matrixPointY = 0;
     const MATRIX_MASKS = new Int32Array([630678, 497559, 988959, 495513, 1009263, 288049, 456438, 616809]);
     const MATRIX_TILE_SIZE = 128, MATRIX_SAMPLE_BUDGET = 524288;
     const matrixTile = document.createElement("canvas");
@@ -63,9 +63,11 @@
     const V = Array.from({ length: 8 }, () => new Float32Array(3));
     const CLIP_IN = new Float32Array(30);
     const CLIP_OUT = new Float32Array(30);
+    const MIRROR_CLIP_IN = new Float32Array(30);
+    const MIRROR_CLIP_OUT = new Float32Array(30);
     const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, tip: 0, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false };
     const mirrorDebug = {
-      active: false, faux: true, portal: false, surfaceDrawn: false, captureValid: false, width: 0, height: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: true, reflectionOnlyCount: 0, planeDistance: 0,
+      active: false, faux: true, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: true, reflectionOnlyCount: 0, planeDistance: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), skipReason: "canvas-faux"
     };
     const resize = () => {
@@ -119,6 +121,21 @@
       }
       return out;
     };
+    const clipAbove = (src, count, minimumY, dst) => {
+      let out = 0;
+      for (let i = 0; i < count; i++) {
+        const a = i * 3, j = (i + 1) % count, b = j * 3;
+        const aIn = src[a + 1] >= minimumY, bIn = src[b + 1] >= minimumY;
+        if (aIn) {
+          dst[out * 3] = src[a]; dst[out * 3 + 1] = src[a + 1]; dst[out * 3 + 2] = src[a + 2]; out++;
+        }
+        if (aIn !== bIn) {
+          const amount = (minimumY - src[a + 1]) / (src[b + 1] - src[a + 1]);
+          dst[out * 3] = lerp(src[a], src[b], amount); dst[out * 3 + 1] = minimumY; dst[out * 3 + 2] = lerp(src[a + 2], src[b + 2], amount); out++;
+        }
+      }
+      return out;
+    };
     let eye = { x: 0, y: 0, z: 0 }, near = 0.2;
     const lightDir = new Float32Array([0, 1, 0]);
     let directStrength = 1, ambientFloor = 0.3, diffuseFloor = 0, skyLuma = 0.5, groundLuma = 0.2;
@@ -150,7 +167,7 @@
     const matrixFront = (travel) => matrixActive * (1 - smooth((travel - matrixRadius + 1.5) / 1.5));
     const matrixLivingCave = (x, y, z) => {
       if (!matrixCaves || !matrixCaveBounds || Math.hypot(x - matrixOriginX, z - matrixOriginZ) < matrixCaveNear) return 0;
-      for (let cave = 0; cave < 7; cave++) {
+      for (let cave = 0; cave < matrixCaves.length / 4; cave++) {
         const offset = cave * 4, sr = matrixCaves[offset], cr = matrixCaves[offset + 1];
         const depth = matrixCaves[offset + 2] - sr * x - cr * z;
         if (depth < 0 || depth > matrixCaveBounds[offset + 3]) continue;
@@ -227,11 +244,12 @@
           const staticCave = face.matrixCave || node.geometry.matrixCave || 0;
           const dynamicCave = !staticCave && matrixActive && matrixRadius >= matrixCaveNear && matrixLiving && matrixCaveBounds && flow >= matrixCaveNear;
           const cave = staticCave || (dynamicCave ? matrixLivingCave(centerX, centerY, centerZ) : 0);
+          const permanent = cave && cave === matrixPermanentCave;
           const localGlyphSurface = !!(node.geometry.matrixLocalGlyphSurface || face.matrixLocalGlyphSurface || staticCave);
           const revealBacking = !!node.geometry.matrixRevealBacking;
           const ownedGlyph = localMatrixGlyph && cave && matrixCaves;
-          let minimumFront = localMatrixGlyph && !ownedGlyph ? 1 : 0, maximumFront = minimumFront;
-          if (matrixActive && (!localMatrixGlyph || ownedGlyph)) {
+          let minimumFront = permanent || localMatrixGlyph && !ownedGlyph ? 1 : 0, maximumFront = minimumFront;
+          if (!permanent && matrixActive && (!localMatrixGlyph || ownedGlyph)) {
             let radiusSquared = 0;
             for (let k = 0; k < count; k++) radiusSquared = Math.max(radiusSquared, (V[k][0] - centerX) ** 2 + (V[k][2] - centerZ) ** 2);
             const distance = matrixCloud ? Math.min(matrixTravel(centerX, centerZ, cave), 36) : matrixTravel(centerX, centerZ, cave), margin = Math.sqrt(radiusSquared) * (cave && matrixCaves ? Math.SQRT2 : 1);
@@ -241,15 +259,27 @@
           if ((localMatrixGlyph || revealBacking) && maximumFront <= 0) continue;
           const partial = maximumFront > 0 && minimumFront < 1;
           const matrixAmount = !localMatrixGlyph && !partial ? minimumFront : 0;
+          let surface = MIRROR_CLIP_IN, surfaceCount = count;
           for (let k = 0; k < count; k++) {
-            mat4.transformPoint(V[k], view, V[k][0], V[k][1], V[k][2]);
+            surface[k * 3] = V[k][0]; surface[k * 3 + 1] = V[k][1]; surface[k * 3 + 2] = V[k][2];
+          }
+          const mirrorReveal = mirrorFace ? Math.max(0, Math.min(1, node.mirrorReveal || 0)) : 0;
+          if (mirrorReveal > 0) {
+            let minY = Infinity, maxY = -Infinity;
+            for (let k = 0; k < count; k++) { minY = Math.min(minY, V[k][1]); maxY = Math.max(maxY, V[k][1]); }
+            surfaceCount = clipAbove(MIRROR_CLIP_IN, count, lerp(minY, maxY, mirrorReveal), MIRROR_CLIP_OUT);
+            surface = MIRROR_CLIP_OUT;
+            if (surfaceCount < 3) continue;
+          }
+          for (let k = 0; k < surfaceCount; k++) {
+            mat4.transformPoint(V[k], view, surface[k * 3], surface[k * 3 + 1], surface[k * 3 + 2]);
             CLIP_IN[k * 3] = V[k][0];
             CLIP_IN[k * 3 + 1] = V[k][1];
             CLIP_IN[k * 3 + 2] = V[k][2];
           }
           // A just-closed doorway must cover the view even inside the camera's
           // normal near plane. Keep its real projection and depth sorting.
-          const clipped = clipNear(CLIP_IN, count, mirrorFace ? 1e-7 : near, CLIP_OUT);
+          const clipped = clipNear(CLIP_IN, surfaceCount, mirrorFace ? 1e-7 : near, CLIP_OUT);
           if (clipped < 3) continue;
           const rec = acquire();
           let zsum = 0;
@@ -401,7 +431,7 @@
             data[offset + 4] ** 2 + data[offset + 5] ** 2 + data[offset + 6] ** 2,
             data[offset + 8] ** 2 + data[offset + 9] ** 2 + data[offset + 10] ** 2));
           if (depth + radius < near || Math.abs(cx) > depth * tanX + radius * sideX || Math.abs(cy) > depth * tanY + radius * sideY) { matrixCulled++; continue; }
-          if (matrixCaves && node.geometry.matrixCave && (!matrixActive || matrixTravel(x, z, node.geometry.matrixCave) - radius * Math.SQRT2 >= matrixRadius)) { matrixCulled++; continue; }
+          if (matrixCaves && node.geometry.matrixCave && node.geometry.matrixCave !== matrixPermanentCave && (!matrixActive || matrixTravel(x, z, node.geometry.matrixCave) - radius * Math.SQRT2 >= matrixRadius)) { matrixCulled++; continue; }
         }
         for (let i = 0; i < 16; i++) BATCH_NODE.world[i] = data[offset + i];
         BATCH_NODE.glow = data[offset + 16];
@@ -618,6 +648,7 @@
       matrixCaves = matrix ? matrix.caves || null : null;
       matrixCaveBounds = matrix ? matrix.caveBounds || null : null;
       matrixCaveNear = matrix ? matrix.caveNear === undefined ? Infinity : matrix.caveNear : Infinity;
+      matrixPermanentCave = matrix ? matrix.permanentCave || 0 : 0;
       matrixSurfaces = matrixLivingSurfaces = matrixArea = matrixSamples = matrixCulled = 0;
       matrixFrame++;
       if (fog) {
@@ -662,6 +693,7 @@
       suppressed = 0;
       mirrorDebug.active = false;
       mirrorDebug.portal = false;
+      mirrorDebug.reveal = 0;
       mirrorDebug.surfaceDrawn = false;
       updateWorld(root, null);
       traverseVisible(root, (node) => {
@@ -681,6 +713,7 @@
           const captureD = Math.max(eyeD, camera.near);
           mirrorDebug.planeDistance = Math.abs(eyeD);
           mirrorDebug.portal = !!node.mirrorPortal;
+          mirrorDebug.reveal = Math.max(0, Math.min(1, node.mirrorReveal || 0));
           mirrorDebug.cameraPosition[0] = camera.position.x - (eyeD + captureD) * normal[0];
           mirrorDebug.cameraPosition[1] = camera.position.y - (eyeD + captureD) * normal[1];
           mirrorDebug.cameraPosition[2] = camera.position.z - (eyeD + captureD) * normal[2];
@@ -808,6 +841,7 @@
       dispose: () => {
         mirrorDebug.active = false;
         mirrorDebug.portal = false;
+        mirrorDebug.reveal = 0;
         mirrorDebug.surfaceDrawn = false;
       },
       get quality() {

@@ -83,7 +83,7 @@ export const matrixRainProbe = (prime = () => {}) => {
         seeds: rain.streams.map((s) => s.seed).join(","), speeds: new Set(rain.streams.map((s) => s.speed)).size, phases: new Set(rain.streams.map((s) => s.phase)).size, brightness: [Math.min(...rain.streams.map((s) => s.brightness)), Math.max(...rain.streams.map((s) => s.brightness))] };
     }) });
   step(true); const inactive = capture();
-  C.viewInside(false); step(true); const before = capture(true);
+  C.viewInside(false); advance(W.maxRadius); step(true); const before = capture(true);
   for (let i = 0; i < 12; i++) step(); step(true); const after = capture(true), motion = [];
   for (const [caveIndex, cave] of before.caves.entries()) {
     let eligible = 0, moved = 0, gaps = 0, error = 0;
@@ -122,7 +122,7 @@ export const matrixRainCycleProbe = async (prime = () => {}) => {
   const detached = oldRoot.children.length === 0 && oldRain.every((n) => n.parent === null), noHubDebug = scene.debug === null;
   B.go("hub"); await wait(() => B.scene === "hub"); const hubFrame = B.renderedFrames;
   await wait(() => B.renderedFrames > hubFrame + 24);
-  const fresh = B.matrixCave.world.radius === 0 && !B.matrixCave.world.active && B.matrixCave.caves.every((c) => c.rain.activeGlyphCount === 0) && B.matrixCave.gateRain.activeGlyphCount === 0;
+  const fresh = B.matrixCave.world.radius === 0 && !B.matrixCave.world.active && B.matrixCave.caves.every((c, i) => i + 1 === B.matrixCave.world.permanentCave ? c.rain.activeGlyphCount > 0 : c.rain.activeGlyphCount === 0) && B.matrixCave.gateRain.activeGlyphCount === 0;
   await activate(); const after = snapshot(), newRain = [...B.matrixCave.caves.flatMap((c) => c.rain.nodes), ...B.matrixCave.gateRain.nodes];
   return { before, after, detached, noHubDebug, fresh, distinct: newRain.every((n) => !oldRain.includes(n) && oldRain.every((old) => old.instanceData !== n.instanceData)), oldBuffers: oldRain.length, newBuffers: newRain.length };
 };

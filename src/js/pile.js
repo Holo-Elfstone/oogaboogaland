@@ -68,8 +68,9 @@
     const matrixLiving = !!ctx.matrixLivingPile;
     const pileSlots = [];
     const coreFaceSize = ctx.renderer.kind === "canvas2d" ? CORE_FACE_SIZE * 1.75 : CORE_FACE_SIZE;
-    // A yellow-paneled mound under the shell uses one geometry scaled to every level.
-    const core = createNode({ geometry: models.bananaPileCoreGeometry(SCALE * 6, BASE_HEIGHT * 6, coreFaceSize), visible: false, matrixLiving });
+    // The supporting dome stays an ordinary Matrix receiver so code runs down
+    // between the bright bananas instead of turning the entire pile into a glow.
+    const core = createNode({ geometry: models.bananaPileCoreGeometry(SCALE * 6, BASE_HEIGHT * 6, coreFaceSize), visible: false });
     const bananaGeometry = models.bananaGeometry();
     const shellGeometry = models.bananaTileGeometry();
     let shellMinZ = Infinity, shellReach = 0;
@@ -162,6 +163,7 @@
     for (let i = 0; i < DROP_POOL_SIZE; i++) {
       const node = models.banana();
       setVec(node.scale, BANANA_SCALE, BANANA_SCALE, BANANA_SCALE);
+      node.matrixLiving = matrixLiving;
       node.visible = false;
       dropSlots.push({
         node,

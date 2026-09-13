@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-KwNgMn6sy/QPc/okbUdlWNp7TpjEqCfsQ0fdfu5yN1U='; style-src 'sha256-3C/lZtrs9H11VfLxejw4WH1Oq4EePnFjR7bYVG9kp+c='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-P/ToAOI8IM4/nYFWgShhx3lQ5vvecFue26aEXCs6B5o='; style-src 'sha256-3C/lZtrs9H11VfLxejw4WH1Oq4EePnFjR7bYVG9kp+c='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -3231,7 +3231,7 @@ select {
   const NORTH_UP = { x: 0, y: 0, z: -1 };
   const ZERO4 = new Float32Array([0, 0, 0, 1]);
   const NO_FOG = new Float32Array(3);
-  const NO_MATRIX_CAVES = new Float32Array(28);
+  const NO_MATRIX_CAVES = new Float32Array(32);
   const FOG_OFF = 1e8;
   const LIGHT_EYE = { x: 0, y: 0, z: 0 };
   const MESH_STRIDE = 10;
@@ -3312,9 +3312,10 @@ uniform vec4 uMatrixParams;
 uniform vec3 uMatrixOrigin;
 uniform float uMatrixGlyph;
 uniform float uMatrixCave;
-uniform vec4 uMatrixCaves[7];
-uniform vec4 uMatrixCaveBounds[7];
+uniform vec4 uMatrixCaves[8];
+uniform vec4 uMatrixCaveBounds[8];
 uniform float uMatrixCaveNear;
+uniform float uMatrixPermanentCave;
 uniform sampler2D uMatrixGlyphTex;
 uniform int uMatrixSamples;
 #ifdef MATRIX_SAMPLE_INTERPOLATION
@@ -3515,7 +3516,7 @@ void main() {
   // Moving Oogas and insects do not own static carved faces. Locate only bright
   // occupants near the cliffs; the pile and meadow bypass the bounded lookup.
   if (uMatrixParams.x > 0.0 && living > 0.0 && caveIndex < 0.5 && flow > uMatrixCaveNear) {
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 8; i++) {
       vec4 cave = uMatrixCaves[i], bounds = uMatrixCaveBounds[i];
       float depth = cave.z - dot(vWorld.xz, cave.xy);
       float across = dot(vWorld.xz - bounds.xz, vec2(cave.y, -cave.x));
@@ -3529,7 +3530,8 @@ void main() {
     }
   }
   float localSurface = max(vMatrixSurface, step(1.5, uMatrixGlyph));
-  float front = uMatrixParams.x * (1.0 - smoothstep(uMatrixParams.y - 1.5, uMatrixParams.y, flow));
+  float permanent = step(0.5, uMatrixPermanentCave) * (1.0 - step(0.5, abs(caveIndex - uMatrixPermanentCave)));
+  float front = max(permanent, uMatrixParams.x * (1.0 - smoothstep(uMatrixParams.y - 1.5, uMatrixParams.y, flow)));
   if (uMatrixGlyph > 2.5) {
     // The original black liner is an effect, not the unrevealed cave material.
     // Blend it only behind the advancing front; the ordinary stone stays below.
@@ -3708,9 +3710,11 @@ in vec2 vPortalUv;
 uniform sampler2D uReflection;
 uniform vec3 uTint;
 uniform float uPortal;
+uniform float uReveal;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oBright;
 void main() {
+  if (vPortalUv.y > 1.0 - uReveal) discard;
   vec2 projectedUv = vReflection.xy / vReflection.w * 0.5 + 0.5;
   vec2 uv = mix(projectedUv, vPortalUv, uPortal);
   vec3 reflected = texture(uReflection, uv).rgb;
@@ -3850,9 +3854,9 @@ void main() {
     const records = new Map();
     const activeRecords = [];
     const res = { programs: {}, fbo: null, shadow: null, bloom: null, quadVao: null, matrixTexture: null };
-    const mirror = { node: null, record: null, geometry: null, program: null, programReady: false, fb: null, tex: null, depth: null, color: null, msFb: null, msaa: -1, width: 0, height: 0, frame: 0, portal: false, walkThrough: false, captureValid: false, capturePending: false };
+    const mirror = { node: null, record: null, geometry: null, program: null, programReady: false, fb: null, tex: null, depth: null, color: null, msFb: null, msaa: -1, width: 0, height: 0, frame: 0, portal: false, reveal: 0, frontFacing: false, walkThrough: false, captureValid: false, capturePending: false };
     const mirrorDebug = {
-      active: false, faux: false, portal: false, surfaceDrawn: false, captureValid: false, width: 0, height: 0, samples: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: false, reflectionOnlyCount: 0, planeDistance: 0,
+      active: false, faux: false, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, samples: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: false, reflectionOnlyCount: 0, planeDistance: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), capturedViewProj: mirrorCapturedViewProj, skipReason: "none"
     };
     // Compile without blocking, ready flips once linked
@@ -3893,7 +3897,7 @@ void main() {
     };
     const ensureMirrorProgram = () => {
       if (!mirror.program) {
-        mirror.program = compile(MIRROR_VS, MIRROR_FS, ["uViewProj", "uReflectionViewProj", "uReflection", "uTint", "uPortal"]);
+        mirror.program = compile(MIRROR_VS, MIRROR_FS, ["uViewProj", "uReflectionViewProj", "uReflection", "uTint", "uPortal", "uReveal"]);
         mirrorDebug.resources++;
       }
       if (mirror.programReady) return true;
@@ -3908,7 +3912,7 @@ void main() {
       const matrixSampling = gl.getExtension("OES_shader_multisample_interpolation");
       const meshFragment = matrixSampling ? MESH_FS.replace("#version 300 es", "#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION") : MESH_FS;
       res.programs = {
-        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixGlyphTex", "uMatrixSamples"]),
+        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixGlyphTex", "uMatrixSamples"]),
         shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth"]),
         sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uEye", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uStarMatrix", "uStars", "uTime"]),
@@ -4022,7 +4026,7 @@ void main() {
       destroyMirrorTarget();
       destroyMirrorProgram();
       mirror.node = mirror.record = mirror.geometry = null;
-      mirror.portal = mirror.walkThrough = mirror.capturePending = false;
+      mirror.portal = mirror.frontFacing = mirror.walkThrough = mirror.capturePending = false;
       mirrorDebug.active = false;
       mirrorDebug.portal = false;
       mirrorDebug.surfaceDrawn = false;
@@ -4034,7 +4038,7 @@ void main() {
       mirror.programReady = false;
       mirror.msaa = -1;
       mirror.width = mirror.height = mirrorDebug.width = mirrorDebug.height = mirrorDebug.samples = 0;
-      mirror.portal = mirror.walkThrough = mirror.captureValid = mirror.capturePending = false;
+      mirror.portal = mirror.frontFacing = mirror.walkThrough = mirror.captureValid = mirror.capturePending = false;
       mirrorDebug.active = false;
       mirrorDebug.portal = mirrorDebug.captureValid = false;
       mirrorDebug.surfaceDrawn = false;
@@ -4285,9 +4289,11 @@ void main() {
         mirror.node = node;
         mirror.geometry = node.geometry;
         mirror.portal = !!node.mirrorPortal;
+        mirror.reveal = Math.max(0, Math.min(1, node.mirrorReveal || 0));
         mirror.walkThrough = !!node.mirrorWalkThrough;
         mirrorDebug.active = true;
         mirrorDebug.portal = mirror.portal;
+        mirrorDebug.reveal = mirror.reveal;
       }
       const rec = recordFor(node.geometry);
       if (node.mirror || node.mirrorPortal) mirror.record = rec;
@@ -4409,9 +4415,13 @@ void main() {
       normal[0] = world[8] / nlen;
       normal[1] = world[9] / nlen;
       normal[2] = world[10] / nlen;
-      mirrorDebug.planeDistance = Math.abs((camera.position.x - center[0]) * normal[0] + (camera.position.y - center[1]) * normal[1] + (camera.position.z - center[2]) * normal[2]);
+      const cameraSide = (camera.position.x - center[0]) * normal[0] + (camera.position.y - center[1]) * normal[1] + (camera.position.z - center[2]) * normal[2];
+      mirror.frontFacing = cameraSide > MIRROR_EPSILON;
+      mirrorDebug.planeDistance = Math.abs(cameraSide);
       mirror.portal = !!mirror.node.mirrorPortal;
+      mirror.reveal = Math.max(0, Math.min(1, mirror.node.mirrorReveal || 0));
       mirrorDebug.portal = mirror.portal;
+      mirrorDebug.reveal = mirror.reveal;
     };
     const prepareMirrorCamera = (camera) => {
       const node = mirror.node, world = node.world, center = mirrorDebug.planeCenter, normal = mirrorDebug.planeNormal;
@@ -4618,6 +4628,7 @@ void main() {
       gl.uniform4fv(pg.mesh.u.uMatrixCaves, matrix && matrix.caves || NO_MATRIX_CAVES);
       gl.uniform4fv(pg.mesh.u.uMatrixCaveBounds, matrix && matrix.caveBounds || NO_MATRIX_CAVES);
       gl.uniform1f(pg.mesh.u.uMatrixCaveNear, matrix && matrix.caveBounds ? matrix.caveNear : FOG_OFF);
+      gl.uniform1f(pg.mesh.u.uMatrixPermanentCave, matrix ? matrix.permanentCave || 0 : 0);
       drawParts("mesh", "mesh", true);
       if (skyOn) drawSky(mirrorInvViewProj, mirrorEye);
       gl.useProgram(pg.mesh.prog);
@@ -4647,12 +4658,13 @@ void main() {
     };
     const drawMirrorSurface = () => {
       const rec = mirror.record, part = rec && rec.mesh, pg = mirror.program;
-      if (mirror.portal || !part || !mirror.tex || !mirror.programReady || !mirror.captureValid) return;
+      if (mirror.portal || !mirror.frontFacing || !part || !mirror.tex || !mirror.programReady || !mirror.captureValid) return;
       gl.useProgram(pg.prog);
       gl.uniformMatrix4fv(pg.u.uViewProj, false, viewProj);
       gl.uniformMatrix4fv(pg.u.uReflectionViewProj, false, mirrorCapturedViewProj);
       gl.uniform3f(pg.u.uTint, 0.56, 0.62, 0.67);
       gl.uniform1f(pg.u.uPortal, mirror.portal ? 1 : 0);
+      gl.uniform1f(pg.u.uReveal, mirror.reveal);
       gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_2D, mirror.tex);
       gl.uniform1i(pg.u.uReflection, 2);
@@ -4757,9 +4769,11 @@ void main() {
       }
       activeRecords.length = 0;
       mirror.node = mirror.record = null;
-      mirror.portal = mirror.walkThrough = false;
+      mirror.portal = mirror.frontFacing = mirror.walkThrough = false;
+      mirror.reveal = 0;
       mirrorDebug.active = false;
       mirrorDebug.portal = false;
+      mirrorDebug.reveal = 0;
       mirrorDebug.surfaceDrawn = false;
       culled = drawn = suppressed = 0;
       updateWorld(root, null);
@@ -4826,6 +4840,7 @@ void main() {
       gl.uniform4fv(pg.mesh.u.uMatrixCaves, matrix && matrix.caves || NO_MATRIX_CAVES);
       gl.uniform4fv(pg.mesh.u.uMatrixCaveBounds, matrix && matrix.caveBounds || NO_MATRIX_CAVES);
       gl.uniform1f(pg.mesh.u.uMatrixCaveNear, matrix && matrix.caveBounds ? matrix.caveNear : FOG_OFF);
+      gl.uniform1f(pg.mesh.u.uMatrixPermanentCave, matrix ? matrix.permanentCave || 0 : 0);
       drawParts("mesh", "mesh", true, true);
       drawMirrorSurface();
       if (skyOn) drawSky(invViewProj, camera.position);
@@ -4982,7 +4997,7 @@ void main() {
     const pool = [];
     let poolUsed = 0, suppressed = 0;
     let matrixActive = 0, matrixRadius = 0, matrixTime = 0, matrixDensity = 0, matrixOriginX = 0, matrixOriginZ = 0, matrixSurfaces = 0, matrixLivingSurfaces = 0, matrixArea = 0, matrixSamples = 0, matrixSampleStep = 1, matrixCulled = 0;
-    let matrixCaves = null, matrixCaveBounds = null, matrixCaveNear = Infinity, matrixPointX = 0, matrixPointY = 0;
+    let matrixCaves = null, matrixCaveBounds = null, matrixCaveNear = Infinity, matrixPermanentCave = 0, matrixPointX = 0, matrixPointY = 0;
     const MATRIX_MASKS = new Int32Array([630678, 497559, 988959, 495513, 1009263, 288049, 456438, 616809]);
     const MATRIX_TILE_SIZE = 128, MATRIX_SAMPLE_BUDGET = 524288;
     const matrixTile = document.createElement("canvas");
@@ -5026,9 +5041,11 @@ void main() {
     const V = Array.from({ length: 8 }, () => new Float32Array(3));
     const CLIP_IN = new Float32Array(30);
     const CLIP_OUT = new Float32Array(30);
+    const MIRROR_CLIP_IN = new Float32Array(30);
+    const MIRROR_CLIP_OUT = new Float32Array(30);
     const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, tip: 0, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false };
     const mirrorDebug = {
-      active: false, faux: true, portal: false, surfaceDrawn: false, captureValid: false, width: 0, height: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: true, reflectionOnlyCount: 0, planeDistance: 0,
+      active: false, faux: true, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: true, reflectionOnlyCount: 0, planeDistance: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), skipReason: "canvas-faux"
     };
     const resize = () => {
@@ -5082,6 +5099,21 @@ void main() {
       }
       return out;
     };
+    const clipAbove = (src, count, minimumY, dst) => {
+      let out = 0;
+      for (let i = 0; i < count; i++) {
+        const a = i * 3, j = (i + 1) % count, b = j * 3;
+        const aIn = src[a + 1] >= minimumY, bIn = src[b + 1] >= minimumY;
+        if (aIn) {
+          dst[out * 3] = src[a]; dst[out * 3 + 1] = src[a + 1]; dst[out * 3 + 2] = src[a + 2]; out++;
+        }
+        if (aIn !== bIn) {
+          const amount = (minimumY - src[a + 1]) / (src[b + 1] - src[a + 1]);
+          dst[out * 3] = lerp(src[a], src[b], amount); dst[out * 3 + 1] = minimumY; dst[out * 3 + 2] = lerp(src[a + 2], src[b + 2], amount); out++;
+        }
+      }
+      return out;
+    };
     let eye = { x: 0, y: 0, z: 0 }, near = 0.2;
     const lightDir = new Float32Array([0, 1, 0]);
     let directStrength = 1, ambientFloor = 0.3, diffuseFloor = 0, skyLuma = 0.5, groundLuma = 0.2;
@@ -5113,7 +5145,7 @@ void main() {
     const matrixFront = (travel) => matrixActive * (1 - smooth((travel - matrixRadius + 1.5) / 1.5));
     const matrixLivingCave = (x, y, z) => {
       if (!matrixCaves || !matrixCaveBounds || Math.hypot(x - matrixOriginX, z - matrixOriginZ) < matrixCaveNear) return 0;
-      for (let cave = 0; cave < 7; cave++) {
+      for (let cave = 0; cave < matrixCaves.length / 4; cave++) {
         const offset = cave * 4, sr = matrixCaves[offset], cr = matrixCaves[offset + 1];
         const depth = matrixCaves[offset + 2] - sr * x - cr * z;
         if (depth < 0 || depth > matrixCaveBounds[offset + 3]) continue;
@@ -5190,11 +5222,12 @@ void main() {
           const staticCave = face.matrixCave || node.geometry.matrixCave || 0;
           const dynamicCave = !staticCave && matrixActive && matrixRadius >= matrixCaveNear && matrixLiving && matrixCaveBounds && flow >= matrixCaveNear;
           const cave = staticCave || (dynamicCave ? matrixLivingCave(centerX, centerY, centerZ) : 0);
+          const permanent = cave && cave === matrixPermanentCave;
           const localGlyphSurface = !!(node.geometry.matrixLocalGlyphSurface || face.matrixLocalGlyphSurface || staticCave);
           const revealBacking = !!node.geometry.matrixRevealBacking;
           const ownedGlyph = localMatrixGlyph && cave && matrixCaves;
-          let minimumFront = localMatrixGlyph && !ownedGlyph ? 1 : 0, maximumFront = minimumFront;
-          if (matrixActive && (!localMatrixGlyph || ownedGlyph)) {
+          let minimumFront = permanent || localMatrixGlyph && !ownedGlyph ? 1 : 0, maximumFront = minimumFront;
+          if (!permanent && matrixActive && (!localMatrixGlyph || ownedGlyph)) {
             let radiusSquared = 0;
             for (let k = 0; k < count; k++) radiusSquared = Math.max(radiusSquared, (V[k][0] - centerX) ** 2 + (V[k][2] - centerZ) ** 2);
             const distance = matrixCloud ? Math.min(matrixTravel(centerX, centerZ, cave), 36) : matrixTravel(centerX, centerZ, cave), margin = Math.sqrt(radiusSquared) * (cave && matrixCaves ? Math.SQRT2 : 1);
@@ -5204,15 +5237,27 @@ void main() {
           if ((localMatrixGlyph || revealBacking) && maximumFront <= 0) continue;
           const partial = maximumFront > 0 && minimumFront < 1;
           const matrixAmount = !localMatrixGlyph && !partial ? minimumFront : 0;
+          let surface = MIRROR_CLIP_IN, surfaceCount = count;
           for (let k = 0; k < count; k++) {
-            mat4.transformPoint(V[k], view, V[k][0], V[k][1], V[k][2]);
+            surface[k * 3] = V[k][0]; surface[k * 3 + 1] = V[k][1]; surface[k * 3 + 2] = V[k][2];
+          }
+          const mirrorReveal = mirrorFace ? Math.max(0, Math.min(1, node.mirrorReveal || 0)) : 0;
+          if (mirrorReveal > 0) {
+            let minY = Infinity, maxY = -Infinity;
+            for (let k = 0; k < count; k++) { minY = Math.min(minY, V[k][1]); maxY = Math.max(maxY, V[k][1]); }
+            surfaceCount = clipAbove(MIRROR_CLIP_IN, count, lerp(minY, maxY, mirrorReveal), MIRROR_CLIP_OUT);
+            surface = MIRROR_CLIP_OUT;
+            if (surfaceCount < 3) continue;
+          }
+          for (let k = 0; k < surfaceCount; k++) {
+            mat4.transformPoint(V[k], view, surface[k * 3], surface[k * 3 + 1], surface[k * 3 + 2]);
             CLIP_IN[k * 3] = V[k][0];
             CLIP_IN[k * 3 + 1] = V[k][1];
             CLIP_IN[k * 3 + 2] = V[k][2];
           }
           // A just-closed doorway must cover the view even inside the camera's
           // normal near plane. Keep its real projection and depth sorting.
-          const clipped = clipNear(CLIP_IN, count, mirrorFace ? 1e-7 : near, CLIP_OUT);
+          const clipped = clipNear(CLIP_IN, surfaceCount, mirrorFace ? 1e-7 : near, CLIP_OUT);
           if (clipped < 3) continue;
           const rec = acquire();
           let zsum = 0;
@@ -5364,7 +5409,7 @@ void main() {
             data[offset + 4] ** 2 + data[offset + 5] ** 2 + data[offset + 6] ** 2,
             data[offset + 8] ** 2 + data[offset + 9] ** 2 + data[offset + 10] ** 2));
           if (depth + radius < near || Math.abs(cx) > depth * tanX + radius * sideX || Math.abs(cy) > depth * tanY + radius * sideY) { matrixCulled++; continue; }
-          if (matrixCaves && node.geometry.matrixCave && (!matrixActive || matrixTravel(x, z, node.geometry.matrixCave) - radius * Math.SQRT2 >= matrixRadius)) { matrixCulled++; continue; }
+          if (matrixCaves && node.geometry.matrixCave && node.geometry.matrixCave !== matrixPermanentCave && (!matrixActive || matrixTravel(x, z, node.geometry.matrixCave) - radius * Math.SQRT2 >= matrixRadius)) { matrixCulled++; continue; }
         }
         for (let i = 0; i < 16; i++) BATCH_NODE.world[i] = data[offset + i];
         BATCH_NODE.glow = data[offset + 16];
@@ -5581,6 +5626,7 @@ void main() {
       matrixCaves = matrix ? matrix.caves || null : null;
       matrixCaveBounds = matrix ? matrix.caveBounds || null : null;
       matrixCaveNear = matrix ? matrix.caveNear === undefined ? Infinity : matrix.caveNear : Infinity;
+      matrixPermanentCave = matrix ? matrix.permanentCave || 0 : 0;
       matrixSurfaces = matrixLivingSurfaces = matrixArea = matrixSamples = matrixCulled = 0;
       matrixFrame++;
       if (fog) {
@@ -5625,6 +5671,7 @@ void main() {
       suppressed = 0;
       mirrorDebug.active = false;
       mirrorDebug.portal = false;
+      mirrorDebug.reveal = 0;
       mirrorDebug.surfaceDrawn = false;
       updateWorld(root, null);
       traverseVisible(root, (node) => {
@@ -5644,6 +5691,7 @@ void main() {
           const captureD = Math.max(eyeD, camera.near);
           mirrorDebug.planeDistance = Math.abs(eyeD);
           mirrorDebug.portal = !!node.mirrorPortal;
+          mirrorDebug.reveal = Math.max(0, Math.min(1, node.mirrorReveal || 0));
           mirrorDebug.cameraPosition[0] = camera.position.x - (eyeD + captureD) * normal[0];
           mirrorDebug.cameraPosition[1] = camera.position.y - (eyeD + captureD) * normal[1];
           mirrorDebug.cameraPosition[2] = camera.position.z - (eyeD + captureD) * normal[2];
@@ -5771,6 +5819,7 @@ void main() {
       dispose: () => {
         mirrorDebug.active = false;
         mirrorDebug.portal = false;
+        mirrorDebug.reveal = 0;
         mirrorDebug.surfaceDrawn = false;
       },
       get quality() {
@@ -6997,7 +7046,7 @@ void main() {
   const UNDER_BANDS = [P.dirt, P.stoneDark, P.dirt, P.stone];
   const undersideDepthAt = (radius) => Math.max(0, UNDER_SPHERE_CENTER + Math.sqrt(Math.max(0, UNDER_SPHERE_RADIUS * UNDER_SPHERE_RADIUS - radius * radius)));
   // Slot, its ring clock, and its tunnel clock
-  const CLOCKS = [["c11", 11], ["c9", 9], ["c730", 7.5, 10.5], ["c1", 1], ["c2", 2], ["c3", 3], ["c5", 5, 2]];
+  const CLOCKS = [["c11", 11], ["c10", 10], ["c9", 9], ["c730", 7.5, 10.5], ["c1", 1], ["c2", 2], ["c3", 3], ["c5", 5, 2]];
   const facing = (angle) => {
     const ry = (Math.PI * 2 - angle) % (Math.PI * 2);
     return ry > Math.PI ? ry - Math.PI * 2 : ry;
@@ -7139,8 +7188,8 @@ void main() {
             if (along > e - 0.48) matrixCaves[grid.index(gx, gy, gz)] = caveIndex;
           }
           if (grid.has(gx, SURFACE - 1, gz)) {
-            const ceiling = grid.has(gx, gyTop + 1, gz) ? gyTop + 1 - SURFACE : 0;
-            cavities[gx * SZ + gz] = (caveIndex << 5) | ceiling;
+            const ceiling = grid.has(gx, gyTop + 1, gz) ? Math.round((gyTop + 1 - SURFACE) * UNIT) : 0;
+            cavities[gx * SZ + gz] = caveIndex | (ceiling << 4);
           }
           if (along > -e) columns.push(gx, gyTop, gz);
         }
@@ -7208,9 +7257,9 @@ void main() {
     const cavityAt = (x, z, out) => {
       const i = column(x, z), cavity = i < 0 ? 0 : cavities[i];
       if (!cavity) return false;
-      out.caveIndex = cavity >> 5;
+      out.caveIndex = cavity & 15;
       out.floor = 0;
-      out.ceiling = cavity & 31 ? (cavity & 31) * UNIT : Infinity;
+      out.ceiling = cavity >> 4 || Infinity;
       return true;
     };
     const pathColumn = (x, z) => {
@@ -7629,6 +7678,55 @@ void main() {
     };
     return geo;
   });
+  const matrixPrisonBars = cached(() => {
+    const parts = [
+      box({ w: 4.9, h: 0.14, d: 0.22, color: "#101813", offset: { y: 0.38 } }),
+      box({ w: 4.9, h: 0.14, d: 0.22, color: "#101813", offset: { y: 2.76 } })
+    ];
+    for (let bar = 0; bar < 7; bar++) {
+      const x = -2.25 + bar * 0.75;
+      parts.push(box({ w: 0.14, h: 3.15, d: 0.18, color: "#17211b", offset: { x, y: 1.575 } }));
+      // Small paired pixels read as a different falling code rune on every bar.
+      for (let row = 0; row < 7; row++) {
+        const side = (bar * 3 + row * 5) & 1 ? -1 : 1;
+        parts.push(box({ w: 0.035, h: 0.06, d: 0.025, color: row & 1 ? "#46ff70" : "#18dc4a", emissive: 0.7, offset: { x: x + side * 0.03, y: 0.22 + row * 0.44, z: 0.1025 } }));
+        if ((bar + row) % 3) parts.push(box({ w: 0.035, h: 0.035, d: 0.025, color: "#18dc4a", emissive: 0.45, offset: { x: x - side * 0.03, y: 0.25 + row * 0.44, z: 0.1025 } }));
+      }
+    }
+    return merge(...parts);
+  });
+  const sealedCaveFace = variants((variant) => {
+    const rand = mulberry32(419), parts = [], fronts = new Float32Array(60);
+    const mossColors = ["#6f7d3e", "#7b8945", "#65733a"];
+    let frontZ = -Infinity;
+    for (let y = 0; y < 6; y++) for (let x = 0; x < 10; x++) {
+      const depth = 0.38 + rand() * 0.16, color = CLIFF[(x + y * 2 + Math.floor(rand() * 2)) % CLIFF.length], z = (rand() - 0.5) * 0.08;
+      parts.push(box({ w: 0.5, h: 0.5, d: depth, color, offset: { x: -2.25 + x * 0.5, y: 0.25 + y * 0.5, z } }));
+      fronts[y * 10 + x] = z + depth * 0.5;
+      frontZ = Math.max(frontZ, fronts[y * 10 + x]);
+    }
+    // The hill steps wear quarter-voxel grass caps. Continue that same muted,
+    // blocky growth across the seal in connected patches rather than flecks.
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 20; x++) {
+      const top = variant === 0 ? y === 11 && (x < 7 || x > 8 && x < 15 || x > 16) : variant === 1 ? y === 11 && (x < 3 || x > 4 && x < 12 || x > 14) : y === 11 && (x < 5 || x > 7 && x < 11 || x > 13);
+      const upper = variant === 0 ? y === 10 && (x < 6 || x > 9 && x < 14 || x > 17) || y === 9 && (x > 0 && x < 5 || x > 10 && x < 13 || x === 18) : variant === 1 ? y === 10 && (x < 2 || x > 5 && x < 11 || x > 15) || y === 9 && (x === 1 || x > 6 && x < 10 || x > 16) : y === 10 && (x < 4 || x > 7 && x < 12 || x > 14) || y === 9 && (x > 1 && x < 4 || x > 8 && x < 11 || x > 15 && x < 19);
+      const edge = variant === 0 ? x === 0 && y > 4 && y < 9 || x === 19 && y > 3 && y < 9 : variant === 1 ? x === 0 && y > 2 && y < 7 || x === 19 && y > 6 && y < 10 : x === 0 && y > 6 && y < 11 || x === 19 && y > 1 && y < 7;
+      const patch = variant === 0 ? y > 3 && y < 7 && (x > 4 && x < 8 || x > 13 && x < 17) && (x + y) % 3 !== 0 : variant === 1 ? y > 4 && y < 8 && (x > 2 && x < 6 || x > 11 && x < 15) && (x + y) % 3 !== 1 : y > 2 && y < 6 && (x > 8 && x < 14) && (x + y) % 4 !== 2;
+      if (!top && !upper && !edge && !patch) continue;
+      const stoneFront = fronts[Math.floor(y / 2) * 10 + Math.floor(x / 2)], mossZ = stoneFront + 0.0125;
+      parts.push(box({ w: 0.245, h: 0.245, d: 0.025, color: mossColors[(x * 3 + y * 5 + variant) % mossColors.length], offset: { x: -2.375 + x * 0.25, y: 0.125 + y * 0.25, z: mossZ } }));
+      frontZ = Math.max(frontZ, mossZ + 0.0125);
+    }
+    const geo = merge(...parts);
+    geo.frontZ = frontZ;
+    return geo;
+  });
+  const matrixButtonStand = cached(() => merge(
+    box({ w: 0.9, h: 0.16, d: 0.9, color: "#171c19", offset: { y: 0.08 } }),
+    box({ w: 0.62, h: 0.88, d: 0.62, color: "#222a25", offset: { y: 0.58 } }),
+    box({ w: 0.78, h: 0.18, d: 0.78, color: "#111713", offset: { y: 1.05 } })
+  ));
+  const matrixButton = cached(() => box({ w: 0.48, h: 0.16, d: 0.48, color: "#182b1d", offset: { y: 0.08 } }));
   const MATRIX_GLYPHS = [
     ["0110", "1001", "1111", "1001", "1001", "0000"],
     ["1110", "1001", "1110", "1001", "1110", "0000"],
@@ -7890,7 +7988,7 @@ void main() {
     box({ w: 4, h: 0.14, d: 0.16, color: WOOD_DK, offset: { x: 2, y: -0.17, z: 0.92 } }),
     ...[[0.5, -0.8], [0.5, 0.8], [3.5, -0.8], [3.5, 0.8]].map(([x, z]) => box({ w: 0.2, h: 2.2, d: 0.2, color: "#6b4a2b", offset: { x, y: -1.2, z } }))
   ));
-  BL.hubModels = { SIGN_GLYPHS, jetpack, jetFlame, caveMouthRim, mirrorPanel, matrixGlyph, caveSign, CAVE_SIGN_WIDTH, CAVE_SIGN_HEIGHT, gate, caveShelves, bedroll, tree, bush, rock, altarSlab, altarBlock, woodCrate, barrel, flowerTuft, torch, grass, lantern, firepit, fireFlame, butterfly, firefly, ember, vine, cloud, ladder, dock, TREE_HEIGHT };
+  BL.hubModels = { SIGN_GLYPHS, jetpack, jetFlame, caveMouthRim, mirrorPanel, matrixPrisonBars, sealedCaveFace, matrixButtonStand, matrixButton, matrixGlyph, caveSign, CAVE_SIGN_WIDTH, CAVE_SIGN_HEIGHT, gate, caveShelves, bedroll, tree, bush, rock, altarSlab, altarBlock, woodCrate, barrel, flowerTuft, torch, grass, lantern, firepit, fireFlame, butterfly, firefly, ember, vine, cloud, ladder, dock, TREE_HEIGHT };
 })();
 
 // ---- js/caves.js ----
@@ -7902,6 +8000,7 @@ void main() {
   const slot = (id, clock, scene = null, status = "dark", name = null) => ({ id, clock, scene, status, name });
   const slots = [
     slot("c11", 11, "lab", "open", "EntropyLab"),
+    slot("c10", 10),
     slot("c9", 9, "race", "open", "Ooga Rally"),
     slot("c730", 7.5, null, "sleeping"),
     slot("c1", 1, null, "mirror", "Ooga Booga Land"),
@@ -9877,7 +9976,7 @@ void main() {
     };
     const headWorldOf = (cave) => ({ x: cave.root.position.x, y: cave.state === "sleeping" ? 0.5 : cave.root.position.y - cave.baseY + cave.headOffset * 0.95 + cave.viewLift, z: cave.root.position.z });
     const bulletPool = Array.from({ length: 12 }, () => {
-      const node = createNode({ geometry: models.bananaGeometry(), scale: { x: models.BANANA_AMMO_SCALE, y: models.BANANA_AMMO_SCALE, z: models.BANANA_AMMO_SCALE }, visible: false });
+      const node = createNode({ geometry: models.bananaGeometry(), scale: { x: models.BANANA_AMMO_SCALE, y: models.BANANA_AMMO_SCALE, z: models.BANANA_AMMO_SCALE }, visible: false, matrixLiving: !!ctx.matrixLivingPile });
       addChild(root, node);
       return node;
     });
@@ -10582,8 +10681,9 @@ void main() {
     const matrixLiving = !!ctx.matrixLivingPile;
     const pileSlots = [];
     const coreFaceSize = ctx.renderer.kind === "canvas2d" ? CORE_FACE_SIZE * 1.75 : CORE_FACE_SIZE;
-    // A yellow-paneled mound under the shell uses one geometry scaled to every level.
-    const core = createNode({ geometry: models.bananaPileCoreGeometry(SCALE * 6, BASE_HEIGHT * 6, coreFaceSize), visible: false, matrixLiving });
+    // The supporting dome stays an ordinary Matrix receiver so code runs down
+    // between the bright bananas instead of turning the entire pile into a glow.
+    const core = createNode({ geometry: models.bananaPileCoreGeometry(SCALE * 6, BASE_HEIGHT * 6, coreFaceSize), visible: false });
     const bananaGeometry = models.bananaGeometry();
     const shellGeometry = models.bananaTileGeometry();
     let shellMinZ = Infinity, shellReach = 0;
@@ -10676,6 +10776,7 @@ void main() {
     for (let i = 0; i < DROP_POOL_SIZE; i++) {
       const node = models.banana();
       setVec(node.scale, BANANA_SCALE, BANANA_SCALE, BANANA_SCALE);
+      node.matrixLiving = matrixLiving;
       node.visible = false;
       dropSlots.push({
         node,
@@ -12149,7 +12250,9 @@ void main() {
   const MATRIX_STREAM_SPEED_MIN = 0.56, MATRIX_STREAM_SPEED_RANGE = 0.64;
   const MATRIX_TRAIN_MIN = 7, MATRIX_TRAIN_RANGE = 6, MATRIX_TRAIN_GAP_MIN = 2, MATRIX_TRAIN_GAP_RANGE = 5;
   const MATRIX_WORLD_SPEED = 72, MATRIX_WORLD_MAX = RADIUS + 8, MATRIX_FRONT_WIDTH = 1.5, MATRIX_GLYPH_REACH = 0.16;
-  const MATRIX_WORLD = { active: 0, direction: 0, radius: 0, time: 0, density: 1, speed: MATRIX_WORLD_SPEED, retreatSpeed: MATRIX_WORLD_SPEED, maxRadius: MATRIX_WORLD_MAX, origin: new Float32Array([0, 0, 0]), caves: new Float32Array(7 * 4), caveBounds: new Float32Array(7 * 4), caveNear: 0 };
+  const MATRIX_MIRROR_HEIGHT = 3.25;
+  const MATRIX_GATE_HIDDEN_Y = -3.2, MATRIX_GATE_SPEED = 3.2, MATRIX_BUTTON_REACH = 3.4, MATRIX_BUTTON_USE_REACH = 2.2;
+  const MATRIX_WORLD = { active: 0, direction: 0, radius: 0, time: 0, density: 1, speed: MATRIX_WORLD_SPEED, retreatSpeed: MATRIX_WORLD_SPEED, maxRadius: MATRIX_WORLD_MAX, permanentCave: 0, origin: new Float32Array([0, 0, 0]), caves: new Float32Array(8 * 4), caveBounds: new Float32Array(8 * 4), caveNear: 0 };
   const MATRIX_DENSITY = { high: 8, medium: 5, low: 3, canvas2d: 1 };
   const PORTAL_Z = 0.5, PORTAL_MIN_X = -2.48, PORTAL_MAX_X = 2.48, PORTAL_MIN_Y = 0, PORTAL_MAX_Y = 2.98;
   // Sky, light and lamps, resampled from the clock every frame
@@ -12187,7 +12290,7 @@ void main() {
   const BEDROLL_DEGREES = [100, 195, 252, 300, 345];
   const BEDROLL_RADIUS = 14, BEDROLL_INNER = 10;
   const NUDGES = [0, -2, 2, -4, 4, -6, 6, -8, 8];
-  const VINES = ["c9", "c5"];
+  const VINES = ["c5"];
   const PILE_SCALE = 0.45;
   const SCENERY_CLEARANCE = 0.25;
   const MEADOW_INNER = 5, MEADOW_OUTER = MEADOW - 1.5, CLIFF_INNER = MEADOW + 1.5, CLIFF_OUTER = RADIUS - 1;
@@ -12222,7 +12325,7 @@ void main() {
   };
 
   // One visit's state, made in enter and dropped in leave
-  let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, pile, crew, crates, critters, clock, presets, entering, stash, jetpack, mirrorCave, matrixCave, gateRain, fire;
+  let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, pile, crew, crates, critters, clock, presets, entering, stash, jetpack, mirrorCave, matrixCave, matrixControl, gateRain, fire;
   let hintAt = HINT_AFTER;
   let stateTimer = 0, hintTimer = 0, meterTimer = 0, pileEdgeNow = 0, now = 0, hour = 12;
   let phase = null;
@@ -12242,6 +12345,8 @@ void main() {
   const scenery = [];
   const sceneryClaims = [];
   const matrixInteriors = [];
+  const matrixGates = [];
+  const sealedCaves = [];
   let sceneryVisible = 0, sceneryRadiusCulled = 0, sceneryPathCulled = 0, sceneryFixedCulled = 0, sceneryReflows = 0;
   const addTarget = (node, owner, opts) => {
     input.add(node, owner, opts);
@@ -12363,14 +12468,14 @@ void main() {
       spacing: MATRIX_RAIN_GAP, activeGlyphCount: 0, brightTipCount: 0, updates: 0, densityRankLimit: 0,
       minX: gate.position.x - 0.84, maxX: gate.position.x + 0.84, minY, maxY, minZ: gate.position.z - 0.18, maxZ: gate.position.z + 0.18 };
   };
-  const updateCaveRain = (rain, elapsed, visible, densityRankLimit) => {
+  const updateCaveRain = (rain, elapsed, visible, densityRankLimit, permanent = false) => {
     rain.activeGlyphCount = rain.brightTipCount = 0;
     rain.densityRankLimit = densityRankLimit;
     for (let glyph = 0; glyph < MATRIX_TYPES; glyph++) rain.nodes[glyph].instanceCount = rain.nodes[glyph].drawInstanceCount = 0;
     if (!visible) return;
     for (let i = 0; i < rain.streams.length; i++) {
       const s = rain.streams[i];
-      if (s.rank >= densityRankLimit || s.distance - MATRIX_GLYPH_REACH >= MATRIX_WORLD.radius) continue;
+      if (s.rank >= densityRankLimit || !permanent && s.distance - MATRIX_GLYPH_REACH >= MATRIX_WORLD.radius) continue;
       const head = s.maxY - matrixModulo(elapsed * s.speed + s.phase, s.period);
       const version = Math.floor(elapsed * MATRIX_GLYPH_HZ + (s.seed & 15) / 16);
       for (let character = 0; character < s.trainLength; character++) {
@@ -12680,11 +12785,12 @@ void main() {
   const updateCaveGlyphs = (elapsed, visible, densityRankLimit) => {
     for (let c = 0; c < matrixInteriors.length; c++) {
       const cave = matrixInteriors[c];
-      cave.visible = cave.drawEnabled = visible && MATRIX_WORLD.radius > cave.minimumTravelDistance;
+      const permanent = cave.caveIndex === MATRIX_WORLD.permanentCave;
+      cave.visible = cave.drawEnabled = permanent || visible && MATRIX_WORLD.radius > cave.minimumTravelDistance;
       cave.quality = renderer.kind === "canvas2d" ? "canvas2d" : renderer.quality;
       cave.densityRankLimit = densityRankLimit;
-      updateCaveRain(cave.rain, elapsed, cave.visible, densityRankLimit);
-      if (!visible || MATRIX_WORLD.radius <= cave.minimumTravelDistance) {
+      updateCaveRain(cave.rain, elapsed, cave.visible, densityRankLimit, permanent);
+      if (!permanent && (!visible || MATRIX_WORLD.radius <= cave.minimumTravelDistance)) {
         clearMatrixDraw(cave);
         continue;
       }
@@ -12705,7 +12811,7 @@ void main() {
         const x = section.ux * stream.cross + section.vx * flow + section.nx * plane;
         const z = section.uz * stream.cross + section.vz * flow + section.nz * plane;
         const distance = matrixTravelDistance(x, z, cave.caveIndex);
-        if (distance - MATRIX_GLYPH_REACH >= MATRIX_WORLD.radius) continue;
+        if (!permanent && distance - MATRIX_GLYPH_REACH >= MATRIX_WORLD.radius) continue;
         const trainPosition = matrixModulo(-stream.direction * cell, sequence);
         if (trainPosition >= stream.trainLength) { gaps++; continue; }
         const tip = trainPosition === 0 ? 1 : trainPosition === 1 ? 0.55 : 0;
@@ -12725,7 +12831,7 @@ void main() {
         mutationHash = Math.imul(mutationHash ^ glyph ^ Math.imul(i + 1, 16777619), 16777619) >>> 0;
         counts[section.category]++;
         if (first && !section.horizontal) { cave.firstGlyphY = data[offset + 13]; first = false; }
-        active++; if (distance < MATRIX_WORLD.radius) revealed++; if (tip) bright++;
+        active++; if (permanent || distance < MATRIX_WORLD.radius) revealed++; if (tip) bright++;
       }
       for (let i = 0; i < cave.streams.length; i++) {
         const stream = cave.streams[i], travel = matrixModulo(elapsed * stream.speed + stream.phase, stream.flowRange);
@@ -12776,13 +12882,18 @@ void main() {
     const densityRankLimit = MATRIX_DENSITY[quality] || MATRIX_DENSITY.high;
     MATRIX_WORLD.time = elapsed;
     MATRIX_WORLD.density = densityRankLimit / MATRIX_DENSITY.high;
-    if (MATRIX_WORLD.direction > 0) MATRIX_WORLD.radius = Math.min(MATRIX_WORLD.maxRadius, MATRIX_WORLD.radius + dt * MATRIX_WORLD.speed);
+    if (MATRIX_WORLD.direction > 0) {
+      MATRIX_WORLD.radius = Math.min(MATRIX_WORLD.maxRadius, MATRIX_WORLD.radius + dt * MATRIX_WORLD.speed);
+      if (MATRIX_WORLD.radius === MATRIX_WORLD.maxRadius) MATRIX_WORLD.direction = 0;
+    }
     else if (MATRIX_WORLD.direction < 0) {
       MATRIX_WORLD.radius = Math.max(0, MATRIX_WORLD.radius - dt * MATRIX_WORLD.retreatSpeed);
       if (MATRIX_WORLD.radius === 0) MATRIX_WORLD.direction = 0;
     }
     MATRIX_WORLD.active = MATRIX_WORLD.radius > 0 ? 1 : 0;
-    matrixCave.mirrorNode.mirrorPortal = matrixCave.portal.inside;
+    const mirrorReveal = matrixCave.unlocked ? 1 : matrixCave.portal.inside ? Math.max(0, Math.min(1, (MATRIX_WORLD.radius - matrixCave.mirrorDistance) / MATRIX_MIRROR_HEIGHT)) : 0;
+    matrixCave.mirrorNode.mirrorReveal = mirrorReveal;
+    matrixCave.mirrorNode.mirrorPortal = mirrorReveal === 1;
     updateCaveGlyphs(elapsed, !!MATRIX_WORLD.active, densityRankLimit);
     if (gateRain) updateCaveRain(gateRain, elapsed, !!MATRIX_WORLD.active, densityRankLimit);
   };
@@ -12972,11 +13083,23 @@ void main() {
     return p;
   };
   // Build a mouth from its slot status, +z leading out
+  const sealedCaveVariant = (id) => id === "c3" ? 1 : id === "c10" ? 2 : 0;
   const buildMouth = (slot, m) => {
     const ax = Math.sin(m.ry), az = Math.cos(m.ry);
+    const caveIndex = island.mouths.indexOf(m) + 1;
     const group = createNode({ position: { x: m.x, y: m.floorY, z: m.z }, rotation: { x: 0, y: m.ry, z: 0 } });
     const rim = createNode({ position: { x: 0, y: 0, z: 0.5 }, geometry: hubModels.caveMouthRim() });
     addChild(group, rim);
+    if (slot.status === "dark") {
+      const geometry = hubModels.sealedCaveFace(sealedCaveVariant(slot.id));
+      const seal = createNode({ position: { x: 0, y: 0, z: 0.52 }, geometry, matrixExterior: true });
+      addChild(group, seal);
+      sealedCaves.push({ caveIndex, mouth: m, node: seal, sr: ax, cr: az, stopZ: seal.position.z + geometry.frontZ + 0.01 });
+    } else {
+      const bars = createNode({ position: { x: 0, y: MATRIX_GATE_HIDDEN_Y, z: 0.78 }, geometry: { ...hubModels.matrixPrisonBars(), matrixCave: caveIndex }, matrixExterior: true });
+      addChild(group, bars);
+      matrixGates.push({ caveIndex, node: bars, open: false, distance: matrixTravelDistance(m.x + ax * bars.position.z, m.z + az * bars.position.z) });
+    }
     if (slot.status === "open" && slot.scene === "race") {
       // The rally garage: a kart up on a stone plinth, spare wheels, a crate and a barrel
       const kart = BL.raceModels.kart("#d98a2e");
@@ -13011,9 +13134,18 @@ void main() {
       for (const x of [-1.3, 1.3]) addChild(group, createNode({ position: { x, y: 0, z: -3.5 }, geometry: hubModels.caveShelves() }));
     } else if (slot.status === "mirror") {
       // Sit inside the rim so the cave floor ends behind the reflection.
-      const node = createNode({ position: { x: 0, y: 1.5, z: 0.5 }, geometry: hubModels.mirrorPanel(), mirror: true, mirrorWalkThrough: true });
+      const node = createNode({ position: { x: 0, y: 1.5, z: 0.5 }, geometry: hubModels.mirrorPanel(), mirror: true, mirrorWalkThrough: true, mirrorReveal: 0 });
       addChild(group, node);
       mirrorCave = { slot, mouth: m, group, rim, node, sign: null };
+      const stand = createNode({ position: { x: 0, y: 0, z: -5.15 }, geometry: { ...hubModels.matrixButtonStand(), matrixCave: caveIndex }, matrixExterior: true });
+      const button = createNode({ position: { x: 0, y: 1.12, z: 0 }, geometry: { ...hubModels.matrixButton(), matrixCave: caveIndex }, matrixExterior: true, matrixLiving: false, glow: 0.25 });
+      addChild(stand, button);
+      addChild(group, stand);
+      matrixControl = {
+        stand, button, x: m.x + ax * stand.position.z, z: m.z + az * stand.position.z,
+        pressed: false, near: false, promptPressed: false, promptPlayer: null
+      };
+      addTarget(button, { kind: "matrix-button", priority: 2 }, { radius: 0.55 });
     } else if (slot.status === "sleeping") {
       // Bedrolls lie along +x, as the sleep pose assumes
       addChild(group, createNode({ position: { x: 0, y: 0.05, z: -4.5 }, rotation: { x: 0, y: -m.ry, z: 0 }, geometry: hubModels.bedroll(), depthBias: 0.3 }));
@@ -13071,8 +13203,13 @@ void main() {
     const glyphs = buildCaveGlyphs(slot, m, group);
     if (slot.status === "mirror") {
       matrixCave = glyphs;
+      MATRIX_WORLD.permanentCave = matrixCave.caveIndex;
       matrixCave.portal = buildMatrixPortal(m);
       matrixCave.mirrorNode = mirrorCave.node;
+      matrixCave.mirrorDistance = matrixEntranceMinimum(m, PORTAL_MIN_X, PORTAL_MAX_X);
+      matrixCave.unlocked = false;
+      const gate = matrixGates.find((candidate) => candidate.caveIndex === matrixCave.caveIndex);
+      gate.distance = matrixCave.mirrorDistance + MATRIX_MIRROR_HEIGHT;
     }
     return rim;
   };
@@ -13337,14 +13474,26 @@ void main() {
     return y >= roof - STEP_MAX ? roof : island.heightAt(x, z);
   };
   const visualSupportAt = (x, z, y) => island.smoothSupportAt(x, z, y, STEP_MAX);
+  const crossesSealedCave = (fromX, fromZ, toX, toZ) => {
+    for (let i = 0; i < sealedCaves.length; i++) {
+      const sealed = sealedCaves[i], m = sealed.mouth, sr = sealed.sr, cr = sealed.cr;
+      const a = (fromX - m.x) * sr + (fromZ - m.z) * cr - sealed.stopZ;
+      const b = (toX - m.x) * sr + (toZ - m.z) * cr - sealed.stopZ;
+      if (a * b > 0 || a === b) continue;
+      const k = a / (a - b), x = lerp(fromX, toX, k), z = lerp(fromZ, toZ, k);
+      const across = (x - m.x) * cr - (z - m.z) * sr;
+      if (across >= PORTAL_MIN_X && across <= PORTAL_MAX_X) return true;
+    }
+    return false;
+  };
   // A driven step stays on rock, off the heap, and on its own layer
   const walkable = (fromX, fromZ, toX, toZ, y) => {
-    if (!island.onLand(toX, toZ) || Math.hypot(toX, toZ) <= pileEdgeNow + 0.4) return false;
+    if (!island.onLand(toX, toZ) || Math.hypot(toX, toZ) <= pileEdgeNow + 0.4 || crossesSealedCave(fromX, fromZ, toX, toZ)) return false;
     if (y >= island.surfaceAt(toX, toZ) - STEP_MAX) return true;
     return Math.abs(island.heightAt(toX, toZ) - y) <= STEP_MAX;
   };
   // Flying, only the rim stops him
-  const flyable = (fromX, fromZ, toX, toZ) => island.onLand(toX, toZ);
+  const flyable = (fromX, fromZ, toX, toZ) => island.onLand(toX, toZ) && !crossesSealedCave(fromX, fromZ, toX, toZ);
   // Clouds ring the island without crossing it
   const buildClouds = () => {
     const rand = mulberry32(SEED + 77);
@@ -13455,6 +13604,8 @@ void main() {
         return o.slot.status === "open" ? `${o.slot.name} · tap to enter` : o.slot.status === "mirror" ? `${o.slot.name} · mirror` : o.slot.status === "sleeping" ? "A project sleeps here · zzz" : "An empty cave";
       case "gate":
         return `${caves.gate.name} · leads nowhere yet`;
+      case "matrix-button":
+        return matrixCave.unlocked ? "Matrix gate control · press out" : "Matrix gate control · press in";
       case "prop":
         return PROP_TIPS[o.prop] || "";
       default:
@@ -13566,6 +13717,13 @@ void main() {
   // Nearest prop within reach, if any
   const useNear = (x, z, reach) => {
     let best = null, bestD = reach;
+    if (matrixControl) {
+      const d = Math.hypot(matrixControl.x - x, matrixControl.z - z);
+      if (d < bestD) {
+        bestD = d;
+        best = matrixControl;
+      }
+    }
     for (let i = 0; i < props.length; i++) {
       const o = props[i];
       if (!o.active) continue;
@@ -13576,7 +13734,8 @@ void main() {
       }
     }
     if (!best) return false;
-    useProp(best);
+    if (best === matrixControl) toggleMatrixControl();
+    else useProp(best);
     return true;
   };
   // Dolly onto a view, then change scene
@@ -13626,6 +13785,9 @@ void main() {
       case "gate":
         hud.toast(tooltipFor(hit));
         break;
+      case "matrix-button":
+        toggleMatrixControl();
+        break;
       case "prop":
         useProp(o);
         break;
@@ -13658,6 +13820,7 @@ void main() {
     if (y < opening.minY) CAMERA_CROSSING.reason = "below";
     else if (y > opening.maxY) CAMERA_CROSSING.reason = "above";
     else if (across < opening.minX || across > opening.maxX) CAMERA_CROSSING.reason = "beside";
+    else if (opening.blocked) CAMERA_CROSSING.reason = "sealed";
     else if (caveColumnAt(x - sr * 0.05, z - cr * 0.05, opening)) CAMERA_CROSSING.valid = true;
     return CAMERA_CROSSING;
   };
@@ -13668,15 +13831,74 @@ void main() {
     portal.inside = inside;
     portal.lastCrossingDirection = inside ? "in" : "out";
     if (inside) {
-      MATRIX_WORLD.radius = MATRIX_WORLD.maxRadius;
-      MATRIX_WORLD.direction = 0;
+      MATRIX_WORLD.direction = MATRIX_WORLD.radius < MATRIX_WORLD.maxRadius ? 1 : 0;
+      MATRIX_WORLD.active = 1;
+    } else if (matrixCave.unlocked) {
+      MATRIX_WORLD.direction = MATRIX_WORLD.radius < MATRIX_WORLD.maxRadius ? 1 : 0;
       MATRIX_WORLD.active = 1;
     } else {
       MATRIX_WORLD.direction = MATRIX_WORLD.radius > 0 ? -1 : 0;
       MATRIX_WORLD.active = MATRIX_WORLD.radius > 0 ? 1 : 0;
     }
-    // Close the doorway on the crossing itself; glyph retraction runs independently.
-    matrixCave.mirrorNode.mirrorPortal = inside;
+    // Closing is immediate. Opening waits for the pile-centred front, then the
+    // same travelled distance wipes the glass upward through its real height.
+    if (!inside && !matrixCave.unlocked) {
+      matrixCave.mirrorNode.mirrorReveal = 0;
+      matrixCave.mirrorNode.mirrorPortal = false;
+    }
+  };
+  const setMatrixUnlocked = (unlocked, quiet = false) => {
+    if (!matrixCave || !matrixControl || matrixCave.unlocked === unlocked) return false;
+    matrixCave.unlocked = unlocked;
+    matrixControl.pressed = unlocked;
+    matrixControl.button.matrixLiving = unlocked;
+    matrixControl.button.glow = unlocked ? 1 : 0.25;
+    matrixControl.button.highlight = unlocked ? 0.8 : 0;
+    for (let i = 0; i < matrixGates.length; i++) matrixGates[i].open = unlocked;
+    if (unlocked) {
+      MATRIX_WORLD.active = 1;
+      MATRIX_WORLD.direction = MATRIX_WORLD.radius < MATRIX_WORLD.maxRadius ? 1 : 0;
+      matrixCave.mirrorNode.mirrorReveal = 1;
+      matrixCave.mirrorNode.mirrorPortal = true;
+    } else if (matrixCave.portal.inside) {
+      MATRIX_WORLD.active = 1;
+      MATRIX_WORLD.direction = MATRIX_WORLD.radius < MATRIX_WORLD.maxRadius ? 1 : 0;
+    } else {
+      MATRIX_WORLD.direction = MATRIX_WORLD.radius > 0 ? -1 : 0;
+      MATRIX_WORLD.active = MATRIX_WORLD.radius > 0 ? 1 : 0;
+      matrixCave.mirrorNode.mirrorReveal = 0;
+      matrixCave.mirrorNode.mirrorPortal = false;
+    }
+    if (!quiet) hud.toast(unlocked ? "The glyph gates sink. The Matrix stays." : "The glyph gates rise while the mirror is open.");
+    return true;
+  };
+  const toggleMatrixControl = () => setMatrixUnlocked(!matrixCave.unlocked);
+  const matrixControlNear = (x, z, reach = MATRIX_BUTTON_REACH) => !!matrixControl && Math.hypot(matrixControl.x - x, matrixControl.z - z) < reach;
+  const updateMatrixControl = (dt, player) => {
+    if (!matrixControl) return;
+    const gateStep = MATRIX_GATE_SPEED * dt;
+    for (let i = 0; i < matrixGates.length; i++) {
+      const gate = matrixGates[i], y = gate.node.position.y;
+      if (!matrixCave.unlocked) {
+        gate.node.position.y = MATRIX_WORLD.active && MATRIX_WORLD.radius >= gate.distance ? 0 : MATRIX_GATE_HIDDEN_Y;
+        continue;
+      }
+      gate.node.position.y = Math.max(MATRIX_GATE_HIDDEN_Y, y - gateStep);
+    }
+    const buttonY = matrixControl.pressed ? 1.04 : 1.12;
+    matrixControl.button.position.y = matrixControl.button.position.y < buttonY ? Math.min(buttonY, matrixControl.button.position.y + dt * 0.5) : Math.max(buttonY, matrixControl.button.position.y - dt * 0.5);
+    const subject = player ? player.root.position : camera.position;
+    const near = matrixControlNear(subject.x, subject.z, player ? MATRIX_BUTTON_USE_REACH : MATRIX_BUTTON_REACH);
+    if (near === matrixControl.near && player === matrixControl.promptPlayer && matrixControl.pressed === matrixControl.promptPressed) return;
+    const hadPlayerPrompt = matrixControl.near && matrixControl.promptPlayer;
+    matrixControl.near = near;
+    matrixControl.promptPlayer = player;
+    matrixControl.promptPressed = matrixControl.pressed;
+    if (near) {
+      const action = matrixControl.pressed ? "press it out" : "press it in";
+      hud.hint(COARSE ? `Tap the glyph control to ${action}` : `Press Space or tap the control to ${action}`);
+      if (player) hud.setAct(matrixControl.pressed ? "Press out" : "Press in");
+    } else if (hadPlayerPrompt || player) pilot.showAct();
   };
   const syncMatrixInside = (player) => {
     if (!matrixCave) return;
@@ -13779,6 +14001,7 @@ void main() {
     exteriorCeiling = Infinity;
     for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
       const entry = CAMERA_OPENINGS[i], dx = x - entry.mouth.x, dz = z - entry.mouth.z;
+      if (entry.blocked) continue;
       const along = dx * entry.sr + dz * entry.cr, across = dx * entry.cr - dz * entry.sr;
       if (along < entry.planeZ - 1e-7 || along > 3 || across < entry.minX + CAMERA_RADIUS || across > entry.maxX - CAMERA_RADIUS || y < entry.mouth.floorY || y > entry.mouth.floorY + entry.maxY) continue;
       const k = (along - entry.planeZ) / (3 - entry.planeZ);
@@ -13812,6 +14035,14 @@ void main() {
         if (matrixCave && candidate.caveIndex === matrixCave.caveIndex && crossing.reason) {
           const rejected = matrixCave.portal.rejected, reason = crossing.reason;
           rejected[reason] = Math.min(0x7fffffff, rejected[reason] + 1);
+        }
+        if (crossing.reason === "sealed" && crossing.direction > 0) {
+          const fromAlong = (CAMERA_PREVIOUS.x - candidate.mouth.x) * candidate.sr + (CAMERA_PREVIOUS.z - candidate.mouth.z) * candidate.cr;
+          const toAlong = (p.x - candidate.mouth.x) * candidate.sr + (p.z - candidate.mouth.z) * candidate.cr;
+          const k = Math.max(0, Math.min(1, (fromAlong - candidate.stopZ) / (fromAlong - toAlong)));
+          p.x = lerp(CAMERA_PREVIOUS.x, p.x, k);
+          p.y = lerp(CAMERA_PREVIOUS.y, p.y, k);
+          p.z = lerp(CAMERA_PREVIOUS.z, p.z, k);
         }
         if (!crossing.valid) continue;
         if (!opening && crossing.direction > 0) {
@@ -14021,6 +14252,7 @@ void main() {
     // so the mirror and the covered interior can never disagree for one frame.
     syncMatrixInside(player);
     updateMatrixWorld(dt, elapsed);
+    updateMatrixControl(dt, player);
     meterTimer -= dt;
     if (meterTimer <= 0) {
       meterTimer = 0.25;
@@ -14054,6 +14286,7 @@ void main() {
     location.reload();
   };
   const onKey = (e) => {
+    if (e.key === " " && !e.repeat && !pilot.player && matrixControlNear(camera.position.x, camera.position.z)) toggleMatrixControl();
     if (e.key === "Escape") pilot.release();
     if (e.key === "0") pilot.goPreset("pile");
     if (e.key === "b" || e.key === "B") addTestBananas(testBananas);
@@ -14088,7 +14321,7 @@ void main() {
   // ---------- scene contract ----------
   const enter = (ctx) => {
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
-    MATRIX_WORLD.active = MATRIX_WORLD.direction = MATRIX_WORLD.radius = MATRIX_WORLD.time = 0;
+    MATRIX_WORLD.active = MATRIX_WORLD.direction = MATRIX_WORLD.radius = MATRIX_WORLD.time = MATRIX_WORLD.permanentCave = 0;
     MATRIX_WORLD.density = renderer.kind === "canvas2d" ? MATRIX_DENSITY.canvas2d / MATRIX_DENSITY.high : MATRIX_DENSITY[renderer.quality] / MATRIX_DENSITY.high;
     camera = createCamera({ fov: 48, near: 0.5, far: 140 });
     root = createNode();
@@ -14107,7 +14340,9 @@ void main() {
     MATRIX_WORLD.caveNear = Infinity;
     for (let i = 0; i < island.mouths.length; i++) {
       const m = island.mouths[i], sr = Math.sin(m.ry), cr = Math.cos(m.ry), offset = i * 4;
-      CAMERA_OPENINGS.push({ id: m.id, caveIndex: i + 1, mouth: m, sr, cr, minX: PORTAL_MIN_X, maxX: PORTAL_MAX_X, minY: PORTAL_MIN_Y, maxY: PORTAL_MAX_Y, planeZ: PORTAL_Z, rim: hubModels.caveMouthRim().openingBounds });
+      const slot = caves.slots.find((candidate) => candidate.id === m.id);
+      const blocked = slot.status === "dark";
+      CAMERA_OPENINGS.push({ id: m.id, caveIndex: i + 1, mouth: m, sr, cr, minX: PORTAL_MIN_X, maxX: PORTAL_MAX_X, minY: PORTAL_MIN_Y, maxY: PORTAL_MAX_Y, planeZ: PORTAL_Z, blocked, stopZ: blocked ? 0.53 + hubModels.sealedCaveFace(sealedCaveVariant(slot.id)).frontZ : PORTAL_Z, rim: hubModels.caveMouthRim().openingBounds });
       MATRIX_WORLD.caves[offset] = sr;
       MATRIX_WORLD.caves[offset + 1] = cr;
       MATRIX_WORLD.caves[offset + 2] = sr * m.x + cr * m.z + PORTAL_Z;
@@ -14279,6 +14514,21 @@ void main() {
           get clearanceRadius() { return island.path.debug.ringOuterRadius + SCENERY_CLEARANCE; }
         },
         mirrorCave,
+        matrixGate: {
+          gates: matrixGates,
+          sealed: sealedCaves,
+          get unlocked() { return matrixCave.unlocked; },
+          get pressed() { return matrixControl.pressed; },
+          get near() { return matrixControl.near; },
+          get button() { return matrixControl.button; },
+          get stand() { return matrixControl.stand; },
+          get x() { return matrixControl.x; },
+          get z() { return matrixControl.z; },
+          get visibleHeight() { return 0; },
+          get hiddenHeight() { return MATRIX_GATE_HIDDEN_Y; },
+          press: () => toggleMatrixControl(),
+          set: (unlocked) => setMatrixUnlocked(!!unlocked, true)
+        },
         cameraCave: CAMERA_CAVE_DEBUG,
         matrixCave: {
           get streamCount() { return matrixCave.streams.length; },
@@ -14318,6 +14568,9 @@ void main() {
           get movingGapCount() { return matrixCave.movingGapCount; },
           get maxLocalZ() { return matrixCave.maximumLocalZ; },
           get portalClearance() { return PORTAL_Z - matrixCave.maximumLocalZ; },
+          get mirrorDistance() { return matrixCave.mirrorDistance; },
+          get mirrorHeight() { return MATRIX_MIRROR_HEIGHT; },
+          get mirrorReveal() { return matrixCave.mirrorNode.mirrorReveal; },
           sampleMotion: (category) => {
             for (let i = 0; i < matrixCave.sections.length; i++) {
               const section = matrixCave.sections[i];
@@ -14357,6 +14610,7 @@ void main() {
             get radius() { return MATRIX_WORLD.radius; },
             get direction() { return MATRIX_WORLD.direction; },
             get maxRadius() { return MATRIX_WORLD.maxRadius; },
+            get permanentCave() { return MATRIX_WORLD.permanentCave; },
             get speed() { return MATRIX_WORLD.speed; },
             get retreatSpeed() { return MATRIX_WORLD.retreatSpeed; },
             get frontWidth() { return MATRIX_FRONT_WIDTH; },
@@ -14458,9 +14712,9 @@ void main() {
     pilot.dispose();
     for (const node of targets) input.remove(node);
     for (const node of placed) removeChild(root, node);
-    targets.length = placed.length = claimed.length = scenery.length = sceneryClaims.length = matrixInteriors.length = clouds.length = lamps.length = entranceLights.length = fireSeats.length = sleepers.length = labels.length = spots.length = openMouths.length = launchers.length = props.length = 0;
+    targets.length = placed.length = claimed.length = scenery.length = sceneryClaims.length = matrixInteriors.length = matrixGates.length = sealedCaves.length = clouds.length = lamps.length = entranceLights.length = fireSeats.length = sleepers.length = labels.length = spots.length = openMouths.length = launchers.length = props.length = 0;
     RENDER_OPTS.lightCount = 0;
-    MATRIX_WORLD.active = MATRIX_WORLD.direction = MATRIX_WORLD.radius = 0;
+    MATRIX_WORLD.active = MATRIX_WORLD.direction = MATRIX_WORLD.radius = MATRIX_WORLD.permanentCave = 0;
     cameraCaveIndex = 0;
     cameraEntranceIndex = 0;
     cameraPreviousValid = false;
@@ -14477,7 +14731,7 @@ void main() {
     input.dispose();
     hud.dispose();
     // Drop everything but the cached island
-    pathNode = altar = hud = hooks = input = pilot = fx = pile = crew = crates = critters = clock = presets = stash = jetpack = mirrorCave = matrixCave = gateRain = fire = null;
+    pathNode = altar = hud = hooks = input = pilot = fx = pile = crew = crates = critters = clock = presets = stash = jetpack = mirrorCave = matrixCave = matrixControl = gateRain = fire = null;
     hubScene.input = hubScene.debug = null;
     return { targets: count };
   };
@@ -14494,7 +14748,9 @@ void main() {
     id: "hub", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null,
     get inMotion() {
-      return pile.inMotion || fx.inMotion || !!MATRIX_WORLD.active;
+      if (pile.inMotion || fx.inMotion || MATRIX_WORLD.active) return true;
+      for (let i = 0; i < matrixGates.length; i++) if (matrixCave && matrixCave.unlocked && matrixGates[i].node.position.y !== MATRIX_GATE_HIDDEN_Y) return true;
+      return false;
     }
   };
   BL.scenes = BL.scenes || {};
@@ -20297,7 +20553,7 @@ void main() {
         return world.level;
       }
     };
-    for (const key of ["slots", "drops", "core", "shell", "delivery", "cavemen", "crates", "lab", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "mirrorCave", "matrixCave", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course"]) {
+    for (const key of ["slots", "drops", "core", "shell", "delivery", "cavemen", "crates", "lab", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course"]) {
       Object.defineProperty(ooga, key, { get: () => active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;

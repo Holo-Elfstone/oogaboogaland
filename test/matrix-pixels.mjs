@@ -24,7 +24,7 @@ export const matrixPixelProbe = async (backend = "webgl2", interpolation = true)
   const batches = Array.from({ length: 8 }, (_, i) => S.createNode({ geometry: BL.hubModels.matrixGlyph(i), instanceData: new Float32Array(1024 * 20), instanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true }));
   S.addChild(originals, ...batches);
   const opts = { clear: [0, 0, 0], sky: [0.5, 0.5, 0.5], ground: [0.2, 0.2, 0.2], sun: [0.8, 0.8, 0.8], light: { x: 0, y: 0, z: 1 }, shadowCenter: { x: 10.8, y: 0, z: 1 }, shadowExtent: 5, bloomStrength: 0,
-    matrix: { active: 1, radius: 100, time: 0.617, density: 1, origin: new Float32Array(3), caves: new Float32Array(28) } };
+    matrix: { active: 1, radius: 100, time: 0.617, density: 1, permanentCave: 0, origin: new Float32Array(3), caves: new Float32Array(32) } };
   const hash = (n) => { let x = n | 0; x ^= x >>> 16; x = Math.imul(x, 2146121005); x ^= x >>> 15; x = Math.imul(x, -2073254261); x ^= x >>> 16; return (x >>> 8) / 16777216; };
   const mod = (n, span) => n - Math.floor(n / span) * span;
   let surface = "wall", wallKind = "front";
@@ -176,7 +176,7 @@ export const matrixPixelProbe = async (backend = "webgl2", interpolation = true)
     const interiors = [];
     const patch = () => { let sum = 0; for (let y = 190; y < 194; y++) for (let x = 190; x < 194; x++) { const o = (y * size + x) * 4; sum += (pixels[o] * 0.2126 + pixels[o + 1] * 0.7152 + pixels[o + 2] * 0.0722) / 255; } return sum / 16; };
     const entrance = Math.hypot(10.8, 2), depths = [1, 4];
-    for (let cave = 1; cave <= 7; cave++) {
+    for (let cave = 1; cave <= 8; cave++) {
       panel.geometry = { verts: panel.geometry.verts, faces: [{ i: [0, 1, 2, 3], color: [180, 55, 120], emissive: 0, matrixCave: cave, matrixLocalGlyphSurface: true }], lines: [], castShadow: false };
       opts.matrix.caves.set([0, 1, 2, entrance], (cave - 1) * 4);
       const planes = [];
@@ -196,15 +196,23 @@ export const matrixPixelProbe = async (backend = "webgl2", interpolation = true)
       opts.matrix.active = 1;
       const glyphRadii = [0, entrance - 0.1, entrance + 0.985 + 0.75, entrance + 3, entrance + 0.985 + 0.75, 0];
       const glyphValues = glyphRadii.map((radius) => { opts.matrix.radius = radius; return capture(true, 0).mean; });
+      let permanent = null;
+      if (cave === 1) {
+        opts.matrix.permanentCave = cave;
+        opts.matrix.active = 0;
+        opts.matrix.radius = 0;
+        permanent = { surface: capture(false, 0).mean, glyph: capture(true, 0).mean };
+        opts.matrix.permanentCave = 0;
+      }
       opts.matrix.active = 0;
-      interiors.push({ cave, planes, glyphRadii, glyphValues });
+      interiors.push({ cave, planes, glyphRadii, glyphValues, permanent });
     }
     const occupants = [];
-    opts.matrix.caveBounds = new Float32Array(28); opts.matrix.caveNear = 7;
+    opts.matrix.caveBounds = new Float32Array(32); opts.matrix.caveNear = 7;
     panel.matrixLiving = true;
     panel.geometry = { verts: panel.geometry.verts, faces: [{ i: [0, 1, 2, 3], color: [180, 55, 120], emissive: 0 }], lines: [], castShadow: false };
     panel.position.z = camera.target.z = -2; camera.position.z = 0.4;
-    for (let cave = 1; cave <= 7; cave++) {
+    for (let cave = 1; cave <= 8; cave++) {
       opts.matrix.caveBounds.fill(0); opts.matrix.caveBounds.set([10.8, -1.3, 1.52, 7], (cave - 1) * 4);
       opts.matrix.active = 0; capture(false, 0); const normal = patch();
       opts.matrix.active = 1;
@@ -320,5 +328,5 @@ export const matrixCaveSnapshot = () => {
     const vertical = chosen;
     return { id: cave.id, buffers: cave.nodes.length, capacity: cave.capacity, bytes: cave.bufferBytes, fixed: cave.nodes.every((node) => node.fixedInstanceCapacity && node.instanceCount <= node.instanceData.length / 20 && node.drawInstanceCount <= node.instanceCount), actualCount, drawn: cave.nodes.reduce((n, node) => n + node.drawInstanceCount, 0), sections: cave.sections.length, terrain: cave.sections.filter((s) => s.source === "terrain").length, props: cave.sections.filter((s) => s.source === "prop").length, horizontal: cave.sections.filter((s) => s.horizontal).length, vertical: cave.sections.filter((s) => !s.horizontal).length, fullCeiling: cave.sections.some((s) => s.ny < -0.99), fullFloor: cave.sections.some((s) => s.ny > 0.99), owned: cave.sections.every((s) => (s.supports || [s]).every((support) => tagged.has(support.face))), backingSourcesValid, sourceError, terrainPlanes: terrainPlanes.size, ceilingLevels: ceilingLevels.size, backFaces, sideFaces, finite, escaped, maxLocalZ, clearanceMin, clearanceMax, tips, dim, stream: { speed: vertical.speed, phase: vertical.phase, head: vertical.head, gap: vertical.gap, direction: vertical.direction, flowRange: vertical.flowRange, min: vertical.flowMin, max: vertical.flowMax, trainLength: vertical.trainLength, gapLength: vertical.gapLength, brightness: vertical.brightness }, positions, seedSignature: cave.streams.slice(0, 16).map((s) => [s.speed, s.phase, s.brightness, s.trainLength, s.gapLength].join(":")).join("|"), updates: cave.updates };
   });
-  return { active: C.world.active, time: C.world.sampleStream(0).time, quality: B.renderer.quality, records: B.renderer.stats.records, caveCount: caves.length, caveIds: B.mouths.map((m) => m.id), taggedFaces: tagged.size, overlappingFaces, missingFlags, brightGlyphFaces, linerNodes, caves };
+  return { active: C.world.active, permanentCave: C.world.permanentCave, time: C.world.sampleStream(0).time, quality: B.renderer.quality, records: B.renderer.stats.records, caveCount: caves.length, caveIds: B.mouths.map((m) => m.id), taggedFaces: tagged.size, overlappingFaces, missingFlags, brightGlyphFaces, linerNodes, caves };
 };
