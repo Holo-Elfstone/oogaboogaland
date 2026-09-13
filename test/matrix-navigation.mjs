@@ -12,7 +12,7 @@ export const matrixNavigationProbe = (prime = () => {}) => {
     const target = { x: wx - sr * 3.5, y: m.floorY + y, z: wz - cr * 3.5 };
     o.target = target; o.tx = target.x; o.ty = target.y; o.tz = target.z; o.yaw = o.tYaw = m.ry; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;
     B.pilot.update(0.1); step(true);
-    const p = B.camera.position, space = { caveIndex: 0, floor: 0, ceiling: 0 }, cavity = B.island.cavityAt(p.x, p.z, space);
+    const p = B.camera.position, space = { caveIndex: 0, floor: 0, ceiling: 0 }, cavity = B.island.cavityAt(p.x, p.z, space, opening.headquarters ? B.island.headquarters.caveIndex : opening.caveIndex);
     return { requested: [x, y, z], actual: [cr * (p.x - m.x) - sr * (p.z - m.z), p.y - m.floorY, sr * (p.x - m.x) + cr * (p.z - m.z)], id: B.cameraCave.id, index: B.cameraCave.index, contains: B.cameraCave.contains(p.x, p.y, p.z), matrixInside: C.inside, active: W.active, radius: W.radius, pitch: o.pitch, near: B.camera.near, cavity, floor: space.floor, ground: B.island.surfaceAt(p.x, p.z) - m.floorY, ceiling: Number.isFinite(space.ceiling) ? space.ceiling : null };
   };
   const cases = [], allOpenings = B.cameraCave.openings, openings = allOpenings.filter((opening) => !opening.blocked), sealedOpenings = allOpenings.filter((opening) => opening.blocked);
@@ -31,6 +31,39 @@ export const matrixNavigationProbe = (prime = () => {}) => {
     pose(opening, 0, roofY, 0.9);
     const roof = [pose(opening, 0, roofY, -1), pose(opening, 0, roofY, -3.5)];
     pose(opening, 0, 12, 0.9);
+    if (opening.headquarters) {
+      const ramp = B.island.headquarters.ramps.find((r) => r.id === opening.id), samples = ramp.samples, route = [];
+      const onRamp = (i, lift = 0.8, sideways = 0) => {
+        const q = samples[i], a = samples[Math.max(0, i - 1)], z = samples[Math.min(samples.length - 1, i + 1)], length = Math.hypot(z.x - a.x, z.z - a.z);
+        const x = q.x + (z.z - a.z) / length * sideways, wz = q.z - (z.x - a.x) / length * sideways, column = {};
+        B.island.cavityAt(q.x, q.z, column, B.island.headquarters.caveIndex);
+        const result = pose(opening, cr * (x - m.x) - sr * (wz - m.z), column.floor + lift - m.floorY, sr * (x - m.x) + cr * (wz - m.z));
+        result.interior = true;
+        result.blockedDistance = Math.hypot(result.actual[0] - result.requested[0], result.actual[2] - result.requested[2]);
+        return result;
+      };
+      for (const z of [0.9, 0.6, 0.5, 0.4, 0.1, -0.5]) route.push(pose(opening, 0, 0.8, z));
+      for (let i = 4; i < samples.length; i += 4) route.push(onRamp(i));
+      for (let i = samples.length - 5; i >= 12; i -= 4) route.push(onRamp(i));
+      const ceiling = onRamp(12, 12);
+      onRamp(12);
+      const wall = onRamp(12, 0.8, 6);
+      onRamp(12);
+      for (let i = 8; i >= 4; i -= 4) route.push(onRamp(i));
+      pose(opening, 0, 0.8, -0.5);
+      const invalidExits = [pose(opening, 0, 12, 0.9)];
+      pose(opening, 0, 0.8, -0.5); invalidExits.push(pose(opening, 6, 0.8, 0.9));
+      pose(opening, 0, 0.8, -0.5);
+      for (const z of [-0.5, 0.1, 0.4, 0.5, 0.6, 0.9, 3]) route.push(pose(opening, 0, 0.8, z));
+      const lateral = [];
+      // The smooth tunnels are four units wide; preserve an eye-radius margin.
+      for (const x of [-1.4, -1, 1, 1.4]) {
+        pose(opening, x, 0.8, 0.9);
+        lateral.push({ x, route: [0.6, 0.4, 0.1, -0.5, 0.4, 0.6].map((z) => pose(opening, x, 0.8, z)) });
+      }
+      cases.push({ id: opening.id, index: opening.caveIndex, headquarters: true, active, invalid, invalidExits, roof, route, lateral, ceiling, wall, records: R.stats.records });
+      continue;
+    }
     const route = [];
     for (const z of [0.9, 0.6, 0.5, 0.4, 0.1, -0.5, -1.5, -3.5, -5]) route.push(pose(opening, 0, 0.8, z));
     const ceiling = pose(opening, 0, 12, -3.5);
