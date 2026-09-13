@@ -1,20 +1,23 @@
 // Enter through a real headquarters doorway, then fly out through a panorama
 // or rear-room window and back. Only the exterior fixture is placed directly.
-export const movementWindowsProbe = ({ id = "c5", dt = 1 / 60, roomIndex = null } = {}) => {
+export const movementWindowsProbe = ({ id = "c5", dt = 1 / 60, roomIndex = null, basement = false, rampIndex = null, sampleIndex = null } = {}, entranceProbe = null) => {
   const B = window.__ooga, scene = window.BL.scenes.hub, H = B.island.headquarters, o = B.pilot.orbit;
   const opening = B.cameraCave.openings.find((entry) => entry.id === id), m = opening.mouth;
-  const ramp = H.ramps.find((entry) => entry.id === id), room = roomIndex === null ? null : H.rooms.find((entry) => entry.index === roomIndex);
-  const aperture = H.windows.find((entry) => room ? entry.kind === "room" && entry.roomIndex === roomIndex : entry.kind === "panorama");
-  const insideRadius = room ? room.radius : 22.5;
+  const ramp = H.ramps.find((entry) => entry.id === id), level = basement ? H.basement : H, room = roomIndex === null ? null : level.rooms.find((entry) => entry.index === roomIndex);
+  const aperture = H.windows.find((entry) => rampIndex !== null ? entry.kind === "ramp" && entry.basement && entry.rampIndex === rampIndex && entry.sampleIndex === sampleIndex : room ? entry.kind === "room" && entry.roomIndex === roomIndex && !!entry.basement === basement : entry.kind === "panorama");
+  const insideRadius = room ? room.radius : rampIndex !== null ? Math.hypot(aperture.x, aperture.z) : 22.5;
+  const descent = basement ? rampIndex === null ? level.ramps[0] : level.ramps.find((entry) => entry.index === rampIndex) : null;
   const held = new Set(), checkpoints = [], violations = [], volume = [[0, 0], [0.27, 0], [-0.27, 0], [0, 0.27], [0, -0.27], [0.19, 0.19], [-0.19, 0.19], [0.19, -0.19], [-0.19, -0.19]];
   let elapsed = B.matrixCave.world.sampleStream(0).time, samples = 0, previous = null, maxStep = 0;
+  const entrances = entranceProbe && entranceProbe();
+  const solid = (x, y, z) => B.island.solidAt(x, y, z) || !!entrances && entrances.solid(x, y, z);
   const keys = (next) => {
     for (const key of held) if (!next.includes(key)) { window.dispatchEvent(new KeyboardEvent("keyup", { key })); held.delete(key); }
     for (const key of next) if (!held.has(key)) { window.dispatchEvent(new KeyboardEvent("keydown", { key })); held.add(key); }
   };
   const snapshot = () => {
     const p = B.camera.position, column = {};
-    const cavity = B.island.cavityAt(p.x, p.z, column, H.caveIndex);
+    const cavity = B.island.cavityAt(p.x, p.z, column, H.caveIndex, p.y);
     return { x: p.x, y: p.y, z: p.z, radius: Math.hypot(p.x, p.z), camera: B.cameraCave.index, player: B.cameraCave.playerIndex, controlled: !!B.pilot.player, layer: cavity && p.y >= column.floor && p.y < column.ceiling ? column.caveIndex : 0, matrixInside: B.matrixCave.inside };
   };
   const inspect = () => {
@@ -25,13 +28,14 @@ export const movementWindowsProbe = ({ id = "c5", dt = 1 / 60, roomIndex = null 
       maxStep = Math.max(maxStep, distance);
       for (let n = 1; n <= count; n++) {
         const k = n / count, x = previous.x + (p.x - previous.x) * k, y = previous.y + (p.y - previous.y) * k, z = previous.z + (p.z - previous.z) * k;
-        if (B.island.solidAt(x, y, z) && violations.length < 6) violations.push({ kind: "eye sweep", sample: samples, x, y, z });
+        if (solid(x, y, z) && violations.length < 6) violations.push({ kind: "eye sweep", sample: samples, x, y, z });
+        if (entrances && !entrances.clearAt(x, y - 0.27, z, 0.27, 0.54) && violations.length < 6) violations.push({ kind: "doorway eye volume sweep", sample: samples, x, y, z });
       }
     }
     // There is no controlled actor on this route. Check the entire free eye's
     // collision body near its sides and caps, not just its center point.
     for (const [dx, dz] of volume) for (const dy of [-0.27, 0, 0.27]) {
-      if (B.island.solidAt(p.x + dx, p.y + dy, p.z + dz) && violations.length < 6) violations.push({ kind: "camera body", sample: samples, x: p.x + dx, y: p.y + dy, z: p.z + dz });
+      if (solid(p.x + dx, p.y + dy, p.z + dz) && violations.length < 6) violations.push({ kind: "camera body", sample: samples, x: p.x + dx, y: p.y + dy, z: p.z + dz });
     }
     previous = { x: p.x, y: p.y, z: p.z };
   };
@@ -77,13 +81,25 @@ export const movementWindowsProbe = ({ id = "c5", dt = 1 / 60, roomIndex = null 
     completed = follow("down", down);
     if (completed) {
       admitted = snapshot();
+      const destinationAngle = descent ? Math.atan2(descent.from.x, -descent.from.z) : aperture.angle;
       const startAngle = Math.atan2(ramp.to.x, -ramp.to.z), arc = [];
       for (let n = 0; n <= 16; n++) {
-        const angle = startAngle + (aperture.angle - startAngle) * n / 16;
+        const angle = startAngle + (destinationAngle - startAngle) * n / 16;
         arc.push({ x: Math.sin(angle) * 10.5, y: H.floor + 1.1, z: -Math.cos(angle) * 10.5 });
       }
-      const approach = room ? [room.approach, room.entrance, room].map((point) => ({ x: point.x, y: H.floor + 1.1, z: point.z })) : [radial(insideRadius, H.floor + 1.1)];
-      completed = follow(room ? "room" : "gallery", [...arc, ...approach]);
+      completed = follow("upper-gallery", arc);
+      if (completed && descent) {
+        const points = rampIndex === null ? descent.samples : descent.samples.slice(0, sampleIndex + 1);
+        completed = follow("basement-down", points.map((point) => ({ x: point.x, y: point.y + 1.1, z: point.z })));
+        const start = Math.atan2(descent.to.x, -descent.to.z), lowerArc = [];
+        for (let n = 0; n <= 24; n++) {
+          const angle = start + (aperture.angle - start) * n / 24;
+          lowerArc.push({ x: Math.sin(angle) * (level.room.radius - 1), y: level.floor + 1.1, z: -Math.cos(angle) * (level.room.radius - 1) });
+        }
+        if (completed && rampIndex === null) completed = follow("basement-gallery", lowerArc);
+      }
+      const approach = room ? [room.approach, room.entrance, room].map((point) => ({ x: point.x, y: (point.y ?? point.floor ?? level.floor) + 1.1, z: point.z })) : [radial(insideRadius, (rampIndex === null ? H.floor : aperture.floor) + 1.1)];
+      if (completed) completed = follow(room ? "room" : "gallery", approach);
     }
     if (completed) completed = seek("rise-to-window", radial(insideRadius, expectedHeight));
     if (completed) {
@@ -96,10 +112,16 @@ export const movementWindowsProbe = ({ id = "c5", dt = 1 / 60, roomIndex = null 
     }
     if (completed) {
       reentered = snapshot();
-      completed = seek(room ? "room-floor" : "gallery-floor", radial(room ? insideRadius : 22, H.floor + 1.1));
+      completed = seek(room ? "room-floor" : rampIndex !== null ? "ramp-floor" : "gallery-floor", radial(room || rampIndex !== null ? insideRadius : 22, (room ? room.floor : rampIndex !== null ? aperture.floor : H.floor) + 1.1));
+    }
+    if (completed && rampIndex !== null) {
+      completed = follow("finish-basement-descent", descent.samples.slice(sampleIndex + 1).map((point) => ({ x: point.x, y: point.y + 1.1, z: point.z })));
+      if (completed) completed = follow("leave-basement", [...descent.samples].reverse().map((point) => ({ x: point.x, y: point.y + 1.1, z: point.z })));
+      const radius = Math.hypot(descent.from.x, descent.from.z);
+      if (completed) completed = seek("upper-floor", { x: descent.from.x * 11 / radius, y: H.floor + 1.1, z: descent.from.z * 11 / radius });
     }
     keys([]);
     for (let n = 0; n < Math.ceil(0.5 / dt); n++) step();
-    return { id, dt, roomIndex, kind: aperture.kind, backend: B.renderer.kind, completed, initial, admitted, atWindow, outside, reentered, expectedHeight, samples, maxStep, violations, checkpoints: checkpoints.length, failed: checkpoints.filter((point) => !point.reached), final: snapshot(), scene: B.scene };
+    return { id, dt, roomIndex, rampIndex, sampleIndex, basement, kind: aperture.kind, floor: room ? room.floor : H.floor, backend: B.renderer.kind, completed, initial, admitted, atWindow, outside, reentered, expectedHeight, samples, maxStep, violations, entrances: entrances && entrances.stats(), checkpoints: checkpoints.length, failed: checkpoints.filter((point) => !point.reached), final: snapshot(), scene: B.scene };
   } finally { keys([]); }
 };

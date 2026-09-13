@@ -32,7 +32,7 @@ export const matrixRainProbe = (prime = () => {}) => {
       nearest: Math.min(...C.clouds.map((cloud) => W.travelDistance(cloud.node.position.x, cloud.node.position.z))), farthest: Math.max(...C.clouds.map((cloud) => W.travelDistance(cloud.node.position.x, cloud.node.position.z))) },
     caves: C.caves.map((cave) => {
       const rain = cave.rain, m = cave.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), groups = rain.streams.map(() => []), space = { caveIndex: 0, floor: 0, ceiling: 0 };
-      const volumeIndex = B.island.headquarters.ramps.some((ramp) => ramp.id === cave.id) ? B.island.headquarters.caveIndex : cave.caveIndex;
+      const headquarters = B.island.headquarters.ramps.some((ramp) => ramp.id === cave.id), volumeIndex = headquarters ? B.island.headquarters.caveIndex : cave.caveIndex;
       let count = 0, finite = true, upright = true, twoSided = true, leaders = 0, second = 0, trailing = 0, minGlow = Infinity, maxGlow = 0, escaped = 0, unknown = 0, maxLocalZ = -Infinity, farthest = 0, boundsError = 0;
       for (const [glyph, node] of rain.nodes.entries()) for (let i = 0; i < node.instanceCount; i++) {
         const data = node.instanceData, o = i * 20, x = data[o + 12], y = data[o + 13], z = data[o + 14], glow = data[o + 16], tip = data[o + 18];
@@ -77,7 +77,7 @@ export const matrixRainProbe = (prime = () => {}) => {
         unwanted += values.filter((v) => !rows.some((row) => Math.abs(row.y - v.y) < 0.00001)).length;
         return { index, head, speed: stream.speed, period: stream.period, rows };
       });
-      return { id: cave.id, caveIndex: cave.caveIndex, streams: rain.streams.length, spacing: rain.spacing, density: rain.densityRankLimit, minimum: cave.minimumTravelDistance, count, drawn: rain.nodes.reduce((n, node) => n + node.drawInstanceCount, 0), reported: rain.activeGlyphCount,
+      return { id: cave.id, headquarters, surfaceCounts: { ...cave.activeSurfaceCounts }, caveIndex: cave.caveIndex, streams: rain.streams.length, spacing: rain.spacing, density: rain.densityRankLimit, minimum: cave.minimumTravelDistance, count, drawn: rain.nodes.reduce((n, node) => n + node.drawInstanceCount, 0), reported: rain.activeGlyphCount,
         updates: rain.updates, versions: rain.nodes.map((n) => n.instanceVersion), capacities: rain.nodes.map((n) => n.instanceData.length / 20), capacity: rain.capacity, perGlyphCapacity: rain.perGlyphCapacity, bytes: rain.bufferBytes, buffers: rain.nodes.length,
         fixed: rain.nodes.every((n) => n.fixedInstanceCapacity && n.instanceCount <= rain.perGlyphCapacity), sharedStyle: rain.nodes.every((n, glyph) => n.geometry.verts === cave.nodes[glyph].geometry.verts && n.geometry.faces === cave.nodes[glyph].geometry.faces && n.geometry.matrixGlyph && n.geometry.matrixCave === cave.caveIndex),
         finite, upright, twoSided, leaders, second, trailing, minGlow, maxGlow, escaped, unknown, maxLocalZ, farthest, boundsError, expected, missing, doubles, unwanted, shadeError, mutationErrors, positionError, excluded, rows,
@@ -98,7 +98,7 @@ export const matrixRainProbe = (prime = () => {}) => {
       }
       if (!stream.rows.length || !next.rows.length) gaps++;
     }
-    motion.push({ id: cave.id, eligible, moved, gaps, error });
+    motion.push({ id: cave.id, headquarters: cave.headquarters, eligible, moved, gaps, error });
   }
   const gateMotion = before.gate.heads.map((head, i) => Math.abs(mod(head - after.gate.heads[i], before.gate.periods[i]) - before.gate.speeds[i] * (after.time - before.time)) < 0.00001).filter(Boolean).length;
   const tiers = [before];
@@ -116,7 +116,7 @@ export const matrixRainCycleProbe = async (prime = () => {}) => {
   const B = window.__ooga, scene = window.BL.scenes.hub;
   const wait = (condition) => new Promise((resolve, reject) => { const start = performance.now(), tick = () => condition() ? resolve() : performance.now() - start > 30000 ? reject(new Error("Rain scene cycle did not settle")) : requestAnimationFrame(tick); requestAnimationFrame(tick); });
   const activate = async () => { B.renderer.setQuality("high"); B.matrixCave.viewInside(false); await wait(() => B.matrixCave.world.radius === B.matrixCave.world.maxRadius); prime(); };
-  const snapshot = () => ({ nodes: B.stats().allNodes, targets: B.stats().targets, rain: B.matrixCave.caves.map((c) => ({ id: c.id, streams: c.rain.streams.length, capacity: c.rain.capacity, bytes: c.rain.bufferBytes, count: c.rain.activeGlyphCount })), gate: { streams: B.matrixCave.gateRain.streams.length, capacity: B.matrixCave.gateRain.capacity, bytes: B.matrixCave.gateRain.bufferBytes, count: B.matrixCave.gateRain.activeGlyphCount } });
+  const snapshot = () => ({ nodes: B.stats().allNodes, targets: B.stats().targets, rain: B.matrixCave.caves.map((c) => ({ id: c.id, headquarters: B.island.headquarters.ramps.some((ramp) => ramp.id === c.id), streams: c.rain.streams.length, capacity: c.rain.capacity, bytes: c.rain.bufferBytes, count: c.rain.activeGlyphCount })), gate: { streams: B.matrixCave.gateRain.streams.length, capacity: B.matrixCave.gateRain.capacity, bytes: B.matrixCave.gateRain.bufferBytes, count: B.matrixCave.gateRain.activeGlyphCount } });
   await activate(); const before = snapshot(), oldRoot = scene.root, oldRain = [...B.matrixCave.caves.flatMap((c) => c.rain.nodes), ...B.matrixCave.gateRain.nodes];
   B.go("lab"); await wait(() => B.scene === "lab"); const labFrame = B.renderedFrames;
   await wait(() => B.renderedFrames > labFrame + 24);

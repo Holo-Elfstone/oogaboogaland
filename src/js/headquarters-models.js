@@ -39,7 +39,7 @@
   });
   const roomEntrance = variants((i) => {
     const rand = BL.math.mulberry32(827 + i * 311), parts = [];
-    for (const side of [-1, 1]) for (let row = 0; row < 6; row++) {
+    for (const side of [-1, 1]) for (let row = 0; row < 8; row++) {
       const x = side * (2.25 + (row + i) % 3 * 0.07), y = 0.25 + row * 0.5, depth = 0.52 + rand() * 0.18;
       parts.push(box({ w: 0.64, h: 0.5, d: depth, color: STONE[(row + i + (side > 0 ? 1 : 0)) % STONE.length], offset: { x, y, z: -0.06 } }));
       if ((row + i + (side > 0 ? 2 : 0)) % 4 === 0) {
@@ -47,14 +47,21 @@
       }
     }
     for (let col = 0; col < 8; col++) {
-      const x = -2.1 + col * 0.6, y = 3.06 + (col + i) % 3 * 0.04, depth = 0.58 + rand() * 0.15;
+      const x = -2.1 + col * 0.6, y = 3.96 + (col + i) % 3 * 0.04, depth = 0.58 + rand() * 0.15;
       parts.push(box({ w: 0.62, h: 0.52, d: depth, color: STONE[(col + i) % STONE.length], offset: { x, y, z: -0.06 } }));
       if ((col + i * 3) % 5 < 2) {
         parts.push(box({ w: 0.245, h: 0.245, d: 0.025, color: MOSS[(col + i) % MOSS.length], offset: { x, y: y + 0.12, z: depth * 0.5 - 0.045 } }));
         if ((col + i) % 2) parts.push(box({ w: 0.245, h: 0.245, d: 0.025, color: MOSS[(col + i + 1) % MOSS.length], offset: { x: x + 0.24, y: y - 0.12, z: depth * 0.5 - 0.045 } }));
       }
     }
-    return merge(...parts);
+    const geometry = merge(...parts);
+    geometry.collisionBoxes = new Float64Array(parts.length * 6);
+    for (let j = 0; j < parts.length; j++) {
+      const bounds = BL.scene.boundsOf(parts[j]);
+      geometry.collisionBoxes.set(bounds.min, j * 6);
+      geometry.collisionBoxes.set(bounds.max, j * 6 + 3);
+    }
+    return geometry;
   });
   BL.headquartersModels = { room, entranceRamp, roomEntrance, ROOM_RADIUS };
 })();

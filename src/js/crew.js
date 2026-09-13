@@ -3,7 +3,7 @@
   const BL = window.BL = window.BL || {};
   const { math, models, contributors } = BL;
   const { clamp, lerp, damp, ease, randomInt } = math;
-  const { createNode, addChild, removeChild, addTween, boundsOf } = BL.scene;
+  const { createNode, addChild, removeChild, addTween } = BL.scene;
   const EAT_RATE = 1 / 20;
   const CHEW_PERIOD = 3.2;
   const BODY_PARTS = ["torso", "head", "legL", "legR", "armL", "armR"];
@@ -27,14 +27,15 @@
   const SHOUTS = ["OOGA BOOGA!", "OOGA!", "BOOGA!"];
   // Meal and idle timings for a working caveman
   const EAT_MIN = 14, EAT_SPREAD = 20, HUNGRY_LINGER = 4, IDLE_MIN = 3, IDLE_SPREAD = 6, TRIPS_MAX = 3;
-  const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = 3.2;
+  const { WALK } = BL.pilot;
+  const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = WALK.speed;
   const PLAYER_STEP = 0.125;
   // Jetpack thrust, ceiling, capped fall and speed
   const JET_ACCEL = 20, JET_RISE = 7, JET_FALL = 7, JET_CEILING = 16, JET_SPEED = 6.4, JET_PUFF = 0.05;
   const JET_SPARKS = [models.particleGeometry("#ffb13b", 0.09, 1), models.particleGeometry("#f3efe4", 0.07, 0.6)];
   const LAND_DUST = [models.particleGeometry("#a3874f", 0.1, 0)];
   // A drop deeper than a step, mirroring the hub's STEP_MAX
-  const STEP = 0.6;
+  const STEP = WALK.step;
   const YAWN_DUR = 2.4;
   const REACH = 1.6;
   const MUZZLE = new Float32Array(3);
@@ -55,6 +56,29 @@
       }
     });
   };
+  // Cache the head's full pitch envelope once, including fixed attachments.
+  // Looking around at a ceiling must fit the same body used by movement.
+  const bodyHeightOf = (cave) => {
+    BL.scene.updateWorld(cave.root);
+    const head = cave.parts.head, pivotY = head.world[13], pivotZ = head.world[14];
+    let reach = 0;
+    const inspect = (geometry, m) => {
+      const verts = geometry.verts;
+      for (let i = 0; i < verts.length; i += 3) {
+        const y = m[1] * verts[i] + m[5] * verts[i + 1] + m[9] * verts[i + 2] + m[13] - pivotY;
+        const z = m[2] * verts[i] + m[6] * verts[i + 1] + m[10] * verts[i + 2] + m[14] - pivotZ;
+        reach = Math.max(reach, Math.hypot(y, z));
+      }
+    };
+    const visit = (node) => {
+      if (!node.visible) return;
+      if (node.geometry) inspect(node.geometry, node.world);
+      for (const child of node.children) visit(child);
+    };
+    visit(head);
+    inspect(cave.headClosed, head.world);
+    return pivotY + reach;
+  };
   // The cavemen of one scene
   const create = (ctx) => {
     const { root, input, hud, game, world, bedrolls, viewYaw, buildSpots, walkIn, wanderSpot } = ctx;
@@ -72,7 +96,7 @@
         bedroll: null,
         phase: i * 1.37,
         baseY: cave.root.position.y,
-        bodyHeight: cave.root.position.y + cave.parts.head.position.y + boundsOf(cave.headOpen).max[1],
+        bodyHeight: bodyHeightOf(cave),
         state: "away",
         contributor,
         zzzTimer: 0,
@@ -624,8 +648,8 @@
       if (cave.hop > 0 && (leap.vx || leap.vz)) {
         const dx = leap.vx * dt, dz = leap.vz * dt;
         movePlayer(cave, flying, dx, dz);
-        leap.vx = damp(leap.vx, 0, 1.5, dt);
-        leap.vz = damp(leap.vz, 0, 1.5, dt);
+        leap.vx = damp(leap.vx, 0, WALK.ledgeDrag, dt);
+        leap.vz = damp(leap.vz, 0, WALK.ledgeDrag, dt);
         flyPose(cave);
       }
       if (flying) flyPose(cave);
@@ -638,9 +662,9 @@
         const drop = wasGround - groundY(cave);
         if (drop > STEP) {
           cave.hop += drop;
-          cave.hopV = Math.max(cave.hopV, 2.4);
-          leap.vx = Math.sin(cave.root.rotation.y) * 3;
-          leap.vz = Math.cos(cave.root.rotation.y) * 3;
+          cave.hopV = Math.max(cave.hopV, WALK.ledgeRise);
+          leap.vx = Math.sin(cave.root.rotation.y) * WALK.ledgeSpeed;
+          leap.vz = Math.cos(cave.root.rotation.y) * WALK.ledgeSpeed;
         }
       }
       // One place sets the height, so nothing compounds
@@ -670,7 +694,7 @@
       cave.highlight = damp(cave.highlight, cave.highlightTarget, 12, dt);
       for (const key of BODY_PARTS) parts[key].highlight = cave.highlight;
       if (cave.hopV > 0 || cave.hop > 0) {
-        cave.hopV -= 9.8 * dt;
+        cave.hopV -= WALK.gravity * dt;
         cave.hop = Math.max(0, cave.hop + cave.hopV * dt);
         if (cave.hop === 0 && cave.hopV < 0) cave.hopV = 0;
       }

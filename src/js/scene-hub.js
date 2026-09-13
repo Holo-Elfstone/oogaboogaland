@@ -21,6 +21,8 @@
   const latitudeParam = DEBUG ? parseFloat(params.get("latitude")) : NaN;
   const requestedView = DEBUG ? params.get("view") : null;
   const preloadedView = requestedView === "hq" ? "underground" : requestedView === "pile" || requestedView === "lab" || requestedView === "mirror" ? requestedView : null;
+  const preloadedFirstPerson = DEBUG && params.get("firstperson") === "1";
+  const preloadedCharacter = DEBUG ? params.get("character")?.trim().toLowerCase() : null;
   const islandLatitude = Number.isFinite(latitudeParam) ? Math.max(-66, Math.min(66, latitudeParam)) : daylight.ISLAND_LATITUDE_DEG;
   // Island measures, owned by terrain.js
   const MEADOW = 22, RADIUS = 30;
@@ -46,7 +48,7 @@
   // feet in view. Portal ownership stays with the Ooga, not this look offset.
   const CLOSE_VIEW = { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 6, orbitDist: 6 };
   // Tallest step a caveman may climb
-  const STEP_MAX = 0.6;
+  const STEP_MAX = pilotMod.WALK.step;
   // Props the jetpack may hide under
   const JETPACK_HIDERS = ["bush", "rock", "crate", "barrel", "flower"];
   const JETPACK_HOVER = 0.4, JETPACK_REACH = 1.3;
@@ -206,10 +208,12 @@
   // The original hanging code is separate from the surface-following lanes.
   // Prepare fixed columns inside the real carved volume, never the old flat liner.
   const buildCaveRain = (slot, m, group, caveIndex) => {
+    // Falling ceiling glyphs belong to the upper caves. HQ keeps its surface
+    // glyphs through both ramp systems and floors without airborne rain batches.
+    if (slot.status === "headquarters") return { streams: [], nodes: [], perGlyphCapacity: 0, capacity: 0, bufferBytes: 0,
+      spacing: MATRIX_RAIN_GAP, activeGlyphCount: 0, brightTipCount: 0, updates: 0, densityRankLimit: 0 };
     const canvas = renderer.kind === "canvas2d", limit = canvas ? 18 : 48, trainLength = canvas ? 9 : 14;
     const cr = Math.cos(m.ry), sr = Math.sin(m.ry), rand = mulberry32(fnv1a(`${slot.id}:rain`));
-    const ramp = slot.status === "headquarters" ? island.headquarters.ramps.find((r) => r.id === slot.id) : null;
-    const volumeIndex = ramp ? island.headquarters.caveIndex : caveIndex;
     const streams = [], nodes = [], obstacles = [], column = { caveIndex: 0, floor: 0, ceiling: 0 };
     const footprint = 0.055, halfHeight = 0.0605, clearance = 0.02;
     const visit = (node) => {
@@ -233,19 +237,11 @@
     visit(group);
     for (let attempt = 0; attempt < limit * 16 && streams.length < limit; attempt++) {
       const side = rand() - 0.5, depth = rand();
-      let lx = side * 5, lz = streams.length < limit * 0.65 ? -0.7 - depth * 1.55 : -2.55 - depth * 3.2;
-      let x = m.x + cr * lx + sr * lz, z = m.z - sr * lx + cr * lz;
-      if (ramp) {
-        const sample = 3 + depth * 17, i = Math.floor(sample), t = sample - i, a = ramp.samples[i], b = ramp.samples[i + 1];
-        const dx = b.x - a.x, dz = b.z - a.z, across = side * (ramp.width - 0.6) / Math.hypot(dx, dz);
-        x = lerp(a.x, b.x, t) + dz * across;
-        z = lerp(a.z, b.z, t) - dx * across;
-        lx = cr * (x - m.x) - sr * (z - m.z);
-        lz = sr * (x - m.x) + cr * (z - m.z);
-      }
+      const lx = side * 5, lz = streams.length < limit * 0.65 ? -0.7 - depth * 1.55 : -2.55 - depth * 3.2;
+      const x = m.x + cr * lx + sr * lz, z = m.z - sr * lx + cr * lz;
       let minY = -Infinity, maxY = Infinity, valid = true;
       for (let ix = -1; ix <= 1; ix++) for (let iz = -1; iz <= 1; iz++) {
-        if (!island.cavityAt(x + ix * footprint, z + iz * footprint, column, volumeIndex) || column.caveIndex !== volumeIndex || !Number.isFinite(column.ceiling)) valid = false;
+        if (!island.cavityAt(x + ix * footprint, z + iz * footprint, column, caveIndex) || column.caveIndex !== caveIndex || !Number.isFinite(column.ceiling)) valid = false;
         else { minY = Math.max(minY, column.floor); maxY = Math.min(maxY, column.ceiling); }
       }
       minY += halfHeight + clearance; maxY -= halfHeight + clearance;
@@ -294,7 +290,7 @@
   const updateCaveRain = (rain, elapsed, visible, densityRankLimit, permanent = false) => {
     rain.activeGlyphCount = rain.brightTipCount = 0;
     rain.densityRankLimit = densityRankLimit;
-    for (let glyph = 0; glyph < MATRIX_TYPES; glyph++) rain.nodes[glyph].instanceCount = rain.nodes[glyph].drawInstanceCount = 0;
+    for (let glyph = 0; glyph < rain.nodes.length; glyph++) rain.nodes[glyph].instanceCount = rain.nodes[glyph].drawInstanceCount = 0;
     if (!visible) return;
     for (let i = 0; i < rain.streams.length; i++) {
       const s = rain.streams[i];
@@ -321,7 +317,7 @@
         rain.activeGlyphCount++; if (character < 2) rain.brightTipCount++;
       }
     }
-    for (let glyph = 0; glyph < MATRIX_TYPES; glyph++) {
+    for (let glyph = 0; glyph < rain.nodes.length; glyph++) {
       const node = rain.nodes[glyph];
       node.drawInstanceCount = node.instanceCount;
       if (rain.activeGlyphCount) node.instanceVersion++;
@@ -512,7 +508,7 @@
     };
     for (let i = 0; i < island.geometry.faces.length; i++) {
       const face = island.geometry.faces[i];
-      if (face.matrixCave === caveIndex) addFace(island.geometry, face, null, "terrain");
+      if (face.matrixCave === caveIndex && !face.matrixWorldGlyphSurface) addFace(island.geometry, face, null, "terrain");
     }
     for (const section of horizontalDomains) {
       section.streamStart = streams.length;
@@ -889,7 +885,9 @@
     }
     if (headquarters && camera.position.y < -1 && cameraCaveIndex && CAMERA_OPENINGS[cameraCaveIndex - 1].headquarters) {
       const underground = headquarters.sources;
-      const total = Math.min(limit, underground.length);
+      // The upper hearth cannot cast through the rock into the basement.
+      const below = camera.position.y < island.headquarters.floor && island.cavityAt(camera.position.x, camera.position.z, CAMERA_COLUMN, island.headquarters.caveIndex, camera.position.y) && camera.position.y >= CAMERA_COLUMN.floor && camera.position.y < CAMERA_COLUMN.ceiling;
+      const total = below ? 0 : Math.min(limit, underground.length);
       for (let i = 0; i < underground.length; i++) underground[i].selected = false;
       for (let i = 0; i < total; i++) {
         let nearest = null, distance = Infinity;
@@ -953,7 +951,7 @@
     } else {
       const bars = createNode({ position: { x: 0, y: MATRIX_GATE_HIDDEN_Y, z: 0.78 }, geometry: { ...hubModels.matrixPrisonBars(), matrixCave: caveIndex, clipMinY: m.floorY }, visible: false, matrixExterior: true });
       addChild(group, bars);
-      matrixGates.push({ caveIndex, node: bars, open: false, distance: matrixTravelDistance(m.x + ax * bars.position.z, m.z + az * bars.position.z) });
+      matrixGates.push({ caveIndex, node: bars, open: false, raising: false, distance: matrixTravelDistance(m.x + ax * bars.position.z, m.z + az * bars.position.z) });
     }
     if (slot.status === "open" && slot.scene === "race") {
       // The rally garage: a kart up on a stone plinth, spare wheels, a crate and a barrel
@@ -1071,23 +1069,34 @@
     return rim;
   };
   const buildHeadquarters = () => {
-    const floor = island.headquarters.floor;
+    const floor = island.headquarters.floor, basement = island.headquarters.basement;
     const room = createNode({ position: { x: 0, y: floor, z: 0 }, geometry: headquartersModels.room() });
     addChild(root, room);
     placed.push(room);
     const entrances = [], lights = [];
+    FLY.yMin = basement.floor - 1;
+    const addEntrance = (node, roomIndex, lower, ramp = false) => {
+      addChild(root, node);
+      placed.push(node);
+      const bounds = BL.scene.boundsOf(node.geometry);
+      entrances.push({ roomIndex, node, basement: lower, ramp, sr: Math.sin(node.rotation.y), cr: Math.cos(node.rotation.y), radius: Math.hypot(Math.max(Math.abs(bounds.min[0]), Math.abs(bounds.max[0])) * node.scale.x, Math.max(Math.abs(bounds.min[2]), Math.abs(bounds.max[2]))), minY: node.position.y + bounds.min[1], maxY: node.position.y + bounds.max[1] });
+    };
     const torchAt = (x, y, z) => {
       const node = createNode({ position: { x, y, z }, geometry: hubModels.torch(), glow: 0.85, matrixEmissiveLiving: true });
       addChild(root, node);
       placed.push(node);
       lights.push({ id: `headquarters:${lights.length}`, node, x, y: y + 1.6, z });
     };
-    for (const cave of island.headquarters.rooms) {
+    for (const level of [island.headquarters, basement]) for (const cave of level.rooms) {
       const i = cave.index, angle = cave.angle;
-      const entrance = createNode({ position: { x: cave.entrance.x, y: floor, z: cave.entrance.z }, rotation: { x: 0, y: -angle, z: 0 }, scale: { x: cave.width / 5.5, y: 1, z: 1 }, geometry: headquartersModels.roomEntrance(i) });
-      addChild(root, entrance);
-      placed.push(entrance);
-      entrances.push({ roomIndex: i, node: entrance });
+      const entrance = createNode({ position: { x: cave.entrance.x, y: cave.floor, z: cave.entrance.z }, rotation: { x: 0, y: -angle, z: 0 }, scale: { x: (cave.corridorWidth ?? cave.width - 1.3) / 3.86, y: 1, z: 1 }, geometry: headquartersModels.roomEntrance(i) });
+      addEntrance(entrance, i, level === basement);
+    }
+    for (const ramp of basement.ramps) {
+      const p = ramp.entrance;
+      // The model's inner opening, including the voxel edge, clears the tunnel.
+      const entrance = createNode({ position: { x: p.x, y: p.y, z: p.z }, rotation: { x: 0, y: -ramp.angle, z: 0 }, scale: { x: (ramp.width + island.unit * Math.SQRT2) / 3.86, y: 1, z: 1 }, geometry: headquartersModels.roomEntrance(ramp.index) });
+      addEntrance(entrance, ramp.index, false, true);
     }
     for (const ramp of island.headquarters.ramps) {
       const p = ramp.samples[30], angle = Math.atan2(p.x, -p.z), radius = Math.hypot(p.x, p.z) - 1.6;
@@ -1104,7 +1113,7 @@
     // openings and ramp torches remain emissive landmarks, but neither creates
     // camera-proximity lighting that spills into an unclaimed room.
     const sources = [hearth];
-    return { node: room, entrances, lights, sources, hearth, firepit, rooms: island.headquarters.rooms, windows: island.headquarters.windows, ramps: island.headquarters.ramps, openFloor: island.headquarters.room };
+    return { node: room, entrances, lights, sources, hearth, firepit, rooms: island.headquarters.rooms, windows: island.headquarters.windows, ramps: island.headquarters.ramps, openFloor: island.headquarters.room, basement };
   };
   // Dock over the drop and ladder on the bluff
   const buildRim = () => {
@@ -1365,8 +1374,26 @@
   const supportAt = (x, z, y = Infinity) => island.supportAt(x, z, y, STEP_MAX);
   const visualSupportAt = (x, z, y) => island.smoothSupportAt(x, z, y, STEP_MAX);
   const PLAYER_RADIUS = 0.3;
+  // The stone frames are rendered boxes, separate from the carved terrain.
+  // Rotate the cylinder into each fixed arch's axes; its footprint stays round.
+  const entranceCeilingAt = (x, z, y, radius) => {
+    let ceiling = Infinity;
+    for (let i = 0; i < headquarters.entrances.length; i++) {
+      const entry = headquarters.entrances[i], node = entry.node;
+      const dx = x - node.position.x, dz = z - node.position.z, reach = entry.radius + radius;
+      if (y >= entry.maxY - 1e-7 || dx * dx + dz * dz > reach * reach) continue;
+      const lx = dx * entry.cr - dz * entry.sr, lz = dx * entry.sr + dz * entry.cr, scale = node.scale.x, boxes = node.geometry.collisionBoxes;
+      for (let j = 0; j < boxes.length; j += 6) {
+        if (y >= node.position.y + boxes[j + 4] - 1e-7) continue;
+        const ox = Math.max(boxes[j] * scale - lx, 0, lx - boxes[j + 3] * scale), oz = Math.max(boxes[j + 2] - lz, 0, lz - boxes[j + 5]);
+        if (ox * ox + oz * oz < radius * radius - 1e-9) ceiling = Math.min(ceiling, node.position.y + boxes[j + 1]);
+      }
+    }
+    return ceiling;
+  };
+  const physicalClearAt = (x, y, z, radius, height) => island.clearAt(x, y, z, radius, height) && y + height <= entranceCeilingAt(x, z, y, radius) + 1e-7;
   const ceilingAt = (x, z, y) => {
-    let ceiling = island.ceilingAt(x, y, z, PLAYER_RADIUS);
+    let ceiling = Math.min(island.ceilingAt(x, y, z, PLAYER_RADIUS), entranceCeilingAt(x, z, y, PLAYER_RADIUS));
     for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
       const entry = CAMERA_OPENINGS[i], m = entry.mouth, rim = entry.rim;
       const dx = x - m.x, dz = z - m.z, along = dx * entry.sr + dz * entry.cr, across = dx * entry.cr - dz * entry.sr;
@@ -1395,9 +1422,9 @@
     if (floor - y > STEP_MAX || y >= island.surfaceAt(toX, toZ) - STEP_MAX && Math.hypot(toX, toZ) <= pileEdgeNow + 0.4) return false;
     // The feet may mount an ordinary voxel step; the torso and head must fit
     // across their whole footprint at the destination's actual elevation.
-    return feet + height <= ceilingAt(toX, toZ, feet) + 1e-7 && island.clearAt(toX, feet + STEP_MAX, toZ, PLAYER_RADIUS, Math.max(0, height - STEP_MAX));
+    return feet + height <= ceilingAt(toX, toZ, feet) + 1e-7 && physicalClearAt(toX, feet + STEP_MAX, toZ, PLAYER_RADIUS, Math.max(0, height - STEP_MAX));
   };
-  const flyable = (fromX, fromZ, toX, toZ, y = 0, height = 1.5) => island.onLand(toX, toZ) && !crossesSealedCave(fromX, fromZ, toX, toZ, y) && y + height <= ceilingAt(toX, toZ, y) + 1e-7 && island.clearAt(toX, y, toZ, PLAYER_RADIUS, height);
+  const flyable = (fromX, fromZ, toX, toZ, y = 0, height = 1.5) => island.onLand(toX, toZ) && !crossesSealedCave(fromX, fromZ, toX, toZ, y) && y + height <= ceilingAt(toX, toZ, y) + 1e-7 && physicalClearAt(toX, y, toZ, PLAYER_RADIUS, height);
   // Clouds ring the island without crossing it
   const buildClouds = () => {
     const rand = mulberry32(SEED + 77);
@@ -1708,7 +1735,7 @@
   const CAMERA_FROM = { x: 0, y: 0, z: 0 };
   const CAMERA_VOLUME_FROM = { x: 0, y: 0, z: 0 };
   const CAMERA_RECOVERY = { x: 0, y: 0, z: 0 };
-  const CAMERA_MANUAL_TARGET = { x: 0, y: 0, z: 0 }, CAMERA_MANUAL_BODY = { x: 0, y: 0, z: 0 };
+  const CAMERA_MANUAL_VIEW = { x: 0, y: 0, z: 0 }, CAMERA_MANUAL_BODY = { x: 0, y: 0, z: 0 };
   const CAMERA_TRAIL = new Float64Array(CAMERA_TRAIL_CAPACITY * 3);
   let cameraTrailPlayer = null, cameraTrailCount = 0, cameraTrailNext = 0, cameraManualContact = false;
   const PLAYER_PREVIOUS = { x: 0, y: 0, z: 0 }, PLAYER_POSITION = { x: 0, y: 0, z: 0 };
@@ -1728,7 +1755,7 @@
     if (!direction) return CAMERA_CROSSING;
     const t = Math.max(0, Math.min(1, a / (a - b))), x = lerp(from.x, to.x, t), y = lerp(from.y, to.y, t) - m.floorY, z = lerp(from.z, to.z, t);
     const across = (x - m.x) * cr - (z - m.z) * sr;
-    const floor = opening.headquarters && island.cavityAt(x, z, CAMERA_COLUMN, island.headquarters.caveIndex) ? CAMERA_COLUMN.floor - m.floorY - 1e-6 : opening.minY;
+    const floor = opening.headquarters && island.cavityAt(x, z, CAMERA_COLUMN, island.headquarters.caveIndex, y + m.floorY) ? CAMERA_COLUMN.floor - m.floorY - 1e-6 : opening.minY;
     // Feet follow the bend from the flat apron onto the slope. Their straight
     // frame-to-frame sweep cuts just below that bend even while fully supported.
     const followsRamp = grounded && opening.headquarters && Math.abs(from.y - supportAt(from.x, from.z, from.y)) < 1e-6 && Math.abs(to.y - supportAt(to.x, to.z, to.y)) < 1e-6;
@@ -1737,7 +1764,7 @@
     else if (y > opening.maxY) CAMERA_CROSSING.reason = "above";
     else if (across < opening.minX || across > opening.maxX) CAMERA_CROSSING.reason = "beside";
     else if (opening.blocked) CAMERA_CROSSING.reason = "sealed";
-    else if (caveColumnAt(x - sr * 0.05, z - cr * 0.05, opening)) CAMERA_CROSSING.valid = true;
+    else if (caveColumnAt(x - sr * 0.05, z - cr * 0.05, opening, y + m.floorY)) CAMERA_CROSSING.valid = true;
     return CAMERA_CROSSING;
   };
   const setMatrixInside = (inside) => {
@@ -1770,7 +1797,10 @@
     matrixControl.button.matrixLiving = unlocked;
     matrixControl.button.glow = unlocked ? 1 : 0.25;
     matrixControl.button.highlight = unlocked ? 0.8 : 0;
-    for (let i = 0; i < matrixGates.length; i++) matrixGates[i].open = unlocked;
+    for (let i = 0; i < matrixGates.length; i++) {
+      matrixGates[i].open = unlocked;
+      matrixGates[i].raising = !unlocked;
+    }
     if (unlocked) {
       MATRIX_WORLD.active = 1;
       MATRIX_WORLD.direction = MATRIX_WORLD.radius < MATRIX_WORLD.maxRadius ? 1 : 0;
@@ -1796,7 +1826,15 @@
     for (let i = 0; i < matrixGates.length; i++) {
       const gate = matrixGates[i], y = gate.node.position.y;
       if (!matrixCave.unlocked) {
-        gate.node.position.y = MATRIX_WORLD.active && MATRIX_WORLD.radius >= gate.distance ? 0 : MATRIX_GATE_HIDDEN_Y;
+        if (!MATRIX_WORLD.active || MATRIX_WORLD.radius < gate.distance) {
+          gate.node.position.y = MATRIX_GATE_HIDDEN_Y;
+          // A released button can precede the expanding front. Keep that
+          // pending rise until the gate is revealed, or the wave ends entirely.
+          if (!MATRIX_WORLD.active) gate.raising = false;
+        } else if (gate.raising) {
+          gate.node.position.y = Math.min(0, y + gateStep);
+          gate.raising = gate.node.position.y < 0;
+        } else gate.node.position.y = 0;
       } else gate.node.position.y = Math.max(MATRIX_GATE_HIDDEN_Y, y - gateStep);
       // The buried section is clipped at the upper cave floor, not stored in
       // the occupied headquarters below. Fully buried gates do no render work.
@@ -1833,11 +1871,11 @@
     // first-person eye or third-person Ooga position is final for this frame.
     if (!pilot || !pilot.player) syncMatrixInside(null);
   };
-  const caveColumnAt = (x, z, opening) => {
+  const caveColumnAt = (x, z, opening, y) => {
     const dx = x - opening.mouth.x, dz = z - opening.mouth.z;
     const along = dx * opening.sr + dz * opening.cr, across = dx * opening.cr - dz * opening.sr;
     const caveIndex = opening.headquarters ? island.headquarters.caveIndex : opening.caveIndex;
-    if (!island.cavityAt(x, z, CAMERA_COLUMN, caveIndex) || CAMERA_COLUMN.caveIndex !== caveIndex) {
+    if (!island.cavityAt(x, z, CAMERA_COLUMN, caveIndex, y) || CAMERA_COLUMN.caveIndex !== caveIndex) {
       // Rotated voxel columns straddle the doorway plane. Uncarved, open-air
       // apron cells there are still traversable; solid cliff columns are not.
       const ground = island.surfaceAt(x, z);
@@ -1845,6 +1883,9 @@
       CAMERA_COLUMN.floor = ground;
       CAMERA_COLUMN.ceiling = Infinity;
     }
+    // A window can continue below an upper ramp after its room metadata ends.
+    // A solid roof between the eye and that ramp makes it a different volume.
+    if (opening.headquarters && y < CAMERA_COLUMN.floor && island.ceilingAt(x, y, z) <= CAMERA_COLUMN.floor) return false;
     // The original stone frame has its own soffit even where the carved voxel
     // column is open sky. Use the model's real bounds, not the cliff top.
     const rim = opening.rim;
@@ -1858,13 +1899,14 @@
   };
   // Sample the real quarter-unit cavity around the eye, including the open apron.
   // Its floor/roof bounds are independent of the Matrix state and cliff-top height.
-  const cameraSpaceAt = (x, z, opening) => {
+  // Eye height keeps a lowered room separate from the main ramp above it.
+  const cameraSpaceAt = (x, z, opening, y) => {
     let floor = -Infinity, ceiling = Infinity;
     for (let i = 0; i < 25; i++) {
       const ox = (i % 5 - 2) * CAMERA_RADIUS * 0.5, oz = (Math.floor(i / 5) - 2) * CAMERA_RADIUS * 0.5;
       if (ox * ox + oz * oz > CAMERA_RADIUS * CAMERA_RADIUS + 1e-7) continue;
       const sx = x + ox, sz = z + oz;
-      if (!caveColumnAt(sx, sz, opening)) return false;
+      if (!caveColumnAt(sx, sz, opening, y)) return false;
       floor = Math.max(floor, CAMERA_COLUMN.floor);
       ceiling = Math.min(ceiling, CAMERA_COLUMN.ceiling);
     }
@@ -1872,7 +1914,7 @@
     // The clearance samples can miss a voxel corner between probes. Match the
     // full collision footprint so a roof contact lowers the eye before the
     // volume sweep, instead of wedging it against an unseen ceiling step.
-    CAMERA_SPACE.ceiling = Math.min(ceiling, island.ceilingAt(x, CAMERA_SPACE.floor - CAMERA_RADIUS, z, CAMERA_RADIUS)) - CAMERA_RADIUS;
+    CAMERA_SPACE.ceiling = Math.min(ceiling, island.ceilingAt(x, CAMERA_SPACE.floor - CAMERA_RADIUS, z, CAMERA_RADIUS), entranceCeilingAt(x, z, CAMERA_SPACE.floor - CAMERA_RADIUS, CAMERA_RADIUS)) - CAMERA_RADIUS;
     return CAMERA_SPACE.floor <= CAMERA_SPACE.ceiling;
   };
   const CAMERA_CAVE_DEBUG = {
@@ -1883,7 +1925,7 @@
     get id() { return cameraCaveIndex ? CAMERA_OPENINGS[cameraCaveIndex - 1].id : null; },
     openings: CAMERA_OPENINGS,
     contains(x, y, z) {
-      return !!cameraCaveIndex && caveColumnAt(x, z, CAMERA_OPENINGS[cameraCaveIndex - 1]) && y >= CAMERA_COLUMN.floor && y < CAMERA_COLUMN.ceiling;
+      return !!cameraCaveIndex && caveColumnAt(x, z, CAMERA_OPENINGS[cameraCaveIndex - 1], y) && y >= CAMERA_COLUMN.floor && y < CAMERA_COLUMN.ceiling;
     }
   };
   // The common headquarters room belongs to both ramps. Once a body or eye
@@ -1925,14 +1967,14 @@
         if (!playerCaveIndex && crossing.direction > 0) playerCaveIndex = opening.caveIndex;
         else if (playerCaveIndex && crossing.direction < 0 && (playerCaveIndex === opening.caveIndex || CAMERA_OPENINGS[playerCaveIndex - 1].headquarters && opening.headquarters)) playerCaveIndex = 0;
       }
-      if (playerCaveIndex && (!caveColumnAt(p.x, p.z, CAMERA_OPENINGS[playerCaveIndex - 1]) || PLAYER_POSITION.y < CAMERA_COLUMN.floor - 1e-6 || PLAYER_POSITION.y >= CAMERA_COLUMN.ceiling)) playerCaveIndex = 0;
+      if (playerCaveIndex && (!caveColumnAt(p.x, p.z, CAMERA_OPENINGS[playerCaveIndex - 1], PLAYER_POSITION.y) || PLAYER_POSITION.y < CAMERA_COLUMN.floor - 1e-6 || PLAYER_POSITION.y >= CAMERA_COLUMN.ceiling)) playerCaveIndex = 0;
     }
     setVec(PLAYER_PREVIOUS, PLAYER_POSITION.x, PLAYER_POSITION.y, PLAYER_POSITION.z);
   };
   // Destination placement is explicit travel, not a sweep across the intervening
   // island. Validate the arrival volumes, then seed that location's own history.
   const navigationClearAt = (x, y, z, radius, height) => {
-    if (!island.clearAt(x, y, z, radius, height)) return false;
+    if (!physicalClearAt(x, y, z, radius, height)) return false;
     for (const prop of props) {
       if (!prop.active || prop.prop === "gate" || !prop.node.geometry) continue;
       const b = BL.scene.boundsOf(prop.node.geometry), m = prop.node.world;
@@ -2047,39 +2089,72 @@
       exteriorEntranceIndex = entry.caveIndex;
       // The lower headquarters can lie beneath the outdoor apron; only the
       // threshold-height tunnel may constrain an eye approaching from outside.
-      const entranceColumn = caveColumnAt(x, z, entry) && CAMERA_COLUMN.ceiling > entry.mouth.floorY;
+      const entranceColumn = caveColumnAt(x, z, entry, y) && CAMERA_COLUMN.ceiling > entry.mouth.floorY;
       floor = (entranceColumn ? CAMERA_COLUMN.floor : physicalFloor) + CAMERA_FLOOR + (clearance - CAMERA_FLOOR) * k * k * (3 - 2 * k);
-      if (entranceColumn && cameraSpaceAt(x, z, entry)) exteriorCeiling = CAMERA_SPACE.ceiling;
+      if (entranceColumn && cameraSpaceAt(x, z, entry, y)) exteriorCeiling = CAMERA_SPACE.ceiling;
       break;
     }
     return floor;
   };
-  const cameraClearAt = (x, y, z) => island.clearAt(x, y - CAMERA_RADIUS, z, CAMERA_RADIUS, CAMERA_RADIUS * 2);
+  const cameraClearAt = (x, y, z) => physicalClearAt(x, y - CAMERA_RADIUS, z, CAMERA_RADIUS, CAMERA_RADIUS * 2);
+  // Exact frame contacts can occur between the ordinary terrain substeps.
+  const entranceSegmentClear = (x, y, z, toX, toY, toZ) => {
+    const dx = toX - x, dy = toY - y, dz = toZ - z, span2 = dx * dx + dz * dz, radius = CAMERA_RADIUS;
+    for (let i = 0; i < headquarters.entrances.length; i++) {
+      const entry = headquarters.entrances[i], node = entry.node;
+      if (Math.min(y, toY) - radius >= entry.maxY || Math.max(y, toY) + radius <= entry.minY) continue;
+      const k = span2 ? Math.max(0, Math.min(1, ((node.position.x - x) * dx + (node.position.z - z) * dz) / span2)) : 0;
+      const ox = x + dx * k - node.position.x, oz = z + dz * k - node.position.z, reach = entry.radius + radius;
+      if (ox * ox + oz * oz > reach * reach) continue;
+      const lx = (x - node.position.x) * entry.cr - (z - node.position.z) * entry.sr, lz = (x - node.position.x) * entry.sr + (z - node.position.z) * entry.cr;
+      const vx = dx * entry.cr - dz * entry.sr, vz = dx * entry.sr + dz * entry.cr, boxes = node.geometry.collisionBoxes, scale = node.scale.x;
+      for (let j = 0; j < boxes.length; j += 6) {
+        if (!terrain.segmentBoxClear(lx, y - node.position.y - radius, lz, vx, dy, vz, radius, radius * 2, boxes[j] * scale, boxes[j + 1], boxes[j + 2], boxes[j + 3] * scale, boxes[j + 4], boxes[j + 5])) return false;
+      }
+    }
+    return true;
+  };
+  const cameraSegmentClear = (x, y, z, toX, toY, toZ) => cameraClearAt(toX, toY, toZ) && island.voxelSegmentClearAt(x, y - CAMERA_RADIUS, z, toX, toY - CAMERA_RADIUS, toZ, CAMERA_RADIUS, CAMERA_RADIUS * 2) && entranceSegmentClear(x, y, z, toX, toY, toZ);
   const sweepCameraVolume = (from, p, slide) => {
     const dx = p.x - from.x, dy = p.y - from.y, dz = p.z - from.z;
     const steps = Math.max(1, Math.min(1024, Math.ceil(Math.hypot(dx, dy, dz) / (island.unit * 0.5))));
-    let x = from.x, y = from.y, z = from.z;
+    let x = from.x, y = from.y, z = from.z, slid = false;
     for (let i = 0; i < steps; i++) {
       const sx = x + dx / steps, sy = y + dy / steps, sz = z + dz / steps;
-      if (cameraClearAt(sx, sy, sz)) { x = sx; y = sy; z = sz; continue; }
+      if (cameraSegmentClear(x, y, z, sx, sy, sz)) { x = sx; y = sy; z = sz; continue; }
       if (!slide) {
         let lo = 0, hi = 1;
         for (let n = 0; n < 10; n++) {
           const k = (lo + hi) / 2;
-          if (cameraClearAt(x + dx / steps * k, y + dy / steps * k, z + dz / steps * k)) lo = k;
+          if (cameraSegmentClear(x, y, z, x + dx / steps * k, y + dy / steps * k, z + dz / steps * k)) lo = k;
           else hi = k;
         }
         x += dx / steps * lo; y += dy / steps * lo; z += dz / steps * lo;
         break;
       }
-      if (dy && cameraClearAt(x, sy, z)) y = sy;
-      if (cameraClearAt(sx, y, sz)) { x = sx; z = sz; }
+      slid = true;
+      if (dy && cameraSegmentClear(x, y, z, x, sy, z)) y = sy;
+      if (cameraSegmentClear(x, y, z, sx, y, sz)) { x = sx; z = sz; }
       else {
-        if (dx && cameraClearAt(sx, y, z)) x = sx;
-        if (dz && cameraClearAt(x, y, sz)) z = sz;
+        if (dx && cameraSegmentClear(x, y, z, sx, y, z)) x = sx;
+        if (dz && cameraSegmentClear(x, y, z, x, y, sz)) z = sz;
       }
     }
     setVec(p, x, y, z);
+    if (slid && Math.abs(y - from.y) > 1e-7) {
+      // A bent slide can leave a clear endpoint whose displayed diagonal cuts
+      // the stone. Lower before entering a lintel; leave it before rising.
+      sweepCameraVolume(from, p, false);
+      if (Math.hypot(p.x - x, p.y - y, p.z - z) > 1e-5) {
+        const rising = y > from.y;
+        setVec(p, rising ? x : from.x, rising ? from.y : y, rising ? z : from.z);
+        sweepCameraVolume(from, p, false);
+        if (Math.hypot(p.x - from.x, p.y - from.y, p.z - from.z) < 1e-5) {
+          setVec(p, rising ? from.x : x, rising ? y : from.y, rising ? from.z : z);
+          sweepCameraVolume(from, p, false);
+        }
+      }
+    }
   };
   const followCameraMotion = (p, player, dt, directView, smoothStep, closeMix, requestedStep) => {
     const body = player.root.position, y = body.y - player.baseY + player.headOffset * CLOSE_VIEW.eyeRatio;
@@ -2097,11 +2172,14 @@
     const distance = Math.hypot(p.x - CAMERA_PREVIOUS.x, p.y - CAMERA_PREVIOUS.y, p.z - CAMERA_PREVIOUS.z);
     // Preserve the authored close-view blend and first-person pose motion,
     // but ease the extra correction when a previously obstructed eye clears.
+    // A vertical correction must not consume the horizontal follow budget.
+    // Clamp height separately, then sweep the resulting segment in full.
     const travel = Math.max(CAMERA_RECOVERY_SPEED * dt, closeMix > 0 ? requestedStep : 0);
-    const amount = directView ? 1 : Math.min(1, travel / Math.max(distance, 1e-7), (smoothStep ? CAMERA_VERTICAL_RATE * dt : travel) / Math.max(Math.abs(p.y - CAMERA_PREVIOUS.y), 1e-7));
+    const amount = directView ? 1 : Math.min(1, travel / Math.max(distance, 1e-7));
     p.x = lerp(CAMERA_PREVIOUS.x, p.x, amount);
     p.y = lerp(CAMERA_PREVIOUS.y, p.y, amount);
     p.z = lerp(CAMERA_PREVIOUS.z, p.z, amount);
+    if (smoothStep && !directView) p.y = Math.max(CAMERA_PREVIOUS.y - CAMERA_VERTICAL_RATE * dt, Math.min(CAMERA_PREVIOUS.y + CAMERA_VERTICAL_RATE * dt, p.y));
     const wantedX = p.x, wantedY = p.y, wantedZ = p.z;
     sweepCameraVolume(CAMERA_PREVIOUS, p, true);
     if (Math.hypot(p.x - wantedX, p.y - wantedY, p.z - wantedZ) < 1e-4) return;
@@ -2117,21 +2195,36 @@
       sweepCameraVolume(CAMERA_PREVIOUS, CAMERA_RECOVERY, false);
       if (Math.hypot(CAMERA_RECOVERY.x - CAMERA_TRAIL[at], CAMERA_RECOVERY.y - CAMERA_TRAIL[at + 1], CAMERA_RECOVERY.z - CAMERA_TRAIL[at + 2]) > 1e-4) continue;
       const span = Math.hypot(CAMERA_RECOVERY.x - CAMERA_PREVIOUS.x, CAMERA_RECOVERY.y - CAMERA_PREVIOUS.y, CAMERA_RECOVERY.z - CAMERA_PREVIOUS.z);
-      const k = Math.min(1, CAMERA_RECOVERY_SPEED * dt / Math.max(span, 1e-7), (smoothStep ? CAMERA_VERTICAL_RATE : CAMERA_RECOVERY_SPEED) * dt / Math.max(Math.abs(CAMERA_RECOVERY.y - CAMERA_PREVIOUS.y), 1e-7));
+      const k = Math.min(1, CAMERA_RECOVERY_SPEED * dt / Math.max(span, 1e-7));
       p.x = lerp(CAMERA_PREVIOUS.x, CAMERA_RECOVERY.x, k);
       p.y = lerp(CAMERA_PREVIOUS.y, CAMERA_RECOVERY.y, k);
       p.z = lerp(CAMERA_PREVIOUS.z, CAMERA_RECOVERY.z, k);
+      if (smoothStep) p.y = Math.max(CAMERA_PREVIOUS.y - CAMERA_VERTICAL_RATE * dt, Math.min(CAMERA_PREVIOUS.y + CAMERA_VERTICAL_RATE * dt, p.y));
+      sweepCameraVolume(CAMERA_PREVIOUS, p, true);
+      if (Math.hypot(p.x - CAMERA_PREVIOUS.x, p.y - CAMERA_PREVIOUS.y, p.z - CAMERA_PREVIOUS.z) > 1e-5) return;
+    }
+    // A boom can enter a side passage the Ooga never walked through. Slide a
+    // short, fully swept step toward its trail to back around that corner.
+    for (let i = 0; i < cameraTrailCount; i++) {
+      const at = (cameraTrailNext + CAMERA_TRAIL_CAPACITY - cameraTrailCount + i) % CAMERA_TRAIL_CAPACITY * 3;
+      const dx = CAMERA_TRAIL[at] - CAMERA_PREVIOUS.x, dy = CAMERA_TRAIL[at + 1] - CAMERA_PREVIOUS.y, dz = CAMERA_TRAIL[at + 2] - CAMERA_PREVIOUS.z;
+      const span = Math.hypot(dx, dy, dz), k = Math.min(1, CAMERA_RECOVERY_SPEED * dt / Math.max(span, 1e-7));
+      setVec(CAMERA_RECOVERY, CAMERA_PREVIOUS.x + dx * k, CAMERA_PREVIOUS.y + dy * k, CAMERA_PREVIOUS.z + dz * k);
+      if (smoothStep) CAMERA_RECOVERY.y = Math.max(CAMERA_PREVIOUS.y - CAMERA_VERTICAL_RATE * dt, Math.min(CAMERA_PREVIOUS.y + CAMERA_VERTICAL_RATE * dt, CAMERA_RECOVERY.y));
+      sweepCameraVolume(CAMERA_PREVIOUS, CAMERA_RECOVERY, true);
+      if (Math.hypot(CAMERA_TRAIL[at] - CAMERA_RECOVERY.x, CAMERA_TRAIL[at + 1] - CAMERA_RECOVERY.y, CAMERA_TRAIL[at + 2] - CAMERA_RECOVERY.z) >= span - 1e-4) continue;
+      setVec(p, CAMERA_RECOVERY.x, CAMERA_RECOVERY.y, CAMERA_RECOVERY.z);
       return;
     }
   };
   const clampCamera = (p, closeMix = 0, closeClearance = CLEARANCE, smoothStep = false, dt = 0, resetSmooth = false, directView = false, freeMove = false) => {
     const requestedX = p.x, requestedY = p.y, requestedZ = p.z;
     const player = pilot && pilot.player;
-    if (cameraManualContact && player === cameraTrailPlayer && cameraPreviousValid && !directView) {
+    if (cameraManualContact && player === cameraTrailPlayer && cameraPreviousValid && !directView && closeMix === 0) {
       const body = player.root.position;
-      if (Math.hypot(body.x - CAMERA_MANUAL_BODY.x, body.y - CAMERA_MANUAL_BODY.y, body.z - CAMERA_MANUAL_BODY.z) < 1e-7 && Math.hypot(p.x - CAMERA_MANUAL_TARGET.x, p.y - CAMERA_MANUAL_TARGET.y, p.z - CAMERA_MANUAL_TARGET.z) < 1e-7) {
-        // No input and no actor movement: do not accumulate another attempt
-        // at a blocked orbit after the mouse or touch drag has ended.
+      if (Math.hypot(body.x - CAMERA_MANUAL_BODY.x, body.y - CAMERA_MANUAL_BODY.y, body.z - CAMERA_MANUAL_BODY.z) < 1e-7 && Math.hypot(pilot.orbit.yaw - CAMERA_MANUAL_VIEW.x, pilot.orbit.pitch - CAMERA_MANUAL_VIEW.y, pilot.orbit.dist - CAMERA_MANUAL_VIEW.z) < 1e-7) {
+        // Hold the selected view when input and body movement have stopped,
+        // including an exterior orbit whose Ooga is inside the doorway.
         setVec(p, CAMERA_PREVIOUS.x, CAMERA_PREVIOUS.y, CAMERA_PREVIOUS.z);
         return true;
       }
@@ -2167,12 +2260,21 @@
     // Keep independent outdoor/roof views, but resolve an interior boom from
     // its current, collision-safe head position every frame.
     const followOpening = playerCaveIndex ? CAMERA_OPENINGS[playerCaveIndex - 1] : null;
-    const followBoom = player && opening && (!followOpening || opening === followOpening || opening.headquarters && followOpening.headquarters);
+    // The body and eye can cross at different times. Keep the HQ boom while
+    // either is inside, then sweep its actual motion through the doorway.
+    const headquartersFollow = !!(opening && opening.headquarters || !directView && followOpening && followOpening.headquarters);
+    const followBoom = player && (headquartersFollow || opening && (!followOpening || opening === followOpening));
     if (followBoom) {
       opening = followOpening;
       const body = player.root.position;
       setVec(CAMERA_FROM, body.x, body.y - player.baseY + player.headOffset * CLOSE_VIEW.eyeRatio, body.z);
-      if (opening && cameraSpaceAt(body.x, body.z, opening)) CAMERA_FROM.y = Math.max(CAMERA_SPACE.floor, Math.min(CAMERA_SPACE.ceiling, CAMERA_FROM.y));
+      if (opening && cameraSpaceAt(body.x, body.z, opening, CAMERA_FROM.y)) CAMERA_FROM.y = Math.max(CAMERA_SPACE.floor, Math.min(CAMERA_SPACE.ceiling, CAMERA_FROM.y));
+      if (headquartersFollow) {
+        // Entering or leaving a descent must not lengthen the selected boom.
+        const dx = p.x - CAMERA_FROM.x, dy = p.y - CAMERA_FROM.y, dz = p.z - CAMERA_FROM.z;
+        const distance = Math.hypot(dx, dy, dz), reach = pilot.orbit.dist;
+        if (distance > reach) setVec(p, CAMERA_FROM.x + dx * reach / distance, CAMERA_FROM.y + dy * reach / distance, CAMERA_FROM.z + dz * reach / distance);
+      }
     }
     if (cameraPreviousValid) {
       for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
@@ -2211,7 +2313,7 @@
           if (exit) outside = true;
           break;
         }
-        if (!cameraSpaceAt(sx, sz, opening)) {
+        if (!cameraSpaceAt(sx, sz, opening, y)) {
           // Windows are real openings through the island shell. Their clear
           // air need not have room-ownership metadata to be traversable.
           if (freeMove && opening.headquarters && cameraClearAt(sx, fromY + dy * k, sz)) {
@@ -2223,11 +2325,11 @@
           // the accepted point lets shallow wall contact keep its tangent.
           // A follow boom stops at its first obstruction to keep line of sight.
           if (!i || followBoom || !freeMove) break;
-          if (cameraSpaceAt(sx, z, opening)) {
+          if (cameraSpaceAt(sx, z, opening, y)) {
             x = sx;
             y = Math.max(CAMERA_SPACE.floor, Math.min(CAMERA_SPACE.ceiling, fromY + dy * k));
           }
-          if (cameraSpaceAt(x, sz, opening)) {
+          if (cameraSpaceAt(x, sz, opening, y)) {
             z = sz;
             y = Math.max(CAMERA_SPACE.floor, Math.min(CAMERA_SPACE.ceiling, fromY + dy * k));
           }
@@ -2243,7 +2345,7 @@
         p.x = x; p.y = y; p.z = z;
         const along = (x - opening.mouth.x) * opening.sr + (z - opening.mouth.z) * opening.cr;
         if (accepted) {
-          if (freeMove && opening.headquarters && (!island.cavityAt(x, z, CAMERA_COLUMN, island.headquarters.caveIndex) || y < CAMERA_COLUMN.floor + CAMERA_RADIUS || y > CAMERA_COLUMN.ceiling - CAMERA_RADIUS)) setCameraCave(0);
+          if (freeMove && opening.headquarters && (!island.cavityAt(x, z, CAMERA_COLUMN, island.headquarters.caveIndex, y) || y < CAMERA_COLUMN.floor + CAMERA_RADIUS || y > CAMERA_COLUMN.ceiling - CAMERA_RADIUS)) setCameraCave(0);
           else if (along < opening.planeZ - 1e-7) setCameraCave(opening.caveIndex);
         }
       }
@@ -2254,7 +2356,7 @@
       // requested point inside a wall must not lift the eye to that wall's top.
       const floor = supportAt(p.x, p.z, CAMERA_PREVIOUS.y - CLOSE_VIEW.eyeHeight);
       const eye = floor + CLOSE_VIEW.eyeHeight;
-      if (opening && cameraSpaceAt(p.x, p.z, opening)) p.y = Math.max(CAMERA_SPACE.floor, Math.min(CAMERA_SPACE.ceiling, eye));
+      if (opening && cameraSpaceAt(p.x, p.z, opening, p.y)) p.y = Math.max(CAMERA_SPACE.floor, Math.min(CAMERA_SPACE.ceiling, pilot.freeFalling ? Math.max(p.y, eye) : eye));
     }
     cameraEntranceIndex = 0;
     if (!cameraCaveIndex) {
@@ -2308,25 +2410,23 @@
       // Sweep the whole eye volume, including at outdoor voxel corners, and
       // allow its blocked horizontal component to slide while it gains height.
       if (!caveView) p.y = Math.min(p.y, Math.max(requestedY, CAMERA_PREVIOUS.y + CAMERA_VERTICAL_RATE * Math.min(dt, 0.05)));
-      if (closeMix > 0.5) p.y = Math.max(CAMERA_PREVIOUS.y - CAMERA_VERTICAL_RATE * Math.min(dt, 0.05), Math.min(CAMERA_PREVIOUS.y + CAMERA_VERTICAL_RATE * Math.min(dt, 0.05), p.y));
+      if (caveView && closeMix <= 0.5 && p.y < requestedY) p.y = Math.max(p.y, CAMERA_PREVIOUS.y - CAMERA_VERTICAL_RATE * Math.min(dt, 0.05));
+      if (closeMix > 0.5 && !pilot.freeFalling) p.y = Math.max(CAMERA_PREVIOUS.y - CAMERA_VERTICAL_RATE * Math.min(dt, 0.05), Math.min(CAMERA_PREVIOUS.y + CAMERA_VERTICAL_RATE * Math.min(dt, 0.05), p.y));
       sweepCameraVolume(CAMERA_PREVIOUS, p, true);
       if (previousCaveIndex) {
         const previousOpening = CAMERA_OPENINGS[previousCaveIndex - 1];
         const along = (p.x - previousOpening.mouth.x) * previousOpening.sr + (p.z - previousOpening.mouth.z) * previousOpening.cr;
-        if (along < previousOpening.planeZ && caveColumnAt(p.x, p.z, previousOpening) && p.y < CAMERA_COLUMN.ceiling) setCameraCave(previousCaveIndex);
+        if (along < previousOpening.planeZ && caveColumnAt(p.x, p.z, previousOpening, p.y) && p.y < CAMERA_COLUMN.ceiling) setCameraCave(previousCaveIndex);
       }
-    } else if (player && (followBoom || cameraEntranceIndex || !cameraClearAt(p.x, p.y, p.z))) {
+    } else if (player && (!directView || previousCaveIndex) && (followBoom || cameraEntranceIndex || !cameraClearAt(p.x, p.y, p.z))) {
       const body = player.root.position;
       setVec(CAMERA_VOLUME_FROM, body.x, body.y - player.baseY + player.headOffset * CLOSE_VIEW.eyeRatio, body.z);
       if (cameraClearAt(CAMERA_VOLUME_FROM.x, CAMERA_VOLUME_FROM.y, CAMERA_VOLUME_FROM.z)) sweepCameraVolume(CAMERA_VOLUME_FROM, p, false);
     }
     if (player) {
-      cameraManualContact = followCameraMotion(p, player, dt, directView, smoothStep && closeMix <= 0.5, closeMix, requestedStep) === true;
-      if (cameraManualContact) {
-        setVec(CAMERA_MANUAL_TARGET, requestedX, requestedY, requestedZ);
-        const body = player.root.position;
-        setVec(CAMERA_MANUAL_BODY, body.x, body.y, body.z);
-      }
+      // Keep the exterior eye smooth through a doorway. Once it enters HQ,
+      // the full swept follow rate keeps up with the continuous descents.
+      cameraManualContact = followCameraMotion(p, player, dt, directView, smoothStep && closeMix <= 0.5 && (!headquartersFollow || !previousCaveIndex), closeMix, requestedStep) === true;
       // Admission belongs to the resolved eye path. Boom clipping can leave
       // the eye inside even when the originally requested view was outside.
       let index = previousCaveIndex;
@@ -2337,13 +2437,21 @@
         else if (index && crossing.direction < 0 && (index === entry.caveIndex || CAMERA_OPENINGS[index - 1].headquarters && entry.headquarters)) index = 0;
       }
       setCameraCave(index);
+      if (directView && !index) cameraManualContact = true;
+      if (cameraManualContact) {
+        setVec(CAMERA_MANUAL_VIEW, pilot.orbit.yaw, pilot.orbit.pitch, pilot.orbit.dist);
+        const body = player.root.position;
+        setVec(CAMERA_MANUAL_BODY, body.x, body.y, body.z);
+      }
     } else {
       cameraTrailPlayer = null;
       cameraTrailCount = cameraTrailNext = 0;
     }
-    if (freeMove && undergroundAir && p.y < -CAMERA_RADIUS && !cameraCaveIndex && island.cavityAt(p.x, p.z, CAMERA_COLUMN, island.headquarters.caveIndex) && p.y >= CAMERA_COLUMN.floor + CAMERA_RADIUS && p.y <= CAMERA_COLUMN.ceiling - CAMERA_RADIUS) {
-      // Re-entering through an open headquarters window changes only the
-      // spatial layer; the Mirror Cave still requires its own doorway crossing.
+    const headquartersEye = player && followOpening && followOpening.headquarters && (p.y < -CAMERA_RADIUS || (p.x - followOpening.mouth.x) * followOpening.sr + (p.z - followOpening.mouth.z) * followOpening.cr < followOpening.planeZ - 1e-7);
+    if ((freeMove && undergroundAir && p.y < -CAMERA_RADIUS || headquartersEye) && !cameraCaveIndex && island.cavityAt(p.x, p.z, CAMERA_COLUMN, island.headquarters.caveIndex, p.y) && p.y >= CAMERA_COLUMN.floor + CAMERA_RADIUS && p.y < CAMERA_COLUMN.ceiling && cameraClearAt(p.x, p.y, p.z)) {
+      // A swept eye can enter an open throat or window after its Ooga. The
+      // center identifies its layer; the full cylinder checks the actual rock
+      // at open column edges. The Mirror Cave still requires its own crossing.
       for (let i = 0; i < CAMERA_OPENINGS.length; i++) if (CAMERA_OPENINGS[i].headquarters) {
         setCameraCave(CAMERA_OPENINGS[i].caveIndex);
         break;
@@ -2705,7 +2813,18 @@
     });
     meterTimer = 0;
     crew.refreshStates(true);
-    if (preloadedView) navigate(preloadedView);
+    const initialCharacter = ctx.from === null && preloadedCharacter ? contributors.roster.find((entry) => entry.name.toLowerCase() === preloadedCharacter) : null;
+    if (initialCharacter) {
+      const cave = crew.cavemen.get(initialCharacter.name);
+      if (crew.stateOf(cave) !== "working") {
+        cave.override = "working";
+        crew.refreshStates(true);
+      }
+      pilot.possess(cave);
+    }
+    const initialFirstPerson = ctx.from === null && preloadedFirstPerson;
+    if (initialFirstPerson) pilot.enterClose();
+    if (preloadedView || initialCharacter || initialFirstPerson) navigate(preloadedView || "pile");
     // Once a minute, refresh states and trim the pool
     stateTimer = window.setInterval(() => {
       crew.refreshStates();
@@ -2979,7 +3098,7 @@
     root: null, camera: null, input: null, debug: null,
     get inMotion() {
       if (pile.inMotion || fx.inMotion || MATRIX_WORLD.active) return true;
-      for (let i = 0; i < matrixGates.length; i++) if (matrixCave && matrixCave.unlocked && matrixGates[i].node.position.y !== MATRIX_GATE_HIDDEN_Y) return true;
+      for (let i = 0; i < matrixGates.length; i++) if (matrixCave && (matrixGates[i].raising || matrixCave.unlocked && matrixGates[i].node.position.y !== MATRIX_GATE_HIDDEN_Y)) return true;
       return false;
     }
   };

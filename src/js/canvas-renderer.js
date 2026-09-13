@@ -245,7 +245,7 @@
           const dynamicCave = !staticCave && matrixActive && matrixRadius >= matrixCaveNear && matrixLiving && matrixCaveBounds && flow >= matrixCaveNear;
           const cave = staticCave || (dynamicCave ? matrixLivingCave(centerX, centerY, centerZ) : 0);
           const permanent = cave && cave === matrixPermanentCave;
-          const localGlyphSurface = !!(node.geometry.matrixLocalGlyphSurface || face.matrixLocalGlyphSurface || staticCave);
+          const localGlyphSurface = !face.matrixWorldGlyphSurface && !!(node.geometry.matrixLocalGlyphSurface || face.matrixLocalGlyphSurface || staticCave);
           const revealBacking = !!node.geometry.matrixRevealBacking;
           const ownedGlyph = localMatrixGlyph && cave && matrixCaves;
           let minimumFront = permanent || localMatrixGlyph && !ownedGlyph ? 1 : 0, maximumFront = minimumFront;
