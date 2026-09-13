@@ -1,12 +1,12 @@
 // Drive the real held-key controls and production scene updates. Only the
 // initial exterior fixture is placed directly; every later waypoint is reached
 // by movement, with independent solid-voxel checks on the resulting trajectory.
-export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120, rooms = false, ceiling = false, fromNavigation = false } = {}) => {
+export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120, rooms = false, ceiling = false, fromNavigation = false } = {}, entranceProbe = null) => {
   const B = window.__ooga, scene = window.BL.scenes.hub, H = B.island.headquarters;
   const opening = B.cameraCave.openings.find((entry) => entry.id === id), m = opening.mouth, o = B.pilot.orbit;
   const driven = mode === "trailing" || mode === "first-person", close = mode === "eye-level" || mode === "first-person";
   const cave = driven ? [...B.cavemen.values()].find((entry) => entry.state === "working") : null;
-  const ramp = H.ramps.find((entry) => entry.id === id), held = new Set(), checkpoints = [], violations = [];
+  const ramp = H.ramps.find((entry) => entry.id === id), held = new Set(), checkpoints = [], violations = [], visitedRooms = [];
   let elapsed = B.matrixCave.world.sampleStream(0).time, samples = 0, maxSeparation = 0, maxStep = 0, maxStepAt = null, previous = null;
   let meshSamples = 0, headTop = 0, peakFeet = -Infinity, plateauFrames = 0, previousFeet = 0;
   const keys = (next) => {
@@ -16,9 +16,10 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
   const position = () => driven ? cave.root.position : B.camera.position;
   const snapshot = () => {
     const p = position(), eye = B.camera.position;
-    return { x: p.x, y: p.y - (driven ? cave.baseY : 0), z: p.z, eye: [eye.x, eye.y, eye.z], camera: B.cameraCave.index, player: B.cameraCave.playerIndex };
+    return { x: p.x, y: p.y - (driven ? cave.baseY : 0), z: p.z, eye: [eye.x, eye.y, eye.z], camera: B.cameraCave.index, player: B.cameraCave.playerIndex, lightCount: B.renderOpts.lightCount };
   };
-  const solid = (x, y, z) => B.island.solidAt(x, y, z);
+  const entrances = entranceProbe && entranceProbe();
+  const solid = (x, y, z) => B.island.solidAt(x, y, z) || !!entrances && entrances.solid(x, y, z);
   const inspect = () => {
     const p = B.camera.position, actor = cave && cave.root.position;
     samples++;
@@ -28,10 +29,15 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
       for (let i = 1; i <= count; i++) {
         const k = i / count, x = previous.x + (p.x - previous.x) * k, y = previous.y + (p.y - previous.y) * k, z = previous.z + (p.z - previous.z) * k;
         if (solid(x, y, z) && violations.length < 4) violations.push({ kind: "eye sweep", sample: samples, x, y, z });
+        const radius = driven ? 0.09 : 0.27;
+        if (entrances && !entrances.clearAt(x, y - radius, z, radius, radius * 2) && violations.length < 4) violations.push({ kind: "doorway eye volume sweep", sample: samples, x, y, z });
       }
     }
     for (const [x, y, z] of [[0, 0, 0], [0.09, 0, 0], [-0.09, 0, 0], [0, 0.09, 0], [0, -0.09, 0], [0, 0, 0.09], [0, 0, -0.09]]) {
       if (solid(p.x + x, p.y + y, p.z + z) && violations.length < 4) violations.push({ kind: "eye clearance", sample: samples, x: p.x + x, y: p.y + y, z: p.z + z });
+    }
+    if (!driven && entrances && entrances.near(p.x, p.y - 0.27, p.z, 0.27, 0.54)) for (const [x, z] of [[0, 0], [0.27, 0], [-0.27, 0], [0, 0.27], [0, -0.27], [0.19, 0.19], [-0.19, 0.19], [0.19, -0.19], [-0.19, -0.19]]) for (const y of [-0.27, 0, 0.27]) {
+      if (entrances.solid(p.x + x, p.y + y, p.z + z) && violations.length < 4) violations.push({ kind: "free camera doorway clearance", sample: samples, x: p.x + x, y: p.y + y, z: p.z + z });
     }
     if (actor) {
       maxSeparation = Math.max(maxSeparation, Math.hypot(p.x - actor.x, p.y - actor.y + cave.baseY - 1, p.z - actor.z));
@@ -39,12 +45,12 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
         const y = actor.y - cave.baseY + height;
         if (solid(actor.x + x, y, actor.z + z) && violations.length < 4) violations.push({ kind: "body", sample: samples, x: actor.x + x, y, z: actor.z + z });
       }
-      if (ceiling) {
+      if (ceiling || entrances && entrances.near(actor.x, actor.y - cave.baseY, actor.z)) {
         // Check the posed render geometry independently of the collision body's
         // cached height. Inset surface vertices slightly to allow exact contact.
         window.BL.scene.updateWorld(cave.root);
         headTop = -Infinity;
-        for (const [name, node] of [["head", cave.parts.head], ["torso", cave.parts.torso]]) {
+        const inspectMesh = (name, node) => {
           const verts = node.geometry.verts, matrix = node.world;
           for (let i = 0; i < verts.length; i += 3) {
             const x = verts[i] * 0.995, y = verts[i + 1] * 0.995, z = verts[i + 2] * 0.995;
@@ -52,10 +58,17 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
             const wy = matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13];
             const wz = matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14];
             meshSamples++;
-            if (name === "head") headTop = Math.max(headTop, wy);
+            if (name.startsWith("head")) headTop = Math.max(headTop, wy);
             if (solid(wx, wy, wz) && violations.length < 4) violations.push({ kind: name + " mesh", sample: samples, x: wx, y: wy, z: wz });
           }
-        }
+        };
+        const inspectHead = (node) => {
+          if (!node.visible) return;
+          if (node.geometry) inspectMesh(node === cave.parts.head ? "head" : "head attachment", node);
+          for (const child of node.children) inspectHead(child);
+        };
+        inspectHead(cave.parts.head);
+        inspectMesh("torso", cave.parts.torso);
         const feet = actor.y - cave.baseY;
         peakFeet = Math.max(peakFeet, feet);
         if (cave.jet && cave.jet.thrust && cave.hop > 0.5 && Math.abs(feet - previousFeet) < 1e-6) plateauFrames++;
@@ -102,13 +115,24 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
   };
   const follow = (name, points) => {
     for (let i = 0; i < points.length; i++) {
-      const q = points[i], p = position(), x = p.x, z = p.z, count = Math.max(1, Math.ceil(Math.hypot(q.x - x, q.z - z) / 0.65));
+      const q = points[i], p = position(), x = p.x, y = p.y - (driven ? cave.baseY : 1.1), z = p.z, count = Math.max(1, Math.ceil(Math.hypot(q.x - x, q.z - z) / 0.65));
       // A distant endpoint is insufficient guidance for eight digital headings:
       // keep the walked line within narrow room corridors and gallery edges.
       for (let j = 1; j <= count; j++) {
         const label = `${name}:${i}${j === count ? "" : ":" + j}`;
-        if (!seek(label, { x: x + (q.x - x) * j / count, y: (q.y ?? H.floor) + (driven ? 0 : 1.1), z: z + (q.z - z) * j / count }, 3)) return false;
+        if (!seek(label, { x: x + (q.x - x) * j / count, y: y + ((q.y ?? q.floor ?? H.floor) - y) * j / count + (driven ? 0 : 1.1), z: z + (q.z - z) * j / count }, 3)) return false;
       }
+    }
+    return true;
+  };
+  const visitRooms = (rooms, floor, radius, name) => {
+    for (const room of rooms) {
+      const radial = Math.hypot(room.approach.x, room.approach.z), approach = { x: room.approach.x * radius / radial, y: floor, z: room.approach.z * radius / radial };
+      const entrance = [room.approach, room.entrance].map((point) => ({ x: point.x, y: floor, z: point.z }));
+      if (!follow(`${name}:${room.index}`, [approach, ...entrance, room])) return false;
+      tickFor(0.3, []);
+      visitedRooms.push({ index: room.index, basement: !!room.basement, floor: room.floor, ...snapshot() });
+      if (!follow(`${name}-exit:${room.index}`, [...entrance].reverse().concat([approach]))) return false;
     }
     return true;
   };
@@ -132,16 +156,23 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
         const angle = Math.atan2(ramp.to.x, -ramp.to.z), circle = [];
         for (let i = 0; i <= 48; i++) { const a = angle + Math.PI * 2 * i / 48; circle.push({ x: Math.sin(a) * 11, z: -Math.cos(a) * 11 }); }
         completed = follow("circle", circle);
-        for (const room of H.rooms) {
-          if (!completed) break;
-          const radial = Math.hypot(room.approach.x, room.approach.z), approach = { x: room.approach.x * 11 / radial, z: room.approach.z * 11 / radial };
-          completed = follow(`room:${room.index}`, [approach, room.approach, room.entrance, room, room.entrance, room.approach, approach]);
+        if (completed) completed = visitRooms(H.rooms, H.floor, 11, "room");
+        const basement = H.basement, descent = basement.ramps[0], ascent = basement.ramps[1];
+        if (completed) completed = follow("basement-down", descent.samples);
+        if (completed) completed = visitRooms(basement.rooms, basement.floor, basement.room.radius - 1, "basement-room");
+        if (completed) completed = follow("basement-up", [...ascent.samples].reverse());
+        if (completed) {
+          const from = Math.atan2(ascent.from.x, -ascent.from.z), to = Math.atan2(ramp.to.x, -ramp.to.z), arc = [];
+          for (let i = 0; i <= 32; i++) { const angle = from + (to - from) * i / 32; arc.push({ x: Math.sin(angle) * 11, y: H.floor, z: -Math.cos(angle) * 11 }); }
+          completed = follow("return-to-main-ramp", arc);
         }
       }
       if (completed) completed = follow("up", [...down].reverse());
       if (completed) completed = seek("outside", point(2.5));
     } else {
-      completed = seek("enter", point(-2.5));
+      // Clear the doorway soffit with the entire body before pressing against
+      // the interior roof, including the coarser 20 Hz walking increment.
+      completed = seek("enter", point(ceiling ? -3.2 : -2.5));
       if (completed && ceiling) {
         const entered = snapshot();
         tickFor(dt, ["j"]);
@@ -149,6 +180,16 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
         const column = {};
         B.island.cavityAt(cave.root.position.x, cave.root.position.z, column, opening.caveIndex);
         const hover = { ...snapshot(), headTop, roof: column.ceiling, thrust: !!cave.jet && cave.jet.thrust, hop: cave.hop, velocity: cave.hopV };
+        const pitched = [];
+        if (close) {
+          // Pitch the real posed head while thrust holds it against the roof.
+          // Neutral-pose ceiling bounds previously let its corners enter rock.
+          for (const pitch of [-0.46, 0.46, -1.1, 1.1, 0]) {
+            B.pilot.hooks.onOrbit(0, (pitch - o.tPitch) / 0.0035);
+            tickFor(0.5, [" "]);
+            pitched.push({ requested: pitch, actual: cave.parts.head.rotation.x, headTop, roof: column.ceiling, thrust: cave.jet.thrust, hop: cave.hop, ...snapshot() });
+          }
+        }
         tickFor(0.2, [" ", "d"]);
         const side = snapshot();
         tickFor(0.2, [" ", "w", "a"]);
@@ -159,7 +200,7 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
         let landingFrames = 0;
         while ((cave.hop > 0 || cave.hopV > 0) && landingFrames++ < Math.ceil(3 / dt)) step();
         const landed = { ...snapshot(), hop: cave.hop, velocity: cave.hopV, thrust: cave.jet.thrust };
-        ceilingContact = { entered, equipped: !!cave.jet, hover, side, diagonal, heldAtRoof, landed, peakFeet, plateauFrames, meshSamples, sideways: Math.hypot(side.x - hover.x, side.z - hover.z), diagonalTravel: Math.hypot(diagonal.x - side.x, diagonal.z - side.z), landingSeconds: landingFrames * dt };
+        ceilingContact = { entered, equipped: !!cave.jet, hover, pitched, side, diagonal, heldAtRoof, landed, peakFeet, plateauFrames, meshSamples, sideways: Math.hypot(side.x - hover.x, side.z - hover.z), diagonalTravel: Math.hypot(diagonal.x - side.x, diagonal.z - side.z), landingSeconds: landingFrames * dt };
         completed = seek("center", point(-2.5)) && seek("outside", point(2.5));
       } else if (completed) {
         const before = snapshot();
@@ -179,6 +220,6 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
       }
     }
     tickFor(0.5, []);
-    return { id, mode, dt, fromNavigation, backend: B.renderer.kind, initial, completed, checkpoints: checkpoints.length, failed: checkpoints.filter((checkpoint) => !checkpoint.reached), stages: checkpoints.filter((checkpoint) => checkpoint.name === "outside" || checkpoint.name === "down:32" || checkpoint.name === "up:32"), collision, reversal, underground, ceilingContact, samples, violations, maxSeparation, maxStep, maxStepAt, final: snapshot(), scene: B.scene };
+    return { id, mode, dt, fromNavigation, backend: B.renderer.kind, initial, completed, visitedRooms, entrances: entrances && entrances.stats(), checkpoints: checkpoints.length, failed: checkpoints.filter((checkpoint) => !checkpoint.reached), stages: checkpoints.filter((checkpoint) => checkpoint.name === "outside" || checkpoint.name === "down:32" || checkpoint.name === "up:32"), collision, reversal, underground, ceilingContact, samples, violations, maxSeparation, maxStep, maxStepAt, final: snapshot(), scene: B.scene };
   } finally { keys([]); }
 };

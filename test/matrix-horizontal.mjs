@@ -20,15 +20,12 @@ export const matrixHorizontalProbe = () => {
   };
   const caves = C.caves.map((cave) => {
     const m = cave.mouth, dx = m.inside.x - m.apron.x, dz = m.inside.z - m.apron.z, length = Math.hypot(dx, dz), inwardX = dx / length, inwardZ = dz / length, ux = -inwardZ, uz = inwardX;
-    const planes = new Map(), slopes = [], geometry = B.island.geometry;
+    const planes = new Map(), geometry = B.island.geometry;
+    let slopeFaces = 0;
     for (const face of geometry.faces) {
       if (face.matrixCave !== cave.caveIndex) continue;
       const points = face.i.map((i) => [geometry.verts[i * 3], geometry.verts[i * 3 + 1], geometry.verts[i * 3 + 2]]), a = points[0], b = points[1], d = points[2];
-      if (face.headquartersRamp && !points.every((p) => Math.abs(p[1] - a[1]) < 1e-8)) {
-        const ab = b.map((v, i) => v - a[i]), ad = d.map((v, i) => v - a[i]), normal = [ab[1] * ad[2] - ab[2] * ad[1], ab[2] * ad[0] - ab[0] * ad[2], ab[0] * ad[1] - ab[1] * ad[0]], length = Math.hypot(...normal);
-        for (let i = 0; i < 3; i++) normal[i] /= length;
-        slopes.push({ points, normal, plane: normal.reduce((sum, n, i) => sum + n * a[i], 0) });
-      }
+      if (face.headquartersRamp && !points.every((p) => Math.abs(p[1] - a[1]) < 1e-8)) slopeFaces++;
       if (!points.every((p) => Math.abs(p[1] - a[1]) < 1e-8)) continue;
       const ny = Math.sign((b[2] - a[2]) * (d[0] - a[0]) - (b[0] - a[0]) * (d[2] - a[2]));
       if (!ny) continue;
@@ -69,23 +66,14 @@ export const matrixHorizontalProbe = () => {
       candidates.sort((a, b) => b.max - b.min - (a.max - a.min) || Math.abs(a.cross - ux * m.x - uz * m.z) - Math.abs(b.cross - ux * m.x - uz * m.z));
       selected.push(...candidates.slice(0, 3));
     }
-    return { cave, m, inwardX, inwardZ, ux, uz, planes, slopes, selected, phaseMismatch, directionError };
+    return { cave, m, inwardX, inwardZ, ux, uz, planes, slopeFaces, selected, phaseMismatch, directionError };
   });
   const capture = () => {
     const time = C.world.sampleStream(0).time;
     return { time, caves: caves.map((c) => {
-      const actual = new Map(); let count = 0, axisError = 0, laneError = 0, slopeCount = 0, slopeEscaped = 0, slopeClearanceError = 0;
+      const actual = new Map(); let count = 0, axisError = 0, laneError = 0;
       for (const [glyph, node] of c.cave.nodes.entries()) for (let i = 0; i < node.instanceCount; i++) {
         const d = node.instanceData, o = i * 20, ny = Math.sign(d[o + 9]);
-        if (c.slopes.length && d[o + 9] > 0.1 && d[o + 9] < 0.999) {
-          slopeCount++;
-          const p = [d[o + 12], d[o + 13], d[o + 14]], normal = [d[o + 8], d[o + 9], d[o + 10]], plane = normal.reduce((sum, n, i) => sum + n * p[i], 0) - 0.015;
-          const candidates = c.slopes.filter((s) => s.normal.every((n, i) => Math.abs(n - normal[i]) < 0.00001) && Math.abs(s.plane - plane) < 0.00002);
-          const u = d[o] * p[0] + d[o + 1] * p[1] + d[o + 2] * p[2], v = d[o + 4] * p[0] + d[o + 5] * p[1] + d[o + 6] * p[2];
-          const sum = candidates.reduce((total, source) => total + intersection(source.points.map((q) => [d[o] * q[0] + d[o + 1] * q[1] + d[o + 2] * q[2], d[o + 4] * q[0] + d[o + 5] * q[1] + d[o + 6] * q[2]]), u, v), 0);
-          if (Math.abs(sum - area) > 0.000001) slopeEscaped++;
-          for (const source of candidates) slopeClearanceError = Math.max(slopeClearanceError, Math.abs(source.normal.reduce((total, n, i) => total + n * p[i], 0) - source.plane - 0.015));
-        }
         if (Math.abs(d[o + 9]) < 0.999) continue;
         count++;
         axisError = Math.max(axisError, Math.abs(d[o] - c.ux), Math.abs(d[o + 1]), Math.abs(d[o + 2] - c.uz), Math.abs(d[o + 4] - ny * c.inwardX), Math.abs(d[o + 5]), Math.abs(d[o + 6] - ny * c.inwardZ), Math.abs(d[o + 8]), Math.abs(d[o + 9] - ny), Math.abs(d[o + 10]));
@@ -114,7 +102,7 @@ export const matrixHorizontalProbe = () => {
         }
         return { key: lane.key, kind: lane.plane.ny > 0 ? "floor" : "ceiling", speed: stream.speed, direction: stream.direction, expected, missing, doubles, gaps, filledGaps, seamRows, excludedRows, unsafe, shadeError, spacingError, mutationErrors, rows };
       });
-      return { id: c.cave.id, count, axisError, laneError, phaseMismatch: c.phaseMismatch, directionError: c.directionError, planes: c.planes.size, slopeFaces: c.slopes.length, slopeCount, slopeEscaped, slopeClearanceError, lanes };
+      return { id: c.cave.id, count, axisError, laneError, phaseMismatch: c.phaseMismatch, directionError: c.directionError, planes: c.planes.size, slopeFaces: c.slopeFaces, lanes };
     }) };
   };
   const before = capture(); let elapsed = before.time;

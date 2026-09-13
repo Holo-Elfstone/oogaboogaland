@@ -60,8 +60,12 @@ void main() {
   vColor = aColor;
   // Cave ownership shares the otherwise nonnegative emissive channel. Decode it
   // before lighting so leaving the portal restores the original material exactly.
-  vMatrixSurface = aColor.a < 0.0 ? 1.0 : 0.0;
   float encoded = max(0.0, -aColor.a - 1.0);
+  // Sloping HQ floors keep cave-wave ownership, but their glyphs span the
+  // mesh's tiny triangle seams through the same material as the deeper ramp.
+  float worldSurface = step(32.0, encoded);
+  encoded -= worldSurface * 32.0;
+  vMatrixSurface = aColor.a < 0.0 ? 1.0 - worldSurface : 0.0;
   vMatrixCave = floor(encoded * 0.5);
   vColor.a = aColor.a < 0.0 ? encoded - vMatrixCave * 2.0 : aColor.a;
   vParams = aParams;
@@ -1013,7 +1017,7 @@ void main() {
         ny /= len;
         nz /= len;
         const emissive = f.emissive || 0;
-        const e = f.matrixCave || f.matrixLocalGlyphSurface ? -1 - (f.matrixCave || 0) * 2 - emissive : emissive;
+        const e = f.matrixCave || f.matrixLocalGlyphSurface || f.matrixWorldGlyphSurface ? -1 - (f.matrixCave || 0) * 2 - (f.matrixWorldGlyphSurface ? 32 : 0) - emissive : emissive;
         for (let k = 1; k < f.i.length - 1; k++) {
           put(f.i[0], nx, ny, nz, f.color, e);
           put(f.i[k], nx, ny, nz, f.color, e);

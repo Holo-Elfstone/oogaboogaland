@@ -255,13 +255,25 @@ export const matrixCaveSnapshot = () => {
     for (let i = 0; i < points.length; i++) { const a = points[i], b = points[(i + 1) % points.length]; area += a[0] * b[1] - b[0] * a[1]; }
     return Math.abs(area) / 2;
   };
-  const faceOwners = new Map(), faceSources = new Map(), tagged = new Set(); let overlappingFaces = 0, missingFlags = 0, brightGlyphFaces = 0, linerNodes = 0;
+  const faceOwners = new Map(), faceSources = new Map(), tagged = new Set(), worldFloors = new Map();
+  const headquartersCaves = new Set(C.caves.filter((cave) => B.island.headquarters.ramps.some((ramp) => ramp.id === cave.id)).map((cave) => cave.caveIndex));
+  let overlappingFaces = 0, missingFlags = 0, brightGlyphFaces = 0, linerNodes = 0;
   const scan = (node, living = false, partial = false) => {
     living ||= !!node.matrixLiving; partial ||= !!node.matrixEmissiveLiving;
     if (node.geometry?.matrixRevealBacking) linerNodes++;
     if (node.geometry && !node.geometry.matrixGlyph) for (const face of node.geometry.faces) {
       faceSources.set(face, { geometry: node.geometry, world: node.world });
-      if (face.matrixCave) { tagged.add(face); if (!face.matrixLocalGlyphSurface) missingFlags++; }
+      const local = !!face.matrixLocalGlyphSurface, world = !!face.matrixWorldGlyphSurface;
+      if (face.matrixCave) { tagged.add(face); if (local === world) missingFlags++; }
+      if (world) {
+        // Continuous code is allowed only on the real upward-facing HQ ramp
+        // triangles, and retains the owning main entrance's cave-wave identity.
+        const v = node.geometry.verts, a = face.i[0] * 3, b = face.i[1] * 3, c = face.i[2] * 3;
+        const ux = v[b] - v[a], uy = v[b + 1] - v[a + 1], uz = v[b + 2] - v[a + 2], vx = v[c] - v[a], vy = v[c + 1] - v[a + 1], vz = v[c + 2] - v[a + 2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+        if (node.geometry !== B.island.geometry || !face.headquartersRamp || !headquartersCaves.has(face.matrixCave) || ny <= Math.hypot(nx, ny, nz) * 0.5) missingFlags++;
+        else worldFloors.set(face.matrixCave, (worldFloors.get(face.matrixCave) || 0) + 1);
+      }
       if (living || partial && face.emissive > 0) faceOwners.set(face, "bright");
     }
     for (const child of node.children) scan(child, living, partial);
@@ -276,7 +288,7 @@ export const matrixCaveSnapshot = () => {
       for (const support of section.supports || [section]) {
         const face = support.face;
         if (seen.has(face)) overlappingFaces++; seen.add(face);
-        if (face.matrixCave !== cave.caveIndex || !face.matrixLocalGlyphSurface) missingFlags++;
+        if (face.matrixCave !== cave.caveIndex || !face.matrixLocalGlyphSurface || face.matrixWorldGlyphSurface) missingFlags++;
         if (faceOwners.get(face) === "bright") brightGlyphFaces++;
         const source = faceSources.get(face);
         backingSourcesValid &&= !!source && (section.source !== "terrain" || source.geometry === B.island.geometry) && support.polygon.length === face.i.length;
@@ -326,7 +338,7 @@ export const matrixCaveSnapshot = () => {
       }
     }
     const vertical = chosen;
-    return { id: cave.id, buffers: cave.nodes.length, capacity: cave.capacity, bytes: cave.bufferBytes, fixed: cave.nodes.every((node) => node.fixedInstanceCapacity && node.instanceCount <= node.instanceData.length / 20 && node.drawInstanceCount <= node.instanceCount), actualCount, drawn: cave.nodes.reduce((n, node) => n + node.drawInstanceCount, 0), sections: cave.sections.length, terrain: cave.sections.filter((s) => s.source === "terrain").length, props: cave.sections.filter((s) => s.source === "prop").length, horizontal: cave.sections.filter((s) => s.horizontal).length, vertical: cave.sections.filter((s) => !s.horizontal).length, fullCeiling: cave.sections.some((s) => s.ny < -0.99), fullFloor: cave.sections.some((s) => s.ny > 0.99), owned: cave.sections.every((s) => (s.supports || [s]).every((support) => tagged.has(support.face))), backingSourcesValid, sourceError, terrainPlanes: terrainPlanes.size, ceilingLevels: ceilingLevels.size, backFaces, sideFaces, finite, escaped, maxLocalZ, clearanceMin, clearanceMax, tips, dim, stream: { speed: vertical.speed, phase: vertical.phase, head: vertical.head, gap: vertical.gap, direction: vertical.direction, flowRange: vertical.flowRange, min: vertical.flowMin, max: vertical.flowMax, trainLength: vertical.trainLength, gapLength: vertical.gapLength, brightness: vertical.brightness }, positions, seedSignature: cave.streams.slice(0, 16).map((s) => [s.speed, s.phase, s.brightness, s.trainLength, s.gapLength].join(":")).join("|"), updates: cave.updates };
+    return { id: cave.id, buffers: cave.nodes.length, capacity: cave.capacity, bytes: cave.bufferBytes, fixed: cave.nodes.every((node) => node.fixedInstanceCapacity && node.instanceCount <= node.instanceData.length / 20 && node.drawInstanceCount <= node.instanceCount), actualCount, drawn: cave.nodes.reduce((n, node) => n + node.drawInstanceCount, 0), sections: cave.sections.length, terrain: cave.sections.filter((s) => s.source === "terrain").length, props: cave.sections.filter((s) => s.source === "prop").length, horizontal: cave.sections.filter((s) => s.horizontal).length, vertical: cave.sections.filter((s) => !s.horizontal).length, fullCeiling: cave.sections.some((s) => s.ny < -0.99), fullFloor: cave.sections.some((s) => s.ny > 0.99) || worldFloors.has(cave.caveIndex), worldFloorFaces: worldFloors.get(cave.caveIndex) || 0, owned: cave.sections.every((s) => (s.supports || [s]).every((support) => tagged.has(support.face))), backingSourcesValid, sourceError, terrainPlanes: terrainPlanes.size, ceilingLevels: ceilingLevels.size, backFaces, sideFaces, finite, escaped, maxLocalZ, clearanceMin, clearanceMax, tips, dim, stream: { speed: vertical.speed, phase: vertical.phase, head: vertical.head, gap: vertical.gap, direction: vertical.direction, flowRange: vertical.flowRange, min: vertical.flowMin, max: vertical.flowMax, trainLength: vertical.trainLength, gapLength: vertical.gapLength, brightness: vertical.brightness }, positions, seedSignature: cave.streams.slice(0, 16).map((s) => [s.speed, s.phase, s.brightness, s.trainLength, s.gapLength].join(":")).join("|"), updates: cave.updates };
   });
   return { active: C.world.active, permanentCave: C.world.permanentCave, time: C.world.sampleStream(0).time, quality: B.renderer.quality, records: B.renderer.stats.records, caveCount: caves.length, caveIds: B.mouths.map((m) => m.id), taggedFaces: tagged.size, overlappingFaces, missingFlags, brightGlyphFaces, linerNodes, caves };
 };

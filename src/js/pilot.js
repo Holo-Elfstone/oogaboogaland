@@ -10,6 +10,7 @@
   const YAW_RATE = 1.7, PITCH_RATE = 1.1;
   const CLOSE_RATE = 12, CLOSE_SNAP = 0.001, CLOSE_PINCH_EXIT = 1.08, CLOSE_LOOK_DIST = 4, CLOSE_HEAD_MIX = 0.1;
   const CLOSE_GROUND_RATE = 9, CLOSE_TELEPORT = 0.8;
+  const WALK = { speed: 7.75, gravity: 9.8, step: 0.6, ledgeRise: 2.4, ledgeSpeed: 3, ledgeDrag: 1.5 };
   // The camera swings behind while walking forward
   const FOLLOW_TURN = 1.8, DRAG_HOLD = 1.5;
   // Act button labels, action or jetpack throttle
@@ -24,6 +25,11 @@
     let freeStrafe = 0, freeForward = 0, freeClimb = 0, freeMoveYaw = view.yaw;
     let closeWanted = false, closeMix = 0, closeExitScale = 1, closeCave = null, hiddenHead = null, hiddenHeadCameraHidden = false, viewPitch = orbit.pitch;
     let groundView = 0, groundTarget = 0, groundX = 0, groundZ = 0, groundZone = 0, groundValid = false, groundLift = 0, groundEasing = false;
+    let freeFeetY = 0, freeFloorY = 0, freeFallV = 0, freeLeapX = 0, freeLeapZ = 0, freeFallValid = false, freeFalling = false;
+    const resetFreeFall = () => {
+      freeFallV = freeLeapX = freeLeapZ = 0;
+      freeFallValid = freeFalling = false;
+    };
     const bind = (systems) => {
       crew = systems.crew;
       fx = systems.fx;
@@ -35,6 +41,7 @@
       groundView = groundTarget = groundLift = 0;
       groundEasing = false;
       groundValid = false;
+      resetFreeFall();
     };
     const restoreHead = () => {
       if (!hiddenHead) return;
@@ -49,10 +56,21 @@
       cave.parts.head.cameraHidden = true;
     };
     const setFreeEye = () => {
+      resetFreeFall();
       const eyeHeight = close.eyeHeight;
       freeTarget.x = camera.position.x;
       freeTarget.z = camera.position.z;
-      freeTarget.y = close.groundAt(freeTarget.x, freeTarget.z, camera.position.y - eyeHeight) + eyeHeight;
+      freeFloorY = close.groundAt(freeTarget.x, freeTarget.z, camera.position.y - eyeHeight);
+      freeTarget.y = Math.max(camera.position.y, freeFloorY + eyeHeight);
+      freeFeetY = freeTarget.y - eyeHeight;
+      freeFallValid = true;
+      freeFalling = freeFeetY - freeFloorY > WALK.step;
+      const cave = player();
+      if (freeFalling && cave) {
+        freeFallV = cave.hopV;
+        freeLeapX = cave.leap.vx;
+        freeLeapZ = cave.leap.vz;
+      }
       clampTarget(freeTarget);
       orbit.target = freeTarget;
     };
@@ -75,6 +93,7 @@
       closeWanted = false;
       closeExitScale = 1;
       closeCave = null;
+      resetFreeFall();
       const cave = player();
       orbit.tDist = clamp(cave ? close.trailingDist : close.orbitDist, DIST_MIN, DIST_MAX);
       orbit.tPitch = clamp(orbit.tPitch, cave ? follow.pitch[0] : PITCH_MIN, cave ? follow.pitch[1] : PITCH_MAX);
@@ -104,8 +123,8 @@
     const release = (quiet = false) => {
       const cave = player();
       if (!cave) return;
-      if (closeWanted) setFreeEye();
       resetGroundView();
+      if (closeWanted) setFreeEye();
       restoreHead();
       closeCave = null;
       crew.release();
@@ -173,6 +192,7 @@
       closeExitScale = 1;
       closeCave = null;
       restoreHead();
+      resetFreeFall();
       orbit.target = p.target;
       orbit.tYaw = p.yaw;
       orbit.tPitch = p.pitch;
@@ -231,15 +251,22 @@
             freeTarget.z = orbit.target.z;
             orbit.target = freeTarget;
           }
-          const speed = (fly.speed + orbit.tDist * fly.perDist) * dt;
+          const speed = (closeWanted ? WALK.speed / Math.max(1, Math.hypot(a.x, a.y)) : fly.speed + orbit.tDist * fly.perDist) * dt;
           freeTarget.x += (fx0 * a.y + rx * a.x) * speed;
           freeTarget.z += (fz0 * a.y + rz * a.x) * speed;
-          if (a.up) {
+          if (a.up && !closeWanted) {
             // Underground bounds apply to the eye. A pitched orbit's focus can
             // sit below its floor, and horizontal input must leave it there.
             const offset = fly.yMin === undefined ? 0 : Math.sin(viewPitch) * orbit.dist * (1 - closeMix);
             freeTarget.y = clamp(freeTarget.y + a.up * fly.climb * dt, (fly.yMin === undefined ? 0 : fly.yMin) - offset, fly.yMax - offset);
           }
+          clampTarget(freeTarget);
+        }
+        if (closeWanted && freeFalling && freeFeetY + (freeFallV - WALK.gravity * dt) * dt > freeFloorY && (freeLeapX || freeLeapZ)) {
+          freeTarget.x += freeLeapX * dt;
+          freeTarget.z += freeLeapZ * dt;
+          freeLeapX = damp(freeLeapX, 0, WALK.ledgeDrag, dt);
+          freeLeapZ = damp(freeLeapZ, 0, WALK.ledgeDrag, dt);
           clampTarget(freeTarget);
         }
         freeStrafe = a.x; freeForward = a.y; freeClimb = a.up;
@@ -275,8 +302,8 @@
           closeMix = 0;
           faceWith(cave);
         } else {
-          if (closeCave) setFreeEye();
           resetGroundView();
+          if (closeCave) setFreeEye();
           closeCave = null;
           restoreHead();
         }
@@ -334,6 +361,7 @@
       const orbitY = orbit.ty + sp * orbit.dist;
       const orbitZ = orbit.tz + Math.cos(orbit.yaw) * cp * orbit.dist;
       let eyeX = freeTarget.x, eyeZ = freeTarget.z, eyeY = freeTarget.y, eyeClearance = close ? close.eyeHeight : 0;
+      let freeLedge = false, previousFloor = freeFloorY;
       if (closeMix > 0) {
         if (cave) {
           const heading = cave.root.rotation.y, forward = close.eyeForward;
@@ -341,6 +369,27 @@
           eyeY = cave.root.position.y - cave.baseY + cave.headOffset * close.eyeRatio + cave.viewLift;
           eyeZ = cave.root.position.z + Math.cos(heading) * forward;
           eyeClearance = eyeY - close.groundAt(eyeX, eyeZ, cave.root.position.y - cave.baseY - cave.hop);
+        } else if (closeWanted) {
+          if (!freeFallValid) {
+            freeFeetY = freeFloorY = close.groundAt(eyeX, eyeZ, camera.position.y - close.eyeHeight);
+            freeFallValid = true;
+          }
+          previousFloor = freeFloorY;
+          if (freeFalling) {
+            freeFallV -= WALK.gravity * dt;
+            freeFeetY += freeFallV * dt;
+          }
+          const ground = close.groundAt(eyeX, eyeZ, freeFeetY);
+          if (!freeFalling && freeFloorY - ground > WALK.step) {
+            freeFalling = freeLedge = true;
+            freeFallV = WALK.ledgeRise;
+            freeLeapX = -Math.sin(orbit.yaw) * WALK.ledgeSpeed;
+            freeLeapZ = -Math.cos(orbit.yaw) * WALK.ledgeSpeed;
+          }
+          if (!freeFalling) freeFeetY = ground;
+          else freeFeetY = Math.max(ground, freeFeetY);
+          freeFloorY = ground;
+          eyeY = freeFeetY + close.eyeHeight;
         } else eyeY = close.groundAt(eyeX, eyeZ, camera.position.y - close.eyeHeight) + close.eyeHeight;
       }
       camera.position.x = orbitX + (eyeX - orbitX) * closeMix;
@@ -348,6 +397,19 @@
       camera.position.z = orbitZ + (eyeZ - orbitZ) * closeMix;
       const desiredX = camera.position.x, desiredY = camera.position.y, desiredZ = camera.position.z;
       const collided = clampCamera(camera.position, closeMix, eyeClearance, groundEasing, dt, groundReset, directCameraPosition, !cave && orbit.target === freeTarget);
+      if (!cave && closeWanted && closeMix === 1 && freeFallValid) {
+        const feet = camera.position.y - close.eyeHeight;
+        const ground = close.groundAt(camera.position.x, camera.position.z, feet);
+        // Collision may reject the requested ledge crossing. Only accepted
+        // movement starts a fall, and a landing clears its velocity and drift.
+        if (freeLedge && previousFloor - ground <= WALK.step || freeFalling && freeFallV <= 0 && feet <= ground + 1e-6) {
+          freeFalling = false;
+          freeFallV = freeLeapX = freeLeapZ = 0;
+        } else if (freeFalling && freeFallV > 0 && feet < freeFeetY - 1e-6) freeFallV = 0;
+        freeFeetY = feet;
+        freeFloorY = ground;
+        freeTarget.y = camera.position.y;
+      }
       if (collided && !cave && orbit.target === freeTarget) {
         // A blocked eye consumes its blocked movement. Keep the orbit offset,
         // but discard hidden target travel so reversing responds immediately.
@@ -412,7 +474,7 @@
       controls.dispose();
       crew = fx = null;
     };
-    return { orbit, hooks, controls, bind, readInput, update, goPreset, navigate, possess, release, action, showAct, dispose, get player() {
+    return { orbit, hooks, controls, bind, readInput, update, goPreset, navigate, enterClose, possess, release, action, showAct, dispose, get player() {
       return player();
     }, get mode() {
       return closeWanted ? (player() ? "first-person" : "eye-level") : (player() ? "trailing" : "orbit");
@@ -420,6 +482,8 @@
       return closeMix;
     }, get closeWanted() {
       return closeWanted;
+    }, get freeFalling() {
+      return freeFalling;
     }, get groundLift() {
       return groundLift;
     }, get groundView() {
@@ -430,5 +494,5 @@
       return viewPitch;
     } };
   };
-  BL.pilot = { create };
+  BL.pilot = { create, WALK };
 })();
