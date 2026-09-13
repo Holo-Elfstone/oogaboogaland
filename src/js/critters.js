@@ -50,13 +50,15 @@
     batch.shown += batch.shown < target ? 1 : -1;
   };
   // Butterflies, fireflies and embers for one scene
-  const create = ({ root, renderer, flowers, fire, meadowRadius, heightAt }) => {
+  const create = ({ root, renderer, flowers, fire, secondaryFire = null, meadowRadius, heightAt }) => {
     const rand = mulberry32(SEED);
     const butterflies = [makeBatch(hubModels.butterfly(0), BUTTERFLY_CAP, true), makeBatch(hubModels.butterfly(1), BUTTERFLY_CAP, true)];
     const fireflies = makeBatch(hubModels.firefly(), FIREFLY_CAP, true);
     const embers = makeBatch(hubModels.ember(), EMBER_CAP, true);
+    const secondaryEmbers = secondaryFire ? makeBatch(hubModels.ember(), EMBER_CAP, true) : null;
     const burstVx = new Float32Array(FIREFLY_CAP), burstVz = new Float32Array(FIREFLY_CAP);
     const emberT = new Float32Array(EMBER_CAP), emberPeriod = new Float32Array(EMBER_CAP);
+    const secondaryEmberT = secondaryFire ? new Float32Array(EMBER_CAP) : null, secondaryEmberPeriod = secondaryFire ? new Float32Array(EMBER_CAP) : null;
     let burstNext = 0;
     for (let v = 0; v < 2; v++) {
       const b = butterflies[v];
@@ -80,19 +82,23 @@
       fireflies.speed[i] = 0.5 + rand() * 0.5;
       i++;
     }
-    if (fire) {
-      const y = heightAt(fire.x, fire.z);
+    const seedEmbers = (batch, source, times, periods) => {
+      if (!source) return;
+      const y = Number.isFinite(source.y) ? source.y : heightAt(source.x, source.z);
       for (let i = 0; i < EMBER_CAP; i++) {
-        embers.hx[i] = fire.x;
-        embers.hz[i] = fire.z;
-        embers.hy[i] = y + 0.5;
-        embers.phase[i] = rand() * Math.PI * 2;
-        embers.speed[i] = 0.8 + rand() * 0.6;
-        emberPeriod[i] = 1.2 + rand() * 0.6;
-        emberT[i] = rand() * emberPeriod[i];
+        batch.hx[i] = source.x;
+        batch.hz[i] = source.z;
+        batch.hy[i] = y + 0.5;
+        batch.phase[i] = rand() * Math.PI * 2;
+        batch.speed[i] = 0.8 + rand() * 0.6;
+        periods[i] = 1.2 + rand() * 0.6;
+        times[i] = rand() * periods[i];
       }
-    }
+    };
+    seedEmbers(embers, fire, emberT, emberPeriod);
+    seedEmbers(secondaryEmbers, secondaryFire, secondaryEmberT, secondaryEmberPeriod);
     addChild(root, butterflies[0].node, butterflies[1].node, fireflies.node, embers.node);
+    if (secondaryEmbers) addChild(root, secondaryEmbers.node);
     const updateButterflies = (b, elapsed) => {
       const data = b.node.instanceData;
       for (let i = 0; i < b.shown; i++) {
@@ -121,15 +127,15 @@
         writeInstance(data, i * 20, t, 1, x, y, z, 0.2 + 0.8 * blink * blink * blink, f.matrixLiving);
       }
     };
-    const updateEmbers = (dt, elapsed) => {
-      const e = embers, data = e.node.instanceData;
+    const updateEmbers = (e, times, periods, dt, elapsed) => {
+      const data = e.node.instanceData;
       for (let i = 0; i < e.shown; i++) {
-        emberT[i] += dt;
-        if (emberT[i] >= emberPeriod[i]) emberT[i] -= emberPeriod[i];
-        const k = emberT[i] / emberPeriod[i];
+        times[i] += dt;
+        if (times[i] >= periods[i]) times[i] -= periods[i];
+        const k = times[i] / periods[i];
         const x = e.hx[i] + Math.sin(elapsed * 2.6 + e.phase[i]) * 0.12 * k;
         const z = e.hz[i] + Math.cos(elapsed * 2.1 + e.phase[i]) * 0.12 * k;
-        writeInstance(data, i * 20, elapsed * 3 + e.phase[i], 1, x, e.hy[i] + emberT[i] * e.speed[i], z, 1 - k, e.matrixLiving);
+        writeInstance(data, i * 20, elapsed * 3 + e.phase[i], 1, x, e.hy[i] + times[i] * e.speed[i], z, 1 - k, e.matrixLiving);
       }
     };
     const finish = (b) => {
@@ -137,21 +143,24 @@
       b.node.visible = b.shown > 0;
       if (b.shown > 0) b.node.instanceVersion++;
     };
-    const update = (dt, elapsed, day, night, fireLit) => {
+    const update = (dt, elapsed, day, night, fireLit, secondaryFireLit = 0) => {
       const fraction = FRACTION[renderer.quality];
       const butterflyTarget = Math.round(BUTTERFLY_CAP * fraction * day);
       settle(butterflies[0], butterflyTarget, dt);
       settle(butterflies[1], butterflyTarget, dt);
       settle(fireflies, Math.round(FIREFLY_CAP * fraction * night), dt);
       settle(embers, fire ? Math.round(EMBER_CAP * fraction * night * fireLit) : 0, dt);
+      if (secondaryEmbers) settle(secondaryEmbers, Math.round(EMBER_CAP * fraction * secondaryFireLit), dt);
       updateButterflies(butterflies[0], elapsed);
       updateButterflies(butterflies[1], elapsed);
       updateFireflies(dt, elapsed);
-      updateEmbers(dt, elapsed);
+      updateEmbers(embers, emberT, emberPeriod, dt, elapsed);
+      if (secondaryEmbers) updateEmbers(secondaryEmbers, secondaryEmberT, secondaryEmberPeriod, dt, elapsed);
       finish(butterflies[0]);
       finish(butterflies[1]);
       finish(fireflies);
       finish(embers);
+      if (secondaryEmbers) finish(secondaryEmbers);
     };
     // Re-home a few fireflies to a shaken tree and scatter them outward
     const burst = (x, z) => {
@@ -173,9 +182,11 @@
       removeChild(root, butterflies[1].node);
       removeChild(root, fireflies.node);
       removeChild(root, embers.node);
+      if (secondaryEmbers) removeChild(root, secondaryEmbers.node);
       butterflies[0].shown = butterflies[1].shown = fireflies.shown = embers.shown = 0;
+      if (secondaryEmbers) secondaryEmbers.shown = 0;
     };
-    const stats = () => ({ butterflies: butterflies[0].shown + butterflies[1].shown, fireflies: fireflies.shown, embers: embers.shown });
+    const stats = () => ({ butterflies: butterflies[0].shown + butterflies[1].shown, fireflies: fireflies.shown, embers: embers.shown + (secondaryEmbers ? secondaryEmbers.shown : 0), surfaceEmbers: embers.shown, headquartersEmbers: secondaryEmbers ? secondaryEmbers.shown : 0 });
     return { update, burst, dispose, stats };
   };
   BL.critters = { create };

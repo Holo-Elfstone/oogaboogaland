@@ -31,8 +31,14 @@ Fly around the island with **W A S D** (or the arrows), **Q E** to turn, **R F**
 stick moves and the right stick looks. Double-tap a caveman to walk in their boots: the same
 keys or stick walk them, holding **both mouse buttons** walks them forward, **Space** (or
 the Ooga! button) eats from the pile, pokes a neighbour, shakes a tree, rustles a bush,
-rolls a die or flips a card, and walking into the lit cave enters it. **Escape** lets go. Lost? **0** or the **Reset view** button
-brings the camera home.
+rolls a die or flips a card, and walking into the lit cave enters it. **Escape** lets go.
+**0** brings the camera home.
+
+The island's **PILE**, **LAB**, **MIRROR**, and **HQ** buttons take your controlled Ooga,
+or just your free camera, to that destination while keeping your current view mode.
+**LAB** takes you to the EntropyLab entrance on the island; tap the cave or walk inside
+to enter the lab. **MIRROR** takes you to the OBL mirror, and **HQ** to the headquarters
+beneath the island.
 
 In Ooga Rally, **W** or **Up** accelerates, **S** or **Down** brakes and reverses, **A D**
 or **Left Right** steer, **Space** held drifts (release for a boost, tap to hop), **E** or
@@ -71,7 +77,8 @@ URL flags: `?scene=lab` opens the lab directly, `?scene=race` the rally garage a
 non-negative amount) to preview the pile at that starting level without changing saved state,
 use `&b=500` to choose how many test bananas each press of **B** adds and drops, use
 `&hour=22` to pin the clock at an hour, `&day=172` to choose a day of year, or
-`&daylen=120` to run a whole day in that many seconds. `&latitude=20` optionally changes
+`&daylen=120` to run a whole day in that many seconds. Use `&view=pile`, `&view=lab`,
+`&view=mirror`, or `&view=hq` to preload that island view. `&latitude=20` optionally changes
 the debug latitude (bounded to 66 degrees north or south). Use `&loot=1` to exercise the loot feature. Loot ships off: `LOOT_DEFAULT` in `src/js/director.js`
 turns it on for everyone. The pile holds at most ten million bananas; every count is clamped there.
 

@@ -25,6 +25,7 @@
   const overlayCtx = overlayCanvas.getContext("2d");
   const qualityLabel = $("quality");
   const curtain = $("curtain");
+  const worldClock = $("world-clock");
   let renderer = null;
   if (!params.has("canvas2d") && glRenderer.isSupported()) {
     try {
@@ -53,6 +54,56 @@
   let sceneTime = 0;
   let transition = null;
   let fade = 0;
+  const CLOCK_NS = "http://www.w3.org/2000/svg";
+  const clockSvg = document.createElementNS(CLOCK_NS, "svg");
+  const clockPath = document.createElementNS(CLOCK_NS, "path");
+  const clockDaylen = DEBUG ? Number(params.get("daylen")) : NaN;
+  const clockStartDate = new Date();
+  const requestedClockHour = DEBUG && params.has("hour") ? Number(params.get("hour")) : NaN;
+  const clockBaseHour = Number.isFinite(requestedClockHour) ? requestedClockHour : clockStartDate.getHours() + clockStartDate.getMinutes() / 60 + clockStartDate.getSeconds() / 3600;
+  let clockNextUpdate = 0, clockMinute = -1;
+  clockSvg.setAttribute("viewBox", "0 0 30 6");
+  clockSvg.setAttribute("class", "sign");
+  clockSvg.setAttribute("aria-hidden", "true");
+  clockPath.setAttribute("fill", "currentColor");
+  clockSvg.append(clockPath);
+  worldClock.replaceChildren(clockSvg);
+  const updateWorldClock = (now) => {
+    if (now < clockNextUpdate) return;
+    clockNextUpdate = now + 100;
+    let hours, minutes;
+    if (clockDaylen > 0) {
+      const sceneDaylight = active && active.debug && active.debug.daylight;
+      const relative = sceneDaylight && Number.isFinite(sceneDaylight.hour) ? sceneDaylight.hour : clockBaseHour + elapsed * 24 / clockDaylen;
+      const total = Math.floor(((relative % 24 + 24) % 24) * 60) % 1440;
+      hours = Math.floor(total / 60);
+      minutes = total % 60;
+    } else {
+      const local = new Date();
+      hours = local.getHours();
+      minutes = local.getMinutes();
+    }
+    const minute = hours * 60 + minutes;
+    if (minute === clockMinute) return;
+    clockMinute = minute;
+    const twelve = hours % 12 || 12;
+    const text = `${twelve < 10 ? " " : Math.floor(twelve / 10)}${twelve % 10}:${Math.floor(minutes / 10)}${minutes % 10} ${hours < 12 ? "AM" : "PM"}`;
+    let d = "", cursor = 0;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === " ") {
+        cursor += i === 0 ? 4 : 2;
+        continue;
+      }
+      const glyph = window.BL.hubModels.SIGN_GLYPHS[ch];
+      for (let row = 0; row < glyph.length; row++) for (let col = 0; col < glyph[row].length; col++) if (glyph[row][col] === "1") d += `M${cursor + col} ${row}h.82v.82h-.82z`;
+      cursor += 4;
+    }
+    const label = text.trimStart();
+    clockPath.setAttribute("d", d);
+    worldClock.dateTime = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+    worldClock.setAttribute("aria-label", `${clockDaylen > 0 ? "Ooga Booga time" : "Local time"} ${label}`);
+  };
   const go = (id) => {
     const next = scenes[id];
     if (!next) throw new Error(`Unknown scene "${id}"`);
@@ -170,6 +221,7 @@
     if (transition) stepTransition(dt);
     sceneTime += dt;
     active.update(dt, sceneTime);
+    updateWorldClock(now);
     const drawn = renderer.render(active.root, active.camera, active.renderOpts);
     if (drawn && !firstDraw) {
       firstDraw = true;
