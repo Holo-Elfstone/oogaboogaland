@@ -21,6 +21,7 @@
     const followTarget = { x: 0, y: 0, z: 0 };
     const view = presets[ctx.landing];
     const orbit = { ...view, tYaw: view.yaw, tPitch: view.pitch, tDist: view.dist, tx: view.target.x, ty: view.target.y, tz: view.target.z };
+    let freeStrafe = 0, freeForward = 0, freeClimb = 0, freeMoveYaw = view.yaw;
     let closeWanted = false, closeMix = 0, closeExitScale = 1, closeCave = null, hiddenHead = null, hiddenHeadCameraHidden = false, viewPitch = orbit.pitch;
     let groundView = 0, groundTarget = 0, groundX = 0, groundZ = 0, groundZone = 0, groundValid = false, groundLift = 0, groundEasing = false;
     const bind = (systems) => {
@@ -184,6 +185,7 @@
       const fx0 = -Math.sin(orbit.yaw), fz0 = -Math.cos(orbit.yaw);
       const rx = Math.cos(orbit.yaw), rz = -Math.sin(orbit.yaw);
       if (cave) {
+        freeStrafe = freeForward = freeClimb = 0;
         const p = cave.root.position;
         followTarget.x = p.x;
         followTarget.y = p.y - cave.baseY + follow.y;
@@ -196,18 +198,52 @@
           const behind = cave.root.rotation.y + Math.PI;
           orbit.tYaw += Math.atan2(Math.sin(behind - orbit.tYaw), Math.cos(behind - orbit.tYaw)) * Math.min(1, FOLLOW_TURN * dt);
         }
-      } else if (a.x || a.y || a.up) {
-        if (orbit.target !== freeTarget) {
-          freeTarget.x = orbit.target.x;
-          freeTarget.y = orbit.target.y;
-          freeTarget.z = orbit.target.z;
-          orbit.target = freeTarget;
+      } else {
+        if (orbit.target === freeTarget) {
+          const stopStrafe = freeStrafe && !a.x, stopForward = freeForward && !a.y;
+          if (stopStrafe || stopForward || freeClimb && !a.up) {
+            // Consume only released input's remaining damping. The eye's
+            // current center also keeps close-view release from snapping back.
+            const offset = orbit.dist * (1 - closeMix), cp = Math.cos(viewPitch);
+            const centerX = camera.position.x - Math.sin(orbit.yaw) * cp * offset;
+            const centerY = camera.position.y - Math.sin(viewPitch) * offset;
+            const centerZ = camera.position.z - Math.cos(orbit.yaw) * cp * offset;
+            const sr = Math.sin(freeMoveYaw), cr = Math.cos(freeMoveYaw);
+            if (stopStrafe) {
+              const target = (centerX - freeTarget.x) * cr - (centerZ - freeTarget.z) * sr;
+              const current = (centerX - orbit.tx) * cr - (centerZ - orbit.tz) * sr;
+              freeTarget.x += target * cr; freeTarget.z -= target * sr;
+              orbit.tx += current * cr; orbit.tz -= current * sr;
+            }
+            if (stopForward) {
+              const target = (centerX - freeTarget.x) * sr + (centerZ - freeTarget.z) * cr;
+              const current = (centerX - orbit.tx) * sr + (centerZ - orbit.tz) * cr;
+              freeTarget.x += target * sr; freeTarget.z += target * cr;
+              orbit.tx += current * sr; orbit.tz += current * cr;
+            }
+            if (freeClimb && !a.up) freeTarget.y = orbit.ty = centerY;
+          }
         }
-        const speed = (fly.speed + orbit.tDist * fly.perDist) * dt;
-        freeTarget.x += (fx0 * a.y + rx * a.x) * speed;
-        freeTarget.z += (fz0 * a.y + rz * a.x) * speed;
-        freeTarget.y = clamp(freeTarget.y + a.up * fly.climb * dt, 0, fly.yMax);
-        clampTarget(freeTarget);
+        if (a.x || a.y || a.up) {
+          if (orbit.target !== freeTarget) {
+            freeTarget.x = orbit.target.x;
+            freeTarget.y = orbit.target.y;
+            freeTarget.z = orbit.target.z;
+            orbit.target = freeTarget;
+          }
+          const speed = (fly.speed + orbit.tDist * fly.perDist) * dt;
+          freeTarget.x += (fx0 * a.y + rx * a.x) * speed;
+          freeTarget.z += (fz0 * a.y + rz * a.x) * speed;
+          if (a.up) {
+            // Underground bounds apply to the eye. A pitched orbit's focus can
+            // sit below its floor, and horizontal input must leave it there.
+            const offset = fly.yMin === undefined ? 0 : Math.sin(viewPitch) * orbit.dist * (1 - closeMix);
+            freeTarget.y = clamp(freeTarget.y + a.up * fly.climb * dt, (fly.yMin === undefined ? 0 : fly.yMin) - offset, fly.yMax - offset);
+          }
+          clampTarget(freeTarget);
+        }
+        freeStrafe = a.x; freeForward = a.y; freeClimb = a.up;
+        freeMoveYaw = orbit.yaw;
       }
       if (a.yaw) {
         orbit.tYaw += a.yaw * YAW_RATE * dt;
@@ -222,6 +258,12 @@
     // The camera moves only on input, no drift
     const update = (dt) => {
       const cave = player();
+      if (cave) {
+        const p = cave.root.position;
+        followTarget.x = p.x;
+        followTarget.y = p.y - cave.baseY + follow.y;
+        followTarget.z = p.z;
+      }
       const directTrailingView = trailingViewInput && !!cave && !closeWanted;
       const directCameraPosition = directTrailingView || trailingZoomInput && !!cave;
       trailingViewInput = false;
@@ -287,7 +329,7 @@
       }
       viewPitch = orbit.pitch * (1 - flatten);
       const cp = Math.cos(viewPitch), sp = Math.sin(viewPitch);
-      const targetX = orbit.tx, targetY = orbit.ty - portrait * 0.6, targetZ = orbit.tz;
+      let targetX = orbit.tx, targetY = orbit.ty - portrait * 0.6, targetZ = orbit.tz;
       const orbitX = orbit.tx + Math.sin(orbit.yaw) * cp * orbit.dist;
       const orbitY = orbit.ty + sp * orbit.dist;
       const orbitZ = orbit.tz + Math.cos(orbit.yaw) * cp * orbit.dist;
@@ -304,7 +346,19 @@
       camera.position.x = orbitX + (eyeX - orbitX) * closeMix;
       camera.position.y = orbitY + (eyeY - orbitY) * closeMix;
       camera.position.z = orbitZ + (eyeZ - orbitZ) * closeMix;
-      clampCamera(camera.position, closeMix, eyeClearance, groundEasing, dt, groundReset, directCameraPosition);
+      const desiredX = camera.position.x, desiredY = camera.position.y, desiredZ = camera.position.z;
+      const collided = clampCamera(camera.position, closeMix, eyeClearance, groundEasing, dt, groundReset, directCameraPosition, !cave && orbit.target === freeTarget);
+      if (collided && !cave && orbit.target === freeTarget) {
+        // A blocked eye consumes its blocked movement. Keep the orbit offset,
+        // but discard hidden target travel so reversing responds immediately.
+        const orbitMix = 1 - closeMix;
+        if (Math.abs(camera.position.x - desiredX) > 1e-7) freeTarget.x = orbit.tx = camera.position.x - (orbitX - targetX) * orbitMix;
+        if (Math.abs(camera.position.y - desiredY) > 1e-7) freeTarget.y = orbit.ty = camera.position.y - (orbitY - orbit.ty) * orbitMix;
+        if (Math.abs(camera.position.z - desiredZ) > 1e-7) freeTarget.z = orbit.tz = camera.position.z - (orbitZ - targetZ) * orbitMix;
+        targetX = orbit.tx;
+        targetY = orbit.ty - portrait * 0.6;
+        targetZ = orbit.tz;
+      }
       const lookCp = Math.cos(orbit.pitch), lookSp = Math.sin(orbit.pitch);
       const lookX = camera.position.x - Math.sin(orbit.yaw) * lookCp * CLOSE_LOOK_DIST;
       const lookY = camera.position.y - lookSp * CLOSE_LOOK_DIST;
@@ -312,6 +366,43 @@
       camera.target.x = targetX + (lookX - targetX) * closeMix;
       camera.target.y = targetY + (lookY - targetY) * closeMix;
       camera.target.z = targetZ + (lookZ - targetZ) * closeMix;
+    };
+    // The scene supplies a safe arrival and resets its collision history first.
+    // Navigation changes location, not the visitor's mode or chosen Ooga.
+    const navigate = (destination) => {
+      const cave = player(), position = destination.position;
+      resetGroundView();
+      freeStrafe = freeForward = freeClimb = dragHold = 0;
+      trailingViewInput = trailingZoomInput = false;
+      closeMix = closeWanted ? 1 : 0;
+      closeExitScale = 1;
+      closeCave = closeWanted ? cave : null;
+      orbit.yaw = orbit.tYaw = freeMoveYaw = destination.yaw;
+      orbit.pitch = orbit.tPitch = destination.pitch;
+      orbit.dist = orbit.tDist = destination.dist;
+      if (cave) {
+        crew.relocatePlayer(position, destination.yaw + Math.PI);
+        followTarget.x = position.x;
+        followTarget.y = position.y + follow.y;
+        followTarget.z = position.z;
+        orbit.target = followTarget;
+      } else {
+        const target = closeWanted ? position : destination.target;
+        freeTarget.x = target.x;
+        freeTarget.y = target.y + (closeWanted ? close.eyeHeight : 0);
+        freeTarget.z = target.z;
+        orbit.target = freeTarget;
+        if (closeWanted) {
+          // Support selection must start on the destination's elevation layer.
+          camera.position.x = freeTarget.x;
+          camera.position.y = freeTarget.y;
+          camera.position.z = freeTarget.z;
+        }
+      }
+      orbit.tx = orbit.target.x;
+      orbit.ty = orbit.target.y;
+      orbit.tz = orbit.target.z;
+      update(0);
     };
     const dispose = () => {
       resetGroundView();
@@ -321,7 +412,7 @@
       controls.dispose();
       crew = fx = null;
     };
-    return { orbit, hooks, controls, bind, readInput, update, goPreset, possess, release, action, showAct, dispose, get player() {
+    return { orbit, hooks, controls, bind, readInput, update, goPreset, navigate, possess, release, action, showAct, dispose, get player() {
       return player();
     }, get mode() {
       return closeWanted ? (player() ? "first-person" : "eye-level") : (player() ? "trailing" : "orbit");

@@ -179,6 +179,7 @@
     const cavities = new Uint16Array(SX * SZ);
     const lowerCavities = new Uint16Array(SX * SZ);
     const rampCells = new Uint8Array(SX * SZ);
+    const rampCollision = new Uint32Array(SX * SZ);
     const rampHeights = new Float32Array((SX + 1) * (SZ + 1));
     const height = new Float32Array(SX * SZ);
     const paths = new Uint8Array(PX * PZ);
@@ -476,6 +477,7 @@
         const cave = along > frame.e - 0.48 && along < ROOM.to && across < ROOM.w / 2 ? frames.indexOf(frame) + 1 : 0;
         // Curving slopes are not coplanar quads: glyphs and collision share the
         // renderer's exact triangles, including the clipped doorway boundary.
+        rampCollision[gx * SZ + gz] = (rampGeometry.faces.length << 2) | (clipped.length - 2);
         for (let n = 1; n < clipped.length - 1; n++) rampGeometry.faces.push({ i: [v, v + n, v + n + 1], color: PALETTE[(Math.floor(gx / 4) + Math.floor(gz / 4)) % 5 === 0 ? P.stoneDark : P.floor], emissive: 0, headquartersRamp: true, matrixCave: cave, matrixLocalGlyphSurface: cave !== 0 });
       }
     }
@@ -549,6 +551,94 @@
     const surfaceAt = (x, z) => {
       const i = column(x, z);
       return i < 0 ? 0 : rampCells[i] ? Math.max(surface[i], rampFloorAt(x, z)) : surface[i];
+    };
+    // Select the actual supporting run by height, including shelves and window
+    // sills. A rock column taller than the permitted step returns its own top,
+    // so callers can reject it instead of falling back to the room below it.
+    const supportAt = (x, z, y = Infinity, maxStep = 0.6) => {
+      const i = column(x, z);
+      if (i < 0 || !land[i]) return 0;
+      if (y >= surface[i] - maxStep) return surfaceAt(x, z);
+      const gx = Math.floor(i / SZ), gz = i % SZ, base = gx * SY * SZ + gz;
+      let gy = clamp(Math.floor((y + maxStep - ORIGIN.y) / UNIT), 0, SY - 1);
+      if (data[base + gy * SZ]) {
+        while (gy < SY && data[base + gy * SZ]) gy++;
+      } else {
+        while (gy >= 0 && !data[base + gy * SZ]) gy--;
+        gy++;
+      }
+      const floor = (gy - SURFACE) * UNIT;
+      return rampCells[i] ? Math.max(floor, rampFloorAt(x, z)) : floor;
+    };
+    // A circle overlaps a column exactly; corner-only contact is not a wall.
+    const overlapsColumn = (x, z, radius2, gx, gz) => {
+      const dx = Math.max(0, Math.abs((gx + 0.5) * UNIT + ORIGIN.x - x) - UNIT / 2);
+      const dz = Math.max(0, Math.abs((gz + 0.5) * UNIT + ORIGIN.z - z) - UNIT / 2);
+      return radius2 ? dx * dx + dz * dz < radius2 - 1e-12 : dx === 0 && dz === 0;
+    };
+    // Highest point of a rendered slope triangle under a circular footprint.
+    // The maximum is on an edge or at the disk's uphill point; no samples or
+    // temporary vectors are needed, even at the clipped doorway triangles.
+    const rampTriangleTop = (face, x, z, radius) => {
+      const verts = geometry.verts, indices = face.i;
+      const a = indices[0] * 3, b = indices[1] * 3, c = indices[2] * 3;
+      const ax = verts[a], ay = verts[a + 1], az = verts[a + 2];
+      const bx = verts[b] - ax, by = verts[b + 1] - ay, bz = verts[b + 2] - az;
+      const cx = verts[c] - ax, cy = verts[c + 1] - ay, cz = verts[c + 2] - az;
+      const determinant = bx * cz - bz * cx;
+      const gradientX = (by * cz - cy * bz) / determinant, gradientZ = (bx * cy - cx * by) / determinant;
+      const length = Math.hypot(gradientX, gradientZ), scale = length ? radius / length : 0;
+      const px = x + gradientX * scale - ax, pz = z + gradientZ * scale - az;
+      const u = (px * cz - pz * cx) / determinant, v = (bx * pz - bz * px) / determinant;
+      let top = u >= -1e-9 && v >= -1e-9 && u + v <= 1 + 1e-9 ? ay + gradientX * px + gradientZ * pz : -Infinity;
+      for (let edge = 0; edge < 3; edge++) {
+        const p = indices[edge] * 3, q = indices[(edge + 1) % 3] * 3;
+        const dx = verts[q] - verts[p], dz = verts[q + 2] - verts[p + 2], dy = verts[q + 1] - verts[p + 1];
+        const ex = x - verts[p], ez = z - verts[p + 2], length2 = dx * dx + dz * dz;
+        const middle = (ex * dx + ez * dz) / length2;
+        const perpendicularX = ex - dx * middle, perpendicularZ = ez - dz * middle;
+        const remaining = radius * radius - perpendicularX * perpendicularX - perpendicularZ * perpendicularZ;
+        if (remaining < 0) continue;
+        const half = Math.sqrt(remaining / length2), lo = Math.max(0, middle - half), hi = Math.min(1, middle + half);
+        if (lo <= hi) top = Math.max(top, verts[p + 1] + dy * (dy > 0 ? hi : lo));
+      }
+      return top;
+    };
+    // Exact voxel overlap for a vertical cylinder, bottom y and upward height.
+    // Slopes fill the small gap above their voxel bases using the render mesh.
+    const clearAt = (x, y, z, radius = 0, bodyHeight = 0) => {
+      const epsilon = 1e-7, edge = radius ? epsilon : 0, cap = bodyHeight ? epsilon : 0;
+      const gx0 = Math.max(0, Math.floor((x - radius - ORIGIN.x + edge) / UNIT)), gx1 = Math.min(SX - 1, Math.floor((x + radius - ORIGIN.x - edge) / UNIT));
+      const gz0 = Math.max(0, Math.floor((z - radius - ORIGIN.z + edge) / UNIT)), gz1 = Math.min(SZ - 1, Math.floor((z + radius - ORIGIN.z - edge) / UNIT));
+      const gy0 = Math.max(0, Math.floor((y - ORIGIN.y + cap) / UNIT)), gy1 = Math.min(SY - 1, Math.floor((y + bodyHeight - ORIGIN.y - cap) / UNIT));
+      for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) {
+        if (!overlapsColumn(x, z, radius * radius, gx, gz)) continue;
+        const base = gx * SY * SZ + gz, i = gx * SZ + gz;
+        for (let gy = gy0; gy <= gy1; gy++) if (data[base + gy * SZ]) return false;
+        const range = rampCollision[i];
+        if (!range || y + bodyHeight <= height[i] + epsilon) continue;
+        for (let n = 0; n < (range & 3); n++) {
+          const face = geometry.faces[rampFaceOffset + (range >>> 2) + n], verts = geometry.verts;
+          if (Math.max(verts[face.i[0] * 3 + 1], verts[face.i[1] * 3 + 1], verts[face.i[2] * 3 + 1]) <= y + epsilon) continue;
+          if (rampTriangleTop(face, x, z, radius) > y + epsilon) return false;
+        }
+      }
+      return true;
+    };
+    const ceilingAt = (x, y, z, radius = 0) => {
+      const gx0 = Math.max(0, Math.floor((x - radius - ORIGIN.x) / UNIT)), gx1 = Math.min(SX - 1, Math.floor((x + radius - ORIGIN.x) / UNIT));
+      const gz0 = Math.max(0, Math.floor((z - radius - ORIGIN.z) / UNIT)), gz1 = Math.min(SZ - 1, Math.floor((z + radius - ORIGIN.z) / UNIT));
+      let ceiling = Infinity;
+      for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) {
+        if (!overlapsColumn(x, z, radius * radius, gx, gz)) continue;
+        const base = gx * SY * SZ + gz;
+        let gy = Math.max(0, Math.floor((y - ORIGIN.y + 1e-7) / UNIT));
+        // The initial solid run is the floor at a slope's uphill edge.
+        while (gy < SY && data[base + gy * SZ]) gy++;
+        while (gy < SY && !data[base + gy * SZ]) gy++;
+        if (gy < SY) ceiling = Math.min(ceiling, (gy - SURFACE) * UNIT);
+      }
+      return ceiling;
     };
     // Continuous movement-only support across neighboring walkable voxel tops.
     // Rendering and collision continue to use the exact stepped arrays above.
@@ -788,6 +878,7 @@
     const mouths = frames.map((f) => ({ id: f.id, clock: f.clock, angle: f.angle, x: f.x, z: f.z, ry: facing(f.axis), floorY: 0, inside: { x: f.x + f.ox * inside, z: f.z + f.oz * inside }, apron: { x: f.x - f.ox * 1.6, z: f.z - f.oz * 1.6 } }));
     const geometry = gridGeometry(grid, { unit: UNIT, palette: PALETTE, origin: ORIGIN, matrixCaves });
     const rampOffset = geometry.verts.length / 3;
+    const rampFaceOffset = geometry.faces.length;
     for (const v of rampGeometry.verts) geometry.verts.push(v);
     for (const face of rampGeometry.faces) geometry.faces.push({ ...face, i: face.i.map((i) => i + rampOffset) });
     const built = {
@@ -795,6 +886,9 @@
       path,
       heightAt,
       surfaceAt,
+      supportAt,
+      clearAt,
+      ceilingAt,
       smoothSupportAt,
       cavityAt,
       cavityBytes: cavities.byteLength + lowerCavities.byteLength,

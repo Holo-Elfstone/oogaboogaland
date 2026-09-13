@@ -3,7 +3,7 @@
   const BL = window.BL = window.BL || {};
   const { math, models, contributors } = BL;
   const { clamp, lerp, damp, ease, randomInt } = math;
-  const { createNode, addChild, removeChild, addTween } = BL.scene;
+  const { createNode, addChild, removeChild, addTween, boundsOf } = BL.scene;
   const EAT_RATE = 1 / 20;
   const CHEW_PERIOD = 3.2;
   const BODY_PARTS = ["torso", "head", "legL", "legR", "armL", "armR"];
@@ -28,6 +28,7 @@
   // Meal and idle timings for a working caveman
   const EAT_MIN = 14, EAT_SPREAD = 20, HUNGRY_LINGER = 4, IDLE_MIN = 3, IDLE_SPREAD = 6, TRIPS_MAX = 3;
   const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = 3.2;
+  const PLAYER_STEP = 0.125;
   // Jetpack thrust, ceiling, capped fall and speed
   const JET_ACCEL = 20, JET_RISE = 7, JET_FALL = 7, JET_CEILING = 16, JET_SPEED = 6.4, JET_PUFF = 0.05;
   const JET_SPARKS = [models.particleGeometry("#ffb13b", 0.09, 1), models.particleGeometry("#f3efe4", 0.07, 0.6)];
@@ -71,6 +72,7 @@
         bedroll: null,
         phase: i * 1.37,
         baseY: cave.root.position.y,
+        bodyHeight: cave.root.position.y + cave.parts.head.position.y + boundsOf(cave.headOpen).max[1],
         state: "away",
         contributor,
         zzzTimer: 0,
@@ -560,29 +562,57 @@
     // Flying also stops at rock standing above him
     const canStep = (cave, flying, fromX, fromZ, toX, toZ) => {
       const y = cave.root.position.y - cave.baseY;
-      return flying
-        ? flyable(fromX, fromZ, toX, toZ, y) && groundAt(toX, toZ, y) <= y
-        : walkable(fromX, fromZ, toX, toZ, y);
+      const height = cave.bodyHeight + Math.max(0, cave.viewLift);
+      return flying || cave.hop > 0
+        ? flyable(fromX, fromZ, toX, toZ, y, height) && groundAt(toX, toZ, y) <= y
+        : walkable(fromX, fromZ, toX, toZ, y, height);
+    };
+    const movePlayer = (cave, flying, dx, dz) => {
+      const p = cave.root.position, steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / PLAYER_STEP));
+      dx /= steps;
+      dz /= steps;
+      for (let i = 0; i < steps; i++) {
+        if (canStep(cave, flying, p.x, p.z, p.x + dx, p.z + dz)) {
+          p.x += dx;
+          p.z += dz;
+        } else {
+          if (dx && canStep(cave, flying, p.x, p.z, p.x + dx, p.z)) p.x += dx;
+          if (dz && canStep(cave, flying, p.x, p.z, p.x, p.z + dz)) p.z += dz;
+        }
+        if (!flying && cave.hop === 0) p.y = groundY(cave);
+      }
+    };
+    const clampPlayerCeiling = (cave, ground, feet = cave.root.position.y - cave.baseY) => {
+      if (!ctx.ceilingAt) return;
+      const p = cave.root.position, ceiling = ctx.ceilingAt(p.x, p.z, feet);
+      const height = cave.bodyHeight + Math.max(0, cave.viewLift);
+      const limit = Math.max(0, ceiling - (ground - cave.baseY) - height);
+      // Held thrust stays in contact instead of integrating a small gravity
+      // drop before the next thrust impulse. A higher roof releases contact.
+      const held = cave.jet && cave.jet.thrust && feet + height >= ceiling - 1e-7;
+      if (cave.hop <= limit && !held) return;
+      cave.hop = limit;
+      cave.hopV = held ? 0 : Math.min(cave.hopV, 0);
     };
     // Move the visitor's caveman
     const runPlayer = (cave, dt) => {
       const p = cave.root.position, leap = cave.leap;
       const wasGround = groundY(cave);
       if (cave.jet) runJet(cave, dt);
+      clampPlayerCeiling(cave, wasGround);
+      p.y = wasGround + cave.hop;
       const flying = !!cave.jet && (cave.jet.thrust || cave.hop > 0.05);
       const len = Math.hypot(steer.x, steer.z);
       if (len > 0.05) {
         const k = Math.min(1, len) * (flying ? JET_SPEED : PLAYER_SPEED) * dt;
         const dx = steer.x / len * k, dz = steer.z / len * k;
-        if (canStep(cave, flying, p.x, p.z, p.x + dx, p.z + dz)) {
-          p.x += dx;
-          p.z += dz;
-        } else if (canStep(cave, flying, p.x, p.z, p.x + dx, p.z)) p.x += dx;
-        else if (canStep(cave, flying, p.x, p.z, p.x, p.z + dz)) p.z += dz;
+        movePlayer(cave, flying, dx, dz);
         const heading = Math.atan2(steer.x, steer.z);
         cave.root.rotation.y += Math.atan2(Math.sin(heading - cave.root.rotation.y), Math.cos(heading - cave.root.rotation.y)) * Math.min(1, 12 * dt) * (1 - steer.view);
         cave.act.phase += dt * 10 * (steer.view > 0 && steer.forward < -0.05 ? -1 : 1);
+        const positionY = p.y;
         walkPose(cave, cave.act.phase);
+        p.y = positionY;
         if (steer.view > 0) closeWalkPose(cave);
         cave.parts.snack.visible = false;
       } else {
@@ -593,10 +623,7 @@
       // Airborne after a ledge the leap carries him on, fading, legs tucked
       if (cave.hop > 0 && (leap.vx || leap.vz)) {
         const dx = leap.vx * dt, dz = leap.vz * dt;
-        if (canStep(cave, flying, p.x, p.z, p.x + dx, p.z + dz)) {
-          p.x += dx;
-          p.z += dz;
-        }
+        movePlayer(cave, flying, dx, dz);
         leap.vx = damp(leap.vx, 0, 1.5, dt);
         leap.vz = damp(leap.vz, 0, 1.5, dt);
         flyPose(cave);
@@ -617,7 +644,11 @@
         }
       }
       // One place sets the height, so nothing compounds
-      cave.root.position.y = groundY(cave) + cave.hop;
+      const ground = groundY(cave);
+      // A fresh ledge fall remains above the cave roof, even when its new
+      // support is the apron below. Query the ceiling at that world height.
+      clampPlayerCeiling(cave, ground, ground - cave.baseY + cave.hop);
+      cave.root.position.y = ground + cave.hop;
       if (cave.hop === 0 && (leap.vx || leap.vz)) {
         leap.vx = leap.vz = 0;
         leap.land = 0.25;
@@ -786,6 +817,27 @@
       steer.forward = forward;
       steer.strafe = strafe;
     };
+    // Keep possession and equipment while discarding motion at a safe arrival.
+    const relocatePlayer = (position, heading) => {
+      const cave = player;
+      if (!cave) return;
+      elevatePlayer(0);
+      steer.x = steer.z = steer.view = steer.forward = steer.strafe = 0;
+      cave.hop = cave.hopV = cave.act.phase = 0;
+      cave.leap.vx = cave.leap.vz = cave.leap.land = 0;
+      cave.cheer = cave.catchT = cave.yawn = 0;
+      if (cave.jet) {
+        cave.jet.thrust = false;
+        cave.jet.flame.visible = false;
+        cave.jet.puff = 0;
+      }
+      standPose(cave);
+      cave.parts.torso.scale.y = 1;
+      cave.parts.head.rotation.x = cave.parts.head.rotation.y = 0;
+      cave.root.rotation.x = cave.root.rotation.z = 0;
+      cave.root.rotation.y = heading;
+      setVec(cave.root.position, position.x, position.y + cave.baseY, position.z);
+    };
     // Applied after the camera's damped angles update, keeping pose and view in lockstep.
     const lookPlayer = (heading, pitch, mix) => {
       if (!player || mix <= 0) return;
@@ -919,7 +971,7 @@
     const stats = () => ({ built: builtEquipment.length });
     return {
       cavemen, stateOf, stateCounts, workingCavemen, eatingCavemen, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, drawQuotes,
-      control, release, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, wearJetpack, thrust, update, dispose, stats,
+      control, release, relocatePlayer, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, wearJetpack, thrust, update, dispose, stats,
       get player() {
         return player;
       }

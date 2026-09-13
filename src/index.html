@@ -155,20 +155,18 @@
         <p data-scene="hub" id="subtitle">an island of caves</p>
         <p data-scene="lab" hidden>EntropyLab cave</p>
       </div>
-      <nav class="presets" aria-label="Camera views" data-scene="hub">
-        <button type="button" data-preset="pile">Pile</button>
-        <button type="button" data-preset="gate">Gate</button>
-        <button type="button" data-preset="lab">Lab</button>
-        <button type="button" class="reset-view" data-action="reset-view"
-          title="Back to the landing view (0)">Reset<span> view</span></button>
+      <time class="world-clock" id="world-clock" aria-label="Local time"></time>
+      <nav class="presets" aria-label="Island destinations" data-scene="hub">
+        <button type="button" data-preset="pile">PILE</button>
+        <button type="button" data-preset="lab">LAB</button>
+        <button type="button" data-preset="mirror">MIRROR</button>
+        <button type="button" data-preset="underground">HQ</button>
       </nav>
       <nav class="presets" aria-label="Camera views" data-scene="lab" hidden>
-        <button type="button" data-preset="pile">Pile</button>
+        <button type="button" data-preset="pile">PILE</button>
         <button type="button" data-preset="racks">Racks</button>
         <button type="button" data-preset="bunks">Bunks</button>
         <button type="button" data-preset="bench">Bench</button>
-        <button type="button" class="reset-view" data-action="reset-view"
-          title="Back to the landing view (0)">Reset<span> view</span></button>
         <button type="button" class="leave" data-action="leave" data-scene="lab" hidden>Leave<span> cave</span></button>
       </nav>
       <nav class="presets" aria-label="Race" data-scene="race" hidden>
