@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { math, models, contributors, donations, qr, terrain, hubModels, dropModels, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod } = BL;
+  const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod } = BL;
   const { lerp, ease, fnv1a, mulberry32 } = math;
   const { createNode, addChild, removeChild, createCamera, addTween, stepTweens, tweenCount, traverseVisible } = BL.scene;
   const { EAT_RATE } = crewMod;
@@ -96,8 +96,6 @@
   // Clock angles where the crew builds and sleeps
   const BUILD_DEGREES = [12, 40, 66, 80, 102, 165, 195, 212, 282, 297, 312, 340];
   const BUILD_RADIUS = 13;
-  const BEDROLL_DEGREES = [100, 195, 252, 300, 345];
-  const BEDROLL_RADIUS = 14, BEDROLL_INNER = 10;
   const NUDGES = [0, -2, 2, -4, 4, -6, 6, -8, 8];
   const VINES = ["c5"];
   const PILE_SCALE = 0.45;
@@ -134,7 +132,7 @@
   };
 
   // One visit's state, made in enter and dropped in leave
-  let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, pile, crew, crates, critters, clock, presets, entering, stash, jetpack, mirrorCave, matrixCave, matrixControl, gateRain, fire;
+  let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, pile, crew, crates, critters, clock, presets, entering, stash, jetpack, mirrorCave, matrixCave, matrixControl, gateRain, fire, headquarters;
   let hintAt = HINT_AFTER;
   let stateTimer = 0, hintTimer = 0, meterTimer = 0, pileEdgeNow = 0, now = 0, hour = 12;
   let phase = null;
@@ -205,6 +203,8 @@
   const buildCaveRain = (slot, m, group, caveIndex) => {
     const canvas = renderer.kind === "canvas2d", limit = canvas ? 18 : 48, trainLength = canvas ? 9 : 14;
     const cr = Math.cos(m.ry), sr = Math.sin(m.ry), rand = mulberry32(fnv1a(`${slot.id}:rain`));
+    const ramp = slot.status === "headquarters" ? island.headquarters.ramps.find((r) => r.id === slot.id) : null;
+    const volumeIndex = ramp ? island.headquarters.caveIndex : caveIndex;
     const streams = [], nodes = [], obstacles = [], column = { caveIndex: 0, floor: 0, ceiling: 0 };
     const footprint = 0.055, halfHeight = 0.0605, clearance = 0.02;
     const visit = (node) => {
@@ -227,11 +227,20 @@
     };
     visit(group);
     for (let attempt = 0; attempt < limit * 16 && streams.length < limit; attempt++) {
-      const lx = (rand() - 0.5) * 5, lz = streams.length < limit * 0.65 ? -0.7 - rand() * 1.55 : -2.55 - rand() * 3.2;
-      const x = m.x + cr * lx + sr * lz, z = m.z - sr * lx + cr * lz;
+      const side = rand() - 0.5, depth = rand();
+      let lx = side * 5, lz = streams.length < limit * 0.65 ? -0.7 - depth * 1.55 : -2.55 - depth * 3.2;
+      let x = m.x + cr * lx + sr * lz, z = m.z - sr * lx + cr * lz;
+      if (ramp) {
+        const sample = 3 + depth * 17, i = Math.floor(sample), t = sample - i, a = ramp.samples[i], b = ramp.samples[i + 1];
+        const dx = b.x - a.x, dz = b.z - a.z, across = side * (ramp.width - 0.6) / Math.hypot(dx, dz);
+        x = lerp(a.x, b.x, t) + dz * across;
+        z = lerp(a.z, b.z, t) - dx * across;
+        lx = cr * (x - m.x) - sr * (z - m.z);
+        lz = sr * (x - m.x) + cr * (z - m.z);
+      }
       let minY = -Infinity, maxY = Infinity, valid = true;
       for (let ix = -1; ix <= 1; ix++) for (let iz = -1; iz <= 1; iz++) {
-        if (!island.cavityAt(x + ix * footprint, z + iz * footprint, column) || column.caveIndex !== caveIndex || !Number.isFinite(column.ceiling)) valid = false;
+        if (!island.cavityAt(x + ix * footprint, z + iz * footprint, column, volumeIndex) || column.caveIndex !== volumeIndex || !Number.isFinite(column.ceiling)) valid = false;
         else { minY = Math.max(minY, column.floor); maxY = Math.min(maxY, column.ceiling); }
       }
       minY += halfHeight + clearance; maxY -= halfHeight + clearance;
@@ -765,7 +774,7 @@
     props.push(owner);
     return owner;
   };
-  const place = (geometry, x, z, ry = 0, y = island.heightAt(x, z), kind = null, radius = 0) => {
+  const place = (geometry, x, z, ry = 0, y = island.surfaceAt(x, z), kind = null, radius = 0) => {
     const node = createNode({ position: { x, y, z }, rotation: { x: 0, y: ry, z: 0 }, geometry, matrixLiving: MATRIX_LIVING_PROPS.has(kind) });
     addChild(root, node);
     placed.push(node);
@@ -867,13 +876,39 @@
     LIGHTING_DEBUG.selectedCount = count;
     LIGHTING_DEBUG.approximatedCount = approximated;
     LIGHTING_DEBUG.tier = webgl ? renderer.quality : "canvas2d";
+    if (headquarters && camera.position.y < -1 && cameraCaveIndex && CAMERA_OPENINGS[cameraCaveIndex - 1].headquarters) {
+      const underground = headquarters.sources;
+      const total = Math.min(limit, underground.length);
+      for (let i = 0; i < underground.length; i++) underground[i].selected = false;
+      for (let i = 0; i < total; i++) {
+        let nearest = null, distance = Infinity;
+        for (let n = 0; n < underground.length; n++) {
+          const l = underground[n];
+          const d = (l.x - camera.position.x) ** 2 + (l.y - camera.position.y) ** 2 + (l.z - camera.position.z) ** 2;
+          if (!l.selected && d < distance) { nearest = l; distance = d; }
+        }
+        const l = nearest, o = i * 8, sky = l.daylight ? 0.12 + RENDER_OPTS.day * 0.88 : 1;
+        l.selected = true;
+        lights[o] = l.x;
+        lights[o + 1] = l.y;
+        lights[o + 2] = l.z;
+        lights[o + 3] = l.daylight ? 11 : 9;
+        lights[o + 4] = (l.daylight ? 0.8 : 1) * sky;
+        lights[o + 5] = (l.daylight ? 0.88 : 0.65) * sky;
+        lights[o + 6] = (l.daylight ? 1 : 0.3) * sky;
+        lights[o + 7] = 0;
+        LIGHTING_DEBUG.selectedIds[i] = l.id;
+      }
+      for (let i = total; i < LIGHT_CAPACITY; i++) LIGHTING_DEBUG.selectedIds[i] = null;
+      RENDER_OPTS.lightCount = LIGHTING_DEBUG.activeFullLightCount = LIGHTING_DEBUG.selectedCount = total;
+    }
   };
   // A fire pit off the paths inside the bedroll ring, with seats around it
   const buildFire = () => {
     let p = null;
     for (const deg of FIRE_DEGREES) {
       const c = polar(deg, FIRE_RADIUS);
-      if (island.heightAt(c.x, c.z) === 0 && free(c.x, c.z, 1.6) && !nearPath(c.x, c.z, 1.8)) {
+      if (island.surfaceAt(c.x, c.z) === 0 && free(c.x, c.z, 1.6) && !nearPath(c.x, c.z, 1.8)) {
         p = c;
         break;
       }
@@ -905,7 +940,7 @@
       addChild(group, seal);
       sealedCaves.push({ caveIndex, mouth: m, node: seal, sr: ax, cr: az, stopZ: seal.position.z + geometry.frontZ + 0.01 });
     } else {
-      const bars = createNode({ position: { x: 0, y: MATRIX_GATE_HIDDEN_Y, z: 0.78 }, geometry: { ...hubModels.matrixPrisonBars(), matrixCave: caveIndex }, matrixExterior: true });
+      const bars = createNode({ position: { x: 0, y: MATRIX_GATE_HIDDEN_Y, z: 0.78 }, geometry: { ...hubModels.matrixPrisonBars(), matrixCave: caveIndex, clipMinY: m.floorY }, visible: false, matrixExterior: true });
       addChild(group, bars);
       matrixGates.push({ caveIndex, node: bars, open: false, distance: matrixTravelDistance(m.x + ax * bars.position.z, m.z + az * bars.position.z) });
     }
@@ -939,6 +974,8 @@
       addProp("sign", sign, signX, signZ, 1);
       claim(roof.x, roof.z, 3.8);
       launchers.push(roof);
+    } else if (slot.status === "headquarters") {
+      addChild(group, createNode({ position: { x: 0, y: 0, z: 0 }, geometry: headquartersModels.entranceRamp(), depthBias: 0.25 }));
     } else if (slot.status === "open") {
       for (const x of [-1.3, 1.3]) addChild(group, createNode({ position: { x, y: 0, z: -3.5 }, geometry: hubModels.caveShelves() }));
     } else if (slot.status === "mirror") {
@@ -1022,13 +1059,55 @@
     }
     return rim;
   };
+  const buildHeadquarters = () => {
+    const floor = island.headquarters.floor;
+    const room = createNode({ position: { x: 0, y: floor, z: 0 }, geometry: headquartersModels.room() });
+    addChild(root, room);
+    placed.push(room);
+    const entrances = [], lights = [];
+    const torchAt = (x, y, z) => {
+      const node = createNode({ position: { x, y, z }, geometry: hubModels.torch(), glow: 0.85, matrixEmissiveLiving: true });
+      addChild(root, node);
+      placed.push(node);
+      lights.push({ id: `headquarters:${lights.length}`, node, x, y: y + 1.6, z });
+    };
+    for (const cave of island.headquarters.rooms) {
+      const i = cave.index, angle = cave.angle;
+      const entrance = createNode({ position: { x: cave.entrance.x, y: floor, z: cave.entrance.z }, rotation: { x: 0, y: -angle, z: 0 }, scale: { x: cave.width / 5.5, y: 1, z: 1 }, geometry: headquartersModels.roomEntrance(i) });
+      addChild(root, entrance);
+      placed.push(entrance);
+      entrances.push({ roomIndex: i, node: entrance });
+    }
+    for (const ramp of island.headquarters.ramps) {
+      const p = ramp.samples[30], angle = Math.atan2(p.x, -p.z), radius = Math.hypot(p.x, p.z) - 1.6;
+      torchAt(Math.sin(angle) * radius, p.y + 0.6, -Math.cos(angle) * radius);
+    }
+    const flame = createNode({ position: { x: 0, y: floor + 0.25, z: 0 }, geometry: hubModels.fireFlame(), glow: 0.9, matrixEmissiveLiving: true });
+    addChild(root, flame);
+    placed.push(flame);
+    lights.push({ id: "headquarters:hearth", node: flame, x: 0, y: floor + 1, z: 0 });
+    let sourceCount = lights.length;
+    for (const window of island.headquarters.windows) sourceCount += window.kind === "panorama" ? 5 : 1;
+    const sources = new Array(sourceCount);
+    for (let i = 0; i < lights.length; i++) sources[i] = lights[i];
+    let sourceIndex = lights.length;
+    for (let i = 0; i < island.headquarters.windows.length; i++) {
+      const window = island.headquarters.windows[i], panorama = window.kind === "panorama", count = panorama ? 5 : 1;
+      for (let n = 0; n < count; n++) {
+        const angle = panorama ? lerp(window.startAngle + 4 * DEG, window.endAngle - 4 * DEG, n / (count - 1)) : window.angle;
+        const radius = panorama ? window.radius - 0.9 : Math.hypot(window.x, window.z) - 0.9;
+        sources[sourceIndex++] = { id: panorama ? `headquarters:window:${i}:${n}` : `headquarters:window:${i}`, x: Math.sin(angle) * radius, y: window.sill + window.height / 2, z: -Math.cos(angle) * radius, daylight: true, selected: false };
+      }
+    }
+    return { node: room, entrances, lights, sources, rooms: island.headquarters.rooms, windows: island.headquarters.windows, ramps: island.headquarters.ramps, openFloor: island.headquarters.room };
+  };
   // Dock over the drop and ladder on the bluff
   const buildRim = () => {
     const d = polar(DOCK_DEG, CLIFF_OUTER);
-    place(hubModels.dock(), d.x, d.z, Math.PI / 2 - DOCK_DEG * DEG, island.heightAt(d.x, d.z), "dock", 2.2);
+    place(hubModels.dock(), d.x, d.z, Math.PI / 2 - DOCK_DEG * DEG, island.surfaceAt(d.x, d.z), "dock", 2.2);
     claim(d.x, d.z, 2.5);
     let faceX = MEADOW - 1;
-    while (island.heightAt(faceX + island.unit / 2, LADDER_Z) < 3) faceX += island.unit;
+    while (island.surfaceAt(faceX + island.unit / 2, LADDER_Z) < 3) faceX += island.unit;
     const foot = faceX - LADDER_LEAN - 0.06;
     const lean = createNode({ position: { x: foot, y: 0, z: LADDER_Z }, rotation: { x: 0, y: 0, z: -Math.asin(LADDER_LEAN / 4) } });
     const rungs = createNode({ rotation: { x: 0, y: Math.PI / 2, z: 0 }, geometry: hubModels.ladder() });
@@ -1066,7 +1145,7 @@
     const meadow = (count, radius, kind, geometryAt, square = false) => {
       for (let n = 0, tries = 0; n < count && tries < 1500; tries++) {
         const { x, z } = polar(rand() * 360, Math.sqrt(lerp(MEADOW_INNER * MEADOW_INNER, MEADOW_OUTER * MEADOW_OUTER, rand())));
-        if (island.heightAt(x, z) > 0 || nearMouth(x, z, 3.5) || !candidateFree(x, z, radius)) continue;
+        if (island.surfaceAt(x, z) > 0 || nearMouth(x, z, 3.5) || !candidateFree(x, z, radius)) continue;
         addScenery(geometryAt(n), x, z, square ? Math.floor(rand() * 4) * Math.PI / 2 + (rand() - 0.5) * 0.4 : rand() * Math.PI * 2, 0, kind, radius);
         n++;
       }
@@ -1074,12 +1153,12 @@
     const cliff = (count, radius, minHeight, kind, geometryAt) => {
       for (let n = 0, tries = 0; n < count && tries < 1200; tries++) {
         const { x, z } = polar(rand() * 360, lerp(CLIFF_INNER, CLIFF_OUTER, rand()));
-        const h = island.heightAt(x, z);
+        const h = island.surfaceAt(x, z);
         if (h < minHeight || !free(x, z, radius)) continue;
         let clear = true;
         for (let i = 0; i < 4 && clear; i++) {
           const a = (i + 0.5) * Math.PI / 2;
-          if (island.heightAt(x + Math.cos(a) * 1.2, z + Math.sin(a) * 1.2) > h + 1.5) clear = false;
+          if (island.surfaceAt(x + Math.cos(a) * 1.2, z + Math.sin(a) * 1.2) > h + 1.5) clear = false;
         }
         if (!clear || nearMouth(x, z, 4) || !candidateFree(x, z, radius)) continue;
         addScenery(geometryAt(n), x, z, rand() * Math.PI * 2, h, kind, radius);
@@ -1153,7 +1232,7 @@
     }
     return false;
   };
-  const eligibleHider = (o) => o.active && JETPACK_HIDERS.includes(o.prop) && island.heightAt(o.x, o.z) === 0 && approachableHider(o);
+  const eligibleHider = (o) => o.active && JETPACK_HIDERS.includes(o.prop) && island.surfaceAt(o.x, o.z) === 0 && approachableHider(o);
   const hideJetpack = () => {
     const hiders = scenery.filter(eligibleHider);
     stash = hiders.length ? hiders[Math.floor(Math.random() * hiders.length)] : null;
@@ -1165,7 +1244,7 @@
       for (let i = 0; i < 64; i++) {
         const angle = (i * 137.5 + SEED * 17) * DEG;
         const x = Math.sin(angle) * radius, z = -Math.cos(angle) * radius;
-        if (!island.onLand(x, z) || island.heightAt(x, z) !== 0 || island.path.overlaps(x, z, 1)) continue;
+        if (!island.onLand(x, z) || island.surfaceAt(x, z) !== 0 || island.path.overlaps(x, z, 1)) continue;
         let clear = true;
         for (let j = 0; j < claimed.length && clear; j++) {
           const c = claimed[j];
@@ -1245,7 +1324,7 @@
     const rand = mulberry32(SEED + 5);
     for (let n = 0, tries = 0; n < WANDER_COUNT && tries < 1500; tries++) {
       const { x, z } = polar(rand() * 360, Math.sqrt(lerp(WANDER_INNER * WANDER_INNER, MEADOW_OUTER * MEADOW_OUTER, rand())));
-      if (island.heightAt(x, z) !== 0 || nearMouth(x, z, 3) || !free(x, z, 0.9)) continue;
+      if (island.surfaceAt(x, z) !== 0 || nearMouth(x, z, 3) || !free(x, z, 0.9)) continue;
       spots.push({ x, z, ry: NaN });
       n++;
     }
@@ -1277,15 +1356,19 @@
     out.z = s.z;
     out.ry = s.ry;
   };
-  // Over a cave the rock has two layers, the tunnel floor and the roof above it
-  const supportAt = (x, z, y = -Infinity) => {
+  const SUPPORT_COLUMN = { caveIndex: 0, floor: 0, ceiling: 0 };
+  // Surface caves and the headquarters can share a column below the same roof.
+  const supportAt = (x, z, y = Infinity) => {
     const roof = island.surfaceAt(x, z);
-    return y >= roof - STEP_MAX ? roof : island.heightAt(x, z);
+    if (y >= roof - STEP_MAX) return roof;
+    if (island.cavityAt(x, z, SUPPORT_COLUMN) && y >= SUPPORT_COLUMN.floor - STEP_MAX && y < SUPPORT_COLUMN.ceiling) return SUPPORT_COLUMN.floor;
+    return island.heightAt(x, z);
   };
   const visualSupportAt = (x, z, y) => island.smoothSupportAt(x, z, y, STEP_MAX);
-  const crossesSealedCave = (fromX, fromZ, toX, toZ) => {
+  const crossesSealedCave = (fromX, fromZ, toX, toZ, y = 0) => {
     for (let i = 0; i < sealedCaves.length; i++) {
       const sealed = sealedCaves[i], m = sealed.mouth, sr = sealed.sr, cr = sealed.cr;
+      if (y < m.floorY - STEP_MAX || y > m.floorY + PORTAL_MAX_Y) continue;
       const a = (fromX - m.x) * sr + (fromZ - m.z) * cr - sealed.stopZ;
       const b = (toX - m.x) * sr + (toZ - m.z) * cr - sealed.stopZ;
       if (a * b > 0 || a === b) continue;
@@ -1297,12 +1380,12 @@
   };
   // A driven step stays on rock, off the heap, and on its own layer
   const walkable = (fromX, fromZ, toX, toZ, y) => {
-    if (!island.onLand(toX, toZ) || Math.hypot(toX, toZ) <= pileEdgeNow + 0.4 || crossesSealedCave(fromX, fromZ, toX, toZ)) return false;
-    if (y >= island.surfaceAt(toX, toZ) - STEP_MAX) return true;
-    return Math.abs(island.heightAt(toX, toZ) - y) <= STEP_MAX;
+    if (!island.onLand(toX, toZ) || crossesSealedCave(fromX, fromZ, toX, toZ, y)) return false;
+    if (y >= island.surfaceAt(toX, toZ) - STEP_MAX) return Math.hypot(toX, toZ) > pileEdgeNow + 0.4;
+    return Math.abs(supportAt(toX, toZ, y) - y) <= STEP_MAX;
   };
   // Flying, only the rim stops him
-  const flyable = (fromX, fromZ, toX, toZ) => island.onLand(toX, toZ) && !crossesSealedCave(fromX, fromZ, toX, toZ);
+  const flyable = (fromX, fromZ, toX, toZ, y = 0) => island.onLand(toX, toZ) && !crossesSealedCave(fromX, fromZ, toX, toZ, y);
   // Clouds ring the island without crossing it
   const buildClouds = () => {
     const rand = mulberry32(SEED + 77);
@@ -1410,7 +1493,7 @@
       case "crate":
         return `${o.crate.loot.tier} crate · tap to open`;
       case "cave":
-        return o.slot.status === "open" ? `${o.slot.name} · tap to enter` : o.slot.status === "mirror" ? `${o.slot.name} · mirror` : o.slot.status === "sleeping" ? "A project sleeps here · zzz" : "An empty cave";
+        return o.slot.status === "open" ? `${o.slot.name} · tap to enter` : o.slot.status === "headquarters" ? "Headquarters · walk down the ramp" : o.slot.status === "mirror" ? `${o.slot.name} · mirror` : o.slot.status === "sleeping" ? "A project sleeps here · zzz" : "An empty cave";
       case "gate":
         return `${caves.gate.name} · leads nowhere yet`;
       case "matrix-button":
@@ -1614,7 +1697,7 @@
   const CAMERA_OPENINGS = [];
   let cameraCaveIndex = 0, cameraEntranceIndex = 0, cameraPreviousValid = false, cameraTerrainY = 0, cameraTerrainX = 0, cameraTerrainZ = 0, cameraTerrainValid = false, cameraTerrainRecovering = false, cameraTerrainEntranceIndex = 0;
   let caveEntryPlayer = null, playerCaveIndex = 0;
-  const cameraCrossing = (from, to, opening) => {
+  const cameraCrossing = (from, to, opening, grounded = false) => {
     const m = opening.mouth, sr = opening.sr, cr = opening.cr;
     const a = (from.x - m.x) * sr + (from.z - m.z) * cr - opening.planeZ;
     const b = (to.x - m.x) * sr + (to.z - m.z) * cr - opening.planeZ;
@@ -1625,8 +1708,12 @@
     if (!direction) return CAMERA_CROSSING;
     const t = Math.max(0, Math.min(1, a / (a - b))), x = lerp(from.x, to.x, t), y = lerp(from.y, to.y, t) - m.floorY, z = lerp(from.z, to.z, t);
     const across = (x - m.x) * cr - (z - m.z) * sr;
+    const floor = opening.headquarters && island.cavityAt(x, z, CAMERA_COLUMN, island.headquarters.caveIndex) ? CAMERA_COLUMN.floor - m.floorY - 1e-6 : opening.minY;
+    // Feet follow the bend from the flat apron onto the slope. Their straight
+    // frame-to-frame sweep cuts just below that bend even while fully supported.
+    const followsRamp = grounded && opening.headquarters && Math.abs(from.y - supportAt(from.x, from.z, from.y)) < 1e-6 && Math.abs(to.y - supportAt(to.x, to.z, to.y)) < 1e-6;
     CAMERA_CROSSING.amount = t;
-    if (y < opening.minY) CAMERA_CROSSING.reason = "below";
+    if (y < floor && !followsRamp) CAMERA_CROSSING.reason = "below";
     else if (y > opening.maxY) CAMERA_CROSSING.reason = "above";
     else if (across < opening.minX || across > opening.maxX) CAMERA_CROSSING.reason = "beside";
     else if (opening.blocked) CAMERA_CROSSING.reason = "sealed";
@@ -1690,9 +1777,10 @@
       const gate = matrixGates[i], y = gate.node.position.y;
       if (!matrixCave.unlocked) {
         gate.node.position.y = MATRIX_WORLD.active && MATRIX_WORLD.radius >= gate.distance ? 0 : MATRIX_GATE_HIDDEN_Y;
-        continue;
-      }
-      gate.node.position.y = Math.max(MATRIX_GATE_HIDDEN_Y, y - gateStep);
+      } else gate.node.position.y = Math.max(MATRIX_GATE_HIDDEN_Y, y - gateStep);
+      // The buried section is clipped at the upper cave floor, not stored in
+      // the occupied headquarters below. Fully buried gates do no render work.
+      gate.node.visible = gate.node.position.y > MATRIX_GATE_HIDDEN_Y;
     }
     const buttonY = matrixControl.pressed ? 1.04 : 1.12;
     matrixControl.button.position.y = matrixControl.button.position.y < buttonY ? Math.min(buttonY, matrixControl.button.position.y + dt * 0.5) : Math.max(buttonY, matrixControl.button.position.y - dt * 0.5);
@@ -1728,20 +1816,21 @@
   const caveColumnAt = (x, z, opening) => {
     const dx = x - opening.mouth.x, dz = z - opening.mouth.z;
     const along = dx * opening.sr + dz * opening.cr, across = dx * opening.cr - dz * opening.sr;
-    if (!island.cavityAt(x, z, CAMERA_COLUMN) || CAMERA_COLUMN.caveIndex !== opening.caveIndex) {
+    const caveIndex = opening.headquarters ? island.headquarters.caveIndex : opening.caveIndex;
+    if (!island.cavityAt(x, z, CAMERA_COLUMN, caveIndex) || CAMERA_COLUMN.caveIndex !== caveIndex) {
       // Rotated voxel columns straddle the doorway plane. Uncarved, open-air
       // apron cells there are still traversable; solid cliff columns are not.
-      const ground = island.heightAt(x, z);
-      if (along < opening.planeZ - island.unit * Math.SQRT2 || along > 3 || across < opening.minX || across > opening.maxX || island.surfaceAt(x, z) !== ground) return false;
+      const ground = island.surfaceAt(x, z);
+      if (along < opening.planeZ - island.unit * Math.SQRT2 || along > 3 || across < opening.minX || across > opening.maxX || ground !== opening.mouth.floorY) return false;
       CAMERA_COLUMN.floor = ground;
       CAMERA_COLUMN.ceiling = Infinity;
     }
     // The original stone frame has its own soffit even where the carved voxel
     // column is open sky. Use the model's real bounds, not the cliff top.
     const rim = opening.rim;
-    if (along >= rim.minZ + PORTAL_Z && along <= rim.maxZ + PORTAL_Z) {
+    if (along >= rim.minZ + PORTAL_Z && along <= rim.maxZ + PORTAL_Z && (!opening.headquarters || CAMERA_COLUMN.ceiling > opening.mouth.floorY)) {
       if (across < rim.minX || across > rim.maxX) return false;
-      CAMERA_COLUMN.floor = Math.max(CAMERA_COLUMN.floor, opening.mouth.floorY + rim.floorY);
+      if (!opening.headquarters || along >= opening.planeZ) CAMERA_COLUMN.floor = Math.max(CAMERA_COLUMN.floor, opening.mouth.floorY + rim.floorY);
       CAMERA_COLUMN.ceiling = Math.min(CAMERA_COLUMN.ceiling, opening.mouth.floorY + rim.ceilingY);
     }
     CAMERA_COLUMN.caveIndex = opening.caveIndex;
@@ -1785,12 +1874,12 @@
       playerCaveIndex = 0;
     } else {
       for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
-        const opening = CAMERA_OPENINGS[i], crossing = cameraCrossing(PLAYER_PREVIOUS, PLAYER_POSITION, opening);
+        const opening = CAMERA_OPENINGS[i], crossing = cameraCrossing(PLAYER_PREVIOUS, PLAYER_POSITION, opening, player.hop === 0);
         if (!crossing.valid) continue;
         if (!playerCaveIndex && crossing.direction > 0) playerCaveIndex = opening.caveIndex;
-        else if (playerCaveIndex === opening.caveIndex && crossing.direction < 0) playerCaveIndex = 0;
+        else if (playerCaveIndex && crossing.direction < 0 && (playerCaveIndex === opening.caveIndex || CAMERA_OPENINGS[playerCaveIndex - 1].headquarters && opening.headquarters)) playerCaveIndex = 0;
       }
-      if (playerCaveIndex && (!caveColumnAt(p.x, p.z, CAMERA_OPENINGS[playerCaveIndex - 1]) || PLAYER_POSITION.y < CAMERA_COLUMN.floor || PLAYER_POSITION.y >= CAMERA_COLUMN.ceiling)) playerCaveIndex = 0;
+      if (playerCaveIndex && (!caveColumnAt(p.x, p.z, CAMERA_OPENINGS[playerCaveIndex - 1]) || PLAYER_POSITION.y < CAMERA_COLUMN.floor - 1e-6 || PLAYER_POSITION.y >= CAMERA_COLUMN.ceiling)) playerCaveIndex = 0;
     }
     setVec(PLAYER_PREVIOUS, PLAYER_POSITION.x, PLAYER_POSITION.y, PLAYER_POSITION.z);
   };
@@ -1815,8 +1904,11 @@
       if (along < entry.planeZ - 1e-7 || along > 3 || across < entry.minX + CAMERA_RADIUS || across > entry.maxX - CAMERA_RADIUS || y < entry.mouth.floorY || y > entry.mouth.floorY + entry.maxY) continue;
       const k = (along - entry.planeZ) / (3 - entry.planeZ);
       exteriorEntranceIndex = entry.caveIndex;
-      floor = island.heightAt(x, z) + CAMERA_FLOOR + (clearance - CAMERA_FLOOR) * k * k * (3 - 2 * k);
-      if (cameraSpaceAt(x, z, entry)) exteriorCeiling = CAMERA_SPACE.ceiling;
+      // The lower headquarters can lie beneath the outdoor apron; only the
+      // threshold-height tunnel may constrain an eye approaching from outside.
+      const entranceColumn = caveColumnAt(x, z, entry) && CAMERA_COLUMN.ceiling > entry.mouth.floorY;
+      floor = (entranceColumn ? CAMERA_COLUMN.floor : physicalFloor) + CAMERA_FLOOR + (clearance - CAMERA_FLOOR) * k * k * (3 - 2 * k);
+      if (entranceColumn && cameraSpaceAt(x, z, entry)) exteriorCeiling = CAMERA_SPACE.ceiling;
       break;
     }
     return floor;
@@ -1857,7 +1949,11 @@
         if (!opening && crossing.direction > 0) {
           opening = candidate;
           start = crossing.amount;
-        } else if (opening === candidate && crossing.direction < 0) exit = true;
+        } else if (opening && crossing.direction < 0 && (opening === candidate || opening.headquarters && candidate.headquarters)) {
+          opening = candidate;
+          start = crossing.amount;
+          exit = true;
+        }
       }
     }
     if (opening) {
@@ -1868,11 +1964,12 @@
       for (let i = 0; i <= steps; i++) {
         const k = i / steps, sx = fromX + dx * k, sz = fromZ + dz * k;
         const along = (sx - opening.mouth.x) * opening.sr + (sz - opening.mouth.z) * opening.cr;
-        if (cameraCaveIndex && along > opening.planeZ + 1e-7) {
+        if (cameraCaveIndex && along > opening.planeZ + 1e-7 && (!opening.headquarters || exit)) {
           if (exit) outside = true;
           break;
         }
         if (!cameraSpaceAt(sx, sz, opening)) break;
+        if (cameraCaveIndex && opening.headquarters && along > opening.planeZ + 1e-7 && CAMERA_SPACE.ceiling > opening.mouth.floorY) break;
         accepted = true;
         x = sx; z = sz;
         y = Math.max(CAMERA_SPACE.floor, Math.min(CAMERA_SPACE.ceiling, fromY + dy * k));
@@ -2151,7 +2248,7 @@
       const m = island.mouths[i], sr = Math.sin(m.ry), cr = Math.cos(m.ry), offset = i * 4;
       const slot = caves.slots.find((candidate) => candidate.id === m.id);
       const blocked = slot.status === "dark";
-      CAMERA_OPENINGS.push({ id: m.id, caveIndex: i + 1, mouth: m, sr, cr, minX: PORTAL_MIN_X, maxX: PORTAL_MAX_X, minY: PORTAL_MIN_Y, maxY: PORTAL_MAX_Y, planeZ: PORTAL_Z, blocked, stopZ: blocked ? 0.53 + hubModels.sealedCaveFace(sealedCaveVariant(slot.id)).frontZ : PORTAL_Z, rim: hubModels.caveMouthRim().openingBounds });
+      CAMERA_OPENINGS.push({ id: m.id, caveIndex: i + 1, mouth: m, sr, cr, minX: PORTAL_MIN_X, maxX: PORTAL_MAX_X, minY: PORTAL_MIN_Y, maxY: PORTAL_MAX_Y, planeZ: PORTAL_Z, blocked, headquarters: slot.status === "headquarters", stopZ: blocked ? 0.53 + hubModels.sealedCaveFace(sealedCaveVariant(slot.id)).frontZ : PORTAL_Z, rim: hubModels.caveMouthRim().openingBounds });
       MATRIX_WORLD.caves[offset] = sr;
       MATRIX_WORLD.caves[offset + 1] = cr;
       MATRIX_WORLD.caves[offset + 2] = sr * m.x + cr * m.z + PORTAL_Z;
@@ -2187,7 +2284,9 @@
     claim(gate.position.x, gate.position.z, 3);
     TICKER_AT.y = gate.position.y + 6;
     GATE_VIEW.target.y = gate.position.y + 2.5;
-    const bedrolls = [];
+    headquarters = buildHeadquarters();
+    const bedrolls = contributors.roster.map(() => ({ x: WALK_IN.x, z: WALK_IN.z, hidden: true, wakeAt: WALK_IN }));
+    headquarters.sleepAnchors = bedrolls;
     for (const slot of caves.slots) {
       const m = island.mouths.find((mouth) => mouth.id === slot.id);
       addTarget(buildMouth(slot, m), { kind: "cave", slot, priority: 1 }, { radius: 2.6 });
@@ -2196,24 +2295,9 @@
         presets[slot.scene] = mouthView(m);
         openMouths.push({ slot, m });
       }
-      if (slot.status === "sleeping") bedrolls.push(m.inside);
     }
     // The roof view the drop launch dollies onto
     for (const roof of launchers) presets.drop = { yaw: roof.ry, pitch: 0.36, dist: 14, target: { x: roof.x, y: roof.y + 1.2, z: roof.z } };
-    for (const deg of BEDROLL_DEGREES) {
-      const p = spotAt(deg, BEDROLL_RADIUS, 1.4);
-      place(hubModels.bedroll(), p.x, p.z, 0, 0.05, "bedroll", 1.1).depthBias = 0.3;
-      claim(p.x, p.z, 1.2);
-      bedrolls.push(p);
-    }
-    // An inner ring of beds for the rest
-    const extra = contributors.roster.length - bedrolls.length;
-    for (let k = 0; k < extra; k++) {
-      const p = spotAt(20 + k * 360 / extra, BEDROLL_INNER, 1.4);
-      place(hubModels.bedroll(), p.x, p.z, 0, 0.05, "bedroll", 1.1).depthBias = 0.3;
-      claim(p.x, p.z, 1.2);
-      bedrolls.push(p);
-    }
     const buildSpotsList = BUILD_DEGREES.map((deg) => {
       const { x, z } = spotAt(deg, BUILD_RADIUS, 1);
       claim(x, z, 0.9);
@@ -2227,7 +2311,7 @@
     buildSpots();
     buildClouds();
     hideJetpack();
-    critters = crittersMod.create({ root, renderer, flowers: scenery.filter((o) => o.prop === "flower" && o.active), fire: firePos, meadowRadius: MEADOW, heightAt: island.heightAt });
+    critters = crittersMod.create({ root, renderer, flowers: scenery.filter((o) => o.prop === "flower" && o.active), fire: firePos, meadowRadius: MEADOW, heightAt: island.surfaceAt });
     mark("props");
     const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, overlayVisible: matrixOverlayVisible, tickerAt: TICKER_AT, buildSpots: buildSpotsList, walkIn: WALK_IN, clampDrag, viewYaw: PILE_VIEW.yaw, bedrolls, pileScale: PILE_SCALE, pileY: ALTAR_HEIGHT + 0.02, matrixLivingPile: true, onLayout: layoutPile, onShown: () => { meterTimer = 0; }, crateRadius: () => Math.max(4.4, altar.platformRadius + 0.8), groundAt: supportAt, wanderSpot, walkable, flyable, useNear, phase: () => phase };
     fx = shared.fx = fxMod.create(shared);
@@ -2312,7 +2396,7 @@
         get shown() {
           return pile.shown;
         },
-        island, mouths: island.mouths, labels, launchers, camera, crew, controls: pilot.controls, props, altar, path: island.path.debug,
+        island, mouths: island.mouths, labels, launchers, camera, crew, controls: pilot.controls, props, altar, path: island.path.debug, headquarters,
         scenery: {
           get candidateCount() { return scenery.length; },
           get visibleCount() { return sceneryVisible; },
@@ -2540,7 +2624,7 @@
     input.dispose();
     hud.dispose();
     // Drop everything but the cached island
-    pathNode = altar = hud = hooks = input = pilot = fx = pile = crew = crates = critters = clock = presets = stash = jetpack = mirrorCave = matrixCave = matrixControl = gateRain = fire = null;
+    pathNode = altar = hud = hooks = input = pilot = fx = pile = crew = crates = critters = clock = presets = stash = jetpack = mirrorCave = matrixCave = matrixControl = gateRain = fire = headquarters = null;
     hubScene.input = hubScene.debug = null;
     return { targets: count };
   };

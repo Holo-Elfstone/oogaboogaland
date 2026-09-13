@@ -102,7 +102,7 @@
       return cave.baseY + groundAt(p.x, p.z, p.y - cave.baseY);
     };
     const atPile = (cave) => cave.act.kind === "eat" || cave.act.kind === "rush";
-    // Take the first free bed, else share by roster
+    // Take the first free bed, else share by roster.
     const claimBedroll = (cave) => {
       if (cave.bedroll) return;
       cave.bedroll = bedrolls.find((bed) => !bed.sleeper) || bedrolls[cave.index % bedrolls.length];
@@ -170,19 +170,19 @@
         startMeal(cave);
         popNode(r);
       } else if (state === "sleeping") {
-        r.visible = true;
-        Object.assign(r.position, { x: cave.bedroll.x, y: 0.42, z: cave.bedroll.z });
-        Object.assign(r.rotation, { x: 0, y: 0, z: -Math.PI / 2 });
+        r.visible = !cave.bedroll.hidden;
+        Object.assign(r.position, { x: cave.bedroll.x, y: cave.bedroll.y === undefined ? 0.42 : cave.bedroll.y, z: cave.bedroll.z });
+        Object.assign(r.rotation, { x: cave.bedroll.rx || 0, y: cave.bedroll.ry || 0, z: cave.bedroll.rz === undefined ? -Math.PI / 2 : cave.bedroll.rz });
         cave.parts.armL.rotation.x = -1.5;
         cave.parts.armR.rotation.x = -1.5;
-        popNode(r);
+        if (r.visible) popNode(r);
       } else {
         r.visible = false;
       }
       refreshRosterRow(cave);
     };
     const beginWalk = (cave) => {
-      const from = cave.state === "sleeping" ? { x: cave.bedroll.x, z: cave.bedroll.z } : walkIn;
+      const from = cave.state === "sleeping" ? cave.bedroll.wakeAt || cave.bedroll : walkIn;
       const fresh = cave.state !== "sleeping";
       cave.state = "working";
       releaseBedroll(cave);
@@ -561,7 +561,7 @@
     const canStep = (cave, flying, fromX, fromZ, toX, toZ) => {
       const y = cave.root.position.y - cave.baseY;
       return flying
-        ? flyable(fromX, fromZ, toX, toZ) && groundAt(toX, toZ, y) <= y
+        ? flyable(fromX, fromZ, toX, toZ, y) && groundAt(toX, toZ, y) <= y
         : walkable(fromX, fromZ, toX, toZ, y);
     };
     // Move the visitor's caveman
@@ -651,12 +651,12 @@
         for (const child of node.children) if (child.spin) child.rotation.y += dt * 9;
       }
       if (cave.state !== "working") {
-        if (cave.state === "sleeping") {
+        if (cave.state === "sleeping" && !cave.bedroll.hidden) {
           parts.torso.scale.y = 1 + Math.sin(elapsed * 1.4 + cave.phase) * 0.03;
           cave.zzzTimer -= dt;
           if (cave.zzzTimer <= 0) {
             cave.zzzTimer = 1.6;
-            ctx.fx.zzzAt(cave.bedroll.x + 0.6, 0.55, cave.bedroll.z);
+            ctx.fx.zzzAt(cave.bedroll.x + 0.6, (cave.bedroll.y === undefined ? 0 : cave.bedroll.y) + 0.55, cave.bedroll.z);
           }
         }
         return;

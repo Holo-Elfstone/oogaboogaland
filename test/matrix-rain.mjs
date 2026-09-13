@@ -32,6 +32,7 @@ export const matrixRainProbe = (prime = () => {}) => {
       nearest: Math.min(...C.clouds.map((cloud) => W.travelDistance(cloud.node.position.x, cloud.node.position.z))), farthest: Math.max(...C.clouds.map((cloud) => W.travelDistance(cloud.node.position.x, cloud.node.position.z))) },
     caves: C.caves.map((cave) => {
       const rain = cave.rain, m = cave.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), groups = rain.streams.map(() => []), space = { caveIndex: 0, floor: 0, ceiling: 0 };
+      const volumeIndex = B.island.headquarters.ramps.some((ramp) => ramp.id === cave.id) ? B.island.headquarters.caveIndex : cave.caveIndex;
       let count = 0, finite = true, upright = true, twoSided = true, leaders = 0, second = 0, trailing = 0, minGlow = Infinity, maxGlow = 0, escaped = 0, unknown = 0, maxLocalZ = -Infinity, farthest = 0, boundsError = 0;
       for (const [glyph, node] of rain.nodes.entries()) for (let i = 0; i < node.instanceCount; i++) {
         const data = node.instanceData, o = i * 20, x = data[o + 12], y = data[o + 13], z = data[o + 14], glow = data[o + 16], tip = data[o + 18];
@@ -53,7 +54,7 @@ export const matrixRainProbe = (prime = () => {}) => {
         for (const vx of [bounds.min[0], bounds.max[0]]) for (const vy of [bounds.min[1], bounds.max[1]]) for (const vz of [bounds.min[2], bounds.max[2]]) {
           const wx = x + data[o] * vx + data[o + 4] * vy + data[o + 8] * vz, wy = y + data[o + 1] * vx + data[o + 5] * vy + data[o + 9] * vz, wz = z + data[o + 2] * vx + data[o + 6] * vy + data[o + 10] * vz;
           maxLocalZ = Math.max(maxLocalZ, sr * (wx - m.x) + cr * (wz - m.z));
-          if (!B.island.cavityAt(wx, wz, space) || space.caveIndex !== cave.caveIndex || wy < space.floor - 0.00001 || wy > space.ceiling + 0.00001) escaped++;
+          if (!B.island.cavityAt(wx, wz, space, volumeIndex) || space.caveIndex !== volumeIndex || wy < space.floor - 0.00001 || wy > space.ceiling + 0.00001) escaped++;
         }
       }
       let expected = 0, missing = 0, doubles = 0, unwanted = 0, shadeError = 0, mutationErrors = 0, positionError = 0, excluded = 0;

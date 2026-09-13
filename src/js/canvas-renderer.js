@@ -264,10 +264,14 @@
             surface[k * 3] = V[k][0]; surface[k * 3 + 1] = V[k][1]; surface[k * 3 + 2] = V[k][2];
           }
           const mirrorReveal = mirrorFace ? Math.max(0, Math.min(1, node.mirrorReveal || 0)) : 0;
+          let minimumY = node.geometry.clipMinY ?? -Infinity;
           if (mirrorReveal > 0) {
             let minY = Infinity, maxY = -Infinity;
             for (let k = 0; k < count; k++) { minY = Math.min(minY, V[k][1]); maxY = Math.max(maxY, V[k][1]); }
-            surfaceCount = clipAbove(MIRROR_CLIP_IN, count, lerp(minY, maxY, mirrorReveal), MIRROR_CLIP_OUT);
+            minimumY = Math.max(minimumY, lerp(minY, maxY, mirrorReveal));
+          }
+          if (minimumY > -Infinity) {
+            surfaceCount = clipAbove(MIRROR_CLIP_IN, count, minimumY, MIRROR_CLIP_OUT);
             surface = MIRROR_CLIP_OUT;
             if (surfaceCount < 3) continue;
           }
@@ -551,8 +555,7 @@
       const rx = view[0] / lastF, ry = view[4] / lastF, rz = view[8] / lastF;
       const ux = -view[1] / lastF, uy = -view[5] / lastF, uz = -view[9] / lastF;
       const ndx = nx * rx + ny * ry + nz * rz, ndy = nx * ux + ny * uy + nz * uz;
-      ctx.save();
-      ctx.clip();
+      let clipped = false;
       for (let ty = rec.matrixMinY; ty < rec.matrixMaxY; ty += span) {
         const rows = Math.min(MATRIX_TILE_SIZE, Math.ceil((rec.matrixMaxY - ty) / step));
         for (let tx = rec.matrixMinX; tx < rec.matrixMaxX; tx += span) {
@@ -578,11 +581,13 @@
             }
           }
           if (!painted) continue;
+          // Empty samples change no pixels and need no Canvas clipping state.
+          if (!clipped) { ctx.save(); ctx.clip(); clipped = true; }
           matrixCtx.putImageData(matrixImage, 0, 0, 0, 0, cols, rows);
           ctx.drawImage(matrixTile, 0, 0, cols, rows, tx, ty, cols * step, rows * step);
         }
       }
-      ctx.restore();
+      if (clipped) ctx.restore();
     };
     const matrixPolygonCoverage = (rec, x, y, step) => {
       let count = rec.n, src = matrixClipA, dst = matrixClipB;

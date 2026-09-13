@@ -113,6 +113,7 @@ uniform float uMatrixCaveNear;
 uniform float uMatrixPermanentCave;
 uniform sampler2D uMatrixGlyphTex;
 uniform int uMatrixSamples;
+uniform float uClipMinY;
 #ifdef MATRIX_SAMPLE_INTERPOLATION
 vec2 matrixSampleOffsets[4];
 #endif
@@ -299,6 +300,7 @@ float matrixTravel(vec2 point, float caveIndex) {
   return length(point + cave.xy * depth - uMatrixOrigin.xz) + depth;
 }
 void main() {
+  if (vWorld.y < uClipMinY) discard;
   vec3 n = normalize(vNormal);
   vec3 base = vColor.rgb;
   float cloud = step(3.5, vParams.z);
@@ -418,12 +420,19 @@ layout(location=4) in vec4 aM1;
 layout(location=5) in vec4 aM2;
 layout(location=6) in vec4 aM3;
 uniform mat4 uLightViewProj;
+out float vWorldY;
 void main() {
-  gl_Position = uLightViewProj * mat4(aM0, aM1, aM2, aM3) * vec4(aPos, 1.0);
+  vec4 world = mat4(aM0, aM1, aM2, aM3) * vec4(aPos, 1.0);
+  vWorldY = world.y;
+  gl_Position = uLightViewProj * world;
 }`;
   const SHADOW_FS = `#version 300 es
 precision highp float;
-void main() {}`;
+in float vWorldY;
+uniform float uClipMinY;
+void main() {
+  if (vWorldY < uClipMinY) discard;
+}`;
   const LINE_VS = `#version 300 es
 precision highp float;
 layout(location=0) in vec3 aA;
@@ -670,7 +679,7 @@ void main() {
       gl.attachShader(prog, v);
       gl.attachShader(prog, f);
       gl.linkProgram(prog);
-      return { prog, shaders: [v, f], uniforms, u: {} };
+      return { prog, shaders: [v, f], uniforms, u: {}, clipMinY: NaN };
     };
     const finishProgram = (p) => {
       if (!gl.getProgramParameter(p.prog, gl.LINK_STATUS)) {
@@ -707,8 +716,8 @@ void main() {
       const matrixSampling = gl.getExtension("OES_shader_multisample_interpolation");
       const meshFragment = matrixSampling ? MESH_FS.replace("#version 300 es", "#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION") : MESH_FS;
       res.programs = {
-        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixGlyphTex", "uMatrixSamples"]),
-        shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj"]),
+        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY"]),
+        shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth"]),
         sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uEye", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uStarMatrix", "uStars", "uTime"]),
         blur: compile(QUAD_VS, BLUR_FS, ["uTex", "uDir"]),
@@ -1366,6 +1375,13 @@ void main() {
           if (stage !== matrixStage) continue;
           gl.uniform1f(res.programs.mesh.u.uMatrixGlyph, stage === 1 ? 3 : stage === 2 ? 1 : rec.geometry.matrixLocalGlyphSurface ? 2 : 0);
           gl.uniform1f(res.programs.mesh.u.uMatrixCave, rec.geometry.matrixCave || 0);
+        }
+        if (kind === "mesh") {
+          const program = res.programs[useProgram], minimumY = rec.geometry.clipMinY ?? -1e6;
+          if (minimumY !== program.clipMinY) {
+            gl.uniform1f(program.u.uClipMinY, minimumY);
+            program.clipMinY = minimumY;
+          }
         }
         if (kind === "line") gl.uniform1f(res.programs.line.u.uWidth, part.width * dpr);
         gl.bindVertexArray(part.vao);

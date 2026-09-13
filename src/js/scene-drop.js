@@ -163,7 +163,7 @@
     const vx = (PATH_AHEAD.x - PATH.x) / 0.02, vy = (PATH_AHEAD.y - PATH.y) / 0.02, vz = (PATH_AHEAD.z - PATH.z) / 0.02;
     // The target sits on the meadow on the jump's side of the island
     setVec(landingSpot, Math.sin(jumpAngle) * TARGET_R, 0, -Math.cos(jumpAngle) * TARGET_R);
-    landingSpot.y = island.heightAt(landingSpot.x, landingSpot.z);
+    landingSpot.y = island.surfaceAt(landingSpot.x, landingSpot.z);
     // Fly the reference fall without frames: the diver turns its head toward the target and tracks at half stick,
     // easing off as it arrives over it; each ring sits on that path at its height
     diver.place(PATH.x, PATH.y, PATH.z, Math.atan2(vx, vz));
