@@ -134,7 +134,7 @@
   const UNDER_BANDS = [P.dirt, P.stoneDark, P.dirt, P.stone];
   const undersideDepthAt = (radius) => Math.max(0, UNDER_SPHERE_CENTER + Math.sqrt(Math.max(0, UNDER_SPHERE_RADIUS * UNDER_SPHERE_RADIUS - radius * radius)));
   // Slot, its ring clock, and its tunnel clock
-  const CLOCKS = [["c11", 11], ["c9", 9], ["c730", 7.5, 10.5], ["c1", 1], ["c2", 2], ["c3", 3], ["c5", 5, 2]];
+  const CLOCKS = [["c11", 11], ["c10", 10], ["c9", 9], ["c730", 7.5, 10.5], ["c1", 1], ["c2", 2], ["c3", 3], ["c5", 5, 2]];
   const facing = (angle) => {
     const ry = (Math.PI * 2 - angle) % (Math.PI * 2);
     return ry > Math.PI ? ry - Math.PI * 2 : ry;
@@ -276,8 +276,8 @@
             if (along > e - 0.48) matrixCaves[grid.index(gx, gy, gz)] = caveIndex;
           }
           if (grid.has(gx, SURFACE - 1, gz)) {
-            const ceiling = grid.has(gx, gyTop + 1, gz) ? gyTop + 1 - SURFACE : 0;
-            cavities[gx * SZ + gz] = (caveIndex << 5) | ceiling;
+            const ceiling = grid.has(gx, gyTop + 1, gz) ? Math.round((gyTop + 1 - SURFACE) * UNIT) : 0;
+            cavities[gx * SZ + gz] = caveIndex | (ceiling << 4);
           }
           if (along > -e) columns.push(gx, gyTop, gz);
         }
@@ -345,9 +345,9 @@
     const cavityAt = (x, z, out) => {
       const i = column(x, z), cavity = i < 0 ? 0 : cavities[i];
       if (!cavity) return false;
-      out.caveIndex = cavity >> 5;
+      out.caveIndex = cavity & 15;
       out.floor = 0;
-      out.ceiling = cavity & 31 ? (cavity & 31) * UNIT : Infinity;
+      out.ceiling = cavity >> 4 || Infinity;
       return true;
     };
     const pathColumn = (x, z) => {

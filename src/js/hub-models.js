@@ -219,6 +219,55 @@
     };
     return geo;
   });
+  const matrixPrisonBars = cached(() => {
+    const parts = [
+      box({ w: 4.9, h: 0.14, d: 0.22, color: "#101813", offset: { y: 0.38 } }),
+      box({ w: 4.9, h: 0.14, d: 0.22, color: "#101813", offset: { y: 2.76 } })
+    ];
+    for (let bar = 0; bar < 7; bar++) {
+      const x = -2.25 + bar * 0.75;
+      parts.push(box({ w: 0.14, h: 3.15, d: 0.18, color: "#17211b", offset: { x, y: 1.575 } }));
+      // Small paired pixels read as a different falling code rune on every bar.
+      for (let row = 0; row < 7; row++) {
+        const side = (bar * 3 + row * 5) & 1 ? -1 : 1;
+        parts.push(box({ w: 0.035, h: 0.06, d: 0.025, color: row & 1 ? "#46ff70" : "#18dc4a", emissive: 0.7, offset: { x: x + side * 0.03, y: 0.22 + row * 0.44, z: 0.1025 } }));
+        if ((bar + row) % 3) parts.push(box({ w: 0.035, h: 0.035, d: 0.025, color: "#18dc4a", emissive: 0.45, offset: { x: x - side * 0.03, y: 0.25 + row * 0.44, z: 0.1025 } }));
+      }
+    }
+    return merge(...parts);
+  });
+  const sealedCaveFace = variants((variant) => {
+    const rand = mulberry32(419), parts = [], fronts = new Float32Array(60);
+    const mossColors = ["#6f7d3e", "#7b8945", "#65733a"];
+    let frontZ = -Infinity;
+    for (let y = 0; y < 6; y++) for (let x = 0; x < 10; x++) {
+      const depth = 0.38 + rand() * 0.16, color = CLIFF[(x + y * 2 + Math.floor(rand() * 2)) % CLIFF.length], z = (rand() - 0.5) * 0.08;
+      parts.push(box({ w: 0.5, h: 0.5, d: depth, color, offset: { x: -2.25 + x * 0.5, y: 0.25 + y * 0.5, z } }));
+      fronts[y * 10 + x] = z + depth * 0.5;
+      frontZ = Math.max(frontZ, fronts[y * 10 + x]);
+    }
+    // The hill steps wear quarter-voxel grass caps. Continue that same muted,
+    // blocky growth across the seal in connected patches rather than flecks.
+    for (let y = 0; y < 12; y++) for (let x = 0; x < 20; x++) {
+      const top = variant === 0 ? y === 11 && (x < 7 || x > 8 && x < 15 || x > 16) : variant === 1 ? y === 11 && (x < 3 || x > 4 && x < 12 || x > 14) : y === 11 && (x < 5 || x > 7 && x < 11 || x > 13);
+      const upper = variant === 0 ? y === 10 && (x < 6 || x > 9 && x < 14 || x > 17) || y === 9 && (x > 0 && x < 5 || x > 10 && x < 13 || x === 18) : variant === 1 ? y === 10 && (x < 2 || x > 5 && x < 11 || x > 15) || y === 9 && (x === 1 || x > 6 && x < 10 || x > 16) : y === 10 && (x < 4 || x > 7 && x < 12 || x > 14) || y === 9 && (x > 1 && x < 4 || x > 8 && x < 11 || x > 15 && x < 19);
+      const edge = variant === 0 ? x === 0 && y > 4 && y < 9 || x === 19 && y > 3 && y < 9 : variant === 1 ? x === 0 && y > 2 && y < 7 || x === 19 && y > 6 && y < 10 : x === 0 && y > 6 && y < 11 || x === 19 && y > 1 && y < 7;
+      const patch = variant === 0 ? y > 3 && y < 7 && (x > 4 && x < 8 || x > 13 && x < 17) && (x + y) % 3 !== 0 : variant === 1 ? y > 4 && y < 8 && (x > 2 && x < 6 || x > 11 && x < 15) && (x + y) % 3 !== 1 : y > 2 && y < 6 && (x > 8 && x < 14) && (x + y) % 4 !== 2;
+      if (!top && !upper && !edge && !patch) continue;
+      const stoneFront = fronts[Math.floor(y / 2) * 10 + Math.floor(x / 2)], mossZ = stoneFront + 0.0125;
+      parts.push(box({ w: 0.245, h: 0.245, d: 0.025, color: mossColors[(x * 3 + y * 5 + variant) % mossColors.length], offset: { x: -2.375 + x * 0.25, y: 0.125 + y * 0.25, z: mossZ } }));
+      frontZ = Math.max(frontZ, mossZ + 0.0125);
+    }
+    const geo = merge(...parts);
+    geo.frontZ = frontZ;
+    return geo;
+  });
+  const matrixButtonStand = cached(() => merge(
+    box({ w: 0.9, h: 0.16, d: 0.9, color: "#171c19", offset: { y: 0.08 } }),
+    box({ w: 0.62, h: 0.88, d: 0.62, color: "#222a25", offset: { y: 0.58 } }),
+    box({ w: 0.78, h: 0.18, d: 0.78, color: "#111713", offset: { y: 1.05 } })
+  ));
+  const matrixButton = cached(() => box({ w: 0.48, h: 0.16, d: 0.48, color: "#182b1d", offset: { y: 0.08 } }));
   const MATRIX_GLYPHS = [
     ["0110", "1001", "1111", "1001", "1001", "0000"],
     ["1110", "1001", "1110", "1001", "1110", "0000"],
@@ -480,5 +529,5 @@
     box({ w: 4, h: 0.14, d: 0.16, color: WOOD_DK, offset: { x: 2, y: -0.17, z: 0.92 } }),
     ...[[0.5, -0.8], [0.5, 0.8], [3.5, -0.8], [3.5, 0.8]].map(([x, z]) => box({ w: 0.2, h: 2.2, d: 0.2, color: "#6b4a2b", offset: { x, y: -1.2, z } }))
   ));
-  BL.hubModels = { SIGN_GLYPHS, jetpack, jetFlame, caveMouthRim, mirrorPanel, matrixGlyph, caveSign, CAVE_SIGN_WIDTH, CAVE_SIGN_HEIGHT, gate, caveShelves, bedroll, tree, bush, rock, altarSlab, altarBlock, woodCrate, barrel, flowerTuft, torch, grass, lantern, firepit, fireFlame, butterfly, firefly, ember, vine, cloud, ladder, dock, TREE_HEIGHT };
+  BL.hubModels = { SIGN_GLYPHS, jetpack, jetFlame, caveMouthRim, mirrorPanel, matrixPrisonBars, sealedCaveFace, matrixButtonStand, matrixButton, matrixGlyph, caveSign, CAVE_SIGN_WIDTH, CAVE_SIGN_HEIGHT, gate, caveShelves, bedroll, tree, bush, rock, altarSlab, altarBlock, woodCrate, barrel, flowerTuft, torch, grass, lantern, firepit, fireFlame, butterfly, firefly, ember, vine, cloud, ladder, dock, TREE_HEIGHT };
 })();

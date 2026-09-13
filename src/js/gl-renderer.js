@@ -26,7 +26,7 @@
   const NORTH_UP = { x: 0, y: 0, z: -1 };
   const ZERO4 = new Float32Array([0, 0, 0, 1]);
   const NO_FOG = new Float32Array(3);
-  const NO_MATRIX_CAVES = new Float32Array(28);
+  const NO_MATRIX_CAVES = new Float32Array(32);
   const FOG_OFF = 1e8;
   const LIGHT_EYE = { x: 0, y: 0, z: 0 };
   const MESH_STRIDE = 10;
@@ -107,9 +107,10 @@ uniform vec4 uMatrixParams;
 uniform vec3 uMatrixOrigin;
 uniform float uMatrixGlyph;
 uniform float uMatrixCave;
-uniform vec4 uMatrixCaves[7];
-uniform vec4 uMatrixCaveBounds[7];
+uniform vec4 uMatrixCaves[8];
+uniform vec4 uMatrixCaveBounds[8];
 uniform float uMatrixCaveNear;
+uniform float uMatrixPermanentCave;
 uniform sampler2D uMatrixGlyphTex;
 uniform int uMatrixSamples;
 #ifdef MATRIX_SAMPLE_INTERPOLATION
@@ -310,7 +311,7 @@ void main() {
   // Moving Oogas and insects do not own static carved faces. Locate only bright
   // occupants near the cliffs; the pile and meadow bypass the bounded lookup.
   if (uMatrixParams.x > 0.0 && living > 0.0 && caveIndex < 0.5 && flow > uMatrixCaveNear) {
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 8; i++) {
       vec4 cave = uMatrixCaves[i], bounds = uMatrixCaveBounds[i];
       float depth = cave.z - dot(vWorld.xz, cave.xy);
       float across = dot(vWorld.xz - bounds.xz, vec2(cave.y, -cave.x));
@@ -324,7 +325,8 @@ void main() {
     }
   }
   float localSurface = max(vMatrixSurface, step(1.5, uMatrixGlyph));
-  float front = uMatrixParams.x * (1.0 - smoothstep(uMatrixParams.y - 1.5, uMatrixParams.y, flow));
+  float permanent = step(0.5, uMatrixPermanentCave) * (1.0 - step(0.5, abs(caveIndex - uMatrixPermanentCave)));
+  float front = max(permanent, uMatrixParams.x * (1.0 - smoothstep(uMatrixParams.y - 1.5, uMatrixParams.y, flow)));
   if (uMatrixGlyph > 2.5) {
     // The original black liner is an effect, not the unrevealed cave material.
     // Blend it only behind the advancing front; the ordinary stone stays below.
@@ -503,9 +505,11 @@ in vec2 vPortalUv;
 uniform sampler2D uReflection;
 uniform vec3 uTint;
 uniform float uPortal;
+uniform float uReveal;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oBright;
 void main() {
+  if (vPortalUv.y > 1.0 - uReveal) discard;
   vec2 projectedUv = vReflection.xy / vReflection.w * 0.5 + 0.5;
   vec2 uv = mix(projectedUv, vPortalUv, uPortal);
   vec3 reflected = texture(uReflection, uv).rgb;
@@ -645,9 +649,9 @@ void main() {
     const records = new Map();
     const activeRecords = [];
     const res = { programs: {}, fbo: null, shadow: null, bloom: null, quadVao: null, matrixTexture: null };
-    const mirror = { node: null, record: null, geometry: null, program: null, programReady: false, fb: null, tex: null, depth: null, color: null, msFb: null, msaa: -1, width: 0, height: 0, frame: 0, portal: false, walkThrough: false, captureValid: false, capturePending: false };
+    const mirror = { node: null, record: null, geometry: null, program: null, programReady: false, fb: null, tex: null, depth: null, color: null, msFb: null, msaa: -1, width: 0, height: 0, frame: 0, portal: false, reveal: 0, frontFacing: false, walkThrough: false, captureValid: false, capturePending: false };
     const mirrorDebug = {
-      active: false, faux: false, portal: false, surfaceDrawn: false, captureValid: false, width: 0, height: 0, samples: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: false, reflectionOnlyCount: 0, planeDistance: 0,
+      active: false, faux: false, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, samples: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: false, reflectionOnlyCount: 0, planeDistance: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), capturedViewProj: mirrorCapturedViewProj, skipReason: "none"
     };
     // Compile without blocking, ready flips once linked
@@ -688,7 +692,7 @@ void main() {
     };
     const ensureMirrorProgram = () => {
       if (!mirror.program) {
-        mirror.program = compile(MIRROR_VS, MIRROR_FS, ["uViewProj", "uReflectionViewProj", "uReflection", "uTint", "uPortal"]);
+        mirror.program = compile(MIRROR_VS, MIRROR_FS, ["uViewProj", "uReflectionViewProj", "uReflection", "uTint", "uPortal", "uReveal"]);
         mirrorDebug.resources++;
       }
       if (mirror.programReady) return true;
@@ -703,7 +707,7 @@ void main() {
       const matrixSampling = gl.getExtension("OES_shader_multisample_interpolation");
       const meshFragment = matrixSampling ? MESH_FS.replace("#version 300 es", "#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION") : MESH_FS;
       res.programs = {
-        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixGlyphTex", "uMatrixSamples"]),
+        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixGlyphTex", "uMatrixSamples"]),
         shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth"]),
         sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uEye", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uStarMatrix", "uStars", "uTime"]),
@@ -817,7 +821,7 @@ void main() {
       destroyMirrorTarget();
       destroyMirrorProgram();
       mirror.node = mirror.record = mirror.geometry = null;
-      mirror.portal = mirror.walkThrough = mirror.capturePending = false;
+      mirror.portal = mirror.frontFacing = mirror.walkThrough = mirror.capturePending = false;
       mirrorDebug.active = false;
       mirrorDebug.portal = false;
       mirrorDebug.surfaceDrawn = false;
@@ -829,7 +833,7 @@ void main() {
       mirror.programReady = false;
       mirror.msaa = -1;
       mirror.width = mirror.height = mirrorDebug.width = mirrorDebug.height = mirrorDebug.samples = 0;
-      mirror.portal = mirror.walkThrough = mirror.captureValid = mirror.capturePending = false;
+      mirror.portal = mirror.frontFacing = mirror.walkThrough = mirror.captureValid = mirror.capturePending = false;
       mirrorDebug.active = false;
       mirrorDebug.portal = mirrorDebug.captureValid = false;
       mirrorDebug.surfaceDrawn = false;
@@ -1080,9 +1084,11 @@ void main() {
         mirror.node = node;
         mirror.geometry = node.geometry;
         mirror.portal = !!node.mirrorPortal;
+        mirror.reveal = Math.max(0, Math.min(1, node.mirrorReveal || 0));
         mirror.walkThrough = !!node.mirrorWalkThrough;
         mirrorDebug.active = true;
         mirrorDebug.portal = mirror.portal;
+        mirrorDebug.reveal = mirror.reveal;
       }
       const rec = recordFor(node.geometry);
       if (node.mirror || node.mirrorPortal) mirror.record = rec;
@@ -1204,9 +1210,13 @@ void main() {
       normal[0] = world[8] / nlen;
       normal[1] = world[9] / nlen;
       normal[2] = world[10] / nlen;
-      mirrorDebug.planeDistance = Math.abs((camera.position.x - center[0]) * normal[0] + (camera.position.y - center[1]) * normal[1] + (camera.position.z - center[2]) * normal[2]);
+      const cameraSide = (camera.position.x - center[0]) * normal[0] + (camera.position.y - center[1]) * normal[1] + (camera.position.z - center[2]) * normal[2];
+      mirror.frontFacing = cameraSide > MIRROR_EPSILON;
+      mirrorDebug.planeDistance = Math.abs(cameraSide);
       mirror.portal = !!mirror.node.mirrorPortal;
+      mirror.reveal = Math.max(0, Math.min(1, mirror.node.mirrorReveal || 0));
       mirrorDebug.portal = mirror.portal;
+      mirrorDebug.reveal = mirror.reveal;
     };
     const prepareMirrorCamera = (camera) => {
       const node = mirror.node, world = node.world, center = mirrorDebug.planeCenter, normal = mirrorDebug.planeNormal;
@@ -1413,6 +1423,7 @@ void main() {
       gl.uniform4fv(pg.mesh.u.uMatrixCaves, matrix && matrix.caves || NO_MATRIX_CAVES);
       gl.uniform4fv(pg.mesh.u.uMatrixCaveBounds, matrix && matrix.caveBounds || NO_MATRIX_CAVES);
       gl.uniform1f(pg.mesh.u.uMatrixCaveNear, matrix && matrix.caveBounds ? matrix.caveNear : FOG_OFF);
+      gl.uniform1f(pg.mesh.u.uMatrixPermanentCave, matrix ? matrix.permanentCave || 0 : 0);
       drawParts("mesh", "mesh", true);
       if (skyOn) drawSky(mirrorInvViewProj, mirrorEye);
       gl.useProgram(pg.mesh.prog);
@@ -1442,12 +1453,13 @@ void main() {
     };
     const drawMirrorSurface = () => {
       const rec = mirror.record, part = rec && rec.mesh, pg = mirror.program;
-      if (mirror.portal || !part || !mirror.tex || !mirror.programReady || !mirror.captureValid) return;
+      if (mirror.portal || !mirror.frontFacing || !part || !mirror.tex || !mirror.programReady || !mirror.captureValid) return;
       gl.useProgram(pg.prog);
       gl.uniformMatrix4fv(pg.u.uViewProj, false, viewProj);
       gl.uniformMatrix4fv(pg.u.uReflectionViewProj, false, mirrorCapturedViewProj);
       gl.uniform3f(pg.u.uTint, 0.56, 0.62, 0.67);
       gl.uniform1f(pg.u.uPortal, mirror.portal ? 1 : 0);
+      gl.uniform1f(pg.u.uReveal, mirror.reveal);
       gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_2D, mirror.tex);
       gl.uniform1i(pg.u.uReflection, 2);
@@ -1552,9 +1564,11 @@ void main() {
       }
       activeRecords.length = 0;
       mirror.node = mirror.record = null;
-      mirror.portal = mirror.walkThrough = false;
+      mirror.portal = mirror.frontFacing = mirror.walkThrough = false;
+      mirror.reveal = 0;
       mirrorDebug.active = false;
       mirrorDebug.portal = false;
+      mirrorDebug.reveal = 0;
       mirrorDebug.surfaceDrawn = false;
       culled = drawn = suppressed = 0;
       updateWorld(root, null);
@@ -1621,6 +1635,7 @@ void main() {
       gl.uniform4fv(pg.mesh.u.uMatrixCaves, matrix && matrix.caves || NO_MATRIX_CAVES);
       gl.uniform4fv(pg.mesh.u.uMatrixCaveBounds, matrix && matrix.caveBounds || NO_MATRIX_CAVES);
       gl.uniform1f(pg.mesh.u.uMatrixCaveNear, matrix && matrix.caveBounds ? matrix.caveNear : FOG_OFF);
+      gl.uniform1f(pg.mesh.u.uMatrixPermanentCave, matrix ? matrix.permanentCave || 0 : 0);
       drawParts("mesh", "mesh", true, true);
       drawMirrorSurface();
       if (skyOn) drawSky(invViewProj, camera.position);

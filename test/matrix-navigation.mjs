@@ -15,7 +15,7 @@ export const matrixNavigationProbe = (prime = () => {}) => {
     const p = B.camera.position, space = { caveIndex: 0, floor: 0, ceiling: 0 }, cavity = B.island.cavityAt(p.x, p.z, space);
     return { requested: [x, y, z], actual: [cr * (p.x - m.x) - sr * (p.z - m.z), p.y - m.floorY, sr * (p.x - m.x) + cr * (p.z - m.z)], id: B.cameraCave.id, index: B.cameraCave.index, contains: B.cameraCave.contains(p.x, p.y, p.z), matrixInside: C.inside, active: W.active, radius: W.radius, pitch: o.pitch, near: B.camera.near, cavity, floor: space.floor, ground: B.island.surfaceAt(p.x, p.z) - m.floorY, ceiling: Number.isFinite(space.ceiling) ? space.ceiling : null };
   };
-  const cases = [], openings = B.cameraCave.openings;
+  const cases = [], allOpenings = B.cameraCave.openings, openings = allOpenings.filter((opening) => !opening.blocked), sealedOpenings = allOpenings.filter((opening) => opening.blocked);
   for (const active of [false, true]) for (const opening of openings) {
     C.viewInside(false); step();
     if (active) advance(W.maxRadius);
@@ -51,9 +51,16 @@ export const matrixNavigationProbe = (prime = () => {}) => {
   // Relocating between debug views is not a physical cross-island flight. Leave
   // the last doorway upward first so that the long setup segment crosses no
   // unrelated low aperture on its way back to the Mirror approach.
+  const sealed = [];
   pose(openings[openings.length - 1], 0, 12, 1.2);
+  for (const opening of sealedOpenings) {
+    pose(opening, 0, 12, 1.2);
+    const before = pose(opening, 0, 0.8, 0.9), after = pose(opening, 0, 0.8, 0.1);
+    sealed.push({ id: opening.id, index: opening.caveIndex, blocked: opening.blocked, before, after });
+    pose(opening, 0, 12, 1.2);
+  }
   C.viewApproach(); step(); advance(0); step(true);
-  return { backend: R.kind, openings: openings.length, caveBytes: B.island.cavityBytes, cases, draws, final: { index: B.cameraCave.index, active: W.active, radius: W.radius } };
+  return { backend: R.kind, openings: allOpenings.length, occupied: openings.length, sealed, caveBytes: B.island.cavityBytes, cases, draws, final: { index: B.cameraCave.index, active: W.active, radius: W.radius } };
 };
 
 // Scene routing must depend on the driven Ooga's real doorway crossing, not
