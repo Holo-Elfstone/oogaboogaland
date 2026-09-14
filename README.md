@@ -17,22 +17,61 @@ Open `src/index.html` in a browser, or serve `src/` with any static server.
 
 The page lands on the hub: a floating island whose cliff caves are the projects. Tap the
 lit cave to enter EntropyLab; **Escape** or the **Leave cave** button brings you back.
-The 9 o'clock cave is **Ooga Rally**, a kart race the size of a world: pick an Ooga, a
-ride (on foot, a Rock Kart or a Dino) and one of three tracks (Banana Bay, Lava Gorge,
-Frost Peak), then race the crew over three laps.
+The 9 o'clock cave is **Ooga Rally**: press **Space** nearby to open a kart race the size
+of a world. Pick an Ooga, a ride (on foot, a Rock Kart or a Dino) and one of three tracks
+(Banana Bay, Lava Gorge, Frost Peak), then race the crew over three laps.
 
 The island keeps your local date and time. The sun, moon, stars, sky, light and shadows
 move continuously through dawn, morning, noon, dusk, night and midnight; the torches, the fire pit and the sign lanterns light at dusk,
 butterflies give way to fireflies, the crew gathers at the fire and talks about the hour,
-and a shaken tree at night scatters fireflies.
+and a shaken tree at night scatters fireflies. Climbing above the island lowers the
+horizon haze, revealing more stars while their directions remain fixed in the sky.
 
 Fly around the island with **W A S D** (or the arrows), **Q E** to turn, **R F** to tilt,
 **Z** or **Space** up and **X** down; drag to orbit and scroll to zoom. On a phone the left
 stick moves and the right stick looks. Double-tap a caveman to walk in their boots: the same
-keys or stick walk them, holding **both mouse buttons** walks them forward, **Space** (or
-the Ooga! button) eats from the pile, pokes a neighbour, shakes a tree, rustles a bush,
-rolls a die or flips a card, and walking into the lit cave enters it. **Escape** lets go.
-**0** brings the camera home.
+keys or stick walk them, and holding **both mouse buttons** walks them forward. **Space**
+(or the **JUMP!** button) jumps: press once from the ground, then once more for a double
+jump. Release between jumps; both reset after landing. A reachable mirror-room button
+or Ooga Rally/Drop launcher takes priority over jumping. The action button changes to
+**PRESS IN**, **PRESS OUT**, **START RALLY**, or **FLY PLANE** while that control is nearby.
+These actions work from every direction without needing to face them. Click or tap
+decorative props to interact with them. Walking into the lit lab cave enters it.
+**Escape** lets go and **0** brings the camera home.
+
+**J** puts the controlled Ooga's jetpack on or takes it off. With the jetpack equipped,
+tap **Space** on the ground for a weighted hop, half the height of a normal jump,
+or hold it to keep climbing under thrust. Clicking an Ooga still shows a talking
+bubble without making them hop.
+A fresh press while airborne resumes thrust without adding another jump; a nearby
+action still takes priority on its press. Thrust beneath the island glides outward
+along the rock, past its stepped underside.
+The jetpack icon and fuel bar on the left show the remaining fuel. A full tank lasts
+eight seconds using **Space** or sixteen seconds using directional movement while
+airborne. Combining both adds their fuel costs, lasting about 5.33 seconds. Walking
+on the ground uses no fuel. Directional flight emits sparks at half the rate of Space;
+combining both adds their spark rates too. Releasing the controls pauses fuel use
+while airborne. Fuel refills in four seconds on the ground, including while the pack
+is off. Empty fuel stops thrust and lets the Ooga fall without granting extra jumps.
+Without thrust, falling uses the same gravity and speed with or without a jetpack,
+regardless of its remaining fuel.
+Landing with less than 20% fuel puts the jetpack in recovery until fuel recharges above
+20%. During recovery, **Space** and the **JUMP!** button perform the standard double
+jump even with the pack equipped; nearby controls still take priority. Toggling the
+pack does not refill it or clear recovery. Jetpacks are removed on entering the
+underground HQ, basement, or their access ramps and cannot be equipped there, except
+inside the basement's central shaft. Fly up through that opening from below the
+island; the pack comes off once you clear its lip onto the basement walking ring.
+
+You can fly above and beyond the island, or walk and jump off its edge. Steer through
+an open window to enter HQ or the basement while falling. The windows widen toward
+the outside with smooth stone reveals. Falling into the abyss plays a fall animation,
+then returns your Ooga to the banana pile. First person without a selected Ooga also
+falls naturally and returns to the pile.
+
+Land on the clouds to walk along their voxel tops and recharge your jetpack. A cloud
+carries you as it drifts; walking off, or losing the cloud beneath you, starts a
+natural fall. You can fly upward through clouds from below.
 
 Scroll all the way in for first person. Walking has the same pace with or without a
 selected Ooga, and both fall naturally when stepping off a ledge. Scroll out to return
@@ -43,9 +82,11 @@ or just your free camera, to that destination while keeping your current view mo
 **LAB** takes you to the EntropyLab entrance on the island; tap the cave or walk inside
 to enter the lab. **MIRROR** takes you to the OBL mirror, and **HQ** to the headquarters
 beneath the island. Inside HQ, two curved descents connect to a shared basement with
-eight empty rooms around a smaller common area. Walk or fly between the levels without
+eight empty rooms around a smaller common area. Walk between the levels without
 leaving the island. The basement rooms and ramps have exterior windows; its common area
-has no fireplace.
+has no fireplace. A wide central hole opens through the island's underside, with a
+beveled stone rim and a broad walking ring connecting the rooms and ramps. Step into
+the hole to fall through the island into the open air below.
 
 In Ooga Rally, **W** or **Up** accelerates, **S** or **Down** brakes and reverses, **A D**
 or **Left Right** steer, **Space** held drifts (release for a boost, tap to hop), **E** or
@@ -58,9 +99,10 @@ all three in a row for points and a saved cup medal. Now and then a race loads i
 (snow on Frost Peak) and the tarmac gets slick; the sound is synthesized in the browser,
 nothing is downloaded.
 
-On the roof of the Ooga Rally cave sits a plane: tap it, or walk a driven Ooga up to it, for
-**Ooga Drop**. Pick an Ooga and **Fly!**: the plane climbs in a circle while the island shrinks
-below (hold **Space** to hurry), **GET READY!** and **JUMP SOON!** call the mark as it comes
+On the roof of the Ooga Rally cave sits a plane: press **Space** nearby for **Ooga Drop**.
+Approaching either game's launcher does not start it until you act. Pick an Ooga and
+**Fly!**: the plane climbs in a circle while the island shrinks below (hold **Space** to
+hurry), **GET READY!** and **JUMP SOON!** call the mark as it comes
 round once a lap, **JUMP** opens it, and Space throws you
 out. In freefall **W S** pitch, **A D** roll and **Q E** turn the body, and the air answers the
 way it does to a flat plate: belly down is slow and steady, head down is fast, a tilt tracks
@@ -74,7 +116,7 @@ go; **0** puts the camera back, **M** mutes the synthesized engine, wind and can
 **Escape** returns to the board. On a phone the left stick pitches and rolls, the right stick
 turns, and the button jumps, pulls and flares. The best drop is kept in your browser.
 
-Keys: **B** add 100 test bananas, **J** give the controlled Ooga a jetpack, **L** legendary
+Keys: **B** add 100 test bananas, **J** toggle the controlled Ooga's jetpack, **L** legendary
 tip, **P** fill the pile, **1** to **9** force a contributor to eating, **Escape** leave a
 cave or let go, **Shift+R** reset the demo.
 
@@ -88,8 +130,12 @@ use `&b=500` to choose how many test bananas each press of **B** adds and drops,
 `&view=mirror`, or `&view=hq` to preload that island view. Add `&firstperson=1` for an initial
 eye-level free camera, or `&character=w-s-bitcoin` to start controlling that contributor.
 Combine them for first-person character control, including a starting location:
-`?debug=1&firstperson=1&character=w-s-bitcoin&view=hq`. These two flags apply only on the
-initial page load; unknown character handles are ignored. `&latitude=20` optionally changes
+`?debug=1&firstperson=1&character=w-s-bitcoin&view=hq`. Add `&jetpack=1` to equip the
+selected character on startup, or select the first working Ooga when `character=` is
+omitted (the first roster entry if none is working). An explicit unknown handle leaves
+selection untouched. `view=hq` takes precedence: it suppresses the pack and its automatic
+selection while respecting an explicit `character=` or `firstperson=1`. These flags
+apply only on the initial page load. `&latitude=20` optionally changes
 the debug latitude (bounded to 66 degrees north or south). Use `&loot=1` to exercise the loot feature. Loot ships off: `LOOT_DEFAULT` in `src/js/director.js`
 turns it on for everyone. The pile holds at most ten million bananas; every count is clamped there.
 

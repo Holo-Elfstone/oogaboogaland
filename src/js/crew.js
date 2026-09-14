@@ -24,14 +24,14 @@
     night: ["Stars many.", "Fire warm.", "Moon big.", "Dark out there.", "Ooga count star.", "Owl."],
     midnight: ["Ooga not sleepy.", "Owl says hoo.", "Very dark. Very quiet.", "Rock cold.", "Booga snore.", "Moon watch."]
   };
-  const SHOUTS = ["OOGA BOOGA!", "OOGA!", "BOOGA!"];
   // Meal and idle timings for a working caveman
   const EAT_MIN = 14, EAT_SPREAD = 20, HUNGRY_LINGER = 4, IDLE_MIN = 3, IDLE_SPREAD = 6, TRIPS_MAX = 3;
   const { WALK } = BL.pilot;
   const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = WALK.speed;
   const PLAYER_STEP = 0.125;
-  // Jetpack thrust, ceiling, capped fall and speed
-  const JET_ACCEL = 20, JET_RISE = 7, JET_FALL = 7, JET_CEILING = 16, JET_SPEED = 6.4, JET_PUFF = 0.05;
+  const JUMP_SPEED = 4.8, JET_FUEL_SECONDS = 8, JET_MOVE_SECONDS = JET_FUEL_SECONDS * 2, JET_REFILL_SECONDS = 4, JET_LAUNCH_FUEL = 0.2;
+  // Fuel limits range and altitude; releasing thrust uses ordinary gravity.
+  const JET_ACCEL = 20, JET_RISE = 7, JET_SPEED = 6.4, JET_PUFF = 0.05;
   const JET_SPARKS = [models.particleGeometry("#ffb13b", 0.09, 1), models.particleGeometry("#f3efe4", 0.07, 0.6)];
   const LAND_DUST = [models.particleGeometry("#a3874f", 0.1, 0)];
   // A drop deeper than a step, mirroring the hub's STEP_MAX
@@ -104,6 +104,7 @@
         walk: null,
         hop: 0,
         hopV: 0,
+        jumps: 0,
         cheer: 0,
         catchT: 0,
         yawn: 0,
@@ -113,6 +114,9 @@
         highlight: 0,
         nextBuildAt: 8 + i * 2.5 + Math.random() * 6,
         jet: null,
+        jetFuel: 1,
+        jetRecovering: false,
+        cloudSupport: null,
         viewLift: 0,
         act: { kind: "eat", until: 0, trips: 0, sayAt: 0, said: true, phase: 0, spot: { x: 0, z: 0, ry: NaN } },
         swagNodes: []
@@ -127,6 +131,7 @@
       const p = cave.root.position;
       return cave.baseY + groundAt(p.x, p.z, p.y - cave.baseY);
     };
+    const grounded = (cave) => cave.hop === 0 && cave.hopV <= 0 && Math.abs(cave.root.position.y - groundY(cave)) < 1e-6;
     const atPile = (cave) => cave.act.kind === "eat" || cave.act.kind === "rush";
     // Take the first free bed, else share by roster.
     const claimBedroll = (cave) => {
@@ -567,21 +572,28 @@
         startWander(cave);
       }
     };
-    // Thrust against gravity, with a ceiling and capped fall
+    // Thrust against ordinary gravity, with fuel-scaled exhaust.
     const runJet = (cave, dt) => {
       const jet = cave.jet;
+      if (cave.jetRecovering) jet.thrust = false;
+      const moving = !cave.jetRecovering && (cave.hop > 0 || cave.hopV > 0) && Math.hypot(steer.x, steer.z) > 0.05;
+      jet.power = (jet.thrust ? 2 : 0) + (moving ? 1 : 0);
+      jet.spending = jet.power > 0;
+      if (jet.spending) cave.jetFuel = Math.max(0, cave.jetFuel - dt * jet.power / JET_MOVE_SECONDS);
+      if (cave.jetFuel < 1e-10) { cave.jetFuel = 0; jet.thrust = false; jet.power = 0; }
       if (jet.thrust) {
         cave.hopV = Math.min(cave.hopV + JET_ACCEL * dt, JET_RISE);
-        if (cave.hop >= JET_CEILING) cave.hopV = Math.min(cave.hopV, 0);
+      }
+      if (jet.power) {
         jet.puff -= dt;
         if (jet.puff <= 0) {
           jet.puff = JET_PUFF;
           const p = cave.root.position;
-          ctx.fx.burst(p.x, p.y + 0.12, p.z, 2, JET_SPARKS, 1.1);
+          ctx.fx.burst(p.x, p.y + 0.12, p.z, jet.power, JET_SPARKS, 1.1);
         }
-      } else if (cave.hopV < -JET_FALL) cave.hopV = -JET_FALL;
-      jet.flame.visible = jet.thrust;
-      if (jet.thrust) jet.flame.scale.y = 0.7 + Math.sin(elapsed * 40 + cave.phase) * 0.3;
+      }
+      jet.flame.visible = jet.power > 0;
+      if (jet.power) jet.flame.scale.y = (0.7 + Math.sin(elapsed * 40 + cave.phase) * 0.3) * jet.power / 2;
     };
     // Flying also stops at rock standing above him
     const canStep = (cave, flying, fromX, fromZ, toX, toZ) => {
@@ -625,7 +637,8 @@
       if (cave.jet) runJet(cave, dt);
       clampPlayerCeiling(cave, wasGround);
       p.y = wasGround + cave.hop;
-      const flying = !!cave.jet && (cave.jet.thrust || cave.hop > 0.05);
+      if (cave.jet && cave.jet.thrust && ctx.glideJetCeiling && ctx.glideJetCeiling(cave, dt)) cave.hopV = Math.max(cave.hopV, JET_RISE);
+      const flying = !!cave.jet && !cave.jetRecovering && cave.jetFuel > 0 && (cave.jet.thrust || cave.hop > 0.05);
       const len = Math.hypot(steer.x, steer.z);
       if (len > 0.05) {
         const k = Math.min(1, len) * (flying ? JET_SPEED : PLAYER_SPEED) * dt;
@@ -653,6 +666,11 @@
         flyPose(cave);
       }
       if (flying) flyPose(cave);
+      else if (cave.hop > 0 && ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY)) {
+        // Arms rise and legs trail during the visible fall beneath the island.
+        flyPose(cave);
+        cave.parts.armL.rotation.x = cave.parts.armR.rotation.x = -2.1;
+      }
       // Airborne he holds a world height, so ground steps never lift him
       if (flying || cave.hop > 0) cave.hop = Math.max(0, cave.hop + wasGround - groundY(cave));
       else {
@@ -662,9 +680,11 @@
         const drop = wasGround - groundY(cave);
         if (drop > STEP) {
           cave.hop += drop;
-          cave.hopV = Math.max(cave.hopV, WALK.ledgeRise);
-          leap.vx = Math.sin(cave.root.rotation.y) * WALK.ledgeSpeed;
-          leap.vz = Math.cos(cave.root.rotation.y) * WALK.ledgeSpeed;
+          if (!cave.cloudSupport) {
+            cave.hopV = Math.max(cave.hopV, WALK.ledgeRise);
+            leap.vx = Math.sin(cave.root.rotation.y) * WALK.ledgeSpeed;
+            leap.vz = Math.cos(cave.root.rotation.y) * WALK.ledgeSpeed;
+          }
         }
       }
       // One place sets the height, so nothing compounds
@@ -673,6 +693,12 @@
       // support is the apron below. Query the ceiling at that world height.
       clampPlayerCeiling(cave, ground, ground - cave.baseY + cave.hop);
       cave.root.position.y = ground + cave.hop;
+      // Movement can acquire a cloud after the pre-gravity support query.
+      // Keep that exact destination layer if it drifts away next frame.
+      if (ctx.cloudAt) cave.cloudSupport = ctx.cloudAt(p.x, p.z, p.y - cave.baseY);
+      if (grounded(cave)) {
+        cave.jumps = 0;
+      } else cave.jumps = Math.max(1, cave.jumps);
       if (cave.hop === 0 && (leap.vx || leap.vz)) {
         leap.vx = leap.vz = 0;
         leap.land = 0.25;
@@ -691,12 +717,16 @@
     };
     const updateCaveman = (cave, dt) => {
       const parts = cave.parts;
+      if (ctx.prepareCloudSupport) ctx.prepareCloudSupport(cave);
       cave.highlight = damp(cave.highlight, cave.highlightTarget, 12, dt);
       for (const key of BODY_PARTS) parts[key].highlight = cave.highlight;
       if (cave.hopV > 0 || cave.hop > 0) {
         cave.hopV -= WALK.gravity * dt;
         cave.hop = Math.max(0, cave.hop + cave.hopV * dt);
-        if (cave.hop === 0 && cave.hopV < 0) cave.hopV = 0;
+        if (cave.hop === 0 && cave.hopV < 0) {
+          cave.hopV = 0;
+          if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
+        }
       }
       if (cave.cheer > 0) cave.cheer -= dt;
       if (cave.yawn > 0) cave.yawn -= dt;
@@ -718,6 +748,19 @@
       }
       if (cave === player) {
         runPlayer(cave, dt);
+        return;
+      }
+      if (ctx.abyssAt && ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY)) {
+        // Releasing possession must not strand an Ooga beneath the world.
+        cave.root.position.y = groundY(cave) + cave.hop;
+        flyPose(cave);
+        cave.parts.armL.rotation.x = cave.parts.armR.rotation.x = -2.1;
+        if (cave.root.position.y - cave.baseY < ctx.abyssRespawnY) {
+          cave.hop = cave.hopV = cave.jumps = 0;
+          standPose(cave);
+          standAtSlot(cave);
+          startMeal(cave);
+        }
         return;
       }
       if (cave.walk) {
@@ -786,17 +829,24 @@
     // ---------- the jetpack ----------
     // Put the jetpack on a caveman's back
     const wearJetpack = (cave, geometry, flameGeometry) => {
-      if (cave.jet) return null;
+      if (cave.jet || ctx.jetpackAllowed && !ctx.jetpackAllowed(cave)) return null;
       const h = cave.traits.height;
       const node = createNode({ position: { x: 0, y: 0.06 * h + cave.viewLift, z: -0.18 * h }, scale: { x: h, y: h, z: h }, geometry });
       const flame = createNode({ geometry: flameGeometry, visible: false });
       addChild(node, flame);
       addChild(cave.root, node);
-      cave.jet = { node, flame, thrust: false, puff: 0 };
+      cave.jet = { node, flame, thrust: false, spending: false, power: 0, puff: 0 };
+      if (cave.jetFuel < JET_LAUNCH_FUEL && grounded(cave)) cave.jetRecovering = true;
       return node;
     };
+    const removeJetpack = (cave) => {
+      if (!cave.jet) return false;
+      removeChild(cave.root, cave.jet.node);
+      cave.jet = null;
+      return true;
+    };
     const thrust = (on) => {
-      if (player && player.jet) player.jet.thrust = !!on;
+      if (player && player.jet) player.jet.thrust = !!on && !player.jetRecovering && player.jetFuel > 0;
     };
 
     // ---------- the visitor's caveman ----------
@@ -813,7 +863,8 @@
       cave.parts.head.rotation.x = 0;
       cave.parts.head.rotation.y = 0;
       standPose(cave);
-      cave.root.position.y = groundY(cave);
+      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY)) cave.root.position.y = groundY(cave);
+      if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL && grounded(cave)) cave.jetRecovering = true;
       return true;
     };
     const release = () => {
@@ -825,10 +876,12 @@
       cave.leap.vx = cave.leap.vz = cave.leap.land = 0;
       if (cave.jet) {
         cave.jet.thrust = false;
+        cave.jet.spending = false;
+        cave.jet.power = 0;
         cave.jet.flame.visible = false;
       }
       standPose(cave);
-      cave.root.position.y = groundY(cave);
+      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY)) cave.root.position.y = groundY(cave);
       cave.act.kind = "idle";
       cave.act.until = elapsed + 1.5;
       cave.act.said = true;
@@ -848,10 +901,14 @@
       elevatePlayer(0);
       steer.x = steer.z = steer.view = steer.forward = steer.strafe = 0;
       cave.hop = cave.hopV = cave.act.phase = 0;
+      cave.cloudSupport = null;
+      cave.jumps = 0;
       cave.leap.vx = cave.leap.vz = cave.leap.land = 0;
       cave.cheer = cave.catchT = cave.yawn = 0;
       if (cave.jet) {
         cave.jet.thrust = false;
+        cave.jet.spending = false;
+        cave.jet.power = 0;
         cave.jet.flame.visible = false;
         cave.jet.puff = 0;
       }
@@ -861,6 +918,7 @@
       cave.root.rotation.x = cave.root.rotation.z = 0;
       cave.root.rotation.y = heading;
       setVec(cave.root.position, position.x, position.y + cave.baseY, position.z);
+      if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL && grounded(cave)) cave.jetRecovering = true;
     };
     // Applied after the camera's damped angles update, keeping pose and view in lockstep.
     const lookPlayer = (heading, pitch, mix) => {
@@ -874,7 +932,14 @@
     // Scaling each leg about its hip keeps the feet on that same voxel step.
     const elevatePlayer = (lift) => {
       if (!player) return;
-      const cave = player, delta = lift - cave.viewLift, parts = cave.parts;
+      const cave = player, parts = cave.parts;
+      // Step smoothing moves the rendered head after physics. Keep that lift
+      // within the same full-footprint ceiling used by walking and jumping.
+      if (lift > 0 && ctx.ceilingAt) {
+        const p = cave.root.position, feet = p.y - cave.baseY;
+        lift = Math.min(lift, Math.max(0, ctx.ceilingAt(p.x, p.z, feet) - feet - cave.bodyHeight));
+      }
+      const delta = lift - cave.viewLift;
       if (!delta) return;
       parts.legL.position.y += delta;
       parts.legR.position.y += delta;
@@ -887,33 +952,32 @@
       cave.viewLift = lift;
       parts.legL.scale.y = parts.legR.scale.y = (cave.baseY + lift) / cave.baseY;
     };
-    // Space eats, opens, pokes, uses props or shouts
+    const jumpPlayer = () => {
+      if (!player || player.jet && !player.jetRecovering) return false;
+      if (grounded(player)) player.jumps = 0;
+      else player.jumps = Math.max(1, player.jumps);
+      if (player.jumps >= 2) return false;
+      // A takeoff leaves step smoothing behind before testing its headroom.
+      elevatePlayer(0);
+      player.jumps++;
+      player.hopV = JUMP_SPEED;
+      return true;
+    };
+    // The pack's weight halves a tap jump's height. Holding continues thrust;
+    // a nearby action consumes the press and airborne presses add no impulse.
     const playerAction = () => {
       if (!player) return false;
-      const p = player.root.position;
-      if (world.level >= 1 && Math.hypot(p.x, p.z) < ctx.pile.pileEdge() + REACH && ctx.pile.eatFromPile(player)) {
-        ctx.fx.say(player, "Nom nom.", 1.6);
-        return true;
-      }
-      if (ctx.crates) {
-        for (const crate of ctx.crates.list) {
-          if (crate.opened || !crate.node.visible || Math.abs(crate.node.position.y) > 0.05) continue;
-          if (Math.hypot(crate.node.position.x - p.x, crate.node.position.z - p.z) < REACH) {
-            ctx.crates.openCrate(crate);
-            return true;
-          }
+      const p = player.root.position, feet = p.y - player.baseY;
+      if (ctx.useNear && ctx.useNear(p.x, p.z, REACH + 0.6, feet)) return true;
+      if (player.jet && !player.jetRecovering) {
+        if (player.jetFuel > 0 && grounded(player)) {
+          elevatePlayer(0);
+          player.jumps = 1;
+          player.hopV = JUMP_SPEED * Math.SQRT1_2;
         }
+        return false;
       }
-      for (const other of cavemen.values()) {
-        if (other === player || !other.root.visible) continue;
-        if (Math.hypot(other.root.position.x - p.x, other.root.position.z - p.z) < REACH) {
-          pokeCave(other);
-          return true;
-        }
-      }
-      if (ctx.useNear && ctx.useNear(p.x, p.z, REACH + 0.6)) return true;
-      hopCave(player, 3);
-      ctx.fx.say(player, SHOUTS[randomInt(SHOUTS.length)], 1.6);
+      jumpPlayer();
       return true;
     };
     const applySwag = (cave) => {
@@ -951,16 +1015,11 @@
       return item ? item.name : null;
     };
     const renderLocker = () => hud.renderInventory(game.state.inventory, game.assignedTo, wornBy);
-    const hopCave = (cave, strength = 2.6) => {
-      if (cave.state === "sleeping") return;
-      cave.hopV = Math.max(cave.hopV, strength);
-    };
     const pokeCave = (cave) => {
       if (cave.state === "sleeping") {
         ctx.fx.say(cave, SLEEP_POKES[randomInt(SLEEP_POKES.length)], 1.8);
         return;
       }
-      hopCave(cave);
       ctx.fx.say(cave, POKES[randomInt(POKES.length)], 1.8);
     };
     // Build quotes, drawn by fx.drawOverlay
@@ -974,7 +1033,14 @@
     };
     const update = (dt, now) => {
       elapsed = now;
-      for (const cave of cavemen.values()) updateCaveman(cave, dt);
+      for (const cave of cavemen.values()) {
+        updateCaveman(cave, dt);
+        if (grounded(cave)) {
+          if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
+          if (cave.jetFuel < 1 && (!cave.jet || !cave.jet.spending)) cave.jetFuel = Math.min(1, cave.jetFuel + dt / JET_REFILL_SECONDS);
+        }
+        if (cave.jetFuel > JET_LAUNCH_FUEL) cave.jetRecovering = false;
+      }
     };
     const dispose = () => {
       player = null;
@@ -995,11 +1061,11 @@
     const stats = () => ({ built: builtEquipment.length });
     return {
       cavemen, stateOf, stateCounts, workingCavemen, eatingCavemen, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, drawQuotes,
-      control, release, relocatePlayer, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, wearJetpack, thrust, update, dispose, stats,
+      control, release, relocatePlayer, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, wearJetpack, removeJetpack, thrust, update, dispose, stats,
       get player() {
         return player;
       }
     };
   };
-  BL.crew = { create, EAT_RATE };
+  BL.crew = { create, EAT_RATE, JUMP_SPEED, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();

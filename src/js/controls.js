@@ -55,42 +55,64 @@
     return s;
   };
   // Joystick bases, a hold-to-climb button, a canvas whose mouse chord walks, and a Space handler
-  const create = ({ move = null, look = null, boost = null, chord = null, onAction = null } = {}) => {
-    const held = { forward: 0, back: 0, left: 0, right: 0, yawLeft: 0, yawRight: 0, pitchDown: 0, pitchUp: 0, up: 0, down: 0, boost: 0, chord: 0 };
+  const create = ({ move = null, look = null, boost = null, chord = null, onAction = null, pressActions = false } = {}) => {
+    const held = { forward: 0, back: 0, left: 0, right: 0, yawLeft: 0, yawRight: 0, pitchDown: 0, pitchUp: 0, up: 0, space: 0, down: 0, boost: 0, chord: 0 };
     const axes = { x: 0, y: 0, up: 0, yaw: 0, pitch: 0 };
+    let spaceDown = false, boostPointer = null, boostClick = false;
     const typing = (e) => e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || (e.target.closest && e.target.closest("dialog")));
     const onKeyDown = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || typing(e)) return;
-      const name = KEYS[e.key.toLowerCase()];
+      const name = pressActions && e.key === " " ? "space" : KEYS[e.key.toLowerCase()];
       if (!name) return;
       if (e.key === " " || e.key.startsWith("Arrow")) e.preventDefault();
-      if (e.key === " " && !e.repeat && onAction && onAction()) return;
+      if (pressActions && e.key === " ") {
+        if (spaceDown || e.repeat) return;
+        spaceDown = true;
+        if (onAction && onAction()) return;
+      } else if (e.key === " " && !e.repeat && onAction && onAction()) return;
       held[name] = 1;
     };
     const onKeyUp = (e) => {
-      const name = KEYS[e.key.toLowerCase()];
+      const name = pressActions && e.key === " " ? "space" : KEYS[e.key.toLowerCase()];
       if (name) held[name] = 0;
+      if (e.key === " ") spaceDown = false;
     };
     const onBlur = () => {
       for (const name in held) held[name] = 0;
+      spaceDown = false;
+      boostPointer = null;
+      boostClick = false;
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onBlur);
     const moveStick = move ? joystick(move) : null;
     const lookStick = look ? joystick(look) : null;
-    // The button still fires its own click
-    const onBoostDown = () => {
-      held.boost = 1;
+    // A pointer press has the same action/thrust priority as Space. Consume its
+    // later click so a tap never performs an action twice or jumps on landing.
+    const onBoostDown = (e) => {
+      if (!pressActions) { held.boost = 1; return; }
+      if (boostPointer !== null) return;
+      boostPointer = e.pointerId;
+      boostClick = !!onAction;
+      held.boost = onAction && onAction() ? 0 : 1;
     };
-    const onBoostUp = () => {
+    const onBoostUp = (e) => {
+      if (!pressActions) { held.boost = 0; return; }
+      if (e.pointerId !== boostPointer) return;
+      boostPointer = null;
       held.boost = 0;
+    };
+    const onBoostClick = (e) => {
+      if (boostClick && e.detail > 0) { e.preventDefault(); e.stopImmediatePropagation(); }
+      boostClick = false;
     };
     if (boost) {
       boost.addEventListener("pointerdown", onBoostDown);
       boost.addEventListener("pointerup", onBoostUp);
       boost.addEventListener("pointercancel", onBoostUp);
       boost.addEventListener("pointerleave", onBoostUp);
+      if (pressActions) boost.addEventListener("click", onBoostClick, true);
     }
     // Both mouse buttons down is forward, as W; a chorded press arrives as a move
     const onChord = (e) => {
@@ -106,7 +128,7 @@
     const read = () => {
       axes.x = clamp(held.right - held.left + (moveStick ? moveStick.x : 0), -1, 1);
       axes.y = clamp(held.forward - held.back + held.chord + (moveStick ? moveStick.y : 0), -1, 1);
-      axes.up = clamp(held.up + held.boost - held.down, -1, 1);
+      axes.up = clamp(held.up + held.space + held.boost - held.down, -1, 1);
       axes.yaw = clamp(held.yawLeft - held.yawRight - (lookStick ? lookStick.x : 0), -1, 1);
       axes.pitch = clamp(held.pitchDown - held.pitchUp - (lookStick ? lookStick.y : 0), -1, 1);
       return axes;
@@ -120,6 +142,7 @@
         boost.removeEventListener("pointerup", onBoostUp);
         boost.removeEventListener("pointercancel", onBoostUp);
         boost.removeEventListener("pointerleave", onBoostUp);
+        if (pressActions) boost.removeEventListener("click", onBoostClick, true);
       }
       if (chord) {
         chord.removeEventListener("pointerdown", onChord);

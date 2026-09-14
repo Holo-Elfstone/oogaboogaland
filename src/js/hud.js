@@ -83,6 +83,10 @@
       subtitle: $("subtitle"),
       actions: [...document.querySelectorAll("[data-action]")],
       act: $("act"),
+      jetpack: $("jetpack-hud"),
+      jetpackFuel: $("jetpack-fuel"),
+      jetpackFuelFill: $("jetpack-fuel-fill"),
+      jetpackFuelValue: $("jetpack-fuel-value"),
       toast: $("toast"),
       tooltip: $("tooltip"),
       hint: $("hint"),
@@ -103,6 +107,7 @@
     el.lootTab.hidden = !lootEnabled;
     el.crateHelp.hidden = !lootEnabled;
     el.worldLootHint.hidden = !lootEnabled;
+    el.jetpack.hidden = true;
     const listeners = [];
     const on = (target, type, fn, opts) => {
       target.addEventListener(type, fn, opts);
@@ -145,6 +150,21 @@
     };
     const setAct = (label) => {
       el.act.textContent = label;
+    };
+    let jetpackShown = false, jetpackPercent = -1;
+    const setJetpack = (equipped, fuel) => {
+      if (equipped !== jetpackShown) {
+        jetpackShown = equipped;
+        el.jetpack.hidden = !equipped;
+      }
+      if (!equipped) return;
+      const percent = Math.ceil(fuel * 100);
+      if (percent === jetpackPercent) return;
+      jetpackPercent = percent;
+      el.jetpackFuelFill.style.transform = `scaleX(${percent / 100})`;
+      el.jetpackFuel.setAttribute("aria-valuenow", String(percent));
+      el.jetpackFuel.dataset.level = percent <= 20 ? "low" : "ok";
+      el.jetpackFuelValue.firstChild.data = `${percent}%`;
     };
     const setSubtitle = (text) => {
       el.subtitle.textContent = text;
@@ -371,9 +391,10 @@
       el.toast.classList.remove("show");
       el.hint.classList.remove("show");
       tooltip.hide();
+      setJetpack(false, 0);
       closeFeed();
     };
-    return { el, openFeed, closeFeed, setRosterRow, setMeter, setStats, setAct, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
+    return { el, openFeed, closeFeed, setRosterRow, setMeter, setStats, setAct, setJetpack, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
   };
   BL.hud = { create, renderIcon, signLettering, STATE_LABELS };
 })();

@@ -963,6 +963,65 @@ select {
   text-overflow: ellipsis;
 }
 
+/* The equipped jetpack's fuel stays clear of the panel and flight sticks */
+.jetpack-hud {
+  position: absolute;
+  top: calc(74px + var(--safe-top));
+  left: calc(16px + var(--safe-left));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--tablet);
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  box-shadow: var(--tablet-shadow);
+  color: var(--paper);
+  pointer-events: none;
+}
+
+.jetpack-icon {
+  width: 28px;
+  height: 34px;
+  flex: none;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.45));
+}
+
+.jetpack-readout {
+  width: 88px;
+}
+
+.jetpack-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+.jetpack-fuel {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.jetpack-fuel-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left;
+}
+
+.jetpack-fuel[data-level="low"] .jetpack-fuel-fill {
+  background: var(--danger);
+}
+
 /* Flight sticks for coarse pointers */
 .joysticks {
   display: none;
@@ -1768,6 +1827,11 @@ select {
     height: 100px;
   }
 
+  .jetpack-hud {
+    top: calc(144px + var(--safe-top));
+    left: calc(12px + var(--safe-left));
+  }
+
   .act {
     bottom: calc(112px + var(--safe-bottom));
   }
@@ -1830,6 +1894,10 @@ select {
 }
 
 @media (max-height: 500px) and (orientation: landscape) {
+  .jetpack-hud {
+    top: calc(74px + var(--safe-top));
+  }
+
   .sheet {
     top: auto;
     left: auto;
@@ -1936,5 +2004,11 @@ select {
   .toast.show,
   .hint.show {
     transform: translate(0, 0);
+  }
+}
+
+@media (max-width: 720px) and (max-height: 500px) and (orientation: landscape) {
+  .jetpack-hud {
+    top: calc(100px + var(--safe-top));
   }
 }

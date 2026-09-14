@@ -5,7 +5,7 @@ export const navigationButtonsProbe = ({ mode = "orbit", level = 300 } = {}) => 
   const driven = mode === "trailing" || mode === "first-person", close = mode === "eye-level" || mode === "first-person";
   const cave = driven ? [...B.cavemen.values()].find((entry) => entry.state === "working") : null;
   const held = new Set(), rows = [], violations = [], sequence = ["pile", "lab", "mirror", "underground", "mirror", "lab", "pile", "underground", "underground", "pile"];
-  let elapsed = B.matrixCave.world.sampleStream(0).time, samples = 0, selected = null, equipment = null;
+  let elapsed = B.matrixCave.world.sampleStream(0).time, samples = 0, selected = null, equipment = null, stripped = false;
   const keys = (next) => {
     for (const key of held) if (!next.includes(key)) { window.dispatchEvent(new KeyboardEvent("keyup", { key })); held.delete(key); }
     for (const key of next) if (!held.has(key)) { window.dispatchEvent(new KeyboardEvent("keydown", { key })); held.add(key); }
@@ -117,12 +117,13 @@ export const navigationButtonsProbe = ({ mode = "orbit", level = 300 } = {}) => 
     const faceDot = (dx * fx + dz * fz) / Math.max(1e-9, Math.hypot(dx, dz) * Math.hypot(fx, fz));
     const bodyDot = cave ? ((targetX - x) * Math.sin(cave.root.rotation.y) + (targetZ - z) * Math.cos(cave.root.rotation.y)) / Math.max(1e-9, Math.hypot(targetX - x, targetZ - z)) : 1;
     const layer = destination === "underground" ? !!opening && opening.headquarters && (!cave || !!playerOpening && playerOpening.headquarters) : B.cameraCave.index === 0 && B.cameraCave.playerIndex === 0;
-    return { destination, near, detail, faceDot, bodyDot, layer, framing: framing(destination), mode: B.pilot.mode, selected: B.pilot.player === selected && B.crew.player === selected, equipment: !cave || cave.jet === equipment, camera: B.cameraCave.index, player: B.cameraCave.playerIndex, eye: [eye.x, eye.y, eye.z], body: cave ? [x, y, z] : null, scene: B.scene, insideMirror: B.matrixCave.inside };
+    return { destination, near, detail, faceDot, bodyDot, layer, framing: framing(destination), mode: B.pilot.mode, selected: B.pilot.player === selected && B.crew.player === selected, equipment: !cave || (stripped ? !cave.jet : cave.jet === equipment), camera: B.cameraCave.index, player: B.cameraCave.playerIndex, eye: [eye.x, eye.y, eye.z], body: cave ? [x, y, z] : null, scene: B.scene, insideMirror: B.matrixCave.inside };
   };
   const click = (destination, move = true) => {
     const button = document.querySelector(`nav[data-scene="hub"] [data-preset="${destination}"]`);
     if (!button) throw new Error(`Missing ${destination} navigation button`);
     button.focus(); button.click();
+    if (destination === "underground") stripped = true;
     inspect();
     tick(24);
     const row = snapshot(destination), p = position(), x = p.x, y = p.y, z = p.z;
@@ -159,10 +160,21 @@ export const navigationButtonsProbe = ({ mode = "orbit", level = 300 } = {}) => 
     }
     if (equipment) {
       click("pile", false);
+      // Find clear ground: nearby props and bananas now consume the press.
+      let takeoff = null;
+      for (let r = 10; r < 19 && !takeoff; r++) for (let i = 0; i < 64; i++) {
+        const a = i / 64 * Math.PI * 2, x = Math.sin(a) * r, z = Math.cos(a) * r;
+        if (!island.onLand(x, z) || island.surfaceAt(x, z) !== 0 || B.props.some((o) => o.active && Math.hypot(o.x - x, o.z - z) < 3.5) || [...B.cavemen.values()].some((c) => c !== cave && Math.hypot(c.root.position.x - x, c.root.position.z - z) < 3.5)) continue;
+        takeoff = { x, y: 0, z }; break;
+      }
+      if (!takeoff) throw new Error("No clear takeoff fixture");
+      B.crew.relocatePlayer(takeoff, 0);
+      tick(1, ["j"], false);
+      const flyingEquipment = cave.jet;
       tick(18, [" "]);
       airborne = { before: cave.hop, thrust: cave.jet.thrust };
       click("underground", false);
-      airborne.after = { hop: cave.hop, velocity: cave.hopV, thrust: cave.jet.thrust, sameEquipment: cave.jet === equipment };
+      airborne.after = { hop: cave.hop, velocity: cave.hopV, removed: !cave.jet, oldNodeRemoved: !cave.root.children.includes(flyingEquipment.node) };
     }
     return { backend: B.renderer.kind, initial, mode, level, rows, caveOrigin, airborne, violations, samples, scene: B.scene };
   } finally { keys([]); }

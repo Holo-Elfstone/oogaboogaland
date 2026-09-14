@@ -246,11 +246,28 @@
       </footer>
     </aside>
 
+    <div class="jetpack-hud" id="jetpack-hud" hidden>
+      <svg class="jetpack-icon" viewBox="0 0 12 14" shape-rendering="crispEdges" aria-hidden="true">
+        <path fill="#9aa1a8" d="M1 1h3v1H1zM8 1h3v1H8zM4 3h4v6H4z" />
+        <path fill="#c8552f" d="M1 2h3v8H1zM8 2h3v8H8z" />
+        <path fill="#e47b4f" d="M1 2h1v7H1zM8 2h1v7H8z" />
+        <path fill="#3c3f44" d="M1 10h3v1H1zM8 10h3v1H8zM4 5h4v2H4z" />
+        <path fill="#ffb13b" d="M1 11h3v1H1zM8 11h3v1H8z" />
+        <path fill="#ffe9a8" d="M2 12h1v1H2zM9 12h1v1H9z" />
+      </svg>
+      <div class="jetpack-readout">
+        <div class="jetpack-label"><span>Fuel</span><span id="jetpack-fuel-value" aria-hidden="true">100%</span></div>
+        <div class="jetpack-fuel" id="jetpack-fuel" role="progressbar" aria-label="Jetpack fuel"
+          aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+          <span class="jetpack-fuel-fill" id="jetpack-fuel-fill"></span>
+        </div>
+      </div>
+    </div>
     <div class="joysticks">
       <div class="joystick" id="joy-move" aria-hidden="true"><span></span></div>
       <div class="joystick" id="joy-look" aria-hidden="true"><span></span></div>
     </div>
-    <button type="button" class="act" id="act" data-action="act" hidden>Ooga!</button>
+    <button type="button" class="act" id="act" data-action="act" hidden>JUMP!</button>
     <div class="race" id="race" data-scene="race" hidden>
       <section class="garage" id="garage" aria-label="Garage">
         <div class="garage-head">
@@ -395,6 +412,7 @@
   <script src="js/gl-renderer.js"></script>
   <script src="js/canvas-renderer.js"></script>
   <script src="js/models.js"></script>
+  <script src="js/convex.js"></script>
   <script src="js/terrain.js"></script>
   <script src="js/hub-models.js"></script>
   <script src="js/headquarters-models.js"></script>

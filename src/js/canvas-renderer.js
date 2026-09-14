@@ -591,6 +591,21 @@
     };
     const matrixPolygonCoverage = (rec, x, y, step) => {
       let count = rec.n, src = matrixClipA, dst = matrixClipB;
+      // Distant voxel faces often fit inside one sample. Clipping would copy
+      // their unchanged vertices four times; retain the same area and centroid.
+      const maxX = x + step, maxY = y + step;
+      let contained = true, area = 0, centerX = 0, centerY = 0;
+      for (let i = 0; i < count; i++) {
+        const j = (i + 1) % count, px = rec.pts[i * 2], py = rec.pts[i * 2 + 1];
+        if (px < x || px > maxX || py < y || py > maxY) { contained = false; break; }
+        area += px * rec.pts[j * 2 + 1] - rec.pts[j * 2] * py;
+        if (rec.matrixPartial) { centerX += px; centerY += py; }
+      }
+      if (contained) {
+        matrixPointX = rec.matrixPartial ? centerX / count : 0;
+        matrixPointY = rec.matrixPartial ? centerY / count : 0;
+        return Math.min(1, Math.abs(area) * 0.5 / (step * step));
+      }
       for (let i = 0; i < count * 2; i++) src[i] = rec.pts[i];
       for (let edge = 0; edge < 4; edge++) {
         const axis = edge & 1, sign = edge < 2 ? 1 : -1;
@@ -609,7 +624,7 @@
         count = out;
         const swap = src; src = dst; dst = swap;
       }
-      let area = 0;
+      area = 0;
       matrixPointX = matrixPointY = 0;
       for (let i = 0; i < count; i++) {
         const j = (i + 1) % count;
@@ -623,7 +638,6 @@
       const step = matrixSampleStep;
       // Visible faces partition a voxel's silhouette. Sum their area-weighted
       // contributions; source-over would attenuate shared antialiased pixels twice.
-      ctx.globalCompositeOperation = "lighter";
       ctx.fillStyle = rec.style;
       for (let y = rec.matrixMinY; y < rec.matrixMaxY; y += step) for (let x = rec.matrixMinX; x < rec.matrixMaxX; x += step) {
         let coverage = matrixPolygonCoverage(rec, x, y, step);
@@ -639,8 +653,6 @@
         ctx.globalAlpha = coverage;
         ctx.fillRect(x, y, step, step);
       }
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = "source-over";
     };
     const render = (root, camera, opts = {}) => {
       const { light = DEFAULT_LIGHT, directStrength: strength = 1, ambientFloor: ambient = 0.3, diffuseFloor: diffuse = 0, clear = null, sky = DEFAULT_SKY, ground = DEFAULT_GROUND, horizon = null, zenith = null, fog = null, fogNear: near0 = 0, fogFar: far0 = 0, matrix = null } = opts;
@@ -756,10 +768,34 @@
       if (transparent) ctx.clearRect(0, 0, width, height);
       else {
         ctx.fillStyle = gradientSky ? skyGradient : clear ? clearStyle : backdrop;
-        ctx.fillRect(0, 0, width, height);
+        const hazeShift = gradientSky ? BL.daylight.hazeDropAt(eye.y) * lastF : 0;
+        // Move the cached haze gradient, keeping its colors and allocation
+        // lifetime independent of camera movement.
+        ctx.translate(0, hazeShift);
+        ctx.fillRect(0, -hazeShift, width, height);
+        ctx.translate(0, -hazeShift);
       }
       ctx.lineJoin = "round";
+      let glyphBlend = false;
       for (const rec of active) {
+        // Keep offscreen receivers in Matrix plane registration and sorting,
+        // but do not submit their paths to Canvas. Include the widest glow
+        // stroke and antialiasing; a polygon crossing the viewport still draws.
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let k = 0; k < rec.n; k++) {
+          minX = Math.min(minX, rec.pts[k * 2]); maxX = Math.max(maxX, rec.pts[k * 2]);
+          minY = Math.min(minY, rec.pts[k * 2 + 1]); maxY = Math.max(maxY, rec.pts[k * 2 + 1]);
+        }
+        const padding = rec.line ? 7 : 2;
+        if (maxX < -padding || minX > width + padding || maxY < -padding || minY > height + padding) continue;
+        // Glyphs paint sampled rectangles, never the polygon path. Keep their
+        // additive state across consecutive records without changing draw order.
+        if (rec.matrixGlyph && !rec.line) {
+          if (!glyphBlend) { ctx.globalCompositeOperation = "lighter"; glyphBlend = true; }
+          drawMatrixGlyph(rec);
+          continue;
+        }
+        if (glyphBlend) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; glyphBlend = false; }
         ctx.beginPath();
         ctx.moveTo(rec.pts[0], rec.pts[1]);
         if (rec.line) {
@@ -780,8 +816,7 @@
         } else {
           for (let k = 1; k < rec.n; k++) ctx.lineTo(rec.pts[k * 2], rec.pts[k * 2 + 1]);
           ctx.closePath();
-          if (rec.matrixGlyph) drawMatrixGlyph(rec);
-          else if (!rec.matrixBacking || !rec.matrixPartial) {
+          if (!rec.matrixBacking || !rec.matrixPartial) {
             ctx.fillStyle = rec.style;
             ctx.fill();
             ctx.strokeStyle = rec.style;
@@ -821,6 +856,7 @@
           }
         }
       }
+      if (glyphBlend) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
       return true;
     };
     const P = new Float32Array(3);
