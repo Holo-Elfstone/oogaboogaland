@@ -44,6 +44,7 @@
       if (crate.slot) crate.slot.taken = false;
       input.remove(crate.body);
       removeChild(root, crate.node);
+      if (ctx.onModelChange) ctx.onModelChange();
     };
     const openCrate = (crate) => {
       if (crate.opened) return;
@@ -59,6 +60,7 @@
       const reveal = crate.loot.item.buildNode();
       Object.assign(reveal.position, { x: 0, y: 0.4, z: 0 });
       addChild(crate.node, reveal);
+      if (ctx.onModelChange) ctx.onModelChange();
       addTween({
         dur: 1.5, ease: ease.outQuad, update: (k) => {
           reveal.position.y = 0.4 + k * 1.1;
@@ -95,6 +97,7 @@
       const crate = { node, lid, body: node.children[0], loot, donationId: donation.id, opened: false, phase: fnv1a(donation.id) % 7, slot: spot };
       input.add(crate.body, { kind: "crate", crate, priority: 2 }, { radius: 0.7 });
       crates.push(crate);
+      if (ctx.onModelChange) ctx.onModelChange();
       addTween({
         delay, dur: 0.8, ease: ease.outBounce, update: (k) => {
           node.visible = true;

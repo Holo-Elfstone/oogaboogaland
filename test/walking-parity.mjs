@@ -40,7 +40,9 @@ export const walkingFallProbe = ({ driven = false, dt = 1 / 60, release = false 
     B.pilot.possess(cave);
     B.crew.relocatePlayer({ ...start, y: roof }, yaw + Math.PI);
   } else {
-    const target = { x: start.x - Math.sin(yaw) * 3.5, y: roof + 1.5, z: start.z - Math.cos(yaw) * 3.5 };
+    // Free entry arrives at the focus, so put that focus on the same roof
+    // starting point as the character before comparing their falls.
+    const target = { x: start.x, y: roof + 1.5, z: start.z };
     o.target = target; o.tx = target.x; o.ty = target.y; o.tz = target.z;
   }
   o.yaw = o.tYaw = yaw; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;

@@ -4,7 +4,7 @@ export const navigationButtonsProbe = ({ mode = "orbit", level = 300 } = {}) => 
   const B = window.__ooga, scene = window.BL.scenes.hub, island = B.island, H = island.headquarters;
   const driven = mode === "trailing" || mode === "first-person", close = mode === "eye-level" || mode === "first-person";
   const cave = driven ? [...B.cavemen.values()].find((entry) => entry.state === "working") : null;
-  const held = new Set(), rows = [], violations = [], sequence = ["pile", "lab", "mirror", "underground", "mirror", "lab", "pile", "underground", "underground", "pile"];
+  const held = new Set(), rows = [], violations = [], sequence = ["pile", "lab", "mirror", "underground", "basement", "mirror", "lab", "pile", "basement", "underground", "pile"];
   let elapsed = B.matrixCave.world.sampleStream(0).time, samples = 0, selected = null, equipment = null, stripped = false;
   const keys = (next) => {
     for (const key of held) if (!next.includes(key)) { window.dispatchEvent(new KeyboardEvent("keyup", { key })); held.delete(key); }
@@ -17,7 +17,9 @@ export const navigationButtonsProbe = ({ mode = "orbit", level = 300 } = {}) => 
     const check = (kind, x, y, z) => {
       if (island.solidAt(x, y, z) && violations.length < 5) violations.push({ kind, sample: samples, x, y, z });
     };
-    for (const y of [-0.16, 0, 0.16]) for (let i = 0; i < 8; i++) {
+    // A selected trailing camera may deliberately pass through rock and show
+    // its filled-rock treatment. Physical close views must remain clear.
+    if (!cave || close) for (const y of [-0.16, 0, 0.16]) for (let i = 0; i < 8; i++) {
       const angle = i * Math.PI / 4;
       check("eye", eye.x + Math.sin(angle) * 0.2, eye.y + y, eye.z + Math.cos(angle) * 0.2);
     }
@@ -96,9 +98,10 @@ export const navigationButtonsProbe = ({ mode = "orbit", level = 300 } = {}) => 
     const opening = B.cameraCave.openings.find((entry) => entry.caveIndex === B.cameraCave.index);
     const playerOpening = B.cameraCave.openings.find((entry) => entry.caveIndex === B.cameraCave.playerIndex);
     let targetX = 0, targetZ = 0, near = false, detail = null;
-    if (destination === "underground") {
+    if (destination === "underground" || destination === "basement") {
       const inside = island.cavityAt(x, z, column, H.caveIndex);
-      near = inside && column.caveIndex === H.caveIndex && y >= H.floor && y < H.ceiling && Math.hypot(x - H.room.x, z - H.room.z) < H.room.radius;
+      const level = destination === "basement" ? H.basement : H;
+      near = inside && column.caveIndex === H.caveIndex && y >= level.floor && y < level.ceiling && Math.hypot(x - level.room.x, z - level.room.z) < level.room.radius && (destination !== "basement" || Math.hypot(x - level.hole.x, z - level.hole.z) > level.hole.mouthRadius);
       detail = { height: y, radius: Math.hypot(x, z), floor: column.floor };
     } else if (destination === "pile") {
       const radius = Math.hypot(x, z), edge = B.altar.platformRadius;
@@ -116,14 +119,14 @@ export const navigationButtonsProbe = ({ mode = "orbit", level = 300 } = {}) => 
     const dx = targetX - eye.x, dz = targetZ - eye.z, fx = look.x - eye.x, fz = look.z - eye.z;
     const faceDot = (dx * fx + dz * fz) / Math.max(1e-9, Math.hypot(dx, dz) * Math.hypot(fx, fz));
     const bodyDot = cave ? ((targetX - x) * Math.sin(cave.root.rotation.y) + (targetZ - z) * Math.cos(cave.root.rotation.y)) / Math.max(1e-9, Math.hypot(targetX - x, targetZ - z)) : 1;
-    const layer = destination === "underground" ? !!opening && opening.headquarters && (!cave || !!playerOpening && playerOpening.headquarters) : B.cameraCave.index === 0 && B.cameraCave.playerIndex === 0;
+    const layer = destination === "underground" || destination === "basement" ? !!opening && opening.headquarters && (!cave || !!playerOpening && playerOpening.headquarters) : B.cameraCave.index === 0 && B.cameraCave.playerIndex === 0;
     return { destination, near, detail, faceDot, bodyDot, layer, framing: framing(destination), mode: B.pilot.mode, selected: B.pilot.player === selected && B.crew.player === selected, equipment: !cave || (stripped ? !cave.jet : cave.jet === equipment), camera: B.cameraCave.index, player: B.cameraCave.playerIndex, eye: [eye.x, eye.y, eye.z], body: cave ? [x, y, z] : null, scene: B.scene, insideMirror: B.matrixCave.inside };
   };
   const click = (destination, move = true) => {
     const button = document.querySelector(`nav[data-scene="hub"] [data-preset="${destination}"]`);
     if (!button) throw new Error(`Missing ${destination} navigation button`);
     button.focus(); button.click();
-    if (destination === "underground") stripped = true;
+    if (destination === "underground" || destination === "basement") stripped = true;
     inspect();
     tick(24);
     const row = snapshot(destination), p = position(), x = p.x, y = p.y, z = p.z;
@@ -195,5 +198,5 @@ export const navigationButtonLayoutProbe = () => {
     const a = buttons[i], b = buttons[j];
     if (Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) + 0.1 && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y) + 0.1) overlap = true;
   }
-  return { buttons, labels, overlap, brandClear: bounds.top >= title.bottom - 0.1 || bounds.left >= title.right - 0.1, clockCentered: Math.abs(clockBounds.left + clockBounds.width / 2 - innerWidth / 2) < 0.1, clockClear: !intersects(clockBounds, title) && !intersects(clockBounds, bounds), clock: clockBounds.toJSON(), resetCount: document.querySelectorAll('[data-action="reset-view"]').length, viewport: innerWidth, documentWidth: document.documentElement.scrollWidth };
+  return { buttons, labels, overlap, singleRow: buttons.every((button) => Math.abs(button.y - buttons[0].y) < 0.1), scrollable: nav.scrollWidth > nav.clientWidth, scrollLeft: nav.scrollLeft, scrollMax: nav.scrollWidth - nav.clientWidth, brandClear: bounds.top >= title.bottom - 0.1 || bounds.left >= title.right - 0.1, clockCentered: Math.abs(clockBounds.left + clockBounds.width / 2 - innerWidth / 2) < 0.1, clockClear: !intersects(clockBounds, title) && !intersects(clockBounds, bounds), clock: clockBounds.toJSON(), resetCount: document.querySelectorAll('[data-action="reset-view"]').length, viewport: innerWidth, documentWidth: document.documentElement.scrollWidth };
 };

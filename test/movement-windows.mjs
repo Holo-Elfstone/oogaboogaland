@@ -8,7 +8,7 @@ export const movementWindowsProbe = ({ id = "c5", dt = 1 / 60, roomIndex = null,
   const insideRadius = room ? room.radius : rampIndex !== null ? Math.hypot(aperture.x, aperture.z) : 22.5;
   const descent = basement ? rampIndex === null ? level.ramps[0] : level.ramps.find((entry) => entry.index === rampIndex) : null;
   const held = new Set(), checkpoints = [], violations = [], volume = [[0, 0], [0.27, 0], [-0.27, 0], [0, 0.27], [0, -0.27], [0.19, 0.19], [-0.19, 0.19], [0.19, -0.19], [-0.19, -0.19]];
-  let elapsed = B.matrixCave.world.sampleStream(0).time, samples = 0, previous = null, maxStep = 0;
+  let elapsed = B.matrixCave.world.sampleStream(0).time, samples = 0, previous = null, maxStep = 0, rawChecks = 0, physicalChecks = 0;
   const entrances = entranceProbe && entranceProbe();
   const solid = (x, y, z) => B.island.solidAt(x, y, z) || !!entrances && entrances.solid(x, y, z);
   const keys = (next) => {
@@ -18,23 +18,30 @@ export const movementWindowsProbe = ({ id = "c5", dt = 1 / 60, roomIndex = null,
   const snapshot = () => {
     const p = B.camera.position, column = {};
     const cavity = B.island.cavityAt(p.x, p.z, column, H.caveIndex, p.y);
-    return { x: p.x, y: p.y, z: p.z, radius: Math.hypot(p.x, p.z), camera: B.cameraCave.index, player: B.cameraCave.playerIndex, controlled: !!B.pilot.player, layer: cavity && p.y >= column.floor && p.y < column.ceiling ? column.caveIndex : 0, matrixInside: B.matrixCave.inside };
+    return { x: p.x, y: p.y, z: p.z, radius: Math.hypot(p.x, p.z), camera: B.cameraCave.index, player: B.cameraCave.playerIndex, controlled: !!B.pilot.player, mode: B.pilot.mode, layer: cavity && p.y >= column.floor && p.y < column.ceiling ? column.caveIndex : 0, matrixInside: B.matrixCave.inside };
   };
   const inspect = () => {
-    const p = B.camera.position;
+    const p = B.camera.position, physical = B.pilot.closeMix > 0 && !B.cameraCave.transitioning;
     samples++;
+    if (physical) physicalChecks++;
+    else {
+      rawChecks++;
+      const pitch = B.pilot.viewPitch, cp = Math.cos(pitch);
+      const error = Math.hypot(p.x - o.tx - Math.sin(o.yaw) * cp * o.dist, p.y - o.ty - Math.sin(pitch) * o.dist, p.z - o.tz - Math.cos(o.yaw) * cp * o.dist);
+      if (error > 1e-5 && violations.length < 6) violations.push({ kind: "requested free orbit", sample: samples, error });
+    }
     if (previous) {
       const distance = Math.hypot(p.x - previous.x, p.y - previous.y, p.z - previous.z), count = Math.max(1, Math.ceil(distance / 0.08));
       maxStep = Math.max(maxStep, distance);
       for (let n = 1; n <= count; n++) {
         const k = n / count, x = previous.x + (p.x - previous.x) * k, y = previous.y + (p.y - previous.y) * k, z = previous.z + (p.z - previous.z) * k;
-        if (solid(x, y, z) && violations.length < 6) violations.push({ kind: "eye sweep", sample: samples, x, y, z });
-        if (entrances && !entrances.clearAt(x, y - 0.27, z, 0.27, 0.54) && violations.length < 6) violations.push({ kind: "doorway eye volume sweep", sample: samples, x, y, z });
+        if (physical && solid(x, y, z) && violations.length < 6) violations.push({ kind: "eye sweep", sample: samples, x, y, z });
+        if (physical && entrances && !entrances.clearAt(x, y - 0.27, z, 0.27, 0.54) && violations.length < 6) violations.push({ kind: "doorway eye volume sweep", sample: samples, x, y, z });
       }
     }
-    // There is no controlled actor on this route. Check the entire free eye's
-    // collision body near its sides and caps, not just its center point.
-    for (const [dx, dz] of volume) for (const dy of [-0.27, 0, 0.27]) {
+    // Only the walking eye collides. Free orbit follows its chosen pose even
+    // when a room wall or sill passes between that eye and its focal point.
+    if (physical) for (const [dx, dz] of volume) for (const dy of [-0.27, 0, 0.27]) {
       if (solid(p.x + dx, p.y + dy, p.z + dz) && violations.length < 6) violations.push({ kind: "camera body", sample: samples, x: p.x + dx, y: p.y + dy, z: p.z + dz });
     }
     previous = { x: p.x, y: p.y, z: p.z };
@@ -122,6 +129,6 @@ export const movementWindowsProbe = ({ id = "c5", dt = 1 / 60, roomIndex = null,
     }
     keys([]);
     for (let n = 0; n < Math.ceil(0.5 / dt); n++) step();
-    return { id, dt, roomIndex, rampIndex, sampleIndex, basement, kind: aperture.kind, floor: room ? room.floor : H.floor, backend: B.renderer.kind, completed, initial, admitted, atWindow, outside, reentered, expectedHeight, samples, maxStep, violations, entrances: entrances && entrances.stats(), checkpoints: checkpoints.length, failed: checkpoints.filter((point) => !point.reached), final: snapshot(), scene: B.scene };
+    return { id, dt, roomIndex, rampIndex, sampleIndex, basement, kind: aperture.kind, floor: room ? room.floor : H.floor, backend: B.renderer.kind, completed, initial, admitted, atWindow, outside, reentered, expectedHeight, samples, rawChecks, physicalChecks, maxStep, violations, entrances: entrances && entrances.stats(), checkpoints: checkpoints.length, failed: checkpoints.filter((point) => !point.reached), final: snapshot(), scene: B.scene };
   } finally { keys([]); }
 };

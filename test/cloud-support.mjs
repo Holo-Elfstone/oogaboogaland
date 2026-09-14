@@ -181,8 +181,10 @@ export const cloudLowFreeEyeProbe = ({ dt = 1 / 60 } = {}) => {
   // Arrive with an Ooga first so the scene's collision history is at the
   // cloud before releasing into the unpossessed eye-level view.
   B.pilot.possess([...B.cavemen.values()].find((c) => c.state === "working" && !c.jet));
-  B.pilot.enterClose();
   B.pilot.navigate({ position: { x: 45, y: -4, z: 0 }, yaw: Math.PI, pitch: 0, dist: 3.5 });
+  B.pilot.enterClose();
+  for (let i = 0; i < Math.ceil(3 / dt) && B.pilot.closeMix !== 1; i++) B.pilot.update(dt);
+  if (B.pilot.closeMix !== 1) throw new Error("Low cloud fixture view did not settle");
   scene.update(0, B.renderOpts.matrix.time);
   B.pilot.release(true);
   B.pilot.navigate({ position: { x: 45, y: -4, z: 0 }, yaw: Math.PI, pitch: 0, dist: 3.5 });

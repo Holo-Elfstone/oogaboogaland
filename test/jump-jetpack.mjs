@@ -371,7 +371,7 @@ export const abyssRespawnProbe = ({ mode = "trailing", jet = false, dt = 1 / 60 
 };
 
 export const underIslandReleaseProbe = ({ dt = 1 / 60 } = {}) => {
-  const B = window.__ooga, scene = window.BL.scenes.hub, cave = [...B.cavemen.values()].find((c) => c.state === "working"), island = B.island, o = B.pilot.orbit;
+  const B = window.__ooga, scene = window.BL.scenes.hub, cave = [...B.cavemen.values()].find((c) => c.state === "working"), island = B.island;
   let time = B.renderOpts.matrix.time, crossed = null, releaseEvent = null, respawn = null, previous = null, minHeight = -25, accelerationError = 0, fallSamples = 0;
   const key = (type) => window.dispatchEvent(new KeyboardEvent(type, { key: "w" }));
   const state = () => {
@@ -379,10 +379,11 @@ export const underIslandReleaseProbe = ({ dt = 1 / 60 } = {}) => {
     return { x: p.x, y, z: p.z, radius: Math.hypot(p.x, p.z), onLand: island.onLand(p.x, p.z), support: island.supportAt(p.x, p.z, y, 0, -120), clear: island.clearAt(p.x, y + 0.05, p.z, 0.3, cave.bodyHeight), velocity: cave.hopV, hop: cave.hop, jumps: cave.jumps, fuel: cave.jetFuel, selected: B.pilot.player === cave, mode: B.pilot.mode, scene: B.scene };
   };
   B.pilot.possess(cave);
-  B.crew.relocatePlayer({ x: island.radius + 2, y: -25, z: 0 }, -Math.PI / 2);
+  B.pilot.navigate({ position: { x: island.radius + 2, y: -25, z: 0 }, yaw: Math.PI / 2, pitch: 0, dist: 3.5 });
   cave.hop = 95; cave.jetFuel = 0.37;
-  o.yaw = o.tYaw = Math.PI / 2; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;
   B.pilot.enterClose();
+  for (let i = 0; i < Math.ceil(3 / dt) && B.pilot.closeMix !== 1; i++) B.pilot.update(dt);
+  if (B.pilot.closeMix !== 1) throw new Error("Underside release fixture view did not settle");
   const initial = state();
   try {
     key("keydown");
@@ -424,12 +425,15 @@ export const jetpackNotchProbe = ({ mode = "first-person", dt = 1 / 60 } = {}) =
     start = { x, y, z, angle, ceiling };
   }
   if (!start) throw new Error("No clear exterior underside band");
-  B.pilot.possess(cave); B.crew.relocatePlayer(start, Math.atan2(start.x, start.z));
+  B.pilot.possess(cave);
+  B.pilot.navigate({ position: start, target: start, yaw: Math.atan2(start.x, start.z) + Math.PI, pitch: 0, dist: 3.5 });
   cave.hop = start.y + 120; cave.jetFuel = 1;
-  o.yaw = o.tYaw = cave.root.rotation.y + Math.PI; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;
   if (mode === "first-person") B.pilot.enterClose();
+  // Finish the deliberate initial view setup before measuring airborne
+  // movement; an unfinished close dolly is not a ceiling-slide step.
+  for (let i = 0; i < Math.ceil(3 / dt) && B.pilot.closeMix !== (mode === "first-person" ? 1 : 0); i++) B.pilot.update(dt);
+  if (B.pilot.closeMix !== (mode === "first-person" ? 1 : 0)) throw new Error("Notch fixture view did not settle");
   key("keydown", "j"); key("keyup", "j");
-  for (let i = 0; i < Math.ceil(0.35 / dt); i++) scene.update(dt, time += dt);
   const initial = state(); previous = initial;
   try {
     key("keydown", " ");
@@ -445,8 +449,9 @@ export const jetpackNotchProbe = ({ mode = "first-person", dt = 1 / 60 } = {}) =
       const fail = (kind) => { if (violations.length < 6) violations.push({ kind, ...s }); };
       if (!island.clearAt(s.x, s.y + 1e-5, s.z, 0.295, cave.bodyHeight - 1e-5)) fail("body");
       if (!island.voxelSegmentClearAt(previous.x, previous.y + 1e-5, previous.z, s.x, s.y + 1e-5, s.z, 0.295, cave.bodyHeight - 1e-5)) fail("body sweep");
-      if (!island.clearAt(s.eye[0], s.eye[1] - 0.295, s.eye[2], 0.295, 0.59)) fail("eye");
-      if (!island.voxelSegmentClearAt(previous.eye[0], previous.eye[1] - 0.295, previous.eye[2], s.eye[0], s.eye[1] - 0.295, s.eye[2], 0.295, 0.59)) fail("eye sweep");
+      const physicalEye = B.pilot.closeMix > 0 && !B.pilot.preserveExitAngle && !B.cameraCave.transitioning;
+      if (physicalEye && !island.clearAt(s.eye[0], s.eye[1] - 0.295, s.eye[2], 0.295, 0.59)) fail("eye");
+      if (physicalEye && !island.voxelSegmentClearAt(previous.eye[0], previous.eye[1] - 0.295, previous.eye[2], s.eye[0], s.eye[1] - 0.295, s.eye[2], 0.295, 0.59)) fail("eye sweep");
       if (!s.equipped || !s.selected || s.mode !== mode || s.scene !== "hub") fail("ownership");
       if (frame % Math.max(1, Math.round(0.25 / dt)) === 0) trace.push(s);
       previous = s;

@@ -73,17 +73,56 @@ Land on the clouds to walk along their voxel tops and recharge your jetpack. A c
 carries you as it drifts; walking off, or losing the cloud beneath you, starts a
 natural fall. You can fly upward through clouds from below.
 
-Scroll all the way in for first person. Walking has the same pace with or without a
-selected Ooga, and both fall naturally when stepping off a ledge. Scroll out to return
-to the trailing character view or free flight.
+Scroll all the way in for first person, keeping your approach direction as the
+Ooga turns to look that way. Walking has the same pace with or without a selected
+Ooga, and both fall naturally when stepping off a ledge. Scroll out to return to the
+trailing character view or free flight along the same viewing angle, even when
+looking straight up or down. Both orbit views keep your chosen angle and distance
+through the ramps. They can pass through walls, floors, and ceilings; a free orbit's
+focal point can also move inside rock. Drag from floor level to directly overhead.
+Rock covers the part of the view crossing a surface and fills the screen inside
+stone. Its grain and color follow the actual section of rock. Faint boundary lines
+and object silhouettes reveal nearby surroundings hidden from the camera. An object
+gets its whole outline when any part is nearby and visible by looking around,
+and the camera cannot see any part of it. Walls use the same proximity and
+360-degree sight rules. The visible stretch reads as solid stone, including jagged
+facets and small ledges, with a soft fill and a continuous outer outline. Its ends
+fade where the wall passes out of the Ooga's sight. Ceilings and exterior window
+sills, including their side panels and rock fragments, receive no outlines. The
+thin wall below HQ's panoramic window and the basement shaft's open rim have cues.
+Ramp wall cues meet the sloping floor along a continuous lower edge. Window
+openings clip camera-visible portions precisely, preserving the wall around them.
+Each wall fades at the distance limit; camera-visible portions do not receive the cue.
+Walls and floors block cues from adjoining rooms
+and other levels. These cues also work when the camera is outside
+rock. Object outlines soften near the distance limit and fade smoothly as sightlines
+open or close. Nearby objects keep their eligibility as you turn or zoom the camera,
+and additional characters never displace their cues. All outline cues switch off
+immediately in first person or whenever any part of your Ooga is visible to the
+camera. Small grass shoots receive no outlines. The bananas, mound, and stone base
+share one pile silhouette. A brighter outline locates your completely hidden Ooga.
 
-The island's **PILE**, **LAB**, **MIRROR**, and **HQ** buttons take your controlled Ooga,
+The island's **PILE**, **LAB**, **MIRROR**, **HQ**, and **BSMT** buttons take your controlled Ooga,
 or just your free camera, to that destination while keeping your current view mode.
 **LAB** takes you to the EntropyLab entrance on the island; tap the cave or walk inside
-to enter the lab. **MIRROR** takes you to the OBL mirror, and **HQ** to the headquarters
-beneath the island. Inside HQ, two curved descents connect to a shared basement with
-eight empty rooms around a smaller common area. Walk between the levels without
-leaving the island. The basement rooms and ramps have exterior windows; its common area
+to enter the lab. **MIRROR** takes you to the OBL mirror, **HQ** to the headquarters,
+and **BSMT** directly to its basement. On narrow screens these destinations remain in
+one horizontally scrollable row. Inside HQ, two curved descents connect to a shared basement with
+eight unclaimed rooms around a smaller common area. Each HQ and basement room has
+one floor mattress in its rear corner, sized for a sleeping Ooga. Its blanket wraps
+around the mattress, and the pillow carries the same LifeHash pattern rotated 90°,
+derived from that room's x, y, z coordinates. Sleepy Oogas walk down the ramps to an
+available bed and lie on top of the sheet. RandyMcMillan starts sleepy in the demo.
+Beds support walking: stand on an available mattress and press **Space** or **SLEEP**
+to lie down.
+Each bed holds one Ooga. While sleeping, **A/D** face left/right as seen from the foot
+of the bed, **W** turns onto the stomach, and **S** onto the back; **Space** or
+**WAKE UP!** gets up. Sleeping keeps your chosen camera distance.
+Sleeping Zs appear when the sleeper, their doorway, or their window is in sight.
+Double-click a sleeping Ooga to control them without waking them. Leaving control
+keeps them asleep; **Space** or **WAKE UP!** wakes them when you are controlling them.
+A single click gets a sleepy response and sometimes makes them roll over.
+Walk between the levels without leaving the island. The basement rooms and ramps have exterior windows; its common area
 has no fireplace. A wide central hole opens through the island's underside, with a
 beveled stone rim and a broad walking ring connecting the rooms and ramps. Step into
 the hole to fall through the island into the open air below.

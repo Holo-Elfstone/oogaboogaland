@@ -1,99 +1,101 @@
-// Exercise the production pilot and scene update, including their swept camera
-// clamp. Debug metadata is read only; no admission or portal flags are assigned.
+// Exercise raw orbit separately from the physical free first-person eye.
+// Every walking sample uses the production pilot, support and swept camera.
 export const matrixNavigationProbe = (prime = () => {}) => {
-  // Preserve the same wave-distance window for every route at the faster speed.
-  const B = window.__ooga, scene = window.BL.scenes.hub, C = B.matrixCave, W = C.world, R = B.renderer, o = B.pilot.orbit, dt = 1 / 240;
-  let elapsed = W.sampleStream(0).time, draws = 0;
+  const B = window.__ooga, scene = window.BL.scenes.hub, C = B.matrixCave, W = C.world, R = B.renderer, o = B.pilot.orbit, dt = 1 / 120;
+  let elapsed = W.sampleStream(0).time, draws = 0, samples = 0, collisions = 0;
+  const failures = [], raw = [], cases = [], sealed = [], eyeHeight = 1.1;
   R.setQuality("high"); prime();
-  const step = (draw = false) => { elapsed += dt; scene.update(dt, elapsed); if (draw && R.render(scene.root, B.camera, B.renderOpts)) draws++; };
-  const advance = (radius) => { let steps = 0; while (W.radius !== radius && steps++ < 400) step(); if (W.radius !== radius) throw new Error("Camera fixture wave did not settle"); };
-  const pose = (opening, x, y, z) => {
-    const m = opening.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), wx = m.x + cr * x + sr * z, wz = m.z - sr * x + cr * z;
-    const target = { x: wx - sr * 3.5, y: m.floorY + y, z: wz - cr * 3.5 };
-    o.target = target; o.tx = target.x; o.ty = target.y; o.tz = target.z; o.yaw = o.tYaw = m.ry; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;
-    B.pilot.update(0.1); step(true);
-    const p = B.camera.position, space = { caveIndex: 0, floor: 0, ceiling: 0 }, cavity = B.island.cavityAt(p.x, p.z, space, opening.headquarters ? B.island.headquarters.caveIndex : opening.caveIndex);
-    return { requested: [x, y, z], actual: [cr * (p.x - m.x) - sr * (p.z - m.z), p.y - m.floorY, sr * (p.x - m.x) + cr * (p.z - m.z)], id: B.cameraCave.id, index: B.cameraCave.index, contains: B.cameraCave.contains(p.x, p.y, p.z), matrixInside: C.inside, active: W.active, radius: W.radius, pitch: o.pitch, near: B.camera.near, cavity, floor: space.floor, ground: B.island.surfaceAt(p.x, p.z) - m.floorY, ceiling: Number.isFinite(space.ceiling) ? space.ceiling : null };
+  const step = (draw = false) => { scene.update(dt, elapsed += dt); if (draw && R.render(scene.root, B.camera, B.renderOpts)) draws++; };
+  const advance = (radius) => { let n = 0; while (W.radius !== radius && n++ < 400) step(); if (W.radius !== radius) throw new Error("Camera fixture wave did not settle"); };
+  const worldAt = (opening, x, y, z) => {
+    const m = opening.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry);
+    return { x: m.x + cr * x + sr * z, y: m.floorY + y, z: m.z - sr * x + cr * z };
   };
-  const cases = [], allOpenings = B.cameraCave.openings, openings = allOpenings.filter((opening) => !opening.blocked), sealedOpenings = allOpenings.filter((opening) => opening.blocked);
+  const sample = (opening) => {
+    const m = opening.mouth, p = B.camera.position, sr = Math.sin(m.ry), cr = Math.cos(m.ry), space = {};
+    const cavity = B.island.cavityAt(p.x, p.z, space, opening.headquarters ? B.island.headquarters.caveIndex : opening.caveIndex, p.y);
+    const clear = B.island.clearAt(p.x, p.y - 0.299, p.z, 0.299, 0.598);
+    return { actual: [cr * (p.x - m.x) - sr * (p.z - m.z), p.y - m.floorY, sr * (p.x - m.x) + cr * (p.z - m.z)], id: B.cameraCave.id, index: B.cameraCave.index, contains: B.cameraCave.contains(p.x, p.y, p.z), matrixInside: C.inside, active: W.active, near: B.camera.near, clear, floor: cavity ? space.floor : null, ceiling: cavity && Number.isFinite(space.ceiling) ? space.ceiling : null, worldY: p.y, mode: B.pilot.mode };
+  };
+  const audit = (opening) => {
+    const p = sample(opening); samples++;
+    if (!p.clear) { collisions++; if (failures.length < 12) failures.push({ id: opening.id, ...p }); }
+    return p;
+  };
+  const rawPose = (opening, x, y, z) => {
+    const p = worldAt(opening, x, y, z), m = opening.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry);
+    o.target = { x: p.x - sr * 3.5, y: p.y, z: p.z - cr * 3.5 }; o.tx = o.target.x; o.ty = o.target.y; o.tz = o.target.z;
+    o.yaw = o.tYaw = m.ry; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;
+    B.pilot.update(0); step(true);
+    return { requested: [x, y, z], ...sample(opening) };
+  };
+  const start = (opening, x = 0, y = eyeHeight, z = 0.9) => {
+    B.pilot.goPreset("pile");
+    const p = worldAt(opening, x, y, z), m = opening.mouth;
+    o.target = { x: p.x, y: p.y, z: p.z }; o.tx = p.x; o.ty = p.y; o.tz = p.z;
+    o.yaw = o.tYaw = m.ry; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;
+    B.pilot.update(0); B.pilot.enterClose();
+    let frames = 0;
+    while (B.pilot.closeMix < 1 && frames++ < 60) scene.update(1 / 20, elapsed += 1 / 20);
+    if (B.pilot.closeMix < 1) throw new Error("Free-camera entry did not settle");
+    // Let the physical eye bind shared HQ air to the nearest real ramp after
+    // the unrestricted focal-point dolly hands control back to collision.
+    step();
+    return audit(opening);
+  };
+  const move = (opening, x, z) => {
+    const target = worldAt(opening, x, 0, z), before = B.camera.position, limit = Math.ceil(Math.hypot(target.x - before.x, target.z - before.z) / 0.05) + 12;
+    for (let n = 0; n < limit; n++) {
+      const p = B.camera.position, dx = target.x - p.x, dz = target.z - p.z, distance = Math.hypot(dx, dz);
+      if (distance < 1e-5) break;
+      const k = Math.min(1, 0.05 / distance); o.target.x = p.x + dx * k; o.target.z = p.z + dz * k;
+      step(); audit(opening);
+    }
+    step(true);
+    return { requested: [x, z], ...audit(opening), error: Math.hypot(target.x - B.camera.position.x, target.z - B.camera.position.z) };
+  };
+  const allOpenings = B.cameraCave.openings, openings = allOpenings.filter((opening) => !opening.blocked);
+  for (const opening of allOpenings) {
+    B.pilot.goPreset("pile");
+    for (const [x, y, z] of [[0, -8, -3.5], [6, 1.1, -3.5], [0, 12, -3.5]]) raw.push({ id: opening.id, ...rawPose(opening, x, y, z) });
+  }
   for (const active of [false, true]) for (const opening of openings) {
-    C.viewInside(false); step();
-    if (active) advance(W.maxRadius);
-    C.viewApproach(); step();
-    if (!active) advance(0);
-    const invalid = [];
-    for (const [name, x, y] of [["above", 0, opening.maxY + 1], ["below", 0, opening.minY - 10], ["beside-left", opening.minX - 1, 1.5], ["beside-right", opening.maxX + 1, 1.5]]) {
-      const before = pose(opening, x, y, 0.9), after = pose(opening, x, y, 0.1);
-      invalid.push({ name, before, after });
-      pose(opening, 0, 12, 1.2);
-    }
-    const m = opening.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), roofX = m.x - sr * 3.5, roofZ = m.z - cr * 3.5, roofY = B.island.surfaceAt(roofX, roofZ) - m.floorY + 2;
-    pose(opening, 0, roofY, 0.9);
-    const roof = [pose(opening, 0, roofY, -1), pose(opening, 0, roofY, -3.5)];
-    pose(opening, 0, 12, 0.9);
+    B.pilot.goPreset("pile"); C.viewApproach(); step();
+    B.matrixGate.set(active); advance(active ? W.maxRadius : 0);
+    const route = [], lateral = [], invalid = [], pitchViews = [];
+    start(opening);
+    for (const z of [0.9, 0.6, 0.5, 0.4, 0.1, -0.5]) route.push(move(opening, 0, z));
+    let insideX = 0, insideZ = -3.5;
     if (opening.headquarters) {
-      const ramp = B.island.headquarters.ramps.find((r) => r.id === opening.id), samples = ramp.samples, route = [];
-      const onRamp = (i, lift = 0.8, sideways = 0) => {
-        const q = samples[i], a = samples[Math.max(0, i - 1)], z = samples[Math.min(samples.length - 1, i + 1)], length = Math.hypot(z.x - a.x, z.z - a.z);
-        const x = q.x + (z.z - a.z) / length * sideways, wz = q.z - (z.x - a.x) / length * sideways, column = {};
-        B.island.cavityAt(q.x, q.z, column, B.island.headquarters.caveIndex);
-        const result = pose(opening, cr * (x - m.x) - sr * (wz - m.z), column.floor + lift - m.floorY, sr * (x - m.x) + cr * (wz - m.z));
-        result.interior = true;
-        result.blockedDistance = Math.hypot(result.actual[0] - result.requested[0], result.actual[2] - result.requested[2]);
-        return result;
-      };
-      for (const z of [0.9, 0.6, 0.5, 0.4, 0.1, -0.5]) route.push(pose(opening, 0, 0.8, z));
-      for (let i = 4; i < samples.length; i += 4) route.push(onRamp(i));
-      for (let i = samples.length - 5; i >= 12; i -= 4) route.push(onRamp(i));
-      const ceiling = onRamp(12, 12);
-      onRamp(12);
-      const wall = onRamp(12, 0.8, 6);
-      onRamp(12);
-      for (let i = 8; i >= 4; i -= 4) route.push(onRamp(i));
-      pose(opening, 0, 0.8, -0.5);
-      const invalidExits = [pose(opening, 0, 12, 0.9)];
-      pose(opening, 0, 0.8, -0.5); invalidExits.push(pose(opening, 6, 0.8, 0.9));
-      pose(opening, 0, 0.8, -0.5);
-      for (const z of [-0.5, 0.1, 0.4, 0.5, 0.6, 0.9, 3]) route.push(pose(opening, 0, 0.8, z));
-      const lateral = [];
-      // The smooth tunnels are four units wide; preserve an eye-radius margin.
-      for (const x of [-1.4, -1, 1, 1.4]) {
-        pose(opening, x, 0.8, 0.9);
-        lateral.push({ x, route: [0.6, 0.4, 0.1, -0.5, 0.4, 0.6].map((z) => pose(opening, x, 0.8, z)) });
-      }
-      cases.push({ id: opening.id, index: opening.caveIndex, headquarters: true, active, invalid, invalidExits, roof, route, lateral, ceiling, wall, records: R.stats.records });
-      continue;
+      const ramp = B.island.headquarters.ramps.find((r) => r.id === opening.id), sr = Math.sin(opening.mouth.ry), cr = Math.cos(opening.mouth.ry);
+      const onRamp = (i) => { const q = ramp.samples[i], x = cr * (q.x - opening.mouth.x) - sr * (q.z - opening.mouth.z), z = sr * (q.x - opening.mouth.x) + cr * (q.z - opening.mouth.z); return move(opening, x, z); };
+      for (let i = 4; i < ramp.samples.length; i += 4) route.push(onRamp(i));
+      for (let i = ramp.samples.length - 5; i >= 12; i -= 4) route.push(onRamp(i));
+      const q = ramp.samples[12]; insideX = cr * (q.x - opening.mouth.x) - sr * (q.z - opening.mouth.z); insideZ = sr * (q.x - opening.mouth.x) + cr * (q.z - opening.mouth.z);
+      route.push(move(opening, insideX, insideZ));
+    } else for (const z of [-1.5, -3.5, -5, -3.5]) route.push(move(opening, 0, z));
+    const inside = sample(opening);
+    for (const pitch of [-Math.PI / 2 + 0.001, Math.PI / 2 - 0.001, 0]) { o.pitch = o.tPitch = pitch; step(true); pitchViews.push({ pitch, ...audit(opening) }); }
+    const ceiling = start(opening, insideX, inside.ceiling - opening.mouth.floorY - 0.05, insideZ);
+    start(opening, insideX, inside.worldY - opening.mouth.floorY, insideZ);
+    const wall = move(opening, insideX + 6, insideZ); move(opening, insideX, insideZ);
+    if (opening.headquarters) {
+      const ramp = B.island.headquarters.ramps.find((r) => r.id === opening.id), sr = Math.sin(opening.mouth.ry), cr = Math.cos(opening.mouth.ry);
+      for (let i = 8; i >= 4; i -= 4) { const q = ramp.samples[i]; route.push(move(opening, cr * (q.x - opening.mouth.x) - sr * (q.z - opening.mouth.z), sr * (q.x - opening.mouth.x) + cr * (q.z - opening.mouth.z))); }
     }
-    const route = [];
-    for (const z of [0.9, 0.6, 0.5, 0.4, 0.1, -0.5, -1.5, -3.5, -5]) route.push(pose(opening, 0, 0.8, z));
-    const ceiling = pose(opening, 0, 12, -3.5);
-    pose(opening, 0, 0.8, -3.5);
-    const wall = pose(opening, 6, 0.8, -3.5);
-    pose(opening, 0, 0.8, -0.5);
-    const invalidExits = [pose(opening, 0, 12, 0.9)];
-    pose(opening, 0, 0.8, -0.5); invalidExits.push(pose(opening, 6, 0.8, 0.9));
-    pose(opening, 0, 0.8, -3.5);
-    for (const z of [-2, -0.5, 0.4, 0.5, 0.6, 0.9, 3]) route.push(pose(opening, 0, 0.8, z));
-    const lateral = [];
-    for (const x of [-2.048, -1.674, 1.674, 2.048]) {
-      pose(opening, x, 0.8, 0.9);
-      lateral.push({ x, route: [0.6, 0.4, 0.1, -0.5, 0.4, 0.6].map((z) => pose(opening, x, 0.8, z)) });
+    for (const z of [-0.5, 0.1, 0.4, 0.5, 0.6, 0.9, 1.2]) route.push(move(opening, 0, z));
+    for (const x of opening.headquarters ? [-1.4, -1, 1, 1.4] : [-2.048, -1.674, 1.674, 2.048]) {
+      start(opening, x); lateral.push({ x, route: [0.6, 0.4, 0.1, -0.5, 0.4, 0.6].map((z) => move(opening, x, z)) });
     }
-    cases.push({ id: opening.id, index: opening.caveIndex, active, invalid, invalidExits, roof, route, lateral, ceiling, wall, records: R.stats.records });
+    for (const [name, x, y] of [["above", 0, opening.maxY + 1], ["beside-left", opening.minX - 1, eyeHeight], ["beside-right", opening.maxX + 1, eyeHeight]]) {
+      const before = start(opening, x, y), after = move(opening, x, 0.1); invalid.push({ name, before, after });
+    }
+    cases.push({ id: opening.id, index: opening.caveIndex, headquarters: !!opening.headquarters, active, route, lateral, invalid, inside, pitchViews, ceiling, wall, records: R.stats.records });
   }
-  // Relocating between debug views is not a physical cross-island flight. Leave
-  // the last doorway upward first so that the long setup segment crosses no
-  // unrelated low aperture on its way back to the Mirror approach.
-  const sealed = [];
-  pose(openings[openings.length - 1], 0, 12, 1.2);
-  for (const opening of sealedOpenings) {
-    pose(opening, 0, 12, 1.2);
-    const before = pose(opening, 0, 0.8, 0.9), after = pose(opening, 0, 0.8, 0.1);
-    sealed.push({ id: opening.id, index: opening.caveIndex, blocked: opening.blocked, before, after });
-    pose(opening, 0, 12, 1.2);
-  }
-  C.viewApproach(); step(); advance(0); step(true);
-  return { backend: R.kind, openings: allOpenings.length, occupied: openings.length, sealed, caveBytes: B.island.cavityBytes, cases, draws, final: { index: B.cameraCave.index, active: W.active, radius: W.radius } };
+  B.matrixGate.set(false);
+  for (const opening of allOpenings.filter((opening) => opening.blocked)) { const before = start(opening), after = move(opening, 0, 0.1); sealed.push({ id: opening.id, before, after }); }
+  B.pilot.goPreset("pile"); C.viewApproach(); step(); advance(0); step(true);
+  return { backend: R.kind, openings: allOpenings.length, occupied: openings.length, raw, sealed, caveBytes: B.island.cavityBytes, cases, draws, samples, collisions, failures, final: { index: B.cameraCave.index, active: W.active, radius: W.radius } };
 };
 
 // Scene routing must depend on the driven Ooga's real doorway crossing, not

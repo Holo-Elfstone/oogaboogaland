@@ -75,9 +75,11 @@ export const basementHoleMovementProbe = ({ mode = "trailing", dt = 1 / 60 } = {
   B.pilot.possess(cave);
   document.querySelector('nav[data-scene="hub"] [data-preset="underground"]').click();
   B.crew.relocatePlayer({ x: hole.x + 6.5, y: basement.floor, z: hole.z }, -Math.PI / 2);
-  o.yaw = o.tYaw = Math.PI / 2; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;
+  B.pilot.navigate({ position: { x: hole.x + 6.5, y: basement.floor, z: hole.z }, target: { x: hole.x + 6.5, y: basement.floor, z: hole.z }, yaw: Math.PI / 2, pitch: 0, dist: 3.5 });
   if (mode === "first-person") B.pilot.enterClose();
-  for (let i = 0; i < Math.ceil(1 / dt); i++) step();
+  for (let i = 0; i < Math.ceil(3 / dt) && B.pilot.closeMix !== (mode === "first-person" ? 1 : 0); i++) B.pilot.update(dt);
+  if (B.pilot.closeMix !== (mode === "first-person" ? 1 : 0)) throw new Error("Hole fixture view did not settle");
+  for (let i = 0; i < Math.ceil(0.25 / dt); i++) step();
   const initial = state();
   try {
     key("keydown");
@@ -107,8 +109,9 @@ export const basementHoleMovementProbe = ({ mode = "trailing", dt = 1 / 60 } = {
       const bodySweep = !previous || (groundedStep
         ? island.voxelSegmentClearAt(previous.x, previous.y + 1e-5, previous.z, s.x, previous.y + 1e-5, s.z, 0.295, cave.bodyHeight - 1e-5) && island.voxelSegmentClearAt(s.x, previous.y + 1e-5, s.z, s.x, s.y + 1e-5, s.z, 0.295, cave.bodyHeight - 1e-5)
         : island.voxelSegmentClearAt(previous.x, previous.y + 1e-5, previous.z, s.x, s.y + 1e-5, s.z, 0.295, cave.bodyHeight - 1e-5));
-      const eyeClear = island.clearAt(s.eye.x, s.eye.y - 0.295, s.eye.z, 0.295, 0.59);
-      const eyeSweep = !previous || island.voxelSegmentClearAt(previous.eye.x, previous.eye.y - 0.295, previous.eye.z, s.eye.x, s.eye.y - 0.295, s.eye.z, 0.295, 0.59);
+      const physicalEye = B.pilot.closeMix > 0 && !B.pilot.preserveExitAngle && !B.cameraCave.transitioning;
+      const eyeClear = !physicalEye || island.clearAt(s.eye.x, s.eye.y - 0.295, s.eye.z, 0.295, 0.59);
+      const eyeSweep = !physicalEye || !previous || island.voxelSegmentClearAt(previous.eye.x, previous.eye.y - 0.295, previous.eye.z, s.eye.x, s.eye.y - 0.295, s.eye.z, 0.295, 0.59);
       if ((!clear || !bodySweep || !eyeClear || !eyeSweep || ![s.x, s.y, s.z, s.eye.x, s.eye.y, s.eye.z].every(Number.isFinite) || !s.selected || s.scene !== "hub" || s.mode !== mode) && failures.length < 12) failures.push({ ...s, clear, bodySweep, eyeClear, eyeSweep });
       previous = s;
     }
@@ -130,9 +133,10 @@ export const basementHoleFreeEyeProbe = ({ dt = 1 / 60 } = {}) => {
   // All tested movement afterward is unpossessed free-eye navigation.
   B.pilot.possess(cave); document.querySelector('nav[data-scene="hub"] [data-preset="underground"]').click();
   B.crew.relocatePlayer({ x: hole.x + 6.5, y: basement.floor, z: hole.z }, -Math.PI / 2);
-  o.yaw = o.tYaw = Math.PI / 2; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;
+  B.pilot.navigate({ position: { x: hole.x + 6.5, y: basement.floor, z: hole.z }, target: { x: hole.x + 6.5, y: basement.floor, z: hole.z }, yaw: Math.PI / 2, pitch: 0, dist: 3.5 });
   B.pilot.enterClose();
-  for (let i = 0; i < Math.ceil(1 / dt); i++) step();
+  for (let i = 0; i < Math.ceil(3 / dt) && B.pilot.closeMix !== 1; i++) B.pilot.update(dt);
+  if (B.pilot.closeMix !== 1) throw new Error("Free-eye hole fixture view did not settle");
   B.pilot.release(true);
   for (let i = 0; i < Math.ceil(0.25 / dt); i++) step();
   const initial = state(); previous = initial;
@@ -176,11 +180,14 @@ export const basementHoleJetpackProbe = ({ mode = "trailing", dt = 1 / 60 } = {}
     return { x: p.x, y: p.y - cave.baseY, z: p.z, hop: cave.hop, velocity: cave.hopV, equipped: !!cave.jet, fuel: cave.jetFuel, thrust: !!(cave.jet && cave.jet.thrust), selected: B.pilot.player === cave, scene: B.scene, mode: B.pilot.mode, eye: { x: eye.x, y: eye.y, z: eye.z } };
   };
   B.pilot.possess(cave);
-  B.crew.relocatePlayer({ x: hole.x, y: hole.bottom - 3, z: hole.z }, Math.PI / 2);
-  cave.hop = hole.bottom - 3 + 120;
-  o.yaw = o.tYaw = -Math.PI / 2; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;
+  const start = { x: hole.x, y: hole.bottom - 3, z: hole.z };
+  B.pilot.navigate({ position: start, target: start, yaw: -Math.PI / 2, pitch: 0, dist: 3.5 });
+  cave.hop = start.y + 120;
   if (mode === "first-person") B.pilot.enterClose();
-  for (let i = 0; i < Math.ceil(0.35 / dt); i++) step();
+  // Camera setup must finish before gravity/thrust measurement begins. Keep
+  // the authored initial body placement while the view alone settles.
+  for (let i = 0; i < Math.ceil(3 / dt) && B.pilot.closeMix !== (mode === "first-person" ? 1 : 0); i++) B.pilot.update(dt);
+  if (B.pilot.closeMix !== (mode === "first-person" ? 1 : 0)) throw new Error("Shaft fixture view did not settle");
   tap("j");
   const initial = state(); previous = initial;
   try {
@@ -197,8 +204,9 @@ export const basementHoleJetpackProbe = ({ mode = "trailing", dt = 1 / 60 } = {}
       if (s.x >= hole.x + 6.5) key("keyup", "w");
       const bodyClear = island.clearAt(s.x, s.y + 1e-5, s.z, 0.295, cave.bodyHeight - 1e-5);
       const bodySweep = island.voxelSegmentClearAt(previous.x, previous.y + 1e-5, previous.z, s.x, s.y + 1e-5, s.z, 0.295, cave.bodyHeight - 1e-5);
-      const eyeClear = island.clearAt(s.eye.x, s.eye.y - 0.295, s.eye.z, 0.295, 0.59);
-      const eyeSweep = island.voxelSegmentClearAt(previous.eye.x, previous.eye.y - 0.295, previous.eye.z, s.eye.x, s.eye.y - 0.295, s.eye.z, 0.295, 0.59);
+      const physicalEye = B.pilot.closeMix > 0 && !B.pilot.preserveExitAngle && !B.cameraCave.transitioning;
+      const eyeClear = !physicalEye || island.clearAt(s.eye.x, s.eye.y - 0.295, s.eye.z, 0.295, 0.59);
+      const eyeSweep = !physicalEye || island.voxelSegmentClearAt(previous.eye.x, previous.eye.y - 0.295, previous.eye.z, s.eye.x, s.eye.y - 0.295, s.eye.z, 0.295, 0.59);
       maxEyeStep = Math.max(maxEyeStep, Math.hypot(s.eye.x - previous.eye.x, s.eye.y - previous.eye.y, s.eye.z - previous.eye.z));
       maxEyeGap = Math.max(maxEyeGap, Math.hypot(s.eye.x - s.x, s.eye.y - s.y - cave.headOffset * 0.95, s.eye.z - s.z));
       if ((!bodyClear || !bodySweep || !eyeClear || !eyeSweep || !s.selected || s.scene !== "hub" || s.mode !== mode || !s.equipped && Math.hypot(s.x - hole.x, s.z - hole.z) <= hole.mouthRadius + 0.3) && failures.length < 12) failures.push({ ...s, bodyClear, bodySweep, eyeClear, eyeSweep });

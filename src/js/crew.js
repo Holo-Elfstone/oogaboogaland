@@ -14,6 +14,7 @@
   const FAN_SPREAD = 5;
   const POKES = ["Ooga?", "Booga!", "No poke.", "Hmm banana?", "Ooga booga booga."];
   const SLEEP_POKES = ["zzz... grr", "five more minutes", "zzz"];
+  const SLEEP_POSES = ["left", "stomach", "back", "right"];
   const BUILD_QUOTES = ["Ooga Booga!", "Ooga Booga BUILD!", "Ooga Booga MORE TOOLS!"];
   const IDLE_QUOTES = ["Ooga.", "Hmm.", "Nice rock.", "Booga?", "Where banana?", "Ooga booga.", "Sky big.", "Good cave."];
   const PHASE_QUOTES = {
@@ -39,6 +40,92 @@
   const YAWN_DUR = 2.4;
   const REACH = 1.6;
   const MUZZLE = new Float32Array(3);
+  const SLEEP_COMPRESSION = 0.025, SLEEP_SIDE_COMPRESSION = 0.16;
+  const SLEEP_BOUNDS = { min: Infinity, headMin: Infinity, coreMin: Infinity, feetMin: Infinity };
+  const SLEEP_BASE = math.quat.create(), SLEEP_TILT = math.quat.create(), SLEEP_INVERSE = math.quat.create();
+  const LOOK_ROTATION = math.quat.create();
+  const PILLOW_CLIP_A = new Float64Array(48), PILLOW_CLIP_B = new Float64Array(48);
+  const PILLOW_FRAME = { x: 0, y: 0, z: 0, sr: 0, cr: 1, minX: 0, maxX: 0, minZ: 0, maxZ: 0, minimum: Infinity };
+  const clipHeadToPillow = (node) => {
+    if (!node.visible) return;
+    const frame = PILLOW_FRAME;
+    if (node.geometry) {
+      const verts = node.geometry.verts, m = node.world;
+      for (const face of node.geometry.faces) {
+        let src = PILLOW_CLIP_A, dst = PILLOW_CLIP_B, count = face.i.length;
+        for (let i = 0; i < count; i++) {
+          const v = face.i[i] * 3, x = m[0] * verts[v] + m[4] * verts[v + 1] + m[8] * verts[v + 2] + m[12] - frame.x;
+          const z = m[2] * verts[v] + m[6] * verts[v + 1] + m[10] * verts[v + 2] + m[14] - frame.z;
+          src[i * 3] = x * frame.cr - z * frame.sr;
+          src[i * 3 + 1] = m[1] * verts[v] + m[5] * verts[v + 1] + m[9] * verts[v + 2] + m[13] - frame.y;
+          src[i * 3 + 2] = x * frame.sr + z * frame.cr;
+        }
+        for (let edge = 0; edge < 4 && count >= 3; edge++) {
+          const axis = edge < 2 ? 0 : 2, sign = edge & 1 ? -1 : 1;
+          const bound = edge === 0 ? frame.maxX : edge === 1 ? frame.minX : edge === 2 ? frame.maxZ : frame.minZ;
+          let out = 0;
+          for (let i = 0; i < count; i++) {
+            const a = i * 3, b = ((i + 1) % count) * 3, ai = (src[a + axis] - bound) * sign <= 0, bi = (src[b + axis] - bound) * sign <= 0;
+            if (ai) { dst[out * 3] = src[a]; dst[out * 3 + 1] = src[a + 1]; dst[out * 3 + 2] = src[a + 2]; out++; }
+            if (ai !== bi) {
+              const k = (bound - src[a + axis]) / (src[b + axis] - src[a + axis]);
+              dst[out * 3] = lerp(src[a], src[b], k); dst[out * 3 + 1] = lerp(src[a + 1], src[b + 1], k); dst[out * 3 + 2] = lerp(src[a + 2], src[b + 2], k); out++;
+            }
+          }
+          count = out;
+          const swap = src; src = dst; dst = swap;
+        }
+        let area = 0, minimum = Infinity;
+        for (let i = 0; i < count; i++) {
+          const a = i * 3, b = ((i + 1) % count) * 3;
+          area += src[a] * src[b + 2] - src[b] * src[a + 2];
+          minimum = Math.min(minimum, src[a + 1]);
+        }
+        if (Math.abs(area) > 1e-12) frame.minimum = Math.min(frame.minimum, minimum);
+      }
+    }
+    for (const child of node.children) clipHeadToPillow(child);
+  };
+  const pillowMinimum = (cave, bed, fitting) => {
+    const frame = PILLOW_FRAME, box = bed.collisionBoxes, travel = cave.bedTravel;
+    frame.x = fitting ? 0 : bed.x; frame.y = fitting ? -travel.restY : bed.y; frame.z = fitting ? -travel.restZ : bed.z;
+    frame.sr = fitting ? 0 : bed.sr; frame.cr = fitting ? 1 : bed.cr;
+    frame.minX = box[6]; frame.maxX = box[9]; frame.minZ = box[8]; frame.maxZ = box[11]; frame.minimum = Infinity;
+    clipHeadToPillow(cave.parts.head);
+    return frame.minimum;
+  };
+  const measureSleeper = (node, head, headNode, feet = false, legL, legR) => {
+    if (!node.visible) return;
+    if (node.geometry) {
+      const verts = node.geometry.verts, m = node.world;
+      for (let i = 0; i < verts.length; i += 3) {
+        const y = m[1] * verts[i] + m[5] * verts[i + 1] + m[9] * verts[i + 2] + m[13];
+        if (head) SLEEP_BOUNDS.headMin = Math.min(SLEEP_BOUNDS.headMin, y);
+        else {
+          SLEEP_BOUNDS.min = Math.min(SLEEP_BOUNDS.min, y);
+          if (feet) SLEEP_BOUNDS.feetMin = Math.min(SLEEP_BOUNDS.feetMin, y);
+          else SLEEP_BOUNDS.coreMin = Math.min(SLEEP_BOUNDS.coreMin, y);
+        }
+      }
+    }
+    for (const child of node.children) measureSleeper(child, head || child === headNode, headNode, feet || child === legL || child === legR, legL, legR);
+  };
+  const measureSleepPitch = (cave, pitch) => {
+    const scale = cave.parts.torso.scale.y;
+    cave.parts.torso.scale.y = 0.985;
+    math.quat.fromAxisAngle(SLEEP_TILT, 1, 0, 0, pitch);
+    math.quat.multiply(cave.sleepTargetRotation, SLEEP_TILT, SLEEP_BASE);
+    cave.root.quaternion = cave.sleepTargetRotation;
+    BL.scene.updateWorld(cave.root);
+    SLEEP_BOUNDS.min = SLEEP_BOUNDS.headMin = SLEEP_BOUNDS.coreMin = SLEEP_BOUNDS.feetMin = Infinity;
+    measureSleeper(cave.root, false, cave.parts.head, false, cave.parts.legL, cave.parts.legR);
+    // Fit both ends of the breathing cycle once, so it cannot deepen the
+    // settled mattress compression on a later frame.
+    cave.parts.torso.scale.y = 1.015;
+    BL.scene.updateWorld(cave.parts.torso, cave.root.world);
+    measureSleeper(cave.parts.torso, false, cave.parts.head);
+    cave.parts.torso.scale.y = scale;
+  };
   const setVec = (v, x, y, z) => {
     v.x = x;
     v.y = y;
@@ -94,6 +181,11 @@
         slot: null,
         index: i,
         bedroll: null,
+        bedTravel: { mode: "", route: null, index: 0, toBed: false, bed: null, manual: false, pose: "left", roll: 1, phase: 0, blocked: 0, retry: 0, fromX: 0, fromY: 0, fromZ: 0, fromYaw: 0, fromHeadX: 0, fromHeadY: 0, fromHeadZ: 0, fromArmLX: 0, fromArmRX: 0, fromArmLZ: 0, fromArmRZ: 0, armLX: 0, armRX: 0, armLZ: 0, armRZ: 0, compression: SLEEP_COMPRESSION, fromCompression: SLEEP_COMPRESSION, restY: 0, restZ: 0, pitch: 0, headDrop: 0, headDropX: 0, headDropY: 0, headDropZ: 0 },
+        sleepHead: { x: 0, y: 0, z: 0 },
+        headLookRotation: math.quat.create(), headLookPosition: { x: 0, y: 0, z: 0 },
+        sleepRotation: math.quat.create(), sleepFromRotation: math.quat.create(), sleepTargetRotation: math.quat.create(),
+        sleepParts: { armLX: cave.parts.armL.position.x, armRX: cave.parts.armR.position.x, headX: cave.parts.head.position.x, headY: cave.parts.head.position.y, headZ: cave.parts.head.position.z, equipment: cave.root.children.filter((node) => !BODY_PARTS.some((key) => cave.parts[key] === node)) },
         phase: i * 1.37,
         baseY: cave.root.position.y,
         bodyHeight: bodyHeightOf(cave),
@@ -131,16 +223,26 @@
       const p = cave.root.position;
       return cave.baseY + groundAt(p.x, p.z, p.y - cave.baseY);
     };
-    const grounded = (cave) => cave.hop === 0 && cave.hopV <= 0 && Math.abs(cave.root.position.y - groundY(cave)) < 1e-6;
+    const grounded = (cave) => cave.bedTravel.mode === "rest" || cave.hop === 0 && cave.hopV <= 0 && Math.abs(cave.root.position.y - groundY(cave)) < 1e-6;
     const atPile = (cave) => cave.act.kind === "eat" || cave.act.kind === "rush";
-    // Take the first free bed, else share by roster.
+    // Rooms are reserved only for this nap. The lab keeps its existing bedrolls.
     const claimBedroll = (cave) => {
-      if (cave.bedroll) return;
+      if (cave.bedroll) return true;
+      if (ctx.bedRoute) {
+        let available = 0;
+        for (const bed of bedrolls) if (!bed.sleeper) available++;
+        if (!available) return false;
+        let chosen = randomInt(available);
+        for (const bed of bedrolls) if (!bed.sleeper && chosen-- === 0) { cave.bedroll = bed; bed.sleeper = cave; return true; }
+      }
       cave.bedroll = bedrolls.find((bed) => !bed.sleeper) || bedrolls[cave.index % bedrolls.length];
       if (!cave.bedroll.sleeper) cave.bedroll.sleeper = cave;
+      return true;
     };
     const releaseBedroll = (cave) => {
-      if (cave.bedroll && cave.bedroll.sleeper === cave) cave.bedroll.sleeper = null;
+      if (cave.bedroll && cave.bedroll.sleeper === cave) {
+        cave.bedroll.sleeper = null;
+      }
       cave.bedroll = null;
     };
     const stateCounts = () => {
@@ -148,7 +250,7 @@
       for (const cave of cavemen.values()) counts[cave.state]++;
       return counts;
     };
-    const workingCavemen = () => [...cavemen.values()].filter((c) => c.state === "working" && !c.walk);
+    const workingCavemen = () => [...cavemen.values()].filter((c) => c.state === "working" && !c.walk && !c.bedTravel.mode);
     const eatingCavemen = () => [...cavemen.values()].filter((c) => c.state === "working" && !c.walk && !c.build && atPile(c));
     const feedableCavemen = () => [...cavemen.values()].filter((c) => c.root.visible && (c.state === "working" || c.state === "sleeping"));
     const releaseBuild = (cave) => {
@@ -156,15 +258,32 @@
       if (!cave.build.built) buildSpots.push(cave.build.spot);
       cave.build = null;
     };
+    const clearHeadLook = (cave) => {
+      const head = cave.parts.head;
+      if (head.quaternion !== cave.headLookRotation) return;
+      head.quaternion = null;
+      setVec(head.position, cave.headLookPosition.x, cave.headLookPosition.y, cave.headLookPosition.z);
+    };
     const resetPose = (cave) => {
+      clearHeadLook(cave);
       Object.assign(cave.root.rotation, { x: 0, y: 0, z: 0 });
+      cave.root.quaternion = null;
       Object.assign(cave.root.scale, { x: 1, y: 1, z: 1 });
       Object.assign(cave.parts.armL.rotation, { x: -0.2, y: 0, z: -0.12 });
       Object.assign(cave.parts.armR.rotation, { x: -0.2, y: 0, z: 0.12 });
       cave.parts.legL.rotation.x = 0;
       cave.parts.legR.rotation.x = 0;
+      cave.parts.legL.rotation.z = cave.parts.legR.rotation.z = 0;
       cave.parts.head.rotation.x = 0;
       cave.parts.head.rotation.y = 0;
+      cave.parts.head.position.x = cave.sleepParts.headX;
+      cave.parts.head.position.y = cave.sleepParts.headY + cave.viewLift;
+      cave.parts.head.position.z = cave.sleepParts.headZ;
+      cave.parts.armL.position.x = cave.sleepParts.armLX;
+      cave.parts.armR.position.x = cave.sleepParts.armRX;
+      cave.parts.torso.scale.y = 1;
+      cave.parts.club.visible = true;
+      for (const node of cave.sleepParts.equipment) node.visible = true;
       cave.parts.snack.visible = false;
       cave.parts.gun.visible = false;
       cave.yawn = 0;
@@ -175,12 +294,57 @@
     let player = null;
     // World-space drive vector plus signed close-view intent. Reused every frame.
     const steer = { x: 0, z: 0, view: 0, forward: 0, strafe: 0 };
+    const startBedRoute = (cave, bed, toBed) => {
+      const travel = cave.bedTravel;
+      const ground = groundY(cave), airborne = cave.hop > 0 || cave.hopV > 0 || cave.root.position.y - ground > 0.1;
+      travel.route = airborne ? null : ctx.bedRoute(cave, bed, toBed);
+      if (airborne) cave.hop = Math.max(cave.hop, cave.root.position.y - ground);
+      else cave.root.position.y = ground;
+      travel.index = travel.phase = travel.blocked = 0;
+      travel.toBed = toBed;
+      travel.bed = bed;
+      travel.mode = airborne ? "landing" : travel.route ? "walk" : "waiting";
+      if (travel.route) cave.cloudSupport = null;
+      travel.retry = 1;
+      cave.walk = null;
+      cave.act.kind = toBed ? "bed" : "return";
+    };
+    const standFromBed = (cave) => {
+      const travel = cave.bedTravel, lying = travel.mode === "rest" || travel.mode === "lie";
+      if (lying) cave.root.position.y = cave.baseY + (cave.bedroll.y === undefined ? groundAt(cave.root.position.x, cave.root.position.z) : cave.bedroll.y);
+      resetPose(cave);
+      if (lying) {
+        cave.hop = cave.hopV = cave.jumps = 0;
+        cave.leap.vx = cave.leap.vz = cave.leap.land = 0;
+        cave.cloudSupport = null;
+      }
+      cave.cheer = cave.catchT = 0;
+      travel.mode = "";
+      travel.route = null;
+      travel.manual = false;
+    };
+    const startSleep = (cave) => {
+      const r = cave.root, visible = r.visible;
+      if (cave === player) release();
+      standFromBed(cave);
+      releaseBuild(cave);
+      removeJetpack(cave);
+      cave.state = "sleeping";
+      cave.parts.head.geometry = cave.headOpen;
+      r.visible = true;
+      if (!visible) setVec(r.position, walkIn.x, cave.baseY + groundAt(walkIn.x, walkIn.z), walkIn.z);
+      if (claimBedroll(cave)) startBedRoute(cave, cave.bedroll, true);
+      else { cave.bedTravel.mode = "waiting"; cave.bedTravel.toBed = true; cave.bedTravel.retry = 1; }
+      refreshRosterRow(cave);
+    };
     const applyState = (cave, state) => {
       if (cave.state === state) {
         // Re-seat a moved eater, interrupt nothing else
         if (state === "working") walkToSlot(cave);
         return;
       }
+      if (ctx.bedRoute && state === "sleeping") { startSleep(cave); return; }
+      if (ctx.bedRoute && cave.state === "sleeping" && state === "working") { beginWalk(cave); return; }
       if (state === "working" && cave.walk) {
         cave.walk.tx = cave.slot.x;
         cave.walk.tz = cave.slot.z;
@@ -188,6 +352,7 @@
         return;
       }
       if (cave === player) release();
+      if (ctx.bedRoute || cave.bedTravel.mode) { standFromBed(cave); cave.bedTravel.bed = null; }
       cave.state = state;
       cave.parts.head.geometry = state === "sleeping" ? cave.headClosed : cave.headOpen;
       resetPose(cave);
@@ -213,8 +378,20 @@
       refreshRosterRow(cave);
     };
     const beginWalk = (cave) => {
+      if (cave === player && cave.bedTravel.manual && cave.state === "sleeping") { wakePlayer(); return; }
+      if (ctx.bedRoute && cave.state === "sleeping") {
+        const bed = cave.bedroll;
+        standFromBed(cave);
+        releaseBedroll(cave);
+        cave.state = "working";
+        cave.parts.head.geometry = cave.headOpen;
+        startBedRoute(cave, bed, false);
+        refreshRosterRow(cave);
+        return;
+      }
       const from = cave.state === "sleeping" ? cave.bedroll.wakeAt || cave.bedroll : walkIn;
       const fresh = cave.state !== "sleeping";
+      if (cave.bedTravel.mode) standFromBed(cave);
       cave.state = "working";
       releaseBedroll(cave);
       cave.parts.head.geometry = cave.headOpen;
@@ -258,6 +435,7 @@
     // Walk an eater to its slot
     const walkToSlot = (cave, force = false) => {
       if (cave.state !== "working" || cave.build) return;
+      if (cave.bedTravel.mode) return;
       if (!force && !atPile(cave)) return;
       if (cave.walk) {
         cave.walk.tx = cave.slot.x;
@@ -323,7 +501,7 @@
       a.sayAt = elapsed + 0.8 + Math.random() * 2;
       a.said = false;
     };
-    const headWorldOf = (cave) => ({ x: cave.root.position.x, y: cave.state === "sleeping" ? 0.5 : cave.root.position.y - cave.baseY + cave.headOffset * 0.95 + cave.viewLift, z: cave.root.position.z });
+    const headWorldOf = (cave) => cave.bedTravel.mode === "rest" || cave.bedTravel.mode === "lie" ? cave.sleepHead : ({ x: cave.root.position.x, y: cave.state === "sleeping" && !ctx.bedRoute ? 0.5 : cave.root.position.y - cave.baseY + cave.headOffset * 0.95 + cave.viewLift, z: cave.root.position.z });
     const bulletPool = Array.from({ length: 12 }, () => {
       const node = createNode({ geometry: models.bananaGeometry(), scale: { x: models.BANANA_AMMO_SCALE, y: models.BANANA_AMMO_SCALE, z: models.BANANA_AMMO_SCALE }, visible: false, matrixLiving: !!ctx.matrixLivingPile });
       addChild(root, node);
@@ -369,6 +547,7 @@
       addChild(root, node);
       builtEquipment.push({ node, spot });
       popNode(node);
+      if (ctx.onModelChange) ctx.onModelChange();
     };
     const startBuild = (cave) => {
       if (!buildSpots.length) {
@@ -386,6 +565,7 @@
             removeChild(root, oldest.node);
             const i = dismantling.indexOf(oldest.node);
             if (i >= 0) dismantling.splice(i, 1);
+            if (ctx.onModelChange) ctx.onModelChange();
           }
         });
         buildSpots.push(oldest.spot);
@@ -470,6 +650,224 @@
       parts.legL.rotation.z = parts.legR.rotation.z = 0;
       parts.armL.rotation.x = parts.armR.rotation.x = -0.2;
       parts.torso.rotation.x = parts.torso.rotation.z = 0;
+    };
+    const sleepParts = (cave, k) => {
+      clearHeadLook(cave);
+      const parts = cave.parts, travel = cave.bedTravel;
+      parts.armL.position.x = lerp(cave.sleepParts.armLX, travel.armLX, k);
+      parts.armR.position.x = lerp(cave.sleepParts.armRX, travel.armRX, k);
+      parts.armL.rotation.x = parts.armR.rotation.x = lerp(-0.2, 0, k);
+      parts.armL.rotation.z = lerp(-0.12, travel.armLZ, k);
+      parts.armR.rotation.z = lerp(0.12, travel.armRZ, k);
+      parts.legL.rotation.x = parts.legL.rotation.z = parts.legR.rotation.x = parts.legR.rotation.z = 0;
+      parts.head.position.x = cave.sleepParts.headX + travel.headDropX * k;
+      parts.head.position.y = cave.sleepParts.headY + travel.headDropY * k;
+      parts.head.position.z = cave.sleepParts.headZ + travel.headDropZ * k;
+      parts.head.rotation.x = parts.head.rotation.y = 0;
+    };
+    const updateSleepHead = (cave) => {
+      const p = cave.root.position, head = cave.parts.head.position;
+      math.quat.rotateVec(MUZZLE, cave.sleepRotation, head.x, head.y + cave.traits.height * 3.5 / 16, head.z);
+      setVec(cave.sleepHead, p.x + MUZZLE[0], p.y + MUZZLE[1], p.z + MUZZLE[2]);
+    };
+    const fitSleepPose = (cave, pose) => {
+      clearHeadLook(cave);
+      const travel = cave.bedTravel, bed = cave.bedroll, r = cave.root;
+      const px = r.position.x, py = r.position.y, pz = r.position.z, hx = cave.parts.head.position.x, hy = cave.parts.head.position.y, hz = cave.parts.head.position.z, ax = cave.parts.armL.position.x, bx = cave.parts.armR.position.x;
+      const az = cave.parts.armL.rotation.z, bz = cave.parts.armR.rotation.z, side = pose === "left" || pose === "right";
+      travel.headDrop = travel.headDropX = travel.headDropY = travel.headDropZ = 0;
+      travel.armLX = cave.sleepParts.armLX; travel.armRX = cave.sleepParts.armRX;
+      travel.armLZ = side ? 0.35 : 0; travel.armRZ = -travel.armLZ;
+      sleepParts(cave, 1);
+      r.quaternion = null;
+      setVec(r.position, 0, 0, 0);
+      if (pose === "left") setVec(r.rotation, 0, Math.PI / 2, -Math.PI / 2);
+      else if (pose === "right") setVec(r.rotation, 0, -Math.PI / 2, Math.PI / 2);
+      else if (pose === "stomach") setVec(r.rotation, Math.PI / 2, Math.PI, 0);
+      else setVec(r.rotation, -Math.PI / 2, 0, 0);
+      math.quat.fromEuler(SLEEP_BASE, r.rotation.x, r.rotation.y, r.rotation.z);
+      measureSleepPitch(cave, 0);
+      let pitch = 0;
+      if (side) {
+        // A straight neck and legs share one rigid body transform. Solve its
+        // pitch from the real pillow face and supporting foot, allowing the
+        // broader shoulder/side to compress the mattress between those ends.
+        let lo = -Math.PI / 6, hi = Math.PI / 6;
+        for (let i = 0; i < 20; i++) {
+          pitch = (lo + hi) / 2;
+          measureSleepPitch(cave, pitch);
+          travel.restY = bed.sleep.surface - SLEEP_COMPRESSION - SLEEP_BOUNDS.feetMin;
+          math.quat.rotateVec(MUZZLE, cave.sleepTargetRotation, cave.sleepParts.headX, cave.sleepParts.headY + cave.traits.height * 3.5 / 16, cave.sleepParts.headZ);
+          travel.restZ = bed.sleep.pillowZ - MUZZLE[2];
+          if (pillowMinimum(cave, bed, true) < bed.sleep.pillowTop - SLEEP_COMPRESSION * 0.6) lo = pitch;
+          else hi = pitch;
+        }
+        pitch = hi;
+      } else if (SLEEP_BOUNDS.feetMin > SLEEP_BOUNDS.coreMin) {
+        let lo = 0, hi = Math.PI / 3;
+        for (let i = 0; i < 20; i++) {
+          pitch = (lo + hi) / 2;
+          measureSleepPitch(cave, pitch);
+          if (SLEEP_BOUNDS.feetMin > SLEEP_BOUNDS.coreMin) lo = pitch;
+          else hi = pitch;
+        }
+        pitch = hi;
+      }
+      measureSleepPitch(cave, pitch);
+      travel.pitch = pitch;
+      travel.restY = bed.sleep.surface - SLEEP_COMPRESSION - (side ? SLEEP_BOUNDS.feetMin : SLEEP_BOUNDS.min);
+      // Keep the legs straight and tilt the whole body only as far as its
+      // actual feet require. Only head faces over the pillow provide pillow
+      // support; overhanging hair can rest lower over the surrounding sheet.
+      const q = cave.sleepTargetRotation;
+      math.quat.rotateVec(MUZZLE, q, cave.sleepParts.headX, cave.sleepParts.headY + cave.traits.height * 3.5 / 16, cave.sleepParts.headZ);
+      travel.restZ = bed.sleep.pillowZ - MUZZLE[2];
+      travel.compression = SLEEP_COMPRESSION;
+      if (side) {
+        // Rest the lower arm close to the torso instead of driving its broad
+        // shoulder through the mattress and into the stone beneath it.
+        const arm = pose === "left" ? cave.parts.armR : cave.parts.armL;
+        SLEEP_BOUNDS.min = Infinity;
+        measureSleeper(arm, false, cave.parts.head);
+        const tuck = Math.max(0, bed.sleep.surface - SLEEP_SIDE_COMPRESSION - travel.restY - SLEEP_BOUNDS.min) / Math.cos(pitch);
+        if (pose === "left") arm.position.x = travel.armRX -= tuck;
+        else arm.position.x = travel.armLX += tuck;
+        measureSleepPitch(cave, pitch);
+        travel.compression = Math.max(SLEEP_COMPRESSION, bed.sleep.surface - travel.restY - Math.min(SLEEP_BOUNDS.min, SLEEP_BOUNDS.headMin));
+      } else {
+        travel.headDrop = pillowMinimum(cave, bed, true) - (bed.sleep.pillowTop - SLEEP_COMPRESSION * 0.6);
+        SLEEP_INVERSE[0] = -q[0]; SLEEP_INVERSE[1] = -q[1]; SLEEP_INVERSE[2] = -q[2]; SLEEP_INVERSE[3] = q[3];
+        math.quat.rotateVec(MUZZLE, SLEEP_INVERSE, 0, -travel.headDrop, 0);
+        travel.headDropX = MUZZLE[0]; travel.headDropY = MUZZLE[1]; travel.headDropZ = MUZZLE[2];
+      }
+      math.quat.fromAxisAngle(SLEEP_TILT, 0, 1, 0, bed.node.rotation.y);
+      math.quat.multiply(q, SLEEP_TILT, q);
+      setVec(r.position, px, py, pz);
+      cave.parts.head.position.x = hx; cave.parts.head.position.y = hy; cave.parts.head.position.z = hz;
+      cave.parts.armL.position.x = ax; cave.parts.armR.position.x = bx;
+      cave.parts.armL.rotation.z = az; cave.parts.armR.rotation.z = bz;
+      r.quaternion = cave.sleepRotation;
+      travel.pose = pose;
+    };
+    const lieDown = (cave) => {
+      const travel = cave.bedTravel, r = cave.root;
+      travel.fromX = r.position.x; travel.fromY = r.position.y; travel.fromZ = r.position.z; travel.fromYaw = r.rotation.y;
+      resetPose(cave);
+      cave.parts.club.visible = false;
+      for (const node of cave.sleepParts.equipment) node.visible = false;
+      math.quat.fromEuler(cave.sleepFromRotation, 0, travel.fromYaw, 0);
+      math.quat.copy(cave.sleepRotation, cave.sleepFromRotation);
+      fitSleepPose(cave, "left");
+      sleepParts(cave, 0);
+      travel.mode = "lie";
+      travel.phase = 0;
+      travel.route = null;
+      travel.roll = 1;
+      updateSleepHead(cave);
+    };
+    const turnSleep = (cave, pose) => {
+      clearHeadLook(cave);
+      const travel = cave.bedTravel;
+      if (travel.pose === pose) return;
+      travel.fromX = cave.root.position.x; travel.fromY = cave.root.position.y; travel.fromZ = cave.root.position.z;
+      travel.fromHeadX = cave.parts.head.position.x; travel.fromHeadY = cave.parts.head.position.y; travel.fromHeadZ = cave.parts.head.position.z;
+      travel.fromArmLX = cave.parts.armL.position.x; travel.fromArmRX = cave.parts.armR.position.x; travel.fromCompression = travel.compression;
+      travel.fromArmLZ = cave.parts.armL.rotation.z; travel.fromArmRZ = cave.parts.armR.rotation.z;
+      math.quat.copy(cave.sleepFromRotation, cave.sleepRotation);
+      fitSleepPose(cave, pose);
+      travel.roll = 0;
+    };
+    const runBed = (cave, dt) => {
+      const travel = cave.bedTravel, p = cave.root.position;
+      if (travel.mode === "landing") {
+        runPlayer(cave, dt, false);
+        if (ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY) && p.y - cave.baseY < ctx.abyssRespawnY) {
+          setVec(p, walkIn.x, cave.baseY + groundAt(walkIn.x, walkIn.z), walkIn.z);
+          cave.hop = cave.hopV = 0;
+        }
+        if (grounded(cave)) startBedRoute(cave, travel.toBed ? cave.bedroll : travel.bed, travel.toBed);
+        return;
+      }
+      if (travel.mode === "waiting") {
+        if (!grounded(cave)) { startBedRoute(cave, travel.toBed ? cave.bedroll : travel.bed, travel.toBed); return; }
+        travel.retry -= dt;
+        if (travel.retry <= 0) {
+          if (!travel.toBed || claimBedroll(cave)) startBedRoute(cave, travel.toBed ? cave.bedroll : travel.bed, travel.toBed);
+          else travel.retry = 1;
+        }
+        return;
+      }
+      if (travel.mode === "walk") {
+        let remaining = dt * 2;
+        while (remaining > 1e-8 && travel.index < travel.route.length) {
+          const target = travel.route[travel.index], dx = target.x - p.x, dz = target.z - p.z, distance = Math.hypot(dx, dz);
+          if (distance < 1e-6) { travel.index++; continue; }
+          const step = Math.min(remaining, PLAYER_STEP, distance), x = p.x + dx / distance * step, z = p.z + dz / distance * step;
+          if (!walkable(p.x, p.z, x, z, p.y - cave.baseY, cave.bodyHeight)) { travel.blocked += dt; break; }
+          p.x = x; p.z = z; p.y = groundY(cave);
+          const heading = Math.atan2(dx, dz);
+          cave.root.rotation.y += Math.atan2(Math.sin(heading - cave.root.rotation.y), Math.cos(heading - cave.root.rotation.y)) * Math.min(1, dt * 8);
+          travel.phase += step * 4.5;
+          remaining -= step;
+          if (step === distance) travel.index++;
+        }
+        if (travel.index === travel.route.length) {
+          standPose(cave);
+          if (travel.toBed) lieDown(cave);
+          else { travel.mode = ""; travel.route = null; travel.bed = null; cave.root.rotation.y = Math.atan2(-p.x, -p.z); startMeal(cave); }
+        } else {
+          walkPose(cave, travel.phase);
+          // Contact stays on the physical floor; gait motion is in the limbs.
+          p.y = groundY(cave);
+        }
+        return;
+      }
+      const bed = cave.bedroll;
+      if (travel.mode === "lie") {
+        travel.phase = Math.min(1, travel.phase + dt / 0.85);
+        const k = ease.inOutQuad(travel.phase), angle = bed.node.rotation.y;
+        setVec(p, lerp(travel.fromX, bed.x + Math.sin(angle) * travel.restZ, k), lerp(travel.fromY, bed.y + travel.restY, k), lerp(travel.fromZ, bed.z + Math.cos(angle) * travel.restZ, k));
+        math.quat.copy(cave.sleepRotation, cave.sleepFromRotation);
+        math.quat.slerpTo(cave.sleepRotation, cave.sleepTargetRotation, k);
+        sleepParts(cave, k);
+        if (travel.phase === 1) {
+          travel.mode = "rest";
+          cave.parts.head.geometry = cave.headClosed;
+        }
+      } else if (travel.mode === "rest") {
+        if (travel.manual && cave === player && bed.sleep) {
+          if (Math.abs(steer.forward) > 0.05 && Math.abs(steer.forward) >= Math.abs(steer.strafe)) turnSleep(cave, steer.forward > 0 ? "stomach" : "back");
+          else if (Math.abs(steer.strafe) > 0.05) turnSleep(cave, steer.strafe < 0 ? "right" : "left");
+        }
+        if (travel.roll < 1) {
+          travel.roll = Math.min(1, travel.roll + dt / 0.55);
+          const k = ease.inOutQuad(travel.roll);
+          math.quat.copy(cave.sleepRotation, cave.sleepFromRotation);
+          math.quat.slerpTo(cave.sleepRotation, cave.sleepTargetRotation, k);
+          setVec(p, lerp(travel.fromX, bed.x + Math.sin(bed.node.rotation.y) * travel.restZ, k), lerp(travel.fromY, bed.y + travel.restY, k) + Math.sin(k * Math.PI) * 0.09, lerp(travel.fromZ, bed.z + Math.cos(bed.node.rotation.y) * travel.restZ, k));
+          cave.parts.head.position.x = lerp(travel.fromHeadX, cave.sleepParts.headX + travel.headDropX, k);
+          cave.parts.head.position.y = lerp(travel.fromHeadY, cave.sleepParts.headY + travel.headDropY, k);
+          cave.parts.head.position.z = lerp(travel.fromHeadZ, cave.sleepParts.headZ + travel.headDropZ, k);
+          cave.parts.armL.position.x = lerp(travel.fromArmLX, travel.armLX, k);
+          cave.parts.armR.position.x = lerp(travel.fromArmRX, travel.armRX, k);
+          cave.parts.armL.rotation.z = lerp(travel.fromArmLZ, travel.armLZ, k);
+          cave.parts.armR.rotation.z = lerp(travel.fromArmRZ, travel.armRZ, k);
+          // A side-to-back roll has a wider vertical envelope than either end
+          // pose. Lift from the actual meshes while turning, then settle again.
+          BL.scene.updateWorld(cave.root);
+          SLEEP_BOUNDS.min = SLEEP_BOUNDS.headMin = Infinity;
+          measureSleeper(cave.root, false, cave.parts.head);
+          const compression = lerp(travel.fromCompression, travel.compression, k);
+          const lift = Math.max(0, bed.y + bed.sleep.surface - compression - Math.min(SLEEP_BOUNDS.min, SLEEP_BOUNDS.headMin), bed.sleep.pillowTop - SLEEP_COMPRESSION * 0.6 - pillowMinimum(cave, bed, false));
+          p.y += lift;
+        }
+      }
+      cave.parts.torso.scale.y = 1 + Math.sin(elapsed * 1.4 + cave.phase) * 0.015;
+      updateSleepHead(cave);
+      if (travel.mode === "rest") {
+        cave.zzzTimer -= dt;
+        if (cave.zzzTimer <= 0) { cave.zzzTimer = 1.6; ctx.fx.zzzAt(cave.sleepHead.x, cave.sleepHead.y + 0.35, cave.sleepHead.z, cave); }
+      }
     };
     // Keep backward and lateral steps readable in a mirror without turning the body.
     const closeWalkPose = (cave) => {
@@ -631,7 +1029,7 @@
       cave.hopV = held ? 0 : Math.min(cave.hopV, 0);
     };
     // Move the visitor's caveman
-    const runPlayer = (cave, dt) => {
+    const runPlayer = (cave, dt, driving = true) => {
       const p = cave.root.position, leap = cave.leap;
       const wasGround = groundY(cave);
       if (cave.jet) runJet(cave, dt);
@@ -639,7 +1037,7 @@
       p.y = wasGround + cave.hop;
       if (cave.jet && cave.jet.thrust && ctx.glideJetCeiling && ctx.glideJetCeiling(cave, dt)) cave.hopV = Math.max(cave.hopV, JET_RISE);
       const flying = !!cave.jet && !cave.jetRecovering && cave.jetFuel > 0 && (cave.jet.thrust || cave.hop > 0.05);
-      const len = Math.hypot(steer.x, steer.z);
+      const len = driving ? Math.hypot(steer.x, steer.z) : 0;
       if (len > 0.05) {
         const k = Math.min(1, len) * (flying ? JET_SPEED : PLAYER_SPEED) * dt;
         const dx = steer.x / len * k, dz = steer.z / len * k;
@@ -716,8 +1114,9 @@
       } else cave.parts.head.rotation.x = 0;
     };
     const updateCaveman = (cave, dt) => {
+      clearHeadLook(cave);
       const parts = cave.parts;
-      if (ctx.prepareCloudSupport) ctx.prepareCloudSupport(cave);
+      if (ctx.prepareCloudSupport && (!cave.bedTravel.mode || cave.bedTravel.mode === "landing" || cave.bedTravel.mode === "waiting")) ctx.prepareCloudSupport(cave);
       cave.highlight = damp(cave.highlight, cave.highlightTarget, 12, dt);
       for (const key of BODY_PARTS) parts[key].highlight = cave.highlight;
       if (cave.hopV > 0 || cave.hop > 0) {
@@ -735,13 +1134,14 @@
         if (node.swag.float) node.position.y = (node.swag.offset ? node.swag.offset.y : 0) + Math.sin(elapsed * 2.5 + cave.phase) * 0.04;
         for (const child of node.children) if (child.spin) child.rotation.y += dt * 9;
       }
+      if (cave.bedTravel.mode) { runBed(cave, dt); return; }
       if (cave.state !== "working") {
         if (cave.state === "sleeping" && !cave.bedroll.hidden) {
           parts.torso.scale.y = 1 + Math.sin(elapsed * 1.4 + cave.phase) * 0.03;
           cave.zzzTimer -= dt;
           if (cave.zzzTimer <= 0) {
             cave.zzzTimer = 1.6;
-            ctx.fx.zzzAt(cave.bedroll.x + 0.6, (cave.bedroll.y === undefined ? 0 : cave.bedroll.y) + 0.55, cave.bedroll.z);
+            ctx.fx.zzzAt(cave.bedroll.x + 0.6, (cave.bedroll.y === undefined ? 0 : cave.bedroll.y) + 0.55, cave.bedroll.z, cave);
           }
         }
         return;
@@ -850,12 +1250,72 @@
     };
 
     // ---------- the visitor's caveman ----------
+    const sleepPlayer = (bed) => {
+      const cave = player;
+      if (!cave || cave.state === "sleeping" || !bed || bed.sleeper && bed.sleeper !== cave) return false;
+      // The view's step smoothing can still be settling when SLEEP appears.
+      // Admission uses the planted feet, before clearing that visual offset.
+      if (!grounded(cave)) return false;
+      elevatePlayer(0);
+      releaseBuild(cave);
+      removeJetpack(cave);
+      cave.walk = null;
+      cave.hop = cave.hopV = cave.cheer = cave.catchT = 0;
+      cave.override = cave.state = "sleeping";
+      cave.bedroll = bed;
+      bed.sleeper = cave;
+      cave.bedTravel.manual = true;
+      cave.bedTravel.bed = bed;
+      cave.act.kind = "bed";
+      lieDown(cave);
+      refreshRosterRow(cave);
+      return true;
+    };
+    const wakePlayer = () => {
+      const cave = player;
+      if (!cave || !cave.bedTravel.manual || cave.state !== "sleeping") return false;
+      const bed = cave.bedroll;
+      standFromBed(cave);
+      releaseBedroll(cave);
+      cave.override = cave.state = "working";
+      cave.bedTravel.bed = null;
+      cave.parts.head.geometry = cave.headOpen;
+      cave.root.position.y = groundY(cave);
+      cave.root.rotation.y = bed.node ? bed.node.rotation.y : bed.ry || 0;
+      cave.act.kind = "player";
+      cave.act.phase = 0;
+      refreshRosterRow(cave);
+      return true;
+    };
     const control = (cave) => {
-      if (cave.state !== "working" || cave === player) return false;
+      if (cave === player || cave.state !== "working" && cave.state !== "sleeping") return false;
       release();
+      if (cave.state === "sleeping" && (!ctx.bedRoute || cave.bedTravel.mode === "rest" || cave.bedTravel.mode === "lie")) {
+        player = cave;
+        cave.bedTravel.manual = true;
+        if (!ctx.bedRoute) {
+          math.quat.fromEuler(cave.sleepRotation, cave.root.rotation.x, cave.root.rotation.y, cave.root.rotation.z);
+          cave.root.quaternion = cave.sleepRotation;
+          cave.bedTravel.mode = "rest";
+          cave.bedTravel.roll = 1;
+          updateSleepHead(cave);
+        }
+        return true;
+      }
+      if (cave.state === "sleeping") {
+        if (ctx.bedRoute) standFromBed(cave);
+        else { resetPose(cave); cave.root.position.y = cave.baseY + groundAt(cave.root.position.x, cave.root.position.z); }
+        releaseBedroll(cave);
+        cave.override = cave.state = "working";
+        cave.parts.head.geometry = cave.headOpen;
+        assignFanSlots([...cavemen.values()], (entry) => entry.state === "working");
+        refreshRosterRow(cave);
+      }
       player = cave;
       releaseBuild(cave);
       cave.walk = null;
+      cave.bedTravel.mode = "";
+      cave.bedTravel.route = null;
       cave.act.kind = "player";
       cave.act.phase = 0;
       cave.parts.gun.visible = false;
@@ -868,8 +1328,15 @@
       return true;
     };
     const release = () => {
+      if (player) clearHeadLook(player);
       if (!player) return;
       const cave = player;
+      if (cave.bedTravel.manual && cave.state === "sleeping") {
+        cave.bedTravel.manual = false;
+        player = null;
+        steer.x = steer.z = steer.view = steer.forward = steer.strafe = 0;
+        return;
+      }
       elevatePlayer(0);
       player = null;
       steer.x = steer.z = steer.view = steer.forward = steer.strafe = 0;
@@ -881,11 +1348,12 @@
         cave.jet.flame.visible = false;
       }
       standPose(cave);
-      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY)) cave.root.position.y = groundY(cave);
+      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY)) cave.root.position.y = groundY(cave) + cave.hop;
       cave.act.kind = "idle";
       cave.act.until = elapsed + 1.5;
       cave.act.said = true;
       cave.act.trips = 0;
+      if (ctx.bedRoute && cave.root.position.y - cave.baseY < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY))) startBedRoute(cave, null, false);
     };
     const steerPlayer = (x, z, view = 0, forward = 0, strafe = 0) => {
       steer.x = x;
@@ -898,6 +1366,7 @@
     const relocatePlayer = (position, heading) => {
       const cave = player;
       if (!cave) return;
+      if (cave.bedTravel.manual) wakePlayer();
       elevatePlayer(0);
       steer.x = steer.z = steer.view = steer.forward = steer.strafe = 0;
       cave.hop = cave.hopV = cave.act.phase = 0;
@@ -921,9 +1390,29 @@
       if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL && grounded(cave)) cave.jetRecovering = true;
     };
     // Applied after the camera's damped angles update, keeping pose and view in lockstep.
-    const lookPlayer = (heading, pitch, mix) => {
-      if (!player || mix <= 0) return;
+    const lookPlayer = (heading, pitch, mix, viewRotation = null) => {
+      if (!player) return;
+      clearHeadLook(player);
+      if (mix <= 0) return;
       const root = player.root, head = player.parts.head;
+      if (player.bedTravel.manual) {
+        if (!viewRotation || !root.quaternion) return;
+        const q = root.quaternion, look = player.headLookRotation;
+        // The camera looks along -Z, while the model's face looks along +Z.
+        LOOK_ROTATION[0] = -viewRotation[2]; LOOK_ROTATION[1] = viewRotation[3]; LOOK_ROTATION[2] = viewRotation[0]; LOOK_ROTATION[3] = -viewRotation[1];
+        SLEEP_INVERSE[0] = -q[0]; SLEEP_INVERSE[1] = -q[1]; SLEEP_INVERSE[2] = -q[2]; SLEEP_INVERSE[3] = q[3];
+        math.quat.multiply(LOOK_ROTATION, SLEEP_INVERSE, LOOK_ROTATION);
+        math.quat.fromEuler(look, 0, 0, 0);
+        math.quat.slerpTo(look, LOOK_ROTATION, mix);
+        setVec(player.headLookPosition, head.position.x, head.position.y, head.position.z);
+        // Rotate about the face's center, leaving the physical eye anchor and
+        // authored pillow contact available unchanged when close view ends.
+        const center = player.traits.height * 3.5 / 16;
+        math.quat.rotateVec(MUZZLE, look, 0, center, 0);
+        head.position.x -= MUZZLE[0]; head.position.y += center - MUZZLE[1]; head.position.z -= MUZZLE[2];
+        head.quaternion = look;
+        return;
+      }
       root.rotation.y += Math.atan2(Math.sin(heading - root.rotation.y), Math.cos(heading - root.rotation.y)) * mix;
       head.rotation.x += (pitch - head.rotation.x) * mix;
       head.rotation.y = 0;
@@ -931,7 +1420,7 @@
     // Shift the visible body while its root remains on the exact collision surface.
     // Scaling each leg about its hip keeps the feet on that same voxel step.
     const elevatePlayer = (lift) => {
-      if (!player) return;
+      if (!player || player.bedTravel.manual) return;
       const cave = player, parts = cave.parts;
       // Step smoothing moves the rendered head after physics. Keep that lift
       // within the same full-footprint ceiling used by walking and jumping.
@@ -953,7 +1442,7 @@
       parts.legL.scale.y = parts.legR.scale.y = (cave.baseY + lift) / cave.baseY;
     };
     const jumpPlayer = () => {
-      if (!player || player.jet && !player.jetRecovering) return false;
+      if (!player || player.bedTravel.manual || player.jet && !player.jetRecovering) return false;
       if (grounded(player)) player.jumps = 0;
       else player.jumps = Math.max(1, player.jumps);
       if (player.jumps >= 2) return false;
@@ -967,6 +1456,7 @@
     // a nearby action consumes the press and airborne presses add no impulse.
     const playerAction = () => {
       if (!player) return false;
+      if (player.bedTravel.manual) return wakePlayer();
       const p = player.root.position, feet = p.y - player.baseY;
       if (ctx.useNear && ctx.useNear(p.x, p.z, REACH + 0.6, feet)) return true;
       if (player.jet && !player.jetRecovering) {
@@ -1009,6 +1499,7 @@
     };
     const applyAllSwag = () => {
       for (const cave of cavemen.values()) applySwag(cave);
+      if (ctx.onModelChange) ctx.onModelChange();
     };
     const wornBy = (name) => {
       const item = game.itemOf(game.state.assignments[name] || "");
@@ -1018,6 +1509,8 @@
     const pokeCave = (cave) => {
       if (cave.state === "sleeping") {
         ctx.fx.say(cave, SLEEP_POKES[randomInt(SLEEP_POKES.length)], 1.8);
+        const travel = cave.bedTravel;
+        if (travel.mode === "rest" && travel.roll === 1 && cave.bedroll.sleep && randomInt(3) === 0) turnSleep(cave, SLEEP_POSES[(SLEEP_POSES.indexOf(travel.pose) + 1 + randomInt(3)) % SLEEP_POSES.length]);
         return;
       }
       ctx.fx.say(cave, POKES[randomInt(POKES.length)], 1.8);
@@ -1061,7 +1554,8 @@
     const stats = () => ({ built: builtEquipment.length });
     return {
       cavemen, stateOf, stateCounts, workingCavemen, eatingCavemen, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, drawQuotes,
-      control, release, relocatePlayer, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, wearJetpack, removeJetpack, thrust, update, dispose, stats,
+      control, release, relocatePlayer, sleepPlayer, wakePlayer, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, wearJetpack, removeJetpack, thrust, update, dispose, stats,
+      get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
         return player;
       }
