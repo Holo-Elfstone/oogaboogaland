@@ -81,7 +81,7 @@ export const movementWindowsProbe = ({ id = "c5", dt = 1 / 60, roomIndex = null,
     completed = follow("down", down);
     if (completed) {
       admitted = snapshot();
-      const destinationAngle = descent ? Math.atan2(descent.from.x, -descent.from.z) : aperture.angle;
+      const destinationAngle = descent ? Math.atan2(descent.from.x, -descent.from.z) : room ? Math.atan2(room.approach.x, -room.approach.z) : aperture.angle;
       const startAngle = Math.atan2(ramp.to.x, -ramp.to.z), arc = [];
       for (let n = 0; n <= 16; n++) {
         const angle = startAngle + (destinationAngle - startAngle) * n / 16;

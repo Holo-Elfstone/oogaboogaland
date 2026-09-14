@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-RBdCjQgpq1Nx3LDFfpKKpM8G1UIud6Oy5rnrL+4OJuo='; style-src 'sha256-gfh9gvs/3Po+LjC6B7QW8H+WYKKvvQsnS/A9/s7O+vY='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-nTKGCLPCT598LvntLCKPygEiSadQy07jswewuySRMY8='; style-src 'sha256-mpfP9aEMj7vvOGMw8Jqk8T9GRCejdicUELYqV9n1Pno='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -977,6 +977,65 @@ select {
   text-overflow: ellipsis;
 }
 
+/* The equipped jetpack's fuel stays clear of the panel and flight sticks */
+.jetpack-hud {
+  position: absolute;
+  top: calc(74px + var(--safe-top));
+  left: calc(16px + var(--safe-left));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--tablet);
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  box-shadow: var(--tablet-shadow);
+  color: var(--paper);
+  pointer-events: none;
+}
+
+.jetpack-icon {
+  width: 28px;
+  height: 34px;
+  flex: none;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.45));
+}
+
+.jetpack-readout {
+  width: 88px;
+}
+
+.jetpack-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
+.jetpack-fuel {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.jetpack-fuel-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--accent);
+  transform-origin: left;
+}
+
+.jetpack-fuel[data-level="low"] .jetpack-fuel-fill {
+  background: var(--danger);
+}
+
 /* Flight sticks for coarse pointers */
 .joysticks {
   display: none;
@@ -1782,6 +1841,11 @@ select {
     height: 100px;
   }
 
+  .jetpack-hud {
+    top: calc(144px + var(--safe-top));
+    left: calc(12px + var(--safe-left));
+  }
+
   .act {
     bottom: calc(112px + var(--safe-bottom));
   }
@@ -1844,6 +1908,10 @@ select {
 }
 
 @media (max-height: 500px) and (orientation: landscape) {
+  .jetpack-hud {
+    top: calc(74px + var(--safe-top));
+  }
+
   .sheet {
     top: auto;
     left: auto;
@@ -1950,6 +2018,12 @@ select {
   .toast.show,
   .hint.show {
     transform: translate(0, 0);
+  }
+}
+
+@media (max-width: 720px) and (max-height: 500px) and (orientation: landscape) {
+  .jetpack-hud {
+    top: calc(100px + var(--safe-top));
   }
 }
 </style>
@@ -2187,11 +2261,28 @@ select {
       </footer>
     </aside>
 
+    <div class="jetpack-hud" id="jetpack-hud" hidden>
+      <svg class="jetpack-icon" viewBox="0 0 12 14" shape-rendering="crispEdges" aria-hidden="true">
+        <path fill="#9aa1a8" d="M1 1h3v1H1zM8 1h3v1H8zM4 3h4v6H4z" />
+        <path fill="#c8552f" d="M1 2h3v8H1zM8 2h3v8H8z" />
+        <path fill="#e47b4f" d="M1 2h1v7H1zM8 2h1v7H8z" />
+        <path fill="#3c3f44" d="M1 10h3v1H1zM8 10h3v1H8zM4 5h4v2H4z" />
+        <path fill="#ffb13b" d="M1 11h3v1H1zM8 11h3v1H8z" />
+        <path fill="#ffe9a8" d="M2 12h1v1H2zM9 12h1v1H9z" />
+      </svg>
+      <div class="jetpack-readout">
+        <div class="jetpack-label"><span>Fuel</span><span id="jetpack-fuel-value" aria-hidden="true">100%</span></div>
+        <div class="jetpack-fuel" id="jetpack-fuel" role="progressbar" aria-label="Jetpack fuel"
+          aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
+          <span class="jetpack-fuel-fill" id="jetpack-fuel-fill"></span>
+        </div>
+      </div>
+    </div>
     <div class="joysticks">
       <div class="joystick" id="joy-move" aria-hidden="true"><span></span></div>
       <div class="joystick" id="joy-look" aria-hidden="true"><span></span></div>
     </div>
-    <button type="button" class="act" id="act" data-action="act" hidden>Ooga!</button>
+    <button type="button" class="act" id="act" data-action="act" hidden>JUMP!</button>
     <div class="race" id="race" data-scene="race" hidden>
       <section class="garage" id="garage" aria-label="Garage">
         <div class="garage-head">
@@ -3150,7 +3241,13 @@ select {
     };
     return state;
   };
-  BL.daylight = { PHASES, ISLAND_LATITUDE_DEG, AXIAL_TILT_DEG, phaseAt, sample, createClock };
+  // A low haze bank surrounds the island. Climbing above its eight-unit rim
+  // lowers its apparent horizon without changing any celestial direction.
+  const hazeDropAt = (eyeHeight) => {
+    const rise = Math.max(0, eyeHeight - 8);
+    return rise / Math.hypot(110, rise);
+  };
+  BL.daylight = { PHASES, ISLAND_LATITUDE_DEG, AXIAL_TILT_DEG, phaseAt, sample, createClock, hazeDropAt };
 })();
 
 // ---- js/scene.js ----
@@ -3813,7 +3910,6 @@ void main() {
 precision highp float;
 in vec2 vUv;
 uniform mat4 uInvViewProj;
-uniform vec3 uEye;
 uniform vec3 uHorizon;
 uniform vec3 uZenith;
 uniform vec3 uSun;
@@ -3822,6 +3918,7 @@ uniform vec3 uMoonDir;
 uniform mat3 uStarMatrix;
 uniform float uStars;
 uniform float uTime;
+uniform float uHazeDrop;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oBright;
 float hash(vec2 p) {
@@ -3831,9 +3928,10 @@ float hash(vec2 p) {
 }
 void main() {
   vec4 far = uInvViewProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
-  vec3 d = normalize(far.xyz / far.w - uEye);
-  vec3 col = mix(uHorizon, uZenith, smoothstep(-0.02, 0.5, d.y));
-  col = mix(col, uHorizon * 0.55, smoothstep(0.0, 0.5, -d.y));
+  vec3 d = normalize(far.xyz / far.w);
+  float hazeY = d.y + uHazeDrop;
+  vec3 col = mix(uHorizon, uZenith, smoothstep(-0.02, 0.5, hazeY));
+  col = mix(col, uHorizon * 0.55, smoothstep(0.0, 0.5, -hazeY));
   float sd = max(dot(d, uSunDir), 0.0);
   float sunDisc = pow(sd, 600.0) * (1.0 - uStars);
   vec3 sun = uSun * (sunDisc + pow(sd, 6.0) * 0.18 * (1.0 - uStars));
@@ -3857,7 +3955,7 @@ void main() {
       float r = 0.12 + h2 * 0.18;
       float pt = 1.0 - smoothstep(0.0, r, length(fract(f) - 0.5));
       float twinkle = 0.75 + 0.25 * sin(uTime * (2.0 + h3 * 3.0) + h3 * 6.28);
-      float s = pt * (0.5 + 0.5 * h2) * twinkle * uStars * smoothstep(-0.05, 0.15, d.y);
+      float s = pt * (0.5 + 0.5 * h2) * twinkle * uStars * smoothstep(-0.05, 0.15, hazeY);
       stars = mix(vec3(1.0), vec3(0.75, 0.85, 1.0), h3) * s;
     }
   }
@@ -3993,7 +4091,7 @@ void main() {
         mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY"]),
         shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth"]),
-        sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uEye", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uStarMatrix", "uStars", "uTime"]),
+        sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop"]),
         blur: compile(QUAD_VS, BLUR_FS, ["uTex", "uDir"]),
         composite: compile(QUAD_VS, COMPOSITE_FS, ["uScene", "uBloom", "uBloomStrength"])
       };
@@ -4563,7 +4661,7 @@ void main() {
       mirrorProj[9] = (mirrorProj[9] + cropY) / halfY;
       // Sky rays unproject through the cropped projection, before the oblique clip bends z
       mat4.multiply(mirrorViewProj, mirrorProj, mirrorView);
-      mat4.invert(mirrorInvViewProj, mirrorViewProj);
+      skyInverse(mirrorInvViewProj, mirrorProj, mirrorView);
       mat4.transformPoint(MIRROR_POINT, mirrorView, center[0], center[1], center[2]);
       let cx = mirrorView[0] * normal[0] + mirrorView[4] * normal[1] + mirrorView[8] * normal[2];
       let cy = mirrorView[1] * normal[0] + mirrorView[5] * normal[1] + mirrorView[9] * normal[2];
@@ -4662,11 +4760,19 @@ void main() {
         gl.drawArraysInstanced(gl.TRIANGLES, 0, part.count, n);
       }
     };
-    const drawSky = (inv, eye) => {
+    // Celestial rays depend only on orientation. Removing translation before
+    // inversion avoids altitude-dependent cancellation in the star shader.
+    const skyInverse = (out, projection, cameraView) => {
+      out.set(cameraView);
+      out[12] = out[13] = out[14] = 0;
+      mat4.multiply(out, projection, out);
+      mat4.invert(out, out);
+    };
+    const drawSky = (inv, eyeHeight) => {
       const p = res.programs.sky;
       gl.useProgram(p.prog);
       gl.uniformMatrix4fv(p.u.uInvViewProj, false, inv);
-      gl.uniform3f(p.u.uEye, eye.x, eye.y, eye.z);
+      gl.uniform1f(p.u.uHazeDrop, BL.daylight.hazeDropAt(eyeHeight));
       gl.depthFunc(gl.LEQUAL);
       gl.depthMask(false);
       gl.bindVertexArray(res.quadVao);
@@ -4715,7 +4821,7 @@ void main() {
       gl.uniform1f(pg.mesh.u.uMatrixCaveNear, matrix && matrix.caveBounds ? matrix.caveNear : FOG_OFF);
       gl.uniform1f(pg.mesh.u.uMatrixPermanentCave, matrix ? matrix.permanentCave || 0 : 0);
       drawParts("mesh", "mesh", true);
-      if (skyOn) drawSky(mirrorInvViewProj, mirrorEye);
+      if (skyOn) drawSky(mirrorInvViewProj, mirrorEye.y);
       gl.useProgram(pg.mesh.prog);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -4822,7 +4928,7 @@ void main() {
       const slen = Math.hypot(sunDirection.x, sunDirection.y, sunDirection.z) || 1;
       const sx = sunDirection.x / slen, sy = sunDirection.y / slen, sz = sunDirection.z / slen;
       if (skyOn) {
-        mat4.invert(invViewProj, viewProj);
+        skyInverse(invViewProj, proj, view);
         gl.useProgram(pg.sky.prog);
         gl.uniform3fv(pg.sky.u.uHorizon, horizon);
         gl.uniform3fv(pg.sky.u.uZenith, zenith);
@@ -4928,7 +5034,7 @@ void main() {
       gl.uniform1f(pg.mesh.u.uMatrixPermanentCave, matrix ? matrix.permanentCave || 0 : 0);
       drawParts("mesh", "mesh", true, true);
       drawMirrorSurface();
-      if (skyOn) drawSky(invViewProj, camera.position);
+      if (skyOn) drawSky(invViewProj, camera.position.y);
       // Ordinary surfaces first, then the effect-only black liner and native
       // voxel glyphs. Alpha follows the same wave as the backing shader; depth
       // still rejects hidden faces and keeps the glyphs on their real surfaces.
@@ -5654,6 +5760,21 @@ void main() {
     };
     const matrixPolygonCoverage = (rec, x, y, step) => {
       let count = rec.n, src = matrixClipA, dst = matrixClipB;
+      // Distant voxel faces often fit inside one sample. Clipping would copy
+      // their unchanged vertices four times; retain the same area and centroid.
+      const maxX = x + step, maxY = y + step;
+      let contained = true, area = 0, centerX = 0, centerY = 0;
+      for (let i = 0; i < count; i++) {
+        const j = (i + 1) % count, px = rec.pts[i * 2], py = rec.pts[i * 2 + 1];
+        if (px < x || px > maxX || py < y || py > maxY) { contained = false; break; }
+        area += px * rec.pts[j * 2 + 1] - rec.pts[j * 2] * py;
+        if (rec.matrixPartial) { centerX += px; centerY += py; }
+      }
+      if (contained) {
+        matrixPointX = rec.matrixPartial ? centerX / count : 0;
+        matrixPointY = rec.matrixPartial ? centerY / count : 0;
+        return Math.min(1, Math.abs(area) * 0.5 / (step * step));
+      }
       for (let i = 0; i < count * 2; i++) src[i] = rec.pts[i];
       for (let edge = 0; edge < 4; edge++) {
         const axis = edge & 1, sign = edge < 2 ? 1 : -1;
@@ -5672,7 +5793,7 @@ void main() {
         count = out;
         const swap = src; src = dst; dst = swap;
       }
-      let area = 0;
+      area = 0;
       matrixPointX = matrixPointY = 0;
       for (let i = 0; i < count; i++) {
         const j = (i + 1) % count;
@@ -5686,7 +5807,6 @@ void main() {
       const step = matrixSampleStep;
       // Visible faces partition a voxel's silhouette. Sum their area-weighted
       // contributions; source-over would attenuate shared antialiased pixels twice.
-      ctx.globalCompositeOperation = "lighter";
       ctx.fillStyle = rec.style;
       for (let y = rec.matrixMinY; y < rec.matrixMaxY; y += step) for (let x = rec.matrixMinX; x < rec.matrixMaxX; x += step) {
         let coverage = matrixPolygonCoverage(rec, x, y, step);
@@ -5702,8 +5822,6 @@ void main() {
         ctx.globalAlpha = coverage;
         ctx.fillRect(x, y, step, step);
       }
-      ctx.globalAlpha = 1;
-      ctx.globalCompositeOperation = "source-over";
     };
     const render = (root, camera, opts = {}) => {
       const { light = DEFAULT_LIGHT, directStrength: strength = 1, ambientFloor: ambient = 0.3, diffuseFloor: diffuse = 0, clear = null, sky = DEFAULT_SKY, ground = DEFAULT_GROUND, horizon = null, zenith = null, fog = null, fogNear: near0 = 0, fogFar: far0 = 0, matrix = null } = opts;
@@ -5819,10 +5937,34 @@ void main() {
       if (transparent) ctx.clearRect(0, 0, width, height);
       else {
         ctx.fillStyle = gradientSky ? skyGradient : clear ? clearStyle : backdrop;
-        ctx.fillRect(0, 0, width, height);
+        const hazeShift = gradientSky ? BL.daylight.hazeDropAt(eye.y) * lastF : 0;
+        // Move the cached haze gradient, keeping its colors and allocation
+        // lifetime independent of camera movement.
+        ctx.translate(0, hazeShift);
+        ctx.fillRect(0, -hazeShift, width, height);
+        ctx.translate(0, -hazeShift);
       }
       ctx.lineJoin = "round";
+      let glyphBlend = false;
       for (const rec of active) {
+        // Keep offscreen receivers in Matrix plane registration and sorting,
+        // but do not submit their paths to Canvas. Include the widest glow
+        // stroke and antialiasing; a polygon crossing the viewport still draws.
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (let k = 0; k < rec.n; k++) {
+          minX = Math.min(minX, rec.pts[k * 2]); maxX = Math.max(maxX, rec.pts[k * 2]);
+          minY = Math.min(minY, rec.pts[k * 2 + 1]); maxY = Math.max(maxY, rec.pts[k * 2 + 1]);
+        }
+        const padding = rec.line ? 7 : 2;
+        if (maxX < -padding || minX > width + padding || maxY < -padding || minY > height + padding) continue;
+        // Glyphs paint sampled rectangles, never the polygon path. Keep their
+        // additive state across consecutive records without changing draw order.
+        if (rec.matrixGlyph && !rec.line) {
+          if (!glyphBlend) { ctx.globalCompositeOperation = "lighter"; glyphBlend = true; }
+          drawMatrixGlyph(rec);
+          continue;
+        }
+        if (glyphBlend) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; glyphBlend = false; }
         ctx.beginPath();
         ctx.moveTo(rec.pts[0], rec.pts[1]);
         if (rec.line) {
@@ -5843,8 +5985,7 @@ void main() {
         } else {
           for (let k = 1; k < rec.n; k++) ctx.lineTo(rec.pts[k * 2], rec.pts[k * 2 + 1]);
           ctx.closePath();
-          if (rec.matrixGlyph) drawMatrixGlyph(rec);
-          else if (!rec.matrixBacking || !rec.matrixPartial) {
+          if (!rec.matrixBacking || !rec.matrixPartial) {
             ctx.fillStyle = rec.style;
             ctx.fill();
             ctx.strokeStyle = rec.style;
@@ -5884,6 +6025,7 @@ void main() {
           }
         }
       }
+      if (glyphBlend) { ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over"; }
       return true;
     };
     const P = new Float32Array(3);
@@ -6999,6 +7141,130 @@ void main() {
   BL.models = { box, panel, lathe, tube, ring, polyline, merge, voxelFaces, banana, bananaGeometry, bananaTileGeometry, bananaPileCoreGeometry, bananaPileRadiusScale, bananaPileHeightOffset, BANANA_AMMO_SCALE, BANANA_PILE_PROFILE, particleGeometry, caveman, labRoom, buildableGeos, crate, dieRotationFor, SWAG, TIER_COLORS };
 })();
 
+// ---- js/convex.js ----
+(() => {
+  "use strict";
+  const BL = window.BL = window.BL || {};
+  // GJK intersects a rock piece with the convex hull of a vertical cylinder at
+  // both ends of its sweep. All queries share this bounded, non-reentrant work.
+  const simplex = new Float64Array(12);
+  const CONTACT = 1e-7, POINT_CONTACT = 1e-9, TOLERANCE = 1e-12;
+  let fromX, fromY, fromZ, endX, endY, endZ, bodyRadius, bodyHeight;
+  let centerX, centerY, centerZ, scale, size, dx, dy, dz, px, py, pz;
+  let closest2, closestX, closestY, closestZ, closestMask;
+  const support = (vertices) => {
+    let best = -Infinity, at = 0;
+    for (let i = 0; i < vertices.length; i += 3) {
+      const dot = vertices[i] * dx + vertices[i + 1] * dy + vertices[i + 2] * dz;
+      if (dot > best) { best = dot; at = i; }
+    }
+    const last = (endX - fromX) * dx + (endY - fromY) * dy + (endZ - fromZ) * dz < 0;
+    const horizontal = Math.hypot(dx, dz), radius = horizontal ? bodyRadius / horizontal : 0;
+    px = centerX + (vertices[at] - centerX) * scale - (last ? endX : fromX) + dx * radius;
+    py = centerY + (vertices[at + 1] - centerY) * scale - (last ? endY : fromY) - (dy < 0 ? bodyHeight : 0);
+    pz = centerZ + (vertices[at + 2] - centerZ) * scale - (last ? endZ : fromZ) + dz * radius;
+  };
+  const consider = (x, y, z, mask) => {
+    const distance = x * x + y * y + z * z;
+    if (distance >= closest2) return;
+    closest2 = distance; closestX = x; closestY = y; closestZ = z; closestMask = mask;
+  };
+  const closest = () => {
+    // Search every Voronoi region, including old vertices and the opposite
+    // tetrahedron face. Keeping only regions incident to the newest support
+    // can cycle when a cylinder grazes a shallow window ceiling.
+    if (size === 4) {
+      const ax = simplex[0], ay = simplex[1], az = simplex[2];
+      const bx = simplex[3] - ax, by = simplex[4] - ay, bz = simplex[5] - az;
+      const cx = simplex[6] - ax, cy = simplex[7] - ay, cz = simplex[8] - az;
+      const ex = simplex[9] - ax, ey = simplex[10] - ay, ez = simplex[11] - az;
+      const nx = cy * ez - cz * ey, ny = cz * ex - cx * ez, nz = cx * ey - cy * ex;
+      const determinant = bx * nx + by * ny + bz * nz;
+      if (determinant) {
+        const b = -(ax * nx + ay * ny + az * nz) / determinant;
+        const c = (bx * (az * ey - ay * ez) + by * (ax * ez - az * ex) + bz * (ay * ex - ax * ey)) / determinant;
+        const d = (bx * (ay * cz - az * cy) + by * (az * cx - ax * cz) + bz * (ax * cy - ay * cx)) / determinant;
+        if (b >= 0 && c >= 0 && d >= 0 && b + c + d <= 1) return true;
+      }
+    }
+    closest2 = Infinity; closestMask = 0;
+    for (let a = 0; a < size; a++) {
+      const at = a * 3, ax = simplex[at], ay = simplex[at + 1], az = simplex[at + 2];
+      consider(ax, ay, az, 1 << a);
+      for (let b = a + 1; b < size; b++) {
+        const bt = b * 3, bx = simplex[bt] - ax, by = simplex[bt + 1] - ay, bz = simplex[bt + 2] - az;
+        const length2 = bx * bx + by * by + bz * bz;
+        if (length2) {
+          const t = -(ax * bx + ay * by + az * bz) / length2;
+          if (t > 0 && t < 1) consider(ax + bx * t, ay + by * t, az + bz * t, (1 << a) | (1 << b));
+        }
+        for (let c = b + 1; c < size; c++) {
+          const ct = c * 3, cx = simplex[ct] - ax, cy = simplex[ct + 1] - ay, cz = simplex[ct + 2] - az;
+          const nx = by * cz - bz * cy, ny = bz * cx - bx * cz, nz = bx * cy - by * cx, normal2 = nx * nx + ny * ny + nz * nz;
+          if (!normal2) continue;
+          const plane = (ax * nx + ay * ny + az * nz) / normal2, x = nx * plane, y = ny * plane, z = nz * plane;
+          const qx = x - ax, qy = y - ay, qz = z - az;
+          const u = ((qy * cz - qz * cy) * nx + (qz * cx - qx * cz) * ny + (qx * cy - qy * cx) * nz) / normal2;
+          const v = ((by * qz - bz * qy) * nx + (bz * qx - bx * qz) * ny + (bx * qy - by * qx) * nz) / normal2;
+          if (u >= 0 && v >= 0 && u + v <= 1) consider(x, y, z, (1 << a) | (1 << b) | (1 << c));
+        }
+      }
+    }
+    let count = 0;
+    for (let i = 0; i < size; i++) if (closestMask & (1 << i)) {
+      simplex[count * 3] = simplex[i * 3]; simplex[count * 3 + 1] = simplex[i * 3 + 1]; simplex[count * 3 + 2] = simplex[i * 3 + 2]; count++;
+    }
+    size = count;
+    // This is a distance vector, not a cross product whose magnitude vanishes
+    // merely because two support points converge along a rounded edge.
+    dx = -closestX; dy = -closestY; dz = -closestZ;
+    return false;
+  };
+  const sweptCylinder = (piece, x, y, z, toX, toY, toZ, radius, height) => {
+    centerX = centerY = centerZ = 0;
+    let lowX = Infinity, lowY = Infinity, lowZ = Infinity, highX = -Infinity, highY = -Infinity, highZ = -Infinity;
+    for (let i = 0; i < piece.length; i += 3) {
+      const vx = piece[i], vy = piece[i + 1], vz = piece[i + 2];
+      centerX += vx; centerY += vy; centerZ += vz;
+      lowX = Math.min(lowX, vx); lowY = Math.min(lowY, vy); lowZ = Math.min(lowZ, vz);
+      highX = Math.max(highX, vx); highY = Math.max(highY, vy); highZ = Math.max(highZ, vz);
+    }
+    const count = piece.length / 3;
+    centerX /= count; centerY /= count; centerZ /= count;
+    // A much smaller piece margin also makes degenerate point/flat queries
+    // treat exact boundary contact as clear instead of counting it as solid.
+    scale = 1 - Math.min(0.5, POINT_CONTACT / Math.max(highX - lowX, highY - lowY, highZ - lowZ));
+    const cap = Math.min(CONTACT, height / 2);
+    fromX = x; fromY = y + cap; fromZ = z; endX = toX; endY = toY + cap; endZ = toZ;
+    bodyRadius = Math.max(0, radius - CONTACT); bodyHeight = height - cap * 2;
+    dx = centerX - (x + toX) / 2; dy = centerY - (y + toY + height) / 2; dz = centerZ - (z + toZ) / 2;
+    if (dx * dx + dy * dy + dz * dz < TOLERANCE * TOLERANCE) dx = 1;
+    support(piece);
+    if (px * dx + py * dy + pz * dz <= TOLERANCE * Math.hypot(dx, dy, dz)) return false;
+    simplex[0] = px; simplex[1] = py; simplex[2] = pz; size = 1;
+    dx = -px; dy = -py; dz = -pz;
+    for (let iteration = 0; iteration < 96; iteration++) {
+      const length = Math.hypot(dx, dy, dz);
+      if (length <= TOLERANCE) return true;
+      // Normalization keeps skinny voxel fragments from scaling the contact
+      // tolerance or overflowing the repeated cross products.
+      dx /= length; dy /= length; dz /= length;
+      support(piece);
+      if (px * dx + py * dy + pz * dz <= TOLERANCE) return false;
+      for (let i = 0; i < size * 3; i += 3) {
+        const sx = simplex[i] - px, sy = simplex[i + 1] - py, sz = simplex[i + 2] - pz;
+        if (sx * sx + sy * sy + sz * sz < TOLERANCE * TOLERANCE) return true;
+      }
+      for (let i = size * 3 - 1; i >= 0; i--) simplex[i + 3] = simplex[i];
+      simplex[0] = px; simplex[1] = py; simplex[2] = pz; size++;
+      if (closest()) return true;
+    }
+    // Without a separating support plane, an unresolved sliver is solid.
+    return true;
+  };
+  BL.convex = { sweptCylinder };
+})();
+
 // ---- js/terrain.js ----
 (() => {
   "use strict";
@@ -7185,6 +7451,63 @@ void main() {
       if (Math.max(lo, (-b - root) / span2) < Math.min(hi, (-b + root) / span2) - 1e-9) return false;
     }
     return true;
+  };
+  // Build-time clipping keeps the window's sloping stone inside the original
+  // island shell. Every remaining piece is convex, sharing one terrain mesh.
+  const cutCube = (x, y, z, size) => {
+    const p = [[x, y, z], [x + size, y, z], [x + size, y + size, z], [x, y + size, z], [x, y, z + size], [x + size, y, z + size], [x + size, y + size, z + size], [x, y + size, z + size]];
+    return [[0, 3, 2, 1], [4, 5, 6, 7], [0, 4, 7, 3], [1, 2, 6, 5], [0, 1, 5, 4], [3, 7, 6, 2]].map((indices) => ({ points: indices.map((i) => p[i]), reveal: false }));
+  };
+  const clipCut = (faces, plane, direction, windowIndex) => {
+    const nx = plane[0] * direction, ny = plane[1] * direction, nz = plane[2] * direction, offset = plane[3] * direction;
+    let inside = false, outside = false;
+    for (const face of faces) for (const p of face.points) {
+      const distance = nx * p[0] + ny * p[1] + nz * p[2] - offset;
+      if (distance < -1e-8) inside = true;
+      if (distance > 1e-8) outside = true;
+    }
+    if (!inside) return null;
+    if (!outside) return faces;
+    const clipped = [], rim = [];
+    for (const face of faces) {
+      const points = [];
+      for (let i = 0; i < face.points.length; i++) {
+        const a = face.points[i], b = face.points[(i + 1) % face.points.length];
+        const da = nx * a[0] + ny * a[1] + nz * a[2] - offset, db = nx * b[0] + ny * b[1] + nz * b[2] - offset;
+        if (da <= 1e-8) points.push(a);
+        if (da < -1e-8 && db > 1e-8 || da > 1e-8 && db < -1e-8) {
+          const k = da / (da - db), p = [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+          points.push(p);
+          if (!rim.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) < 1e-7)) rim.push(p);
+        } else if (Math.abs(da) <= 1e-8 && !rim.some((q) => Math.hypot(q[0] - a[0], q[1] - a[1], q[2] - a[2]) < 1e-7)) rim.push(a);
+      }
+      if (points.length >= 3) clipped.push({ points, reveal: face.reveal, windowIndex: face.windowIndex });
+    }
+    if (rim.length >= 3) {
+      const center = [0, 0, 0];
+      for (const p of rim) for (let i = 0; i < 3; i++) center[i] += p[i] / rim.length;
+      const length = Math.hypot(nx, ny, nz), normal = [nx / length, ny / length, nz / length];
+      const axis = Math.abs(normal[1]) < 0.9 ? [normal[2], 0, -normal[0]] : [0, -normal[2], normal[1]];
+      const axisLength = Math.hypot(...axis); for (let i = 0; i < 3; i++) axis[i] /= axisLength;
+      const tangent = [normal[1] * axis[2] - normal[2] * axis[1], normal[2] * axis[0] - normal[0] * axis[2], normal[0] * axis[1] - normal[1] * axis[0]];
+      const angle = (p) => Math.atan2((p[0] - center[0]) * tangent[0] + (p[1] - center[1]) * tangent[1] + (p[2] - center[2]) * tangent[2], (p[0] - center[0]) * axis[0] + (p[1] - center[1]) * axis[1] + (p[2] - center[2]) * axis[2]);
+      rim.sort((a, b) => angle(a) - angle(b));
+      clipped.push({ points: rim, reveal: true, windowIndex });
+    }
+    return clipped;
+  };
+  const clipReveal = (points, plane) => {
+    const result = [];
+    for (let i = 0; i < points.length; i++) {
+      const a = points[i], b = points[(i + 1) % points.length];
+      const da = plane[0] * a[0] + plane[1] * a[1] + plane[2] * a[2] - plane[3], db = plane[0] * b[0] + plane[1] * b[1] + plane[2] * b[2] - plane[3];
+      if (da <= 1e-8) result.push(a);
+      if (da < -1e-8 && db > 1e-8 || da > 1e-8 && db < -1e-8) {
+        const k = da / (da - db);
+        result.push([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]);
+      }
+    }
+    return result.length >= 3 ? result : null;
   };
   const ISLANDS = new Map();
   const island = ({ seed = 1 } = {}) => {
@@ -7565,6 +7888,12 @@ void main() {
       return { samples, mainId: main.id, width: 3.7, length: samples[samples.length - 1].s, firstMainSample: first, entrySamples: 40, from: samples[0], to: samples[samples.length - 1] };
     };
     const basement = { floor: HEADQUARTERS_FLOOR, ceiling: 0, height: HEADQUARTERS_HEIGHT, rockCover: HEADQUARTERS_ROCK, room: { x: 0, z: 0, radius: 9 }, rooms: [], ramps: [] };
+    const basementHole = basement.hole = { x: 0, z: 0, radius: 4, mouthRadius: 4.5, rimDepth: 0.5, floor: 0, bottom: -Math.ceil(undersideDepthAt(0) / UNIT) * UNIT };
+    basementHole.contains = (x, z) => {
+      const dx = (Math.floor((x - ORIGIN.x) / UNIT) + 0.5) * UNIT + ORIGIN.x - basementHole.x;
+      const dz = (Math.floor((z - ORIGIN.z) / UNIT) + 0.5) * UNIT + ORIGIN.z - basementHole.z;
+      return dx * dx + dz * dz < basementHole.radius * basementHole.radius;
+    };
     for (const [index, degrees] of [-30, -10, 10, 30, 155, 178, 201, 222].entries()) {
       const angle = degrees * Math.PI / 180, sx = Math.sin(angle), sz = -Math.cos(angle), radius = 18, width = 5, depth = 5;
       basement.rooms.push({ index, basement: true, angle, radius, width, depth, corridorWidth: 2.6, height: HEADQUARTERS_HEIGHT, window: true, x: sx * radius, z: sz * radius, approach: { x: sx * 8.25, z: sz * 8.25 }, entrance: { x: sx * 9.25, z: sz * 9.25 }, back: { x: sx * (radius + depth / 2 - 0.2), z: sz * (radius + depth / 2 - 0.2) } });
@@ -7595,6 +7924,7 @@ void main() {
     basement.clearanceDrop = HEADQUARTERS_FLOOR - basement.floor;
     basement.floor = Math.floor(basement.floor / UNIT) * UNIT;
     basement.ceiling = basement.floor + HEADQUARTERS_HEIGHT;
+    basementHole.floor = basement.floor;
     for (const room of basement.rooms) { room.floor = basement.floor; room.ceiling = basement.ceiling; }
     // Ease the grade at the ends, then solve how far each ramp may take to
     // descend. The starting doorway is a connection, not two stacked rooms.
@@ -7660,6 +7990,25 @@ void main() {
       basementCollision[cell] = (rampGeometry.faces.length << 2) | 2;
       rampGeometry.faces.push({ i: [v, v + 1, v + 2], color: PALETTE[P.floor], emissive: 0, headquartersBasementRamp: ri }, { i: [v, v + 2, v + 3], color: PALETTE[P.floor], emissive: 0, headquartersBasementRamp: ri });
     }
+    // The central shaft opens through the underside, leaving a broad walking
+    // ring around it. Two shallow voxel steps bevel its mouth; render faces
+    // and footing use these same cells, with no decorative collision lip.
+    const holeGX0 = Math.floor((basementHole.x - basementHole.mouthRadius - UNIT - ORIGIN.x) / UNIT), holeGX1 = Math.ceil((basementHole.x + basementHole.mouthRadius + UNIT - ORIGIN.x) / UNIT);
+    const holeGZ0 = Math.floor((basementHole.z - basementHole.mouthRadius - UNIT - ORIGIN.z) / UNIT), holeGZ1 = Math.ceil((basementHole.z + basementHole.mouthRadius + UNIT - ORIGIN.z) / UNIT);
+    const basementFloorGy = SURFACE + Math.round(basement.floor / UNIT) - 1;
+    for (let gx = holeGX0; gx <= holeGX1; gx++) for (let gz = holeGZ0; gz <= holeGZ1; gz++) {
+      const x = (gx + 0.5) * UNIT + ORIGIN.x, z = (gz + 0.5) * UNIT + ORIGIN.z, radius = Math.hypot(x - basementHole.x, z - basementHole.z);
+      if (radius >= basementHole.mouthRadius + UNIT) continue;
+      if (radius >= basementHole.mouthRadius) { grid.set(gx, basementFloorGy, gz, P.stoneDark); continue; }
+      const shaft = radius < basementHole.radius;
+      const floor = basement.floor - Math.min(basementHole.rimDepth, Math.ceil((basementHole.mouthRadius - radius) / UNIT) * UNIT);
+      const bottomGy = shaft ? 0 : SURFACE + Math.round(floor / UNIT);
+      for (let gy = bottomGy; gy <= basementFloorGy; gy++) grid.set(gx, gy, gz, 0);
+      if (!shaft) {
+        grid.set(gx, bottomGy - 1, gz, P.stoneDark);
+        basementCavities[gx * SZ + gz] = encodeCavity(HEADQUARTERS_CAVE, floor, basement.ceiling, 64);
+      }
+    }
     // Window openings cut through the cliff, with solid stone below each sill.
     const headquartersWindows = [];
     for (const ramp of headquartersRamps) {
@@ -7682,21 +8031,161 @@ void main() {
     const panoramaStart = headquartersGallery.startAngle + Math.PI / 90, panoramaEnd = headquartersGallery.endAngle - Math.PI / 90;
     const panoramaAngle = (panoramaStart + panoramaEnd) / 2, panoramaRadius = headquartersGallery.radius - UNIT;
     headquartersWindows.push({ kind: "panorama", x: Math.sin(panoramaAngle) * panoramaRadius, z: -Math.cos(panoramaAngle) * panoramaRadius, floor: HEADQUARTERS_FLOOR, y: HEADQUARTERS_FLOOR + 2.125, sill: HEADQUARTERS_FLOOR + 1, angle: panoramaAngle, startAngle: panoramaStart, endAngle: panoramaEnd, radius: panoramaRadius, width: panoramaRadius * (panoramaEnd - panoramaStart), height: 2.25 });
-    for (const window of headquartersWindows) {
+    const windowCuts = new Map(), windowColumns = new Array(SX * SZ), windowGeometry = { verts: [], faces: [], lines: [] };
+    const windowFlareWidth = 2, windowFlareHeight = 1.3;
+    for (const [index, window] of headquartersWindows.entries()) {
       const sx = Math.sin(window.angle), sz = -Math.cos(window.angle), start = Math.hypot(window.x, window.z);
+      window.index = index;
       window.outer = { x: sx * 31, z: sz * 31 };
-      for (let gx = 0; gx < SX; gx++) {
-        const wx = (gx + 0.5) * UNIT + ORIGIN.x;
-        for (let gz = 0; gz < SZ; gz++) {
-          const wz = (gz + 0.5) * UNIT + ORIGIN.z, along = wx * sx + wz * sz, across = Math.abs(wx * -sz + wz * sx);
-          if (window.kind === "panorama") {
-            const angle = Math.atan2(wx, -wz);
-            if (Math.hypot(wx, wz) < window.radius || angle <= window.startAngle || angle >= window.endAngle) continue;
-          } else if (along < start || across >= window.width / 2) continue;
-          for (let gy = SURFACE + Math.round(window.sill / UNIT); gy < SURFACE + Math.round((window.sill + window.height) / UNIT); gy++) grid.set(gx, gy, gz, 0);
+      let edge = start + UNIT;
+      // Size the flare against this window's actual shell, including its top
+      // and bottom edges, rather than the island's nominal maximum radius.
+      for (let radius = start; radius <= 31; radius += UNIT / 2) for (let y = window.sill - windowFlareHeight; y <= window.sill + window.height + windowFlareHeight; y += UNIT) {
+        if (grid.has(Math.floor((sx * radius - ORIGIN.x) / UNIT), Math.floor((y - ORIGIN.y) / UNIT), Math.floor((sz * radius - ORIGIN.z) / UNIT))) edge = radius + UNIT;
+      }
+      let innerRadius = start;
+      if (window.kind === "ramp") {
+        // The window marker sits on the ramp centerline. Keep its rectangular
+        // opening unchanged through the full corridor, then flare beyond the
+        // real voxel wall across every corner of that opening.
+        for (let across = -window.width / 2; across <= window.width / 2 + 1e-7; across += UNIT / 2) for (const y of [window.sill + 0.025, window.y, window.sill + window.height - 0.025]) {
+          for (let radius = start; radius <= edge; radius += UNIT / 4) {
+            const x = sx * radius - sz * across, z = sz * radius + sx * across;
+            if (!grid.has(Math.floor((x - ORIGIN.x) / UNIT), Math.floor((y - ORIGIN.y) / UNIT), Math.floor((z - ORIGIN.z) / UNIT))) continue;
+            innerRadius = Math.max(innerRadius, radius + UNIT * Math.SQRT2 / 2);
+            break;
+          }
+        }
+      }
+      window.flare = { edge, innerRadius, horizontal: windowFlareWidth, vertical: windowFlareHeight, frusta: [] };
+    }
+    // Keep rock between neighboring mouths and stacked levels. The inner
+    // frame stays fixed; only the available exterior reveal widens.
+    for (let i = 0; i < headquartersWindows.length; i++) for (let j = i + 1; j < headquartersWindows.length; j++) {
+      const a = headquartersWindows[i], b = headquartersWindows[j], radius = Math.min(a.flare.edge, b.flare.edge);
+      const angle = Math.abs(Math.atan2(Math.sin(a.angle - b.angle), Math.cos(a.angle - b.angle)));
+      const aw = a.kind === "panorama" ? radius * (a.endAngle - a.startAngle) : a.width;
+      const bw = b.kind === "panorama" ? radius * (b.endAngle - b.startAngle) : b.width;
+      const gap = angle * radius - (aw + bw) / 2, vertical = Math.max(b.sill - a.sill - a.height, a.sill - b.sill - b.height);
+      if (vertical < 0.75 + a.flare.vertical + b.flare.vertical) {
+        const room = Math.max(0, (gap - 0.75) / 2);
+        a.flare.horizontal = Math.min(a.flare.horizontal, room); b.flare.horizontal = Math.min(b.flare.horizontal, room);
+      }
+      if (gap < 0.75 + a.flare.horizontal + b.flare.horizontal && vertical > 0) {
+        const room = Math.max(0, (vertical - 0.75) / 2);
+        a.flare.vertical = Math.min(a.flare.vertical, room); b.flare.vertical = Math.min(b.flare.vertical, room);
+      }
+    }
+    for (const window of headquartersWindows) {
+      const segments = window.kind === "panorama" ? 12 : 2;
+      for (let segment = 0; segment < segments; segment++) {
+        const span = window.kind === "panorama" ? (window.endAngle - window.startAngle) / segments : 0;
+        const inner = window.kind !== "panorama" && segment === 1;
+        const angle = span ? window.startAngle + span * (segment + 0.5) : window.angle;
+        const sx = Math.sin(angle), sz = -Math.cos(angle), tx = -sz, tz = sx;
+        const marker = Math.hypot(window.x, window.z), frame = window.flare.innerRadius;
+        const start = span ? window.radius * Math.cos(span / 2) : inner ? marker - (window.kind === "room" ? UNIT * Math.SQRT2 : 0) : frame, end = inner ? frame : 31;
+        const half = span ? window.radius * Math.sin(span / 2) : window.width / 2;
+        const horizontal = inner ? 0 : span ? Math.tan(span / 2) : window.flare.horizontal / Math.max(UNIT, window.flare.edge - start);
+        const vertical = inner ? 0 : window.flare.vertical / Math.max(UNIT, window.flare.edge - start);
+        // A constant-width inner throat overlaps the existing room by one
+        // voxel diagonal, removing thin strips at its quantized wall edge.
+        const planes = [[-sx, 0, -sz, -start], [sx, 0, sz, end], [tx - horizontal * sx, 0, tz - horizontal * sz, half - horizontal * start], [-tx - horizontal * sx, 0, -tz - horizontal * sz, half - horizontal * start], [-vertical * sx, -1, -vertical * sz, -window.sill - vertical * start], [-vertical * sx, 1, -vertical * sz, window.sill + window.height - vertical * start]];
+        window.flare.frusta.push({ angle, start, end, half, horizontal, vertical, planes, inner });
+        const lower = window.sill - vertical * (end - start), upper = window.sill + window.height + vertical * (end - start);
+        for (let gx = 0; gx < SX; gx++) for (let gz = 0; gz < SZ; gz++) {
+          const x = gx * UNIT + ORIGIN.x, z = gz * UNIT + ORIGIN.z, cx = x + UNIT / 2, cz = z + UNIT / 2;
+          if (cx * sx + cz * sz < start - UNIT || cx * sx + cz * sz > end + UNIT || Math.abs(cx * tx + cz * tz) > half + horizontal * (end - start) + UNIT) continue;
+          for (let gy = Math.max(0, Math.floor((lower - ORIGIN.y) / UNIT)); gy < Math.min(SY, Math.ceil((upper - ORIGIN.y) / UNIT)); gy++) {
+            const id = grid.index(gx, gy, gz), prior = windowCuts.get(id), color = prior ? prior.color : data[id];
+            if (!color) continue;
+            const y = gy * UNIT + ORIGIN.y;
+            let outside = false, whollyInside = true;
+            for (const p of planes) {
+              const mid = p[0] * cx + p[1] * (y + UNIT / 2) + p[2] * cz - p[3], reach = (Math.abs(p[0]) + Math.abs(p[1]) + Math.abs(p[2])) * UNIT / 2;
+              if (mid - reach >= -1e-8) { outside = true; break; }
+              if (mid + reach > 1e-8) whollyInside = false;
+            }
+            if (outside) continue;
+            if (whollyInside) { data[id] = 0; windowCuts.delete(id); continue; }
+            const remaining = [];
+            for (const fragment of prior ? prior.fragments : [cutCube(x, y, z, UNIT)]) {
+              let inside = fragment;
+              for (const plane of planes) {
+                const piece = clipCut(inside, plane, -1, window.index);
+                if (piece) remaining.push(piece);
+                inside = clipCut(inside, plane, 1, window.index);
+                if (!inside) break;
+              }
+            }
+            data[id] = 0;
+            if (remaining.length) windowCuts.set(id, { color, fragments: remaining, gx, gz, minX: x, minY: y, minZ: z, matrixCave: prior ? prior.matrixCave : matrixCaves[id] || matrixCaves[id + SZ] || matrixCaves[id - SZ] || matrixCaves[id + 1] || matrixCaves[id - 1] || matrixCaves[id + SY * SZ] || matrixCaves[id - SY * SZ] || 0 });
+            else windowCuts.delete(id);
+          }
         }
       }
     }
+    let windowFragmentCount = 0;
+    for (const cut of windowCuts.values()) {
+      const column = cut.gx * SZ + cut.gz;
+      if (!windowColumns[column]) windowColumns[column] = [];
+      for (const polygons of cut.fragments) {
+        const points = [], faces = [], exposed = [];
+        for (const polygon of polygons) {
+          const indices = polygon.points.map((p) => {
+            let index = points.findIndex((q) => Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]) < 1e-7);
+            if (index < 0) { index = points.length; points.push(p); }
+            return index;
+          });
+          for (let i = 1; i < indices.length - 1; i++) faces.push({ i: [indices[0], indices[i], indices[i + 1]], color: PALETTE[cut.color], emissive: 0, headquartersWindowReveal: polygon.reveal, windowIndex: polygon.windowIndex, matrixCave: cut.matrixCave, matrixLocalGlyphSurface: cut.matrixCave !== 0 });
+          if (!polygon.reveal) {
+            let neighbor = -1;
+            if (polygon.points.every((p) => Math.abs(p[0] - cut.minX) < 1e-7)) neighbor = grid.index(cut.gx - 1, Math.round((cut.minY - ORIGIN.y) / UNIT), cut.gz);
+            else if (polygon.points.every((p) => Math.abs(p[0] - cut.minX - UNIT) < 1e-7)) neighbor = grid.index(cut.gx + 1, Math.round((cut.minY - ORIGIN.y) / UNIT), cut.gz);
+            else if (polygon.points.every((p) => Math.abs(p[1] - cut.minY) < 1e-7)) neighbor = grid.index(cut.gx, Math.round((cut.minY - ORIGIN.y) / UNIT) - 1, cut.gz);
+            else if (polygon.points.every((p) => Math.abs(p[1] - cut.minY - UNIT) < 1e-7)) neighbor = grid.index(cut.gx, Math.round((cut.minY - ORIGIN.y) / UNIT) + 1, cut.gz);
+            else if (polygon.points.every((p) => Math.abs(p[2] - cut.minZ) < 1e-7)) neighbor = grid.index(cut.gx, Math.round((cut.minY - ORIGIN.y) / UNIT), cut.gz - 1);
+            else if (polygon.points.every((p) => Math.abs(p[2] - cut.minZ - UNIT) < 1e-7)) neighbor = grid.index(cut.gx, Math.round((cut.minY - ORIGIN.y) / UNIT), cut.gz + 1);
+            if (neighbor < 0 || !data[neighbor] && !windowCuts.has(neighbor)) exposed.push(polygon);
+            continue;
+          }
+          const a = polygon.points[0], b = polygon.points[1], c = polygon.points[2];
+          const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+          const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+          for (const frustum of headquartersWindows[polygon.windowIndex].flare.frusta) {
+            if (!frustum.planes.some((p) => nx * p[0] + ny * p[1] + nz * p[2] < -1e-10 && polygon.points.every((point) => Math.abs(point[0] * p[0] + point[1] * p[1] + point[2] * p[2] - p[3]) < 1e-7))) continue;
+            let visible = polygon.points;
+            for (const plane of frustum.planes) { visible = clipReveal(visible, plane); if (!visible) break; }
+            if (visible) exposed.push({ ...polygon, points: visible });
+          }
+        }
+        if (points.length < 4) continue;
+        const origin = points[0];
+        let volume = 0;
+        for (const face of faces) {
+          const a = points[face.i[0]], b = points[face.i[1]], c = points[face.i[2]];
+          const ax = a[0] - origin[0], ay = a[1] - origin[1], az = a[2] - origin[2], bx = b[0] - origin[0], by = b[1] - origin[1], bz = b[2] - origin[2], cx = c[0] - origin[0], cy = c[1] - origin[1], cz = c[2] - origin[2];
+          volume += ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx);
+        }
+        if (Math.abs(volume) < 1e-11) continue;
+        const vertices = new Float64Array(points.flat());
+        for (const polygon of exposed) {
+          const offset = windowGeometry.verts.length / 3;
+          for (const p of polygon.points) windowGeometry.verts.push(...p);
+          // Keep coplanar cuts together for Canvas shading and sorting. Seven
+          // vertices leave room for its height/near clips; GL emits the same
+          // triangle fan, and physical fragments retain their closed triangles.
+          for (let i = 1; i < polygon.points.length - 1; i += 5) {
+            const indices = [offset];
+            for (let k = i; k < Math.min(i + 6, polygon.points.length); k++) indices.push(offset + k);
+            windowGeometry.faces.push({ i: indices, color: PALETTE[cut.color], emissive: 0, headquartersWindowReveal: polygon.reveal, windowIndex: polygon.windowIndex, matrixCave: cut.matrixCave, matrixLocalGlyphSurface: cut.matrixCave !== 0 });
+          }
+        }
+        windowColumns[column].push({ vertices, triangles: { i: new Uint16Array(faces.flatMap((face) => face.i)) }, minX: cut.minX, minY: cut.minY, minZ: cut.minZ, maxX: cut.minX + UNIT, maxY: cut.minY + UNIT, maxZ: cut.minZ + UNIT });
+        windowFragmentCount++;
+      }
+    }
+    windowCuts.clear();
     // Walkable height is the lowest run's top
     const surface = new Float32Array(SX * SZ);
     const land = new Uint8Array(SX * SZ);
@@ -7729,6 +8218,7 @@ void main() {
       return tz >= tx ? a * (1 - tz) + b * (tz - tx) + c * tx : a * (1 - tx) + c * tz + d * (tx - tz);
     };
     const basementFloorAt = (x, z) => {
+      if (basementHole.contains(x, z)) return -Infinity;
       const px = (x - ORIGIN.x) / UNIT, pz = (z - ORIGIN.z) / UNIT, gx = Math.floor(px), gz = Math.floor(pz);
       const cell = gx * SZ + gz;
       if (!basementCells[cell]) return (((basementCavities[cell] >> 4) & 63) - 64) * UNIT;
@@ -7747,9 +8237,10 @@ void main() {
     // Select the actual supporting run by height, including shelves and window
     // sills. A rock column taller than the permitted step returns its own top,
     // so callers can reject it instead of falling back to the room below it.
-    const supportAt = (x, z, y = Infinity, maxStep = 0.6) => {
+    const voxelSupportAt = (x, z, y = Infinity, maxStep = 0.6, emptyFloor = null) => {
       const i = column(x, z);
-      if (i < 0 || !land[i]) return 0;
+      if (i < 0 || !land[i]) return emptyFloor === null ? 0 : emptyFloor;
+      if (y + maxStep < ORIGIN.y && emptyFloor !== null) return emptyFloor;
       if (y >= surface[i] - maxStep) return surfaceAt(x, z);
       const gx = Math.floor(i / SZ), gz = i % SZ, base = gx * SY * SZ + gz;
       let gy = clamp(Math.floor((y + maxStep - ORIGIN.y) / UNIT), 0, SY - 1);
@@ -7757,6 +8248,7 @@ void main() {
         while (gy < SY && data[base + gy * SZ]) gy++;
       } else {
         while (gy >= 0 && !data[base + gy * SZ]) gy--;
+        if (gy < 0 && emptyFloor !== null) return emptyFloor;
         gy++;
       }
       const floor = (gy - SURFACE) * UNIT;
@@ -7764,37 +8256,77 @@ void main() {
       const rampBase = (((lowerCavities[i] >> 4) & 63) - 32) * UNIT;
       return rampCells[i] && y + maxStep >= rampBase ? Math.max(floor, rampFloorAt(x, z)) : floor;
     };
+    const windowPieceTop = (piece, x, z, radius, direction = 1) => {
+      let top = -Infinity;
+      for (let i = 0; i < piece.triangles.i.length; i += 3) top = Math.max(top, rampTriangleTop(piece.triangles, x, z, radius, direction, piece.vertices, i));
+      return top;
+    };
+    const pointSupportAt = (x, z, y = Infinity, maxStep = 0.6, emptyFloor = null) => {
+      let floor = voxelSupportAt(x, z, y, maxStep, emptyFloor);
+      const pieces = windowColumns[column(x, z)];
+      if (pieces) for (const piece of pieces) {
+        if (piece.minY > y + maxStep || piece.maxY < floor) continue;
+        const top = windowPieceTop(piece, x, z, 0), bottom = -windowPieceTop(piece, x, z, 0, -1);
+        if (bottom <= y + maxStep + 1e-7) floor = Math.max(floor, top);
+      }
+      return floor;
+    };
     // A circle overlaps a column exactly; corner-only contact is not a wall.
     const overlapsColumn = (x, z, radius2, gx, gz) => {
       const dx = Math.max(0, Math.abs((gx + 0.5) * UNIT + ORIGIN.x - x) - UNIT / 2);
       const dz = Math.max(0, Math.abs((gz + 0.5) * UNIT + ORIGIN.z - z) - UNIT / 2);
-      return radius2 ? dx * dx + dz * dz < radius2 - 1e-12 : dx === 0 && dz === 0;
+      return radius2 ? dx * dx + dz * dz < radius2 - 1e-12 : true;
+    };
+    // Keep feet on a discrete sill until their whole footprint clears its edge.
+    // Rendered ramps retain their continuous centre height; only neighboring
+    // discrete rock and window sills can raise the footprint above that slope.
+    const supportAt = (x, z, y = Infinity, maxStep = 0.6, emptyFloor = null, radius = 0) => {
+      let floor = pointSupportAt(x, z, y, maxStep, emptyFloor);
+      if (!radius || floor > y + maxStep) return floor;
+      const gx0 = Math.max(0, Math.floor((x - radius - ORIGIN.x) / UNIT)), gx1 = Math.min(SX - 1, Math.floor((x + radius - ORIGIN.x) / UNIT));
+      const gz0 = Math.max(0, Math.floor((z - radius - ORIGIN.z) / UNIT)), gz1 = Math.min(SZ - 1, Math.floor((z + radius - ORIGIN.z) / UNIT));
+      for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) {
+        if (!overlapsColumn(x, z, radius * radius, gx, gz)) continue;
+        const cell = gx * SZ + gz, px = (gx + 0.5) * UNIT + ORIGIN.x, pz = (gz + 0.5) * UNIT + ORIGIN.z;
+        const pieces = windowColumns[cell];
+        if (pieces) for (const piece of pieces) {
+          if (piece.minY > y + maxStep || piece.maxY < floor) continue;
+          const top = windowPieceTop(piece, x, z, radius), bottom = -windowPieceTop(piece, x, z, radius, -1);
+          if (bottom <= y + maxStep + 1e-7 && top <= y + maxStep + 1e-7) floor = Math.max(floor, top);
+        }
+        const support = voxelSupportAt(px, pz, y, maxStep, emptyFloor);
+        if (support <= floor || support > y + maxStep) continue;
+        if (rampCells[cell] && Math.abs(support - rampFloorAt(px, pz)) < 1e-7 || basementCells[cell] && Math.abs(support - basementFloorAt(px, pz)) < 1e-7) continue;
+        floor = support;
+      }
+      return floor;
     };
     // Highest point of a rendered slope triangle under a circular footprint.
     // The maximum is on an edge or at the disk's uphill point; no samples or
     // temporary vectors are needed, even at the clipped doorway triangles.
-    const rampTriangleTop = (face, x, z, radius) => {
-      const verts = geometry.verts, indices = face.i;
-      const a = indices[0] * 3, b = indices[1] * 3, c = indices[2] * 3;
-      const ax = verts[a], ay = verts[a + 1], az = verts[a + 2];
-      const bx = verts[b] - ax, by = verts[b + 1] - ay, bz = verts[b + 2] - az;
-      const cx = verts[c] - ax, cy = verts[c + 1] - ay, cz = verts[c + 2] - az;
+    const rampTriangleTop = (face, x, z, radius, direction = 1, verts = geometry.verts, triangle = 0) => {
+      const indices = face.i;
+      const a = indices[triangle] * 3, b = indices[triangle + 1] * 3, c = indices[triangle + 2] * 3;
+      const ax = verts[a], ay = verts[a + 1] * direction, az = verts[a + 2];
+      const bx = verts[b] - ax, by = verts[b + 1] * direction - ay, bz = verts[b + 2] - az;
+      const cx = verts[c] - ax, cy = verts[c + 1] * direction - ay, cz = verts[c + 2] - az;
       const determinant = bx * cz - bz * cx;
+      if (Math.abs(determinant) < 1e-12) return -Infinity;
       const gradientX = (by * cz - cy * bz) / determinant, gradientZ = (bx * cy - cx * by) / determinant;
       const length = Math.hypot(gradientX, gradientZ), scale = length ? radius / length : 0;
       const px = x + gradientX * scale - ax, pz = z + gradientZ * scale - az;
       const u = (px * cz - pz * cx) / determinant, v = (bx * pz - bz * px) / determinant;
       let top = u >= -1e-9 && v >= -1e-9 && u + v <= 1 + 1e-9 ? ay + gradientX * px + gradientZ * pz : -Infinity;
       for (let edge = 0; edge < 3; edge++) {
-        const p = indices[edge] * 3, q = indices[(edge + 1) % 3] * 3;
-        const dx = verts[q] - verts[p], dz = verts[q + 2] - verts[p + 2], dy = verts[q + 1] - verts[p + 1];
+        const p = indices[triangle + edge] * 3, q = indices[triangle + (edge + 1) % 3] * 3;
+        const dx = verts[q] - verts[p], dz = verts[q + 2] - verts[p + 2], dy = (verts[q + 1] - verts[p + 1]) * direction;
         const ex = x - verts[p], ez = z - verts[p + 2], length2 = dx * dx + dz * dz;
         const middle = (ex * dx + ez * dz) / length2;
         const perpendicularX = ex - dx * middle, perpendicularZ = ez - dz * middle;
         const remaining = radius * radius - perpendicularX * perpendicularX - perpendicularZ * perpendicularZ;
         if (remaining < 0) continue;
         const half = Math.sqrt(remaining / length2), lo = Math.max(0, middle - half), hi = Math.min(1, middle + half);
-        if (lo <= hi) top = Math.max(top, verts[p + 1] + dy * (dy > 0 ? hi : lo));
+        if (lo <= hi) top = Math.max(top, verts[p + 1] * direction + dy * (dy > 0 ? hi : lo));
       }
       return top;
     };
@@ -7809,6 +8341,11 @@ void main() {
         if (!overlapsColumn(x, z, radius * radius, gx, gz)) continue;
         const base = gx * SY * SZ + gz, i = gx * SZ + gz;
         for (let gy = gy0; gy <= gy1; gy++) if (data[base + gy * SZ]) return false;
+        const pieces = windowColumns[i];
+        if (pieces) for (const piece of pieces) {
+          if (y >= piece.maxY - epsilon || y + bodyHeight <= piece.minY + epsilon) continue;
+          if (BL.convex.sweptCylinder(piece.vertices, x, y, z, x, y, z, radius, bodyHeight)) return false;
+        }
         for (let layer = 0; layer < 2; layer++) {
           const range = layer ? basementCollision[i] : rampCollision[i];
           const base = layer ? (((basementCavities[i] >> 4) & 63) - 64) * UNIT : (((lowerCavities[i] >> 4) & 63) - 32) * UNIT;
@@ -7836,6 +8373,11 @@ void main() {
           const minY = gy * UNIT + ORIGIN.y;
           if (!segmentBoxClear(x, y, z, dx, dy, dz, radius, height, minX, minY, minZ, minX + UNIT, minY + UNIT, minZ + UNIT)) return false;
         }
+        const pieces = windowColumns[gx * SZ + gz];
+        if (pieces) for (const piece of pieces) {
+          if (Math.min(y, toY) >= piece.maxY - 1e-7 || Math.max(y, toY) + height <= piece.minY + 1e-7) continue;
+          if (BL.convex.sweptCylinder(piece.vertices, x, y, z, toX, toY, toZ, radius, height)) return false;
+        }
       }
       return true;
     };
@@ -7851,6 +8393,12 @@ void main() {
         while (gy < SY && data[base + gy * SZ]) gy++;
         while (gy < SY && !data[base + gy * SZ]) gy++;
         if (gy < SY) ceiling = Math.min(ceiling, (gy - SURFACE) * UNIT);
+        const pieces = windowColumns[gx * SZ + gz];
+        if (pieces) for (const piece of pieces) {
+          if (piece.maxY <= y + 1e-7 || piece.minY >= ceiling) continue;
+          const bottom = -windowPieceTop(piece, x, z, radius, -1);
+          if (bottom > y + 1e-7) ceiling = Math.min(ceiling, bottom);
+        }
       }
       return ceiling;
     };
@@ -7863,7 +8411,7 @@ void main() {
       }
       return fallback;
     };
-    const smoothSupportAt = (x, z, y, maxStep) => {
+    const smoothSupportAt = (x, z, y, maxStep, radius = 0) => {
       const center = column(x, z);
       if (center >= 0 && basementCells[center] && y < ((basementCavities[center] >> 10) - 64) * UNIT) return basementFloorAt(x, z);
       if (center >= 0 && rampCells[center] && y + maxStep >= (((lowerCavities[center] >> 4) & 63) - 32) * UNIT && (y < surface[center] - maxStep || surface[center] <= rampFloorAt(x, z))) return upperFloorAt(center, rampFloorAt(x, z), y, maxStep);
@@ -7875,6 +8423,15 @@ void main() {
       let b = land[i10] ? y >= surface[i10] - maxStep ? surface[i10] : height[i10] : y;
       let c = land[i01] ? y >= surface[i01] - maxStep ? surface[i01] : height[i01] : y;
       let d = land[i11] ? y >= surface[i11] - maxStep ? surface[i11] : height[i11] : y;
+      if (radius) {
+        // Interpolate the same footprint that lands on the leading edge of a
+        // step. Center-only samples lag that contact and pin the visual lift.
+        const x0 = (gx + 0.5) * UNIT + ORIGIN.x, z0 = (gz + 0.5) * UNIT + ORIGIN.z;
+        if (land[i00]) a = supportAt(x0, z0, y, maxStep, null, radius);
+        if (land[i10]) b = supportAt(x0 + UNIT, z0, y, maxStep, null, radius);
+        if (land[i01]) c = supportAt(x0, z0 + UNIT, y, maxStep, null, radius);
+        if (land[i11]) d = supportAt(x0 + UNIT, z0 + UNIT, y, maxStep, null, radius);
+      }
       a = upperFloorAt(i00, a, y, maxStep);
       b = upperFloorAt(i10, b, y, maxStep);
       c = upperFloorAt(i01, c, y, maxStep);
@@ -7886,6 +8443,7 @@ void main() {
       return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
     };
     const cavityAt = (x, z, out, caveIndex = 0, y = Infinity) => {
+      if (Number.isFinite(y) && y < basementHole.bottom && basementHole.contains(x, z)) return false;
       const i = column(x, z), cavity = i < 0 ? 0 : caveIndex === HEADQUARTERS_CAVE ? lowerCavities[i] : cavities[i] || lowerCavities[i];
       if (i >= 0 && basementCavities[i] && (!caveIndex || caveIndex === HEADQUARTERS_CAVE)) {
         const ceiling = ((basementCavities[i] >> 10) - 64) * UNIT;
@@ -8108,6 +8666,30 @@ void main() {
     const rampFaceOffset = geometry.faces.length;
     for (const v of rampGeometry.verts) geometry.verts.push(v);
     for (const face of rampGeometry.faces) geometry.faces.push({ ...face, i: face.i.map((i) => i + rampOffset) });
+    const windowOffset = geometry.verts.length / 3;
+    for (const value of windowGeometry.verts) geometry.verts.push(value);
+    for (const face of windowGeometry.faces) geometry.faces.push({ ...face, i: face.i.map((i) => i + windowOffset) });
+    const solidAt = (x, y, z) => {
+      if (grid.has(Math.floor((x - ORIGIN.x) / UNIT), Math.floor((y - ORIGIN.y) / UNIT), Math.floor((z - ORIGIN.z) / UNIT))) return true;
+      const pieces = windowColumns[column(x, z)];
+      if (pieces) for (const piece of pieces) {
+        if (y < piece.minY || y >= piece.maxY) continue;
+        // Occupancy includes internal faces shared by adjacent fragments.
+        // A zero-size swept body treats each as a harmless touch, which would
+        // otherwise report an infinitesimal air seam through solid rock.
+        const v = piece.vertices, indices = piece.triangles.i;
+        let inside = true;
+        for (let n = 0; n < indices.length; n += 3) {
+          const a = indices[n] * 3, b = indices[n + 1] * 3, c = indices[n + 2] * 3;
+          const ux = v[b] - v[a], uy = v[b + 1] - v[a + 1], uz = v[b + 2] - v[a + 2], vx = v[c] - v[a], vy = v[c + 1] - v[a + 1], vz = v[c + 2] - v[a + 2];
+          const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+          const distance = nx * (x - v[a]) + ny * (y - v[a + 1]) + nz * (z - v[a + 2]);
+          if (distance > 0 && distance * distance > 1e-18 * (nx * nx + ny * ny + nz * nz)) { inside = false; break; }
+        }
+        if (inside) return true;
+      }
+      return false;
+    };
     const built = {
       geometry,
       path,
@@ -8120,11 +8702,12 @@ void main() {
       smoothSupportAt,
       cavityAt,
       cavityBytes: cavities.byteLength + lowerCavities.byteLength + basementCavities.byteLength,
-      solidAt: (x, y, z) => grid.has(Math.floor((x - ORIGIN.x) / UNIT), Math.floor((y - ORIGIN.y) / UNIT), Math.floor((z - ORIGIN.z) / UNIT)),
+      solidAt,
+      windowPiecesAt: (x, z) => windowColumns[column(x, z)],
       isPath,
       onLand,
       mouths,
-      headquarters: { caveIndex: HEADQUARTERS_CAVE, floor: HEADQUARTERS_FLOOR, ceiling: HEADQUARTERS_CEILING, rockCover: HEADQUARTERS_ROCK, room: HEADQUARTERS_ROOM, rooms: headquartersRooms, windows: headquartersWindows, gallery: headquartersGallery, ramps: headquartersRamps, fronts: headquartersFronts, basement },
+      headquarters: { caveIndex: HEADQUARTERS_CAVE, floor: HEADQUARTERS_FLOOR, ceiling: HEADQUARTERS_CEILING, rockCover: HEADQUARTERS_ROCK, room: HEADQUARTERS_ROOM, rooms: headquartersRooms, windows: headquartersWindows, windowFragments: windowFragmentCount, windowFaces: windowGeometry.faces.length, gallery: headquartersGallery, ramps: headquartersRamps, fronts: headquartersFronts, basement },
       gate: { x: 0, z: GATE_Z, ry: 0 },
       radius: RADIUS,
       undersideDepth: DEPTH,
@@ -9224,42 +9807,64 @@ void main() {
     return s;
   };
   // Joystick bases, a hold-to-climb button, a canvas whose mouse chord walks, and a Space handler
-  const create = ({ move = null, look = null, boost = null, chord = null, onAction = null } = {}) => {
-    const held = { forward: 0, back: 0, left: 0, right: 0, yawLeft: 0, yawRight: 0, pitchDown: 0, pitchUp: 0, up: 0, down: 0, boost: 0, chord: 0 };
+  const create = ({ move = null, look = null, boost = null, chord = null, onAction = null, pressActions = false } = {}) => {
+    const held = { forward: 0, back: 0, left: 0, right: 0, yawLeft: 0, yawRight: 0, pitchDown: 0, pitchUp: 0, up: 0, space: 0, down: 0, boost: 0, chord: 0 };
     const axes = { x: 0, y: 0, up: 0, yaw: 0, pitch: 0 };
+    let spaceDown = false, boostPointer = null, boostClick = false;
     const typing = (e) => e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || (e.target.closest && e.target.closest("dialog")));
     const onKeyDown = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || typing(e)) return;
-      const name = KEYS[e.key.toLowerCase()];
+      const name = pressActions && e.key === " " ? "space" : KEYS[e.key.toLowerCase()];
       if (!name) return;
       if (e.key === " " || e.key.startsWith("Arrow")) e.preventDefault();
-      if (e.key === " " && !e.repeat && onAction && onAction()) return;
+      if (pressActions && e.key === " ") {
+        if (spaceDown || e.repeat) return;
+        spaceDown = true;
+        if (onAction && onAction()) return;
+      } else if (e.key === " " && !e.repeat && onAction && onAction()) return;
       held[name] = 1;
     };
     const onKeyUp = (e) => {
-      const name = KEYS[e.key.toLowerCase()];
+      const name = pressActions && e.key === " " ? "space" : KEYS[e.key.toLowerCase()];
       if (name) held[name] = 0;
+      if (e.key === " ") spaceDown = false;
     };
     const onBlur = () => {
       for (const name in held) held[name] = 0;
+      spaceDown = false;
+      boostPointer = null;
+      boostClick = false;
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onBlur);
     const moveStick = move ? joystick(move) : null;
     const lookStick = look ? joystick(look) : null;
-    // The button still fires its own click
-    const onBoostDown = () => {
-      held.boost = 1;
+    // A pointer press has the same action/thrust priority as Space. Consume its
+    // later click so a tap never performs an action twice or jumps on landing.
+    const onBoostDown = (e) => {
+      if (!pressActions) { held.boost = 1; return; }
+      if (boostPointer !== null) return;
+      boostPointer = e.pointerId;
+      boostClick = !!onAction;
+      held.boost = onAction && onAction() ? 0 : 1;
     };
-    const onBoostUp = () => {
+    const onBoostUp = (e) => {
+      if (!pressActions) { held.boost = 0; return; }
+      if (e.pointerId !== boostPointer) return;
+      boostPointer = null;
       held.boost = 0;
+    };
+    const onBoostClick = (e) => {
+      if (boostClick && e.detail > 0) { e.preventDefault(); e.stopImmediatePropagation(); }
+      boostClick = false;
     };
     if (boost) {
       boost.addEventListener("pointerdown", onBoostDown);
       boost.addEventListener("pointerup", onBoostUp);
       boost.addEventListener("pointercancel", onBoostUp);
       boost.addEventListener("pointerleave", onBoostUp);
+      if (pressActions) boost.addEventListener("click", onBoostClick, true);
     }
     // Both mouse buttons down is forward, as W; a chorded press arrives as a move
     const onChord = (e) => {
@@ -9275,7 +9880,7 @@ void main() {
     const read = () => {
       axes.x = clamp(held.right - held.left + (moveStick ? moveStick.x : 0), -1, 1);
       axes.y = clamp(held.forward - held.back + held.chord + (moveStick ? moveStick.y : 0), -1, 1);
-      axes.up = clamp(held.up + held.boost - held.down, -1, 1);
+      axes.up = clamp(held.up + held.space + held.boost - held.down, -1, 1);
       axes.yaw = clamp(held.yawLeft - held.yawRight - (lookStick ? lookStick.x : 0), -1, 1);
       axes.pitch = clamp(held.pitchDown - held.pitchUp - (lookStick ? lookStick.y : 0), -1, 1);
       return axes;
@@ -9289,6 +9894,7 @@ void main() {
         boost.removeEventListener("pointerup", onBoostUp);
         boost.removeEventListener("pointercancel", onBoostUp);
         boost.removeEventListener("pointerleave", onBoostUp);
+        if (pressActions) boost.removeEventListener("click", onBoostClick, true);
       }
       if (chord) {
         chord.removeEventListener("pointerdown", onChord);
@@ -9322,7 +9928,7 @@ void main() {
   // The camera swings behind while walking forward
   const FOLLOW_TURN = 1.8, DRAG_HOLD = 1.5;
   // Act button labels, action or jetpack throttle
-  const ACT_DO = "Ooga!", ACT_FLY = "Blast off!";
+  const ACT_DO = "JUMP!", ACT_FLY = "Blast off!";
   const create = (ctx) => {
     const { renderer, canvas, camera, hud, presets, pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow, fly, clampTarget, clampCamera, coarse, close = null } = ctx;
     let crew = null, fx = null;
@@ -9334,9 +9940,11 @@ void main() {
     let closeWanted = false, closeMix = 0, closeExitScale = 1, closeCave = null, hiddenHead = null, hiddenHeadCameraHidden = false, viewPitch = orbit.pitch;
     let groundView = 0, groundTarget = 0, groundX = 0, groundZ = 0, groundZone = 0, groundValid = false, groundLift = 0, groundEasing = false;
     let freeFeetY = 0, freeFloorY = 0, freeFallV = 0, freeLeapX = 0, freeLeapZ = 0, freeFallValid = false, freeFalling = false;
+    let freeCloud = null;
     const resetFreeFall = () => {
       freeFallV = freeLeapX = freeLeapZ = 0;
       freeFallValid = freeFalling = false;
+      freeCloud = null;
     };
     const bind = (systems) => {
       crew = systems.crew;
@@ -9410,7 +10018,8 @@ void main() {
     // Relabel the act button for what the press does
     const showAct = () => {
       const cave = player();
-      if (cave) hud.setAct(cave.jet ? ACT_FLY : ACT_DO);
+      if (cave) hud.setAct(cave.jet && !cave.jetRecovering ? ACT_FLY : ACT_DO);
+      hud.setJetpack(!!(cave && cave.jet), cave ? cave.jetFuel : 0);
     };
     const possess = (cave) => {
       if (!crew.control(cave)) return;
@@ -9425,8 +10034,9 @@ void main() {
       showAct();
       hud.tooltip.hide();
       fx.say(cave, "Ooga? Me?", 1.6);
-      if (cave.jet) hud.hint(coarse ? "Left stick flies · pinch in for first person · hold Blast off to climb" : "WASD flies · scroll in for first person · hold Space to climb · Escape to let go");
-      else hud.hint(coarse ? "Left stick walks · pinch in for first person · Ooga! acts" : "WASD or both mouse buttons to walk · scroll in for first person · Space to act");
+      if (cave.jet && cave.jetRecovering) hud.hint("Jetpack recharges on the ground · restart above 20% fuel");
+      else if (cave.jet) hud.hint(coarse ? "Left stick flies · pinch in for first person · hold Blast off to climb" : "WASD flies · scroll in for first person · hold Space to climb · Escape to let go");
+      else hud.hint(coarse ? "Left stick walks · pinch in for first person · JUMP! jumps or uses a nearby control" : "WASD or both mouse buttons to walk · scroll in for first person · Space to jump or use a nearby control");
     };
     const release = (quiet = false) => {
       const cave = player();
@@ -9437,17 +10047,16 @@ void main() {
       closeCave = null;
       crew.release();
       hud.el.act.hidden = true;
+      hud.setJetpack(false, 0);
       if (!quiet) hud.toast(`${cave.traits.name} wanders off`);
     };
-    // A jetpack wearer's Space stays unclaimed as throttle
+    // Nearby actions consume a press; a ready jetpack leaves Space as throttle.
     const action = () => {
       const cave = player();
-      if (!cave || cave.jet) return false;
-      crew.playerAction();
-      return true;
+      return cave ? crew.playerAction() : !!ctx.onFreeAction && ctx.onFreeAction();
     };
     // Held it climbs, clicked it acts; both mouse buttons on the canvas walk
-    const controls = createControls({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, chord: canvas, onAction: action });
+    const controls = createControls({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, chord: canvas, onAction: action, pressActions: true });
     let dragHold = 0, trailingViewInput = false, trailingZoomInput = false;
     const hooks = {
       onOrbit: (dx, dy) => {
@@ -9593,6 +10202,7 @@ void main() {
     // The camera moves only on input, no drift
     const update = (dt) => {
       const cave = player();
+      hud.setJetpack(!!(cave && cave.jet), cave ? cave.jetFuel : 0);
       if (cave) {
         const p = cave.root.position;
         followTarget.x = p.x;
@@ -9633,7 +10243,6 @@ void main() {
         if (groundReset) groundView = ground;
         else groundView = close.visualGroundAt ? close.visualGroundAt(p.x, p.z, ground) : damp(groundView, ground, CLOSE_GROUND_RATE, dt);
         groundLift = clamp(groundView - ground, -cave.baseY * 0.5, cave.baseY * 0.75);
-        groundView = ground + groundLift;
         groundTarget = ground;
         groundX = p.x;
         groundZ = p.z;
@@ -9641,6 +10250,8 @@ void main() {
         groundValid = true;
         groundEasing = !airborne;
         crew.elevate(groundLift);
+        groundLift = cave.viewLift;
+        groundView = ground + groundLift;
         followTarget.y = p.y - cave.baseY + follow.y + cave.viewLift;
       } else {
         if (cave && close) crew.elevate(0);
@@ -9683,16 +10294,21 @@ void main() {
             freeFallValid = true;
           }
           previousFloor = freeFloorY;
+          if (freeCloud && !freeFalling && !freeCloud.wrapped && freeCloud.node.visible && freeCloud.node.parent) {
+            eyeX += freeCloud.dx; eyeZ += freeCloud.dz;
+            freeTarget.x += freeCloud.dx; freeTarget.z += freeCloud.dz;
+          }
+          const previousFeet = freeFeetY;
           if (freeFalling) {
             freeFallV -= WALK.gravity * dt;
             freeFeetY += freeFallV * dt;
           }
-          const ground = close.groundAt(eyeX, eyeZ, freeFeetY);
+          const ground = close.groundAt(eyeX, eyeZ, freeFeetY, Math.max(previousFeet, freeFeetY));
           if (!freeFalling && freeFloorY - ground > WALK.step) {
             freeFalling = freeLedge = true;
-            freeFallV = WALK.ledgeRise;
-            freeLeapX = -Math.sin(orbit.yaw) * WALK.ledgeSpeed;
-            freeLeapZ = -Math.cos(orbit.yaw) * WALK.ledgeSpeed;
+            freeFallV = freeCloud ? 0 : WALK.ledgeRise;
+            freeLeapX = freeCloud ? 0 : -Math.sin(orbit.yaw) * WALK.ledgeSpeed;
+            freeLeapZ = freeCloud ? 0 : -Math.cos(orbit.yaw) * WALK.ledgeSpeed;
           }
           if (!freeFalling) freeFeetY = ground;
           else freeFeetY = Math.max(ground, freeFeetY);
@@ -9716,6 +10332,7 @@ void main() {
         } else if (freeFalling && freeFallV > 0 && feet < freeFeetY - 1e-6) freeFallV = 0;
         freeFeetY = feet;
         freeFloorY = ground;
+        freeCloud = !freeFalling && close.cloudAt ? close.cloudAt(camera.position.x, camera.position.z, feet) : null;
         freeTarget.y = camera.position.y;
       }
       if (collided && !cave && orbit.target === freeTarget) {
@@ -10080,6 +10697,10 @@ void main() {
       subtitle: $("subtitle"),
       actions: [...document.querySelectorAll("[data-action]")],
       act: $("act"),
+      jetpack: $("jetpack-hud"),
+      jetpackFuel: $("jetpack-fuel"),
+      jetpackFuelFill: $("jetpack-fuel-fill"),
+      jetpackFuelValue: $("jetpack-fuel-value"),
       toast: $("toast"),
       tooltip: $("tooltip"),
       hint: $("hint"),
@@ -10100,6 +10721,7 @@ void main() {
     el.lootTab.hidden = !lootEnabled;
     el.crateHelp.hidden = !lootEnabled;
     el.worldLootHint.hidden = !lootEnabled;
+    el.jetpack.hidden = true;
     const listeners = [];
     const on = (target, type, fn, opts) => {
       target.addEventListener(type, fn, opts);
@@ -10142,6 +10764,21 @@ void main() {
     };
     const setAct = (label) => {
       el.act.textContent = label;
+    };
+    let jetpackShown = false, jetpackPercent = -1;
+    const setJetpack = (equipped, fuel) => {
+      if (equipped !== jetpackShown) {
+        jetpackShown = equipped;
+        el.jetpack.hidden = !equipped;
+      }
+      if (!equipped) return;
+      const percent = Math.ceil(fuel * 100);
+      if (percent === jetpackPercent) return;
+      jetpackPercent = percent;
+      el.jetpackFuelFill.style.transform = `scaleX(${percent / 100})`;
+      el.jetpackFuel.setAttribute("aria-valuenow", String(percent));
+      el.jetpackFuel.dataset.level = percent <= 20 ? "low" : "ok";
+      el.jetpackFuelValue.firstChild.data = `${percent}%`;
     };
     const setSubtitle = (text) => {
       el.subtitle.textContent = text;
@@ -10368,9 +11005,10 @@ void main() {
       el.toast.classList.remove("show");
       el.hint.classList.remove("show");
       tooltip.hide();
+      setJetpack(false, 0);
       closeFeed();
     };
-    return { el, openFeed, closeFeed, setRosterRow, setMeter, setStats, setAct, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
+    return { el, openFeed, closeFeed, setRosterRow, setMeter, setStats, setAct, setJetpack, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
   };
   BL.hud = { create, renderIcon, signLettering, STATE_LABELS };
 })();
@@ -10619,14 +11257,14 @@ void main() {
     night: ["Stars many.", "Fire warm.", "Moon big.", "Dark out there.", "Ooga count star.", "Owl."],
     midnight: ["Ooga not sleepy.", "Owl says hoo.", "Very dark. Very quiet.", "Rock cold.", "Booga snore.", "Moon watch."]
   };
-  const SHOUTS = ["OOGA BOOGA!", "OOGA!", "BOOGA!"];
   // Meal and idle timings for a working caveman
   const EAT_MIN = 14, EAT_SPREAD = 20, HUNGRY_LINGER = 4, IDLE_MIN = 3, IDLE_SPREAD = 6, TRIPS_MAX = 3;
   const { WALK } = BL.pilot;
   const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = WALK.speed;
   const PLAYER_STEP = 0.125;
-  // Jetpack thrust, ceiling, capped fall and speed
-  const JET_ACCEL = 20, JET_RISE = 7, JET_FALL = 7, JET_CEILING = 16, JET_SPEED = 6.4, JET_PUFF = 0.05;
+  const JUMP_SPEED = 4.8, JET_FUEL_SECONDS = 8, JET_MOVE_SECONDS = JET_FUEL_SECONDS * 2, JET_REFILL_SECONDS = 4, JET_LAUNCH_FUEL = 0.2;
+  // Fuel limits range and altitude; releasing thrust uses ordinary gravity.
+  const JET_ACCEL = 20, JET_RISE = 7, JET_SPEED = 6.4, JET_PUFF = 0.05;
   const JET_SPARKS = [models.particleGeometry("#ffb13b", 0.09, 1), models.particleGeometry("#f3efe4", 0.07, 0.6)];
   const LAND_DUST = [models.particleGeometry("#a3874f", 0.1, 0)];
   // A drop deeper than a step, mirroring the hub's STEP_MAX
@@ -10699,6 +11337,7 @@ void main() {
         walk: null,
         hop: 0,
         hopV: 0,
+        jumps: 0,
         cheer: 0,
         catchT: 0,
         yawn: 0,
@@ -10708,6 +11347,9 @@ void main() {
         highlight: 0,
         nextBuildAt: 8 + i * 2.5 + Math.random() * 6,
         jet: null,
+        jetFuel: 1,
+        jetRecovering: false,
+        cloudSupport: null,
         viewLift: 0,
         act: { kind: "eat", until: 0, trips: 0, sayAt: 0, said: true, phase: 0, spot: { x: 0, z: 0, ry: NaN } },
         swagNodes: []
@@ -10722,6 +11364,7 @@ void main() {
       const p = cave.root.position;
       return cave.baseY + groundAt(p.x, p.z, p.y - cave.baseY);
     };
+    const grounded = (cave) => cave.hop === 0 && cave.hopV <= 0 && Math.abs(cave.root.position.y - groundY(cave)) < 1e-6;
     const atPile = (cave) => cave.act.kind === "eat" || cave.act.kind === "rush";
     // Take the first free bed, else share by roster.
     const claimBedroll = (cave) => {
@@ -11162,21 +11805,28 @@ void main() {
         startWander(cave);
       }
     };
-    // Thrust against gravity, with a ceiling and capped fall
+    // Thrust against ordinary gravity, with fuel-scaled exhaust.
     const runJet = (cave, dt) => {
       const jet = cave.jet;
+      if (cave.jetRecovering) jet.thrust = false;
+      const moving = !cave.jetRecovering && (cave.hop > 0 || cave.hopV > 0) && Math.hypot(steer.x, steer.z) > 0.05;
+      jet.power = (jet.thrust ? 2 : 0) + (moving ? 1 : 0);
+      jet.spending = jet.power > 0;
+      if (jet.spending) cave.jetFuel = Math.max(0, cave.jetFuel - dt * jet.power / JET_MOVE_SECONDS);
+      if (cave.jetFuel < 1e-10) { cave.jetFuel = 0; jet.thrust = false; jet.power = 0; }
       if (jet.thrust) {
         cave.hopV = Math.min(cave.hopV + JET_ACCEL * dt, JET_RISE);
-        if (cave.hop >= JET_CEILING) cave.hopV = Math.min(cave.hopV, 0);
+      }
+      if (jet.power) {
         jet.puff -= dt;
         if (jet.puff <= 0) {
           jet.puff = JET_PUFF;
           const p = cave.root.position;
-          ctx.fx.burst(p.x, p.y + 0.12, p.z, 2, JET_SPARKS, 1.1);
+          ctx.fx.burst(p.x, p.y + 0.12, p.z, jet.power, JET_SPARKS, 1.1);
         }
-      } else if (cave.hopV < -JET_FALL) cave.hopV = -JET_FALL;
-      jet.flame.visible = jet.thrust;
-      if (jet.thrust) jet.flame.scale.y = 0.7 + Math.sin(elapsed * 40 + cave.phase) * 0.3;
+      }
+      jet.flame.visible = jet.power > 0;
+      if (jet.power) jet.flame.scale.y = (0.7 + Math.sin(elapsed * 40 + cave.phase) * 0.3) * jet.power / 2;
     };
     // Flying also stops at rock standing above him
     const canStep = (cave, flying, fromX, fromZ, toX, toZ) => {
@@ -11220,7 +11870,8 @@ void main() {
       if (cave.jet) runJet(cave, dt);
       clampPlayerCeiling(cave, wasGround);
       p.y = wasGround + cave.hop;
-      const flying = !!cave.jet && (cave.jet.thrust || cave.hop > 0.05);
+      if (cave.jet && cave.jet.thrust && ctx.glideJetCeiling && ctx.glideJetCeiling(cave, dt)) cave.hopV = Math.max(cave.hopV, JET_RISE);
+      const flying = !!cave.jet && !cave.jetRecovering && cave.jetFuel > 0 && (cave.jet.thrust || cave.hop > 0.05);
       const len = Math.hypot(steer.x, steer.z);
       if (len > 0.05) {
         const k = Math.min(1, len) * (flying ? JET_SPEED : PLAYER_SPEED) * dt;
@@ -11248,6 +11899,11 @@ void main() {
         flyPose(cave);
       }
       if (flying) flyPose(cave);
+      else if (cave.hop > 0 && ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY)) {
+        // Arms rise and legs trail during the visible fall beneath the island.
+        flyPose(cave);
+        cave.parts.armL.rotation.x = cave.parts.armR.rotation.x = -2.1;
+      }
       // Airborne he holds a world height, so ground steps never lift him
       if (flying || cave.hop > 0) cave.hop = Math.max(0, cave.hop + wasGround - groundY(cave));
       else {
@@ -11257,9 +11913,11 @@ void main() {
         const drop = wasGround - groundY(cave);
         if (drop > STEP) {
           cave.hop += drop;
-          cave.hopV = Math.max(cave.hopV, WALK.ledgeRise);
-          leap.vx = Math.sin(cave.root.rotation.y) * WALK.ledgeSpeed;
-          leap.vz = Math.cos(cave.root.rotation.y) * WALK.ledgeSpeed;
+          if (!cave.cloudSupport) {
+            cave.hopV = Math.max(cave.hopV, WALK.ledgeRise);
+            leap.vx = Math.sin(cave.root.rotation.y) * WALK.ledgeSpeed;
+            leap.vz = Math.cos(cave.root.rotation.y) * WALK.ledgeSpeed;
+          }
         }
       }
       // One place sets the height, so nothing compounds
@@ -11268,6 +11926,12 @@ void main() {
       // support is the apron below. Query the ceiling at that world height.
       clampPlayerCeiling(cave, ground, ground - cave.baseY + cave.hop);
       cave.root.position.y = ground + cave.hop;
+      // Movement can acquire a cloud after the pre-gravity support query.
+      // Keep that exact destination layer if it drifts away next frame.
+      if (ctx.cloudAt) cave.cloudSupport = ctx.cloudAt(p.x, p.z, p.y - cave.baseY);
+      if (grounded(cave)) {
+        cave.jumps = 0;
+      } else cave.jumps = Math.max(1, cave.jumps);
       if (cave.hop === 0 && (leap.vx || leap.vz)) {
         leap.vx = leap.vz = 0;
         leap.land = 0.25;
@@ -11286,12 +11950,16 @@ void main() {
     };
     const updateCaveman = (cave, dt) => {
       const parts = cave.parts;
+      if (ctx.prepareCloudSupport) ctx.prepareCloudSupport(cave);
       cave.highlight = damp(cave.highlight, cave.highlightTarget, 12, dt);
       for (const key of BODY_PARTS) parts[key].highlight = cave.highlight;
       if (cave.hopV > 0 || cave.hop > 0) {
         cave.hopV -= WALK.gravity * dt;
         cave.hop = Math.max(0, cave.hop + cave.hopV * dt);
-        if (cave.hop === 0 && cave.hopV < 0) cave.hopV = 0;
+        if (cave.hop === 0 && cave.hopV < 0) {
+          cave.hopV = 0;
+          if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
+        }
       }
       if (cave.cheer > 0) cave.cheer -= dt;
       if (cave.yawn > 0) cave.yawn -= dt;
@@ -11313,6 +11981,19 @@ void main() {
       }
       if (cave === player) {
         runPlayer(cave, dt);
+        return;
+      }
+      if (ctx.abyssAt && ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY)) {
+        // Releasing possession must not strand an Ooga beneath the world.
+        cave.root.position.y = groundY(cave) + cave.hop;
+        flyPose(cave);
+        cave.parts.armL.rotation.x = cave.parts.armR.rotation.x = -2.1;
+        if (cave.root.position.y - cave.baseY < ctx.abyssRespawnY) {
+          cave.hop = cave.hopV = cave.jumps = 0;
+          standPose(cave);
+          standAtSlot(cave);
+          startMeal(cave);
+        }
         return;
       }
       if (cave.walk) {
@@ -11381,17 +12062,24 @@ void main() {
     // ---------- the jetpack ----------
     // Put the jetpack on a caveman's back
     const wearJetpack = (cave, geometry, flameGeometry) => {
-      if (cave.jet) return null;
+      if (cave.jet || ctx.jetpackAllowed && !ctx.jetpackAllowed(cave)) return null;
       const h = cave.traits.height;
       const node = createNode({ position: { x: 0, y: 0.06 * h + cave.viewLift, z: -0.18 * h }, scale: { x: h, y: h, z: h }, geometry });
       const flame = createNode({ geometry: flameGeometry, visible: false });
       addChild(node, flame);
       addChild(cave.root, node);
-      cave.jet = { node, flame, thrust: false, puff: 0 };
+      cave.jet = { node, flame, thrust: false, spending: false, power: 0, puff: 0 };
+      if (cave.jetFuel < JET_LAUNCH_FUEL && grounded(cave)) cave.jetRecovering = true;
       return node;
     };
+    const removeJetpack = (cave) => {
+      if (!cave.jet) return false;
+      removeChild(cave.root, cave.jet.node);
+      cave.jet = null;
+      return true;
+    };
     const thrust = (on) => {
-      if (player && player.jet) player.jet.thrust = !!on;
+      if (player && player.jet) player.jet.thrust = !!on && !player.jetRecovering && player.jetFuel > 0;
     };
 
     // ---------- the visitor's caveman ----------
@@ -11408,7 +12096,8 @@ void main() {
       cave.parts.head.rotation.x = 0;
       cave.parts.head.rotation.y = 0;
       standPose(cave);
-      cave.root.position.y = groundY(cave);
+      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY)) cave.root.position.y = groundY(cave);
+      if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL && grounded(cave)) cave.jetRecovering = true;
       return true;
     };
     const release = () => {
@@ -11420,10 +12109,12 @@ void main() {
       cave.leap.vx = cave.leap.vz = cave.leap.land = 0;
       if (cave.jet) {
         cave.jet.thrust = false;
+        cave.jet.spending = false;
+        cave.jet.power = 0;
         cave.jet.flame.visible = false;
       }
       standPose(cave);
-      cave.root.position.y = groundY(cave);
+      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY)) cave.root.position.y = groundY(cave);
       cave.act.kind = "idle";
       cave.act.until = elapsed + 1.5;
       cave.act.said = true;
@@ -11443,10 +12134,14 @@ void main() {
       elevatePlayer(0);
       steer.x = steer.z = steer.view = steer.forward = steer.strafe = 0;
       cave.hop = cave.hopV = cave.act.phase = 0;
+      cave.cloudSupport = null;
+      cave.jumps = 0;
       cave.leap.vx = cave.leap.vz = cave.leap.land = 0;
       cave.cheer = cave.catchT = cave.yawn = 0;
       if (cave.jet) {
         cave.jet.thrust = false;
+        cave.jet.spending = false;
+        cave.jet.power = 0;
         cave.jet.flame.visible = false;
         cave.jet.puff = 0;
       }
@@ -11456,6 +12151,7 @@ void main() {
       cave.root.rotation.x = cave.root.rotation.z = 0;
       cave.root.rotation.y = heading;
       setVec(cave.root.position, position.x, position.y + cave.baseY, position.z);
+      if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL && grounded(cave)) cave.jetRecovering = true;
     };
     // Applied after the camera's damped angles update, keeping pose and view in lockstep.
     const lookPlayer = (heading, pitch, mix) => {
@@ -11469,7 +12165,14 @@ void main() {
     // Scaling each leg about its hip keeps the feet on that same voxel step.
     const elevatePlayer = (lift) => {
       if (!player) return;
-      const cave = player, delta = lift - cave.viewLift, parts = cave.parts;
+      const cave = player, parts = cave.parts;
+      // Step smoothing moves the rendered head after physics. Keep that lift
+      // within the same full-footprint ceiling used by walking and jumping.
+      if (lift > 0 && ctx.ceilingAt) {
+        const p = cave.root.position, feet = p.y - cave.baseY;
+        lift = Math.min(lift, Math.max(0, ctx.ceilingAt(p.x, p.z, feet) - feet - cave.bodyHeight));
+      }
+      const delta = lift - cave.viewLift;
       if (!delta) return;
       parts.legL.position.y += delta;
       parts.legR.position.y += delta;
@@ -11482,33 +12185,32 @@ void main() {
       cave.viewLift = lift;
       parts.legL.scale.y = parts.legR.scale.y = (cave.baseY + lift) / cave.baseY;
     };
-    // Space eats, opens, pokes, uses props or shouts
+    const jumpPlayer = () => {
+      if (!player || player.jet && !player.jetRecovering) return false;
+      if (grounded(player)) player.jumps = 0;
+      else player.jumps = Math.max(1, player.jumps);
+      if (player.jumps >= 2) return false;
+      // A takeoff leaves step smoothing behind before testing its headroom.
+      elevatePlayer(0);
+      player.jumps++;
+      player.hopV = JUMP_SPEED;
+      return true;
+    };
+    // The pack's weight halves a tap jump's height. Holding continues thrust;
+    // a nearby action consumes the press and airborne presses add no impulse.
     const playerAction = () => {
       if (!player) return false;
-      const p = player.root.position;
-      if (world.level >= 1 && Math.hypot(p.x, p.z) < ctx.pile.pileEdge() + REACH && ctx.pile.eatFromPile(player)) {
-        ctx.fx.say(player, "Nom nom.", 1.6);
-        return true;
-      }
-      if (ctx.crates) {
-        for (const crate of ctx.crates.list) {
-          if (crate.opened || !crate.node.visible || Math.abs(crate.node.position.y) > 0.05) continue;
-          if (Math.hypot(crate.node.position.x - p.x, crate.node.position.z - p.z) < REACH) {
-            ctx.crates.openCrate(crate);
-            return true;
-          }
+      const p = player.root.position, feet = p.y - player.baseY;
+      if (ctx.useNear && ctx.useNear(p.x, p.z, REACH + 0.6, feet)) return true;
+      if (player.jet && !player.jetRecovering) {
+        if (player.jetFuel > 0 && grounded(player)) {
+          elevatePlayer(0);
+          player.jumps = 1;
+          player.hopV = JUMP_SPEED * Math.SQRT1_2;
         }
+        return false;
       }
-      for (const other of cavemen.values()) {
-        if (other === player || !other.root.visible) continue;
-        if (Math.hypot(other.root.position.x - p.x, other.root.position.z - p.z) < REACH) {
-          pokeCave(other);
-          return true;
-        }
-      }
-      if (ctx.useNear && ctx.useNear(p.x, p.z, REACH + 0.6)) return true;
-      hopCave(player, 3);
-      ctx.fx.say(player, SHOUTS[randomInt(SHOUTS.length)], 1.6);
+      jumpPlayer();
       return true;
     };
     const applySwag = (cave) => {
@@ -11546,16 +12248,11 @@ void main() {
       return item ? item.name : null;
     };
     const renderLocker = () => hud.renderInventory(game.state.inventory, game.assignedTo, wornBy);
-    const hopCave = (cave, strength = 2.6) => {
-      if (cave.state === "sleeping") return;
-      cave.hopV = Math.max(cave.hopV, strength);
-    };
     const pokeCave = (cave) => {
       if (cave.state === "sleeping") {
         ctx.fx.say(cave, SLEEP_POKES[randomInt(SLEEP_POKES.length)], 1.8);
         return;
       }
-      hopCave(cave);
       ctx.fx.say(cave, POKES[randomInt(POKES.length)], 1.8);
     };
     // Build quotes, drawn by fx.drawOverlay
@@ -11569,7 +12266,14 @@ void main() {
     };
     const update = (dt, now) => {
       elapsed = now;
-      for (const cave of cavemen.values()) updateCaveman(cave, dt);
+      for (const cave of cavemen.values()) {
+        updateCaveman(cave, dt);
+        if (grounded(cave)) {
+          if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
+          if (cave.jetFuel < 1 && (!cave.jet || !cave.jet.spending)) cave.jetFuel = Math.min(1, cave.jetFuel + dt / JET_REFILL_SECONDS);
+        }
+        if (cave.jetFuel > JET_LAUNCH_FUEL) cave.jetRecovering = false;
+      }
     };
     const dispose = () => {
       player = null;
@@ -11590,13 +12294,13 @@ void main() {
     const stats = () => ({ built: builtEquipment.length });
     return {
       cavemen, stateOf, stateCounts, workingCavemen, eatingCavemen, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, drawQuotes,
-      control, release, relocatePlayer, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, wearJetpack, thrust, update, dispose, stats,
+      control, release, relocatePlayer, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, wearJetpack, removeJetpack, thrust, update, dispose, stats,
       get player() {
         return player;
       }
     };
   };
-  BL.crew = { create, EAT_RATE };
+  BL.crew = { create, EAT_RATE, JUMP_SPEED, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS, JET_REFILL_SECONDS, JET_LAUNCH_FUEL };
 })();
 
 // ---- js/pile.js ----
@@ -13195,7 +13899,7 @@ void main() {
   const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod } = BL;
   const { lerp, ease, fnv1a, mulberry32 } = math;
   const { createNode, addChild, removeChild, createCamera, addTween, stepTweens, tweenCount, traverseVisible } = BL.scene;
-  const { EAT_RATE } = crewMod;
+  const { EAT_RATE, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS } = crewMod;
   const { DROP_HEIGHT } = pileMod;
   const { CONFETTI } = fxMod;
   const params = new URLSearchParams(location.search);
@@ -13214,6 +13918,7 @@ void main() {
   const preloadedView = requestedView === "hq" ? "underground" : requestedView === "pile" || requestedView === "lab" || requestedView === "mirror" ? requestedView : null;
   const preloadedFirstPerson = DEBUG && params.get("firstperson") === "1";
   const preloadedCharacter = DEBUG ? params.get("character")?.trim().toLowerCase() : null;
+  const preloadedJetpack = DEBUG && params.get("jetpack") === "1";
   const islandLatitude = Number.isFinite(latitudeParam) ? Math.max(-66, Math.min(66, latitudeParam)) : daylight.ISLAND_LATITUDE_DEG;
   // Island measures, owned by terrain.js
   const MEADOW = 22, RADIUS = 30;
@@ -13231,7 +13936,9 @@ void main() {
   // Dolly onto a tapped mouth before the scene changes
   const ENTER_DIST = 10, ENTER_DUR = 0.45;
   // Free flight speeds and bounds
-  const FLY = { speed: 6, perDist: 0.5, climb: 6, yMin: -8, yMax: 30 }, FLY_BOUND = RADIUS + 14;
+  const FLY = { speed: 6, perDist: 0.5, climb: 6, yMin: -8, yMax: JET_RISE * JET_FUEL_SECONDS + 16 }, FLY_BOUND = RADIUS + JET_SPEED * JET_MOVE_SECONDS + 8;
+  // An unseen support keeps hop integration finite until the visible abyss fall ends.
+  const ABYSS_FLOOR = -120, ABYSS_RESPAWN_Y = -60;
   // Third person follow height and distance
   const FOLLOW = { y: 0.9, min: 4, max: 10, pitch: [0.25, 0.8] };
   // A close free view rests at an average Ooga eye; first person sits at the
@@ -13247,7 +13954,7 @@ void main() {
   const JETPACK_SAFE = { x: 0, z: 0 };
   // Pulse the hiding prop when the hunt stalls
   const HINT_AFTER = 120, HINT_EVERY = 12, HINT_PULSE = 1.6, HINT_MAX = 0.9;
-  // Reach at which a caveman is inside a cave, or at the plane on the roof
+  // Reach at which a caveman enters the lab or uses the plane on the roof
   const TUNNEL_REACH = 2.2, LAUNCH_REACH = 2.6;
   const MATRIX_TYPES = 8;
   const MATRIX_RAIN_GAP = 0.19;
@@ -13959,7 +14666,7 @@ void main() {
   };
 
   // ---------- island ----------
-  // A prop with a kind answers taps and Space
+  // A prop with a kind answers pointer taps
   const addProp = (kind, node, x, z, radius) => {
     const owner = { kind: "prop", prop: kind, node, x, z, ripe: 0, pickRadius: radius, active: true };
     addTarget(node, owner, { radius });
@@ -14077,7 +14784,7 @@ void main() {
     if (headquarters && camera.position.y < -1 && cameraCaveIndex && CAMERA_OPENINGS[cameraCaveIndex - 1].headquarters) {
       const underground = headquarters.sources;
       // The upper hearth cannot cast through the rock into the basement.
-      const below = camera.position.y < island.headquarters.floor && island.cavityAt(camera.position.x, camera.position.z, CAMERA_COLUMN, island.headquarters.caveIndex, camera.position.y) && camera.position.y >= CAMERA_COLUMN.floor && camera.position.y < CAMERA_COLUMN.ceiling;
+      const below = camera.position.y < island.headquarters.floor;
       const total = below ? 0 : Math.min(limit, underground.length);
       for (let i = 0; i < underground.length; i++) underground[i].selected = false;
       for (let i = 0; i < total; i++) {
@@ -14189,7 +14896,7 @@ void main() {
       addChild(group, stand);
       matrixControl = {
         stand, button, x: m.x + ax * stand.position.z, z: m.z + az * stand.position.z,
-        pressed: false, near: false, promptPressed: false, promptPlayer: null
+        pressed: false, near: false, promptPressed: false, promptPlayer: null, promptAction: null, promptJet: false, promptRecovering: false
       };
       addTarget(button, { kind: "matrix-button", priority: 2 }, { radius: 0.55 });
     } else if (slot.status === "sleeping") {
@@ -14504,15 +15211,17 @@ void main() {
     if (i >= 0) list.splice(i, 1);
   };
   const equipJetpack = (cave) => {
-    if (!crew.wearJetpack(cave, hubModels.jetpack(), hubModels.jetFlame())) return;
+    if (!crew.wearJetpack(cave, hubModels.jetpack(), hubModels.jetFlame())) return false;
     pilot.showAct();
     const p = cave.root.position;
     fx.burst(p.x, p.y + 0.7, p.z, 14, [SPARK, DUST], 2.2);
     fx.say(cave, "OOGA FLY!", 2);
     hud.toast("Jetpack!");
-    hud.hint(COARSE ? "Hold Blast off to climb · stick to fly" : "Hold Space to climb · WASD to fly", 5000);
+    hud.hint(cave.jetRecovering ? "Fuel recovering · jump until the gauge is above 20%" : COARSE ? "Hold Blast off to climb · stick to fly" : "Hold Space to climb · WASD to fly", 5000);
+    return true;
   };
   const collectJetpack = (cave) => {
+    if (!equipJetpack(cave)) return;
     const { node, owner } = jetpack;
     input.remove(node);
     removeChild(root, node);
@@ -14520,7 +15229,6 @@ void main() {
     drop(placed, node);
     drop(props, owner);
     jetpack = null;
-    equipJetpack(cave);
   };
   // Spots the crew strolls to
   const buildSpots = () => {
@@ -14563,8 +15271,67 @@ void main() {
   };
   // Surface caves and the headquarters can share a column below the same roof.
   const supportAt = (x, z, y = Infinity) => island.supportAt(x, z, y, STEP_MAX);
-  const visualSupportAt = (x, z, y) => island.smoothSupportAt(x, z, y, STEP_MAX);
+  const playerSupportAt = (x, z, y, previousY = y) => {
+    const player = pilot.player;
+    const step = player ? player.hop === 0 && player.hopV <= 0 : !pilot.freeFalling;
+    const height = player ? player.bodyHeight + Math.max(0, player.viewLift) : CLOSE_VIEW.eyeHeight + CAMERA_RADIUS;
+    return Math.max(island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS), cloudFloorAt(x, z, Math.max(y, previousY), step ? STEP_MAX : 0, height));
+  };
+  const abyssAt = (x, z, y) => playerSupportAt(x, z, y) === ABYSS_FLOOR;
+  const visualSupportAt = (x, z, y) => {
+    const floor = cloudFloorAt(x, z, y, STEP_MAX);
+    return floor > -Infinity && floor > island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS) ? floor : island.smoothSupportAt(x, z, y, STEP_MAX, PLAYER_RADIUS);
+  };
   const PLAYER_RADIUS = 0.3;
+  let cloudHit = null;
+  // Clouds are one-way platforms. Their cached rectangles are the mesh's
+  // actual upward faces; air below and beside them remains freely flyable.
+  const cloudFloorAt = (x, z, y, maxStep = 0, height = 0) => {
+    let floor = -Infinity;
+    cloudHit = null;
+    for (let i = 0; i < clouds.length; i++) {
+      const cloud = clouds[i], node = cloud.node, p = node.position;
+      if (!node.visible || node.parent !== root) continue;
+      const lx = x - p.x, lz = z - p.z, bounds = cloud.bounds;
+      if (lx < bounds[0] - PLAYER_RADIUS || lx > bounds[2] + PLAYER_RADIUS || lz < bounds[1] - PLAYER_RADIUS || lz > bounds[3] + PLAYER_RADIUS) continue;
+      const tops = cloud.tops;
+      for (let j = 0; j < tops.length; j += 5) {
+        const top = p.y + tops[j + 4];
+        if (top <= floor || top > y + maxStep + 1e-7) continue;
+        const dx = Math.max(tops[j] - lx, 0, lx - tops[j + 2]), dz = Math.max(tops[j + 1] - lz, 0, lz - tops[j + 3]);
+        if (dx * dx + dz * dz >= PLAYER_RADIUS * PLAYER_RADIUS - 1e-9) continue;
+        if (top > y + 1e-7 && height && (!physicalClearAt(x, top, z, PLAYER_RADIUS, height) || !island.voxelSegmentClearAt(x, y, z, x, top, z, PLAYER_RADIUS, height))) continue;
+        floor = top;
+        cloudHit = cloud;
+      }
+    }
+    return floor;
+  };
+  const cloudAt = (x, z, y, maxStep = 0) => {
+    const floor = cloudFloorAt(x, z, y, maxStep);
+    return floor > island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS) ? cloudHit : null;
+  };
+  const prepareCloudSupport = (cave) => {
+    const p = cave.root.position, feet = p.y - cave.baseY, previous = cave.cloudSupport;
+    const grounded = cave.hop === 0 && cave.hopV <= 0;
+    const height = cave.bodyHeight + Math.max(0, cave.viewLift);
+    if (previous && grounded && !previous.wrapped && previous.node.visible && previous.node.parent === root) {
+      const x = p.x + previous.dx, z = p.z + previous.dz, floor = Math.max(feet, cloudFloorAt(x, z, feet, STEP_MAX, height));
+      if (flyable(p.x, p.z, x, z, feet, height) && physicalClearAt(x, floor, z, PLAYER_RADIUS, height) && island.voxelSegmentClearAt(p.x, feet, p.z, x, floor, z, PLAYER_RADIUS, height)) {
+        p.x = x; p.z = z;
+      }
+    }
+    const floor = cloudFloorAt(p.x, p.z, feet, grounded ? STEP_MAX : 0, height), current = cloudHit;
+    const ground = island.supportAt(p.x, p.z, feet, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS);
+    if (previous || floor > ground) {
+      const support = Math.max(floor, ground);
+      cave.hop = Math.max(0, feet - support);
+      p.y = cave.baseY + support + cave.hop;
+    }
+    // Remember the support layer during flight too. If that cloud drifts
+    // away before landing, hop must rebase onto the abyss without a snap.
+    cave.cloudSupport = floor > ground ? current : null;
+  };
   // The stone frames are rendered boxes, separate from the carved terrain.
   // Rotate the cylinder into each fixed arch's axes; its footprint stays round.
   const entranceCeilingAt = (x, z, y, radius) => {
@@ -14583,6 +15350,27 @@ void main() {
     return ceiling;
   };
   const physicalClearAt = (x, y, z, radius, height) => island.clearAt(x, y, z, radius, height) && y + height <= entranceCeilingAt(x, z, y, radius) + 1e-7;
+  const JETPACK_COLUMN = { caveIndex: 0, floor: 0, ceiling: 0 };
+  const jetpackAllowed = (cave) => {
+    const p = cave.root.position, feet = p.y - cave.baseY;
+    const basement = island.headquarters.basement, hole = basement.hole;
+    // Keep thrust through the open shaft and its bevel until the whole body
+    // clears the lip. The basement ceiling still separates it from HQ above.
+    if (feet < basement.ceiling && Math.hypot(p.x - hole.x, p.z - hole.z) <= hole.mouthRadius + PLAYER_RADIUS) return true;
+    return !island.cavityAt(p.x, p.z, JETPACK_COLUMN, island.headquarters.caveIndex, feet) || feet < JETPACK_COLUMN.floor - 1e-6 || feet >= JETPACK_COLUMN.ceiling;
+  };
+  // Interaction reach follows clear air, including stacked rooms. Sweep solid
+  // walls and frames exactly; substeps also check the rendered ramp slopes.
+  const actionReachable = (x, y, z, toX, toY, toZ) => {
+    if (crossesSealedCave(x, z, toX, toZ, y) || !island.voxelSegmentClearAt(x, y - 0.025, z, toX, toY - 0.025, toZ, 0.025, 0.05) || !entranceSegmentClear(x, y, z, toX, toY, toZ, 0.025)) return false;
+    const steps = Math.max(1, Math.ceil(Math.hypot(toX - x, toY - y, toZ - z) / 0.12));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      if (!island.clearAt(lerp(x, toX, t), lerp(y, toY, t) - 0.025, lerp(z, toZ, t), 0.025, 0.05)) return false;
+    }
+    return true;
+  };
+  const actionWithinReach = (x, y, z, toX, toY, toZ, reach) => Math.hypot(toX - x, toY - y, toZ - z) < reach && actionReachable(x, y, z, toX, toY, toZ);
   const ceilingAt = (x, z, y) => {
     let ceiling = Math.min(island.ceilingAt(x, y, z, PLAYER_RADIUS), entranceCeilingAt(x, z, y, PLAYER_RADIUS));
     for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
@@ -14606,28 +15394,73 @@ void main() {
     }
     return false;
   };
-  // A driven step stays on rock, off the heap, and on its own layer
+  // A driven step avoids rock and the heap, but may leave the island's edge.
   const walkable = (fromX, fromZ, toX, toZ, y, height = 1.5) => {
-    if (!island.onLand(toX, toZ) || crossesSealedCave(fromX, fromZ, toX, toZ, y)) return false;
-    const floor = supportAt(toX, toZ, y), feet = Math.max(y, floor);
+    if (Math.hypot(toX, toZ) > FLY_BOUND || crossesSealedCave(fromX, fromZ, toX, toZ, y)) return false;
+    const floor = playerSupportAt(toX, toZ, y), feet = Math.max(y, floor);
     if (floor - y > STEP_MAX || y >= island.surfaceAt(toX, toZ) - STEP_MAX && Math.hypot(toX, toZ) <= pileEdgeNow + 0.4) return false;
     // The feet may mount an ordinary voxel step; the torso and head must fit
     // across their whole footprint at the destination's actual elevation.
     return feet + height <= ceilingAt(toX, toZ, feet) + 1e-7 && physicalClearAt(toX, feet + STEP_MAX, toZ, PLAYER_RADIUS, Math.max(0, height - STEP_MAX));
   };
-  const flyable = (fromX, fromZ, toX, toZ, y = 0, height = 1.5) => island.onLand(toX, toZ) && !crossesSealedCave(fromX, fromZ, toX, toZ, y) && y + height <= ceilingAt(toX, toZ, y) + 1e-7 && physicalClearAt(toX, y, toZ, PLAYER_RADIUS, height);
+  const flyable = (fromX, fromZ, toX, toZ, y = 0, height = 1.5) => Math.hypot(toX, toZ) <= FLY_BOUND && !crossesSealedCave(fromX, fromZ, toX, toZ, y) && y + height <= ceilingAt(toX, toZ, y) + 1e-7 && physicalClearAt(toX, y, toZ, PLAYER_RADIUS, height);
+  // Upward thrust follows the outside of the spherical underside. Slide out
+  // beneath its voxel notches before rising, with the same full-body clearance
+  // as ordinary flight; interior ceilings and unsupported idle falls stay put.
+  const glideJetCeiling = (cave, dt) => {
+    const p = cave.root.position, feet = p.y - cave.baseY, height = cave.bodyHeight + Math.max(0, cave.viewLift);
+    if (feet >= 0 || !abyssAt(p.x, p.z, feet)) return false;
+    const ceiling = ceilingAt(p.x, p.z, feet), radius = Math.hypot(p.x, p.z);
+    if (!radius || ceiling - feet - height > 0.15) return false;
+    const distance = JET_SPEED * dt, x = p.x + p.x / radius * distance, z = p.z + p.z / radius * distance;
+    if (!flyable(p.x, p.z, x, z, feet, height) || !island.voxelSegmentClearAt(p.x, feet, p.z, x, feet, z, PLAYER_RADIUS, height)) return false;
+    p.x = x; p.z = z;
+    return true;
+  };
   // Clouds ring the island without crossing it
   const buildClouds = () => {
     const rand = mulberry32(SEED + 77);
+    const surfaces = new Map();
     for (let i = 0; i < CLOUD_COUNT; i++) {
       const beside = i % 2 === 0;
       const out = (rand() < 0.5 ? -1 : 1) * lerp(CLOUD_NEAR, CLOUD_WRAP, rand());
       const span = lerp(-CLOUD_WRAP, CLOUD_WRAP, rand());
       const y = beside ? lerp(-4, 6, rand()) : lerp(2, 8, rand());
       const node = createNode({ position: { x: beside ? out : span, y, z: beside ? span : -Math.abs(out) }, geometry: hubModels.cloud(Math.min(2, i % 4)), matrixCloud: true });
+      let surface = surfaces.get(node.geometry);
+      if (!surface) {
+        const tops = [], bounds = [Infinity, Infinity, -Infinity, -Infinity], v = node.geometry.verts;
+        for (const face of node.geometry.faces) {
+          const a = face.i[0] * 3, b = face.i[1] * 3, c = face.i[2] * 3;
+          if ((v[b + 2] - v[a + 2]) * (v[c] - v[a]) - (v[b] - v[a]) * (v[c + 2] - v[a + 2]) <= 0) continue;
+          let minX = Infinity, minZ = Infinity, maxX = -Infinity, maxZ = -Infinity;
+          for (const vertex of face.i) {
+            minX = Math.min(minX, v[vertex * 3]); maxX = Math.max(maxX, v[vertex * 3]);
+            minZ = Math.min(minZ, v[vertex * 3 + 2]); maxZ = Math.max(maxZ, v[vertex * 3 + 2]);
+          }
+          tops.push(minX, minZ, maxX, maxZ, v[a + 1]);
+          bounds[0] = Math.min(bounds[0], minX); bounds[1] = Math.min(bounds[1], minZ);
+          bounds[2] = Math.max(bounds[2], maxX); bounds[3] = Math.max(bounds[3], maxZ);
+        }
+        surface = { tops: new Float64Array(tops), bounds: new Float64Array(bounds) };
+        surfaces.set(node.geometry, surface);
+      }
       addChild(root, node);
       placed.push(node);
-      clouds.push({ node, speed: 0.4 + rand() * 0.4, beside });
+      clouds.push({ node, speed: 0.4 + rand() * 0.4, beside, tops: surface.tops, bounds: surface.bounds, dx: 0, dz: 0, wrapped: false });
+    }
+  };
+  const updateClouds = (dt) => {
+    for (let i = 0; i < clouds.length; i++) {
+      const cloud = clouds[i], p = cloud.node.position;
+      cloud.dx = cloud.beside ? 0 : cloud.speed * dt;
+      cloud.dz = cloud.beside ? cloud.speed * dt : 0;
+      p.x += cloud.dx; p.z += cloud.dz;
+      cloud.wrapped = cloud.beside ? p.z > CLOUD_WRAP : p.x > CLOUD_WRAP;
+      if (cloud.wrapped) {
+        if (cloud.beside) p.z -= CLOUD_WRAP * 2;
+        else p.x -= CLOUD_WRAP * 2;
+      }
     }
   };
   // A low stone dais and its flush, one block-wide perimeter grow continuously with the pile.
@@ -14836,28 +15669,34 @@ void main() {
     reactProp(o);
     if (stash === o) dropJetpack(o);
   };
-  // Nearest prop within reach, if any
-  const useNear = (x, z, reach) => {
-    let best = null, bestD = reach;
-    if (matrixControl) {
-      const d = Math.hypot(matrixControl.x - x, matrixControl.z - z);
-      if (d < bestD) {
-        bestD = d;
-        best = matrixControl;
-      }
+  const nearbyAction = (x, y, z, reach) => {
+    if (matrixControl && matrixControlNear(x, y, z, reach)) return matrixControl;
+    for (let i = 0; i < openMouths.length; i++) {
+      const entry = openMouths[i], m = entry.m;
+      if (entry.slot.scene === "race" && actionWithinReach(x, y, z, m.inside.x, m.floorY + 1.1, m.inside.z, reach)) return entry;
     }
-    for (let i = 0; i < props.length; i++) {
-      const o = props[i];
-      if (!o.active) continue;
-      const d = Math.hypot(o.x - x, o.z - z);
-      if (d < bestD) {
-        bestD = d;
-        best = o;
-      }
+    for (let i = 0; i < launchers.length; i++) {
+      const launcher = launchers[i];
+      if (actionWithinReach(x, y, z, launcher.x, launcher.y + 1.1, launcher.z, Math.min(reach, LAUNCH_REACH))) return launcher;
     }
-    if (!best) return false;
-    if (best === matrixControl) toggleMatrixControl();
-    else useProp(best);
+    return null;
+  };
+  const useNearbyAction = (action) => {
+    if (action === matrixControl) toggleMatrixControl();
+    else if (action.slot) enterCave(action.slot);
+    else enterLaunch();
+  };
+  const freeAction = () => {
+    const action = nearbyAction(camera.position.x, camera.position.y, camera.position.z, MATRIX_BUTTON_REACH);
+    if (!action) return false;
+    useNearbyAction(action);
+    return true;
+  };
+  // Only functional controls take priority over a jump or jetpack thrust.
+  const useNear = (x, z, reach, feetY) => {
+    const action = nearbyAction(x, feetY + 1.1, z, reach);
+    if (!action) return false;
+    useNearbyAction(action);
     return true;
   };
   // Dolly onto a view, then change scene
@@ -15010,7 +15849,7 @@ void main() {
     return true;
   };
   const toggleMatrixControl = () => setMatrixUnlocked(!matrixCave.unlocked);
-  const matrixControlNear = (x, z, reach = MATRIX_BUTTON_REACH) => !!matrixControl && Math.hypot(matrixControl.x - x, matrixControl.z - z) < reach;
+  const matrixControlNear = (x, y, z, reach = MATRIX_BUTTON_REACH) => !!matrixControl && actionWithinReach(x, y, z, matrixControl.x, matrixCave.mouth.floorY + matrixControl.button.position.y, matrixControl.z, reach);
   const updateMatrixControl = (dt, player) => {
     if (!matrixControl) return;
     const gateStep = MATRIX_GATE_SPEED * dt;
@@ -15034,16 +15873,27 @@ void main() {
     const buttonY = matrixControl.pressed ? 1.04 : 1.12;
     matrixControl.button.position.y = matrixControl.button.position.y < buttonY ? Math.min(buttonY, matrixControl.button.position.y + dt * 0.5) : Math.max(buttonY, matrixControl.button.position.y - dt * 0.5);
     const subject = player ? player.root.position : camera.position;
-    const near = matrixControlNear(subject.x, subject.z, player ? MATRIX_BUTTON_USE_REACH : MATRIX_BUTTON_REACH);
-    if (near === matrixControl.near && player === matrixControl.promptPlayer && matrixControl.pressed === matrixControl.promptPressed) return;
-    const hadPlayerPrompt = matrixControl.near && matrixControl.promptPlayer;
-    matrixControl.near = near;
+    const action = nearbyAction(subject.x, subject.y + (player ? 1.1 - player.baseY : 0), subject.z, player ? MATRIX_BUTTON_USE_REACH : MATRIX_BUTTON_REACH);
+    const equipped = !!(player && player.jet);
+    const recovering = !!(player && player.jetRecovering);
+    if (action === matrixControl.promptAction && player === matrixControl.promptPlayer && equipped === matrixControl.promptJet && recovering === matrixControl.promptRecovering && matrixControl.pressed === matrixControl.promptPressed) return;
+    const hadPlayerPrompt = matrixControl.promptAction && matrixControl.promptPlayer;
+    matrixControl.near = action === matrixControl;
+    matrixControl.promptAction = action;
     matrixControl.promptPlayer = player;
+    matrixControl.promptJet = equipped;
+    matrixControl.promptRecovering = recovering;
     matrixControl.promptPressed = matrixControl.pressed;
-    if (near) {
-      const action = matrixControl.pressed ? "press it out" : "press it in";
-      hud.hint(COARSE ? `Tap the glyph control to ${action}` : `Press Space or tap the control to ${action}`);
-      if (player) hud.setAct(matrixControl.pressed ? "Press out" : "Press in");
+    if (action) {
+      if (action === matrixControl) {
+        const label = matrixControl.pressed ? "press it out" : "press it in";
+        hud.hint(COARSE ? `Tap the glyph control to ${label}` : `Press Space or tap the control to ${label}`);
+        if (player) hud.setAct(matrixControl.pressed ? "PRESS OUT" : "PRESS IN");
+      } else {
+        const label = action.slot ? "START RALLY" : "FLY PLANE";
+        hud.hint(COARSE ? `Tap ${label} to play` : `Press Space to ${action.slot ? "start Ooga Rally" : "fly Ooga Drop"}`);
+        if (player) hud.setAct(label);
+      }
     } else if (hadPlayerPrompt || player) pilot.showAct();
   };
   const syncMatrixInside = (player) => {
@@ -15105,7 +15955,10 @@ void main() {
     // The clearance samples can miss a voxel corner between probes. Match the
     // full collision footprint so a roof contact lowers the eye before the
     // volume sweep, instead of wedging it against an unseen ceiling step.
-    CAMERA_SPACE.ceiling = Math.min(ceiling, island.ceilingAt(x, CAMERA_SPACE.floor - CAMERA_RADIUS, z, CAMERA_RADIUS), entranceCeilingAt(x, z, CAMERA_SPACE.floor - CAMERA_RADIUS, CAMERA_RADIUS)) - CAMERA_RADIUS;
+    // An open shaft has no floor. Look above the current eye there instead of
+    // mistaking rock at the island's underside for an overhead ceiling.
+    const base = (Number.isFinite(CAMERA_SPACE.floor) ? CAMERA_SPACE.floor : y) - CAMERA_RADIUS;
+    CAMERA_SPACE.ceiling = Math.min(ceiling, island.ceilingAt(x, base, z, CAMERA_RADIUS), entranceCeilingAt(x, z, base, CAMERA_RADIUS)) - CAMERA_RADIUS;
     return CAMERA_SPACE.floor <= CAMERA_SPACE.ceiling;
   };
   const CAMERA_CAVE_DEBUG = {
@@ -15159,6 +16012,15 @@ void main() {
         else if (playerCaveIndex && crossing.direction < 0 && (playerCaveIndex === opening.caveIndex || CAMERA_OPENINGS[playerCaveIndex - 1].headquarters && opening.headquarters)) playerCaveIndex = 0;
       }
       if (playerCaveIndex && (!caveColumnAt(p.x, p.z, CAMERA_OPENINGS[playerCaveIndex - 1], PLAYER_POSITION.y) || PLAYER_POSITION.y < CAMERA_COLUMN.floor - 1e-6 || PLAYER_POSITION.y >= CAMERA_COLUMN.ceiling)) playerCaveIndex = 0;
+    }
+    // The exterior windows are physical entrances too. Movement has already
+    // checked the body against the rock; bind its actual underground layer
+    // without requiring a crossing of either main ramp's doorway.
+    if (!playerCaveIndex && island.cavityAt(p.x, p.z, CAMERA_COLUMN, island.headquarters.caveIndex, PLAYER_POSITION.y) && PLAYER_POSITION.y >= CAMERA_COLUMN.floor - 1e-6 && PLAYER_POSITION.y + player.bodyHeight <= CAMERA_COLUMN.ceiling && physicalClearAt(p.x, PLAYER_POSITION.y + 1e-5, p.z, PLAYER_RADIUS, player.bodyHeight - 1e-5)) {
+      for (let i = 0; i < CAMERA_OPENINGS.length; i++) if (CAMERA_OPENINGS[i].headquarters) {
+        playerCaveIndex = CAMERA_OPENINGS[i].caveIndex;
+        break;
+      }
     }
     setVec(PLAYER_PREVIOUS, PLAYER_POSITION.x, PLAYER_POSITION.y, PLAYER_POSITION.z);
   };
@@ -15250,6 +16112,7 @@ void main() {
     setVec(PLAYER_PREVIOUS, p.x, p.y, p.z);
     setVec(PLAYER_POSITION, p.x, p.y, p.z);
     pilot.navigate(destination);
+    if (player && player.jet && !jetpackAllowed(player)) { crew.removeJetpack(player); pilot.showAct(); }
     syncMatrixInside(player);
     hud.tooltip.hide();
   };
@@ -15264,12 +16127,20 @@ void main() {
   let exteriorEntranceIndex = 0, exteriorCeiling = Infinity;
   const exteriorCameraFloorAt = (x, y, z, clearance, smoothStep, closeMix, undergroundAir = false) => {
     const physicalFloor = island.surfaceAt(x, z);
-    let floor = (smoothStep && closeMix <= 0.5 ? visualSupportAt(x, z, physicalFloor) : physicalFloor) + clearance;
+    let floor = (smoothStep && closeMix <= 0.5 ? island.smoothSupportAt(x, z, physicalFloor, STEP_MAX) : physicalFloor) + clearance;
     exteriorEntranceIndex = 0;
     exteriorCeiling = Infinity;
+    const player = pilot.player;
+    // A jumping face can already extend beyond the ledge while its feet are
+    // still over land. Its clearance is measured from the abyss there; keep
+    // the body-anchored eye and let the swept rock collision constrain it.
+    if (player && closeMix > 0.5 && (player.hop > 1e-5 || Math.abs(player.hopV) > 1e-5)) return -Infinity;
+    if (player && (abyssAt(player.root.position.x, player.root.position.z, player.root.position.y - player.baseY) || !playerCaveIndex && player.root.position.y - player.baseY < island.surfaceAt(player.root.position.x, player.root.position.z) - STEP_MAX)) return -Infinity;
+    if (!player && pilot.freeFalling && abyssAt(x, z, y - CLOSE_VIEW.eyeHeight)) return -Infinity;
+    if (!player && closeMix > 0.5 && cloudAt(x, z, y - CLOSE_VIEW.eyeHeight)) return -Infinity;
     if (undergroundAir && y < physicalFloor && cameraClearAt(x, y, z)) {
       exteriorCeiling = island.ceilingAt(x, y - CAMERA_RADIUS, z, CAMERA_RADIUS) - CAMERA_RADIUS;
-      return island.onLand(x, z) ? island.supportAt(x, z, y - CAMERA_RADIUS, 0) + CAMERA_RADIUS : -Infinity;
+      return island.onLand(x, z) ? island.supportAt(x, z, y - CAMERA_RADIUS, 0, ABYSS_FLOOR) + CAMERA_RADIUS : -Infinity;
     }
     for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
       const entry = CAMERA_OPENINGS[i], dx = x - entry.mouth.x, dz = z - entry.mouth.z;
@@ -15288,9 +16159,13 @@ void main() {
     return floor;
   };
   const cameraClearAt = (x, y, z) => physicalClearAt(x, y - CAMERA_RADIUS, z, CAMERA_RADIUS, CAMERA_RADIUS * 2);
+  // The carved throat can extend beyond room-ownership columns. It remains
+  // inside HQ while real rock encloses its clear air above and below. Match
+  // the whole eye footprint at the sloping edge of an exterior window floor.
+  const headquartersWindowAirAt = (x, y, z) => y < -CAMERA_RADIUS && cameraClearAt(x, y, z) && island.ceilingAt(x, y - CAMERA_RADIUS, z, CAMERA_RADIUS) < Infinity && island.supportAt(x, z, y - CAMERA_RADIUS, 0, ABYSS_FLOOR, CAMERA_RADIUS) > ABYSS_FLOOR;
   // Exact frame contacts can occur between the ordinary terrain substeps.
-  const entranceSegmentClear = (x, y, z, toX, toY, toZ) => {
-    const dx = toX - x, dy = toY - y, dz = toZ - z, span2 = dx * dx + dz * dz, radius = CAMERA_RADIUS;
+  const entranceSegmentClear = (x, y, z, toX, toY, toZ, radius = CAMERA_RADIUS) => {
+    const dx = toX - x, dy = toY - y, dz = toZ - z, span2 = dx * dx + dz * dz;
     for (let i = 0; i < headquarters.entrances.length; i++) {
       const entry = headquarters.entrances[i], node = entry.node;
       if (Math.min(y, toY) - radius >= entry.maxY || Math.max(y, toY) + radius <= entry.minY) continue;
@@ -15347,11 +16222,13 @@ void main() {
       }
     }
   };
-  const followCameraMotion = (p, player, dt, directView, smoothStep, closeMix, requestedStep) => {
+  const followCameraMotion = (p, player, dt, directView, smoothStep, closeMix, requestedStep, falling = false) => {
     const body = player.root.position, y = body.y - player.baseY + player.headOffset * CLOSE_VIEW.eyeRatio;
     const previous = (cameraTrailNext + CAMERA_TRAIL_CAPACITY - 1) % CAMERA_TRAIL_CAPACITY * 3;
     const moved = cameraTrailCount ? Math.hypot(body.x - CAMERA_TRAIL[previous], y - CAMERA_TRAIL[previous + 1], body.z - CAMERA_TRAIL[previous + 2]) : Infinity;
-    const reset = player !== cameraTrailPlayer || moved > 1;
+    // A fast fall can travel farther than one unit in a frame. Only reset for
+    // travel beyond the body's actual speed, so low-rate falls still sweep.
+    const reset = player !== cameraTrailPlayer || moved > Math.max(1, (Math.abs(player.hopV) + pilotMod.WALK.speed) * dt + 0.5);
     if (reset) { cameraTrailPlayer = player; cameraTrailCount = cameraTrailNext = 0; }
     if (reset || moved >= 0.125) {
       const at = cameraTrailNext * 3;
@@ -15368,7 +16245,10 @@ void main() {
     const travel = Math.max(CAMERA_RECOVERY_SPEED * dt, closeMix > 0 ? requestedStep : 0);
     const amount = directView ? 1 : Math.min(1, travel / Math.max(distance, 1e-7));
     p.x = lerp(CAMERA_PREVIOUS.x, p.x, amount);
-    p.y = lerp(CAMERA_PREVIOUS.y, p.y, amount);
+    // Falling follows the body's speed while a newly exposed boom eases its
+    // remaining correction. A cliff contact must not release a height snap.
+    const verticalTravel = Math.max(CAMERA_RECOVERY_SPEED, Math.abs(player.hopV)) * dt;
+    p.y = falling && !directView ? Math.max(CAMERA_PREVIOUS.y - verticalTravel, Math.min(CAMERA_PREVIOUS.y + verticalTravel, p.y)) : lerp(CAMERA_PREVIOUS.y, p.y, amount);
     p.z = lerp(CAMERA_PREVIOUS.z, p.z, amount);
     if (smoothStep && !directView) p.y = Math.max(CAMERA_PREVIOUS.y - CAMERA_VERTICAL_RATE * dt, Math.min(CAMERA_PREVIOUS.y + CAMERA_VERTICAL_RATE * dt, p.y));
     const wantedX = p.x, wantedY = p.y, wantedZ = p.z;
@@ -15380,12 +16260,15 @@ void main() {
     // The last clear boom can bend around a doorway as its Ooga turns. Follow
     // the newest visible point on that real route rather than cutting through
     // the wall or repeatedly pushing the eye into the same corner.
+    let reached = cameraTrailCount;
     for (let i = 0; i < cameraTrailCount; i++) {
       const at = (cameraTrailNext + CAMERA_TRAIL_CAPACITY - 1 - i) % CAMERA_TRAIL_CAPACITY * 3;
       setVec(CAMERA_RECOVERY, CAMERA_TRAIL[at], CAMERA_TRAIL[at + 1], CAMERA_TRAIL[at + 2]);
       sweepCameraVolume(CAMERA_PREVIOUS, CAMERA_RECOVERY, false);
       if (Math.hypot(CAMERA_RECOVERY.x - CAMERA_TRAIL[at], CAMERA_RECOVERY.y - CAMERA_TRAIL[at + 1], CAMERA_RECOVERY.z - CAMERA_TRAIL[at + 2]) > 1e-4) continue;
+      reached = i;
       const span = Math.hypot(CAMERA_RECOVERY.x - CAMERA_PREVIOUS.x, CAMERA_RECOVERY.y - CAMERA_PREVIOUS.y, CAMERA_RECOVERY.z - CAMERA_PREVIOUS.z);
+      if (span < 1e-5) break;
       const k = Math.min(1, CAMERA_RECOVERY_SPEED * dt / Math.max(span, 1e-7));
       p.x = lerp(CAMERA_PREVIOUS.x, CAMERA_RECOVERY.x, k);
       p.y = lerp(CAMERA_PREVIOUS.y, CAMERA_RECOVERY.y, k);
@@ -15393,11 +16276,13 @@ void main() {
       if (smoothStep) p.y = Math.max(CAMERA_PREVIOUS.y - CAMERA_VERTICAL_RATE * dt, Math.min(CAMERA_PREVIOUS.y + CAMERA_VERTICAL_RATE * dt, p.y));
       sweepCameraVolume(CAMERA_PREVIOUS, p, true);
       if (Math.hypot(p.x - CAMERA_PREVIOUS.x, p.y - CAMERA_PREVIOUS.y, p.z - CAMERA_PREVIOUS.z) > 1e-5) return;
+      break;
     }
     // A boom can enter a side passage the Ooga never walked through. Slide a
-    // short, fully swept step toward its trail to back around that corner.
-    for (let i = 0; i < cameraTrailCount; i++) {
-      const at = (cameraTrailNext + CAMERA_TRAIL_CAPACITY - cameraTrailCount + i) % CAMERA_TRAIL_CAPACITY * 3;
+    // short, fully swept step toward the next point on its trail. Revisiting
+    // older points after reaching a corner would make the eye walk backward.
+    for (let i = reached - 1; i >= 0; i--) {
+      const at = (cameraTrailNext + CAMERA_TRAIL_CAPACITY - 1 - i) % CAMERA_TRAIL_CAPACITY * 3;
       const dx = CAMERA_TRAIL[at] - CAMERA_PREVIOUS.x, dy = CAMERA_TRAIL[at + 1] - CAMERA_PREVIOUS.y, dz = CAMERA_TRAIL[at + 2] - CAMERA_PREVIOUS.z;
       const span = Math.hypot(dx, dy, dz), k = Math.min(1, CAMERA_RECOVERY_SPEED * dt / Math.max(span, 1e-7));
       setVec(CAMERA_RECOVERY, CAMERA_PREVIOUS.x + dx * k, CAMERA_PREVIOUS.y + dy * k, CAMERA_PREVIOUS.z + dz * k);
@@ -15411,6 +16296,8 @@ void main() {
   const clampCamera = (p, closeMix = 0, closeClearance = CLEARANCE, smoothStep = false, dt = 0, resetSmooth = false, directView = false, freeMove = false) => {
     const requestedX = p.x, requestedY = p.y, requestedZ = p.z;
     const player = pilot && pilot.player;
+    const exteriorFlight = player && (abyssAt(player.root.position.x, player.root.position.z, player.root.position.y - player.baseY) || !playerCaveIndex && player.root.position.y - player.baseY < island.surfaceAt(player.root.position.x, player.root.position.z) - STEP_MAX);
+    if (exteriorFlight) smoothStep = false;
     if (cameraManualContact && player === cameraTrailPlayer && cameraPreviousValid && !directView && closeMix === 0) {
       const body = player.root.position;
       if (Math.hypot(body.x - CAMERA_MANUAL_BODY.x, body.y - CAMERA_MANUAL_BODY.y, body.z - CAMERA_MANUAL_BODY.z) < 1e-7 && Math.hypot(pilot.orbit.yaw - CAMERA_MANUAL_VIEW.x, pilot.orbit.pitch - CAMERA_MANUAL_VIEW.y, pilot.orbit.dist - CAMERA_MANUAL_VIEW.z) < 1e-7) {
@@ -15428,7 +16315,7 @@ void main() {
       if (rampOpening) setCameraCave(rampOpening.caveIndex);
     }
     const previousCaveIndex = cameraCaveIndex;
-    const undergroundAir = freeMove && (CAMERA_PREVIOUS.y < -CAMERA_RADIUS || previousCaveIndex && CAMERA_OPENINGS[previousCaveIndex - 1].headquarters);
+    const undergroundAir = (freeMove || player && player.root.position.y - player.baseY < island.surfaceAt(player.root.position.x, player.root.position.z) - STEP_MAX) && (CAMERA_PREVIOUS.y < -CAMERA_RADIUS || previousCaveIndex && CAMERA_OPENINGS[previousCaveIndex - 1].headquarters);
     const clearance = lerp(CLEARANCE, Math.max(smoothStep ? CAMERA_STEP_FLOOR : CAMERA_FLOOR, closeClearance), closeMix);
     // The first-person eye sits on the face, but it must not pass through the
     // sealed mirror before the Ooga makes a valid body crossing. Keep only
@@ -15454,14 +16341,14 @@ void main() {
     // The body and eye can cross at different times. Keep the HQ boom while
     // either is inside, then sweep its actual motion through the doorway.
     const headquartersFollow = !!(opening && opening.headquarters || !directView && followOpening && followOpening.headquarters);
-    const followBoom = player && (headquartersFollow || opening && (!followOpening || opening === followOpening));
+    const followBoom = player && (exteriorFlight || headquartersFollow || opening && (!followOpening || opening === followOpening));
     if (followBoom) {
       opening = followOpening;
       const body = player.root.position;
       setVec(CAMERA_FROM, body.x, body.y - player.baseY + player.headOffset * CLOSE_VIEW.eyeRatio, body.z);
       if (opening && cameraSpaceAt(body.x, body.z, opening, CAMERA_FROM.y)) CAMERA_FROM.y = Math.max(CAMERA_SPACE.floor, Math.min(CAMERA_SPACE.ceiling, CAMERA_FROM.y));
-      if (headquartersFollow) {
-        // Entering or leaving a descent must not lengthen the selected boom.
+      if (headquartersFollow || exteriorFlight) {
+        // Entering a descent or leaving its window must not lengthen the boom.
         const dx = p.x - CAMERA_FROM.x, dy = p.y - CAMERA_FROM.y, dz = p.z - CAMERA_FROM.z;
         const distance = Math.hypot(dx, dy, dz), reach = pilot.orbit.dist;
         if (distance > reach) setVec(p, CAMERA_FROM.x + dx * reach / distance, CAMERA_FROM.y + dy * reach / distance, CAMERA_FROM.z + dz * reach / distance);
@@ -15507,7 +16394,7 @@ void main() {
         if (!cameraSpaceAt(sx, sz, opening, y)) {
           // Windows are real openings through the island shell. Their clear
           // air need not have room-ownership metadata to be traversable.
-          if (freeMove && opening.headquarters && cameraClearAt(sx, fromY + dy * k, sz)) {
+          if ((freeMove || player) && opening.headquarters && cameraClearAt(sx, fromY + dy * k, sz)) {
             x = sx; y = fromY + dy * k; z = sz;
             accepted = true;
             continue;
@@ -15536,7 +16423,7 @@ void main() {
         p.x = x; p.y = y; p.z = z;
         const along = (x - opening.mouth.x) * opening.sr + (z - opening.mouth.z) * opening.cr;
         if (accepted) {
-          if (freeMove && opening.headquarters && (!island.cavityAt(x, z, CAMERA_COLUMN, island.headquarters.caveIndex, y) || y < CAMERA_COLUMN.floor + CAMERA_RADIUS || y > CAMERA_COLUMN.ceiling - CAMERA_RADIUS)) setCameraCave(0);
+          if ((freeMove || player) && opening.headquarters && (!island.cavityAt(x, z, CAMERA_COLUMN, island.headquarters.caveIndex, y) || y < CAMERA_COLUMN.floor + CAMERA_RADIUS || y > CAMERA_COLUMN.ceiling - CAMERA_RADIUS) && !headquartersWindowAirAt(x, y, z)) setCameraCave(0);
           else if (along < opening.planeZ - 1e-7) setCameraCave(opening.caveIndex);
         }
       }
@@ -15545,7 +16432,7 @@ void main() {
     if (freeMove && closeMix > 0.5) {
       // Resolve eye-level support at the accepted horizontal position. A
       // requested point inside a wall must not lift the eye to that wall's top.
-      const floor = supportAt(p.x, p.z, CAMERA_PREVIOUS.y - CLOSE_VIEW.eyeHeight);
+      const floor = playerSupportAt(p.x, p.z, CAMERA_PREVIOUS.y - CLOSE_VIEW.eyeHeight);
       const eye = floor + CLOSE_VIEW.eyeHeight;
       if (opening && cameraSpaceAt(p.x, p.z, opening, p.y)) p.y = Math.max(CAMERA_SPACE.floor, Math.min(CAMERA_SPACE.ceiling, pilot.freeFalling ? Math.max(p.y, eye) : eye));
     }
@@ -15617,7 +16504,7 @@ void main() {
     if (player) {
       // Keep the exterior eye smooth through a doorway. Once it enters HQ,
       // the full swept follow rate keeps up with the continuous descents.
-      cameraManualContact = followCameraMotion(p, player, dt, directView, smoothStep && closeMix <= 0.5 && (!headquartersFollow || !previousCaveIndex), closeMix, requestedStep) === true;
+      cameraManualContact = followCameraMotion(p, player, dt, directView, smoothStep && closeMix <= 0.5 && (!headquartersFollow || !previousCaveIndex), closeMix, requestedStep, exteriorFlight) === true;
       // Admission belongs to the resolved eye path. Boom clipping can leave
       // the eye inside even when the originally requested view was outside.
       let index = previousCaveIndex;
@@ -15627,6 +16514,7 @@ void main() {
         if (!index && crossing.direction > 0) index = entry.caveIndex;
         else if (index && crossing.direction < 0 && (index === entry.caveIndex || CAMERA_OPENINGS[index - 1].headquarters && entry.headquarters)) index = 0;
       }
+      if (index && CAMERA_OPENINGS[index - 1].headquarters && (!island.cavityAt(p.x, p.z, CAMERA_COLUMN, island.headquarters.caveIndex, p.y) || p.y < CAMERA_COLUMN.floor + CAMERA_RADIUS || p.y > CAMERA_COLUMN.ceiling - CAMERA_RADIUS) && !headquartersWindowAirAt(p.x, p.y, p.z)) index = 0;
       setCameraCave(index);
       if (directView && !index) cameraManualContact = true;
       if (cameraManualContact) {
@@ -15639,7 +16527,7 @@ void main() {
       cameraTrailCount = cameraTrailNext = 0;
     }
     const headquartersEye = player && followOpening && followOpening.headquarters && (p.y < -CAMERA_RADIUS || (p.x - followOpening.mouth.x) * followOpening.sr + (p.z - followOpening.mouth.z) * followOpening.cr < followOpening.planeZ - 1e-7);
-    if ((freeMove && undergroundAir && p.y < -CAMERA_RADIUS || headquartersEye) && !cameraCaveIndex && island.cavityAt(p.x, p.z, CAMERA_COLUMN, island.headquarters.caveIndex, p.y) && p.y >= CAMERA_COLUMN.floor + CAMERA_RADIUS && p.y < CAMERA_COLUMN.ceiling && cameraClearAt(p.x, p.y, p.z)) {
+    if ((undergroundAir && p.y < -CAMERA_RADIUS || headquartersEye) && !cameraCaveIndex && island.cavityAt(p.x, p.z, CAMERA_COLUMN, island.headquarters.caveIndex, p.y) && p.y >= CAMERA_COLUMN.floor + CAMERA_RADIUS && p.y < CAMERA_COLUMN.ceiling && cameraClearAt(p.x, p.y, p.z)) {
       // A swept eye can enter an open throat or window after its Ooga. The
       // center identifies its layer; the full cylinder checks the actual rock
       // at open column edges. The Mirror Cave still requires its own crossing.
@@ -15718,13 +16606,19 @@ void main() {
     DAYLIGHT_DEBUG.sunsetHour = RENDER_OPTS.sunsetHour;
     critters.update(dt, elapsed, RENDER_OPTS.day, RENDER_OPTS.stars, fire.k, 1);
     pileEdgeNow = pile.pileEdge();
+    updateClouds(dt);
     pilot.readInput(dt);
     crew.update(dt, elapsed);
     pile.update(dt);
     const player = pilot.player;
-    const continuingPlayer = !!player && caveEntryPlayer === player;
-    const previousPlayerX = PLAYER_PREVIOUS.x, previousPlayerZ = PLAYER_PREVIOUS.z;
+    if (player && player.root.position.y - player.baseY < ABYSS_RESPAWN_Y && abyssAt(player.root.position.x, player.root.position.z, player.root.position.y - player.baseY)) navigate("pile");
+    else if (!player && pilot.freeFalling && camera.position.y - CLOSE_VIEW.eyeHeight < ABYSS_RESPAWN_Y && abyssAt(camera.position.x, camera.position.z, camera.position.y - CLOSE_VIEW.eyeHeight)) navigate("pile");
     updatePlayerCave(player);
+    if (player && player.jet && !jetpackAllowed(player)) {
+      crew.removeJetpack(player);
+      pilot.showAct();
+      hud.toast("Jetpacks stay above ground");
+    }
     // Pulse the prop if it still hides the jetpack
     if (stash) {
       const t = now - hintAt;
@@ -15735,10 +16629,9 @@ void main() {
     if (jetpack) {
       jetpack.node.rotation.y += dt * 0.9;
       jetpack.node.position.y = JETPACK_HOVER + Math.sin(elapsed * 2) * 0.09;
-      if (player && !player.jet && Math.hypot(player.root.position.x - jetpack.x, player.root.position.z - jetpack.z) < JETPACK_REACH) collectJetpack(player);
+      if (player && !player.jet && Math.hypot(player.root.position.x - jetpack.x, player.root.position.z - jetpack.z) < JETPACK_REACH && Math.abs(player.root.position.y - player.baseY) < 1) collectJetpack(player);
     }
-    // Walking into an open cave enters it, flying or standing on its roof does not.
-    // The drop plane is deliberately on that roof and uses its own proximity gate.
+    // The lab still opens on entry. Game launchers wait for a nearby action.
     if (player && !entering && player.hop < 1) {
       const p = player.root.position;
       const y = p.y - player.baseY;
@@ -15747,24 +16640,9 @@ void main() {
         const overhead = camera.position.y >= playerOpening.mouth.floorY + playerOpening.maxY;
         for (let i = 0; i < openMouths.length; i++) {
           const { slot, m } = openMouths[i];
+          if (slot.scene === "race") continue;
           if (!overhead && m === playerOpening.mouth && Math.abs(y - m.floorY) < 1 && Math.hypot(p.x - m.inside.x, p.z - m.inside.z) < TUNNEL_REACH) enterCave(slot);
         }
-      }
-      if (!playerCaveIndex && continuingPlayer) for (let i = 0; i < launchers.length; i++) {
-        const l = launchers[i];
-        const distance = Math.hypot(p.x - l.x, p.z - l.z);
-        const previousDistance = Math.hypot(previousPlayerX - l.x, previousPlayerZ - l.z);
-        if (Math.abs(y - l.y) < 1 && distance < LAUNCH_REACH && previousDistance >= LAUNCH_REACH) enterLaunch();
-      }
-    }
-    for (let i = 0; i < clouds.length; i++) {
-      const c = clouds[i], p = c.node.position;
-      if (c.beside) {
-        p.z += c.speed * dt;
-        if (p.z > CLOUD_WRAP) p.z -= CLOUD_WRAP * 2;
-      } else {
-        p.x += c.speed * dt;
-        if (p.x > CLOUD_WRAP) p.x -= CLOUD_WRAP * 2;
       }
     }
     for (let i = 0; i < sleepers.length; i++) {
@@ -15818,7 +16696,6 @@ void main() {
     location.reload();
   };
   const onKey = (e) => {
-    if (e.key === " " && !e.repeat && !pilot.player && matrixControlNear(camera.position.x, camera.position.z)) toggleMatrixControl();
     if (e.key === "Escape") pilot.release();
     if (e.key === "0") pilot.goPreset("pile");
     if (e.key === "b" || e.key === "B") addTestBananas(testBananas);
@@ -15827,10 +16704,15 @@ void main() {
       world.level = Math.max(world.level, pile.slots.length);
       pile.syncPile(true);
     }
-    // J straps a jetpack on whoever is being driven
-    if (e.key === "j" || e.key === "J") {
+    // J toggles equipment without resetting its fuel or airborne momentum.
+    if ((e.key === "j" || e.key === "J") && !e.repeat) {
       const cave = crew.player;
-      if (cave && !cave.jet) {
+      if (cave && cave.jet) {
+        crew.removeJetpack(cave);
+        pilot.showAct();
+        hud.toast("Jetpack off");
+      } else if (cave && !jetpackAllowed(cave)) hud.toast("Jetpacks stay above ground");
+      else if (cave) {
         if (stash) {
           stash.node.highlight = 0;
           stash = null;
@@ -15893,7 +16775,7 @@ void main() {
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     presets = { pile: PILE_VIEW, gate: GATE_VIEW };
-    pilot = pilotMod.create({ renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, fly: FLY, clampTarget, clampCamera, coarse: COARSE, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: supportAt, visualGroundAt: visualSupportAt, zone: () => playerCaveIndex } });
+    pilot = pilotMod.create({ renderer, canvas: ctx.canvas, camera, hud, presets, landing: "pile", pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow: FOLLOW, fly: FLY, clampTarget, clampCamera, coarse: COARSE, onFreeAction: freeAction, close: { ...CLOSE_VIEW, maxStep: STEP_MAX, groundAt: playerSupportAt, visualGroundAt: visualSupportAt, cloudAt, zone: () => playerCaveIndex } });
     place(island.geometry, 0, 0, 0, 0);
     pathNode = createNode({ geometry: island.path.geometry, instanceData: island.path.instanceData, instanceCount: 0, instanceVersion: 0, depthBias: 0.05 });
     addChild(root, pathNode);
@@ -15942,7 +16824,7 @@ void main() {
     hideJetpack();
     critters = crittersMod.create({ root, renderer, flowers: scenery.filter((o) => o.prop === "flower" && o.active), fire: firePos, secondaryFire: { x: 0, y: island.headquarters.floor, z: 0 }, meadowRadius: MEADOW, heightAt: island.surfaceAt });
     mark("props");
-    const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, overlayVisible: matrixOverlayVisible, tickerAt: TICKER_AT, buildSpots: buildSpotsList, walkIn: WALK_IN, clampDrag, viewYaw: PILE_VIEW.yaw, bedrolls, pileScale: PILE_SCALE, pileY: ALTAR_HEIGHT + 0.02, matrixLivingPile: true, onLayout: layoutPile, onShown: () => { meterTimer = 0; }, crateRadius: () => Math.max(4.4, altar.platformRadius + 0.8), groundAt: supportAt, ceilingAt, wanderSpot, walkable, flyable, useNear, phase: () => phase };
+    const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, overlayVisible: matrixOverlayVisible, tickerAt: TICKER_AT, buildSpots: buildSpotsList, walkIn: WALK_IN, clampDrag, viewYaw: PILE_VIEW.yaw, bedrolls, pileScale: PILE_SCALE, pileY: ALTAR_HEIGHT + 0.02, matrixLivingPile: true, onLayout: layoutPile, onShown: () => { meterTimer = 0; }, crateRadius: () => Math.max(4.4, altar.platformRadius + 0.8), groundAt: playerSupportAt, prepareCloudSupport, cloudAt, ceilingAt, wanderSpot, walkable, flyable, glideJetCeiling, useNear, abyssAt, abyssRespawnY: ABYSS_RESPAWN_Y, jetpackAllowed, phase: () => phase };
     fx = shared.fx = fxMod.create(shared);
     pile = shared.pile = pileMod.create(shared);
     mark("pile");
@@ -16004,7 +16886,8 @@ void main() {
     });
     meterTimer = 0;
     crew.refreshStates(true);
-    const initialCharacter = ctx.from === null && preloadedCharacter ? contributors.roster.find((entry) => entry.name.toLowerCase() === preloadedCharacter) : null;
+    let initialCharacter = ctx.from === null && preloadedCharacter ? contributors.roster.find((entry) => entry.name.toLowerCase() === preloadedCharacter) : null;
+    if (ctx.from === null && preloadedJetpack && !params.has("character") && preloadedView !== "underground") initialCharacter = contributors.roster.find((entry) => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.roster[0];
     if (initialCharacter) {
       const cave = crew.cavemen.get(initialCharacter.name);
       if (crew.stateOf(cave) !== "working") {
@@ -16016,6 +16899,10 @@ void main() {
     const initialFirstPerson = ctx.from === null && preloadedFirstPerson;
     if (initialFirstPerson) pilot.enterClose();
     if (preloadedView || initialCharacter || initialFirstPerson) navigate(preloadedView || "pile");
+    if (initialCharacter && preloadedJetpack && preloadedView !== "underground") {
+      if (stash) { stash.node.highlight = 0; stash = null; }
+      equipJetpack(pilot.player);
+    }
     // Once a minute, refresh states and trim the pool
     stateTimer = window.setInterval(() => {
       crew.refreshStates();
@@ -16250,6 +17137,7 @@ void main() {
     for (const node of targets) input.remove(node);
     for (const node of placed) removeChild(root, node);
     targets.length = placed.length = claimed.length = scenery.length = sceneryClaims.length = matrixInteriors.length = matrixGates.length = sealedCaves.length = clouds.length = lamps.length = entranceLights.length = fireSeats.length = sleepers.length = labels.length = spots.length = openMouths.length = launchers.length = props.length = 0;
+    cloudHit = null;
     RENDER_OPTS.lightCount = 0;
     MATRIX_WORLD.active = MATRIX_WORLD.direction = MATRIX_WORLD.radius = MATRIX_WORLD.permanentCave = 0;
     cameraCaveIndex = 0;
@@ -16353,29 +17241,12 @@ void main() {
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, lab, hud, hooks, input, pilot, fx, pile, crew, crates, pulseNodes;
   let stateTimer = 0, hintTimer = 0, meterTimer = 0;
   const propTargets = [];
-  const usables = [];
   const addProp = (node, owner, opts) => {
     input.add(node, owner, opts);
     propTargets.push(node);
-    usables.push({ node, owner });
   };
   // A driven step stays inside the walls
   const walkable = (fromX, fromZ, toX, toZ) => Math.abs(toX) < WALL && Math.abs(toZ) < WALL && Math.hypot(toX, toZ) > pile.pileEdge() + 0.4;
-  // Nearest piece of equipment within reach
-  const useNear = (x, z, reach) => {
-    let best = null, bestD = reach;
-    for (let i = 0; i < usables.length; i++) {
-      const w = usables[i].node.world;
-      const d = Math.hypot(w[12] - x, w[14] - z);
-      if (d < bestD) {
-        bestD = d;
-        best = usables[i];
-      }
-    }
-    if (!best) return false;
-    onTap(best);
-    return true;
-  };
   const clampTarget = (t) => {
     t.x = clamp(t.x, -WALL, WALL);
     t.z = clamp(t.z, -WALL, WALL);
@@ -16634,7 +17505,7 @@ void main() {
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     pilot = pilotMod.create({ renderer, canvas: ctx.canvas, camera, hud, presets: PRESETS, landing: "pile", pitch: PITCH, dist: DIST, follow: FOLLOW, fly: FLY, clampTarget, clampCamera, coarse: COARSE });
-    const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: TICKER_AT, buildSpots: BUILD_SPOTS.slice(), walkIn: WALK_IN, clampDrag, viewYaw: PRESETS.pile.yaw, bedrolls: lab.bedrolls, pileScale: 0.45, onShown: (shown) => { lab.equipment.abacus.setValue(shown); meterTimer = 0; }, walkable, useNear };
+    const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: TICKER_AT, buildSpots: BUILD_SPOTS.slice(), walkIn: WALK_IN, clampDrag, viewYaw: PRESETS.pile.yaw, bedrolls: lab.bedrolls, pileScale: 0.45, onShown: (shown) => { lab.equipment.abacus.setValue(shown); meterTimer = 0; }, walkable };
     fx = shared.fx = fxMod.create(shared);
     pile = shared.pile = pileMod.create(shared);
     mark("pile");
@@ -16739,7 +17610,7 @@ void main() {
     fx.dispose();
     pilot.dispose();
     for (const node of propTargets) input.remove(node);
-    propTargets.length = usables.length = 0;
+    propTargets.length = 0;
     removeChild(root, lab.room);
     const targets = input.targetCount;
     input.dispose();

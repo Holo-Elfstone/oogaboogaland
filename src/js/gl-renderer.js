@@ -543,7 +543,6 @@ void main() {
 precision highp float;
 in vec2 vUv;
 uniform mat4 uInvViewProj;
-uniform vec3 uEye;
 uniform vec3 uHorizon;
 uniform vec3 uZenith;
 uniform vec3 uSun;
@@ -552,6 +551,7 @@ uniform vec3 uMoonDir;
 uniform mat3 uStarMatrix;
 uniform float uStars;
 uniform float uTime;
+uniform float uHazeDrop;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oBright;
 float hash(vec2 p) {
@@ -561,9 +561,10 @@ float hash(vec2 p) {
 }
 void main() {
   vec4 far = uInvViewProj * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
-  vec3 d = normalize(far.xyz / far.w - uEye);
-  vec3 col = mix(uHorizon, uZenith, smoothstep(-0.02, 0.5, d.y));
-  col = mix(col, uHorizon * 0.55, smoothstep(0.0, 0.5, -d.y));
+  vec3 d = normalize(far.xyz / far.w);
+  float hazeY = d.y + uHazeDrop;
+  vec3 col = mix(uHorizon, uZenith, smoothstep(-0.02, 0.5, hazeY));
+  col = mix(col, uHorizon * 0.55, smoothstep(0.0, 0.5, -hazeY));
   float sd = max(dot(d, uSunDir), 0.0);
   float sunDisc = pow(sd, 600.0) * (1.0 - uStars);
   vec3 sun = uSun * (sunDisc + pow(sd, 6.0) * 0.18 * (1.0 - uStars));
@@ -587,7 +588,7 @@ void main() {
       float r = 0.12 + h2 * 0.18;
       float pt = 1.0 - smoothstep(0.0, r, length(fract(f) - 0.5));
       float twinkle = 0.75 + 0.25 * sin(uTime * (2.0 + h3 * 3.0) + h3 * 6.28);
-      float s = pt * (0.5 + 0.5 * h2) * twinkle * uStars * smoothstep(-0.05, 0.15, d.y);
+      float s = pt * (0.5 + 0.5 * h2) * twinkle * uStars * smoothstep(-0.05, 0.15, hazeY);
       stars = mix(vec3(1.0), vec3(0.75, 0.85, 1.0), h3) * s;
     }
   }
@@ -723,7 +724,7 @@ void main() {
         mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY"]),
         shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth"]),
-        sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uEye", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uStarMatrix", "uStars", "uTime"]),
+        sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop"]),
         blur: compile(QUAD_VS, BLUR_FS, ["uTex", "uDir"]),
         composite: compile(QUAD_VS, COMPOSITE_FS, ["uScene", "uBloom", "uBloomStrength"])
       };
@@ -1293,7 +1294,7 @@ void main() {
       mirrorProj[9] = (mirrorProj[9] + cropY) / halfY;
       // Sky rays unproject through the cropped projection, before the oblique clip bends z
       mat4.multiply(mirrorViewProj, mirrorProj, mirrorView);
-      mat4.invert(mirrorInvViewProj, mirrorViewProj);
+      skyInverse(mirrorInvViewProj, mirrorProj, mirrorView);
       mat4.transformPoint(MIRROR_POINT, mirrorView, center[0], center[1], center[2]);
       let cx = mirrorView[0] * normal[0] + mirrorView[4] * normal[1] + mirrorView[8] * normal[2];
       let cy = mirrorView[1] * normal[0] + mirrorView[5] * normal[1] + mirrorView[9] * normal[2];
@@ -1392,11 +1393,19 @@ void main() {
         gl.drawArraysInstanced(gl.TRIANGLES, 0, part.count, n);
       }
     };
-    const drawSky = (inv, eye) => {
+    // Celestial rays depend only on orientation. Removing translation before
+    // inversion avoids altitude-dependent cancellation in the star shader.
+    const skyInverse = (out, projection, cameraView) => {
+      out.set(cameraView);
+      out[12] = out[13] = out[14] = 0;
+      mat4.multiply(out, projection, out);
+      mat4.invert(out, out);
+    };
+    const drawSky = (inv, eyeHeight) => {
       const p = res.programs.sky;
       gl.useProgram(p.prog);
       gl.uniformMatrix4fv(p.u.uInvViewProj, false, inv);
-      gl.uniform3f(p.u.uEye, eye.x, eye.y, eye.z);
+      gl.uniform1f(p.u.uHazeDrop, BL.daylight.hazeDropAt(eyeHeight));
       gl.depthFunc(gl.LEQUAL);
       gl.depthMask(false);
       gl.bindVertexArray(res.quadVao);
@@ -1445,7 +1454,7 @@ void main() {
       gl.uniform1f(pg.mesh.u.uMatrixCaveNear, matrix && matrix.caveBounds ? matrix.caveNear : FOG_OFF);
       gl.uniform1f(pg.mesh.u.uMatrixPermanentCave, matrix ? matrix.permanentCave || 0 : 0);
       drawParts("mesh", "mesh", true);
-      if (skyOn) drawSky(mirrorInvViewProj, mirrorEye);
+      if (skyOn) drawSky(mirrorInvViewProj, mirrorEye.y);
       gl.useProgram(pg.mesh.prog);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -1552,7 +1561,7 @@ void main() {
       const slen = Math.hypot(sunDirection.x, sunDirection.y, sunDirection.z) || 1;
       const sx = sunDirection.x / slen, sy = sunDirection.y / slen, sz = sunDirection.z / slen;
       if (skyOn) {
-        mat4.invert(invViewProj, viewProj);
+        skyInverse(invViewProj, proj, view);
         gl.useProgram(pg.sky.prog);
         gl.uniform3fv(pg.sky.u.uHorizon, horizon);
         gl.uniform3fv(pg.sky.u.uZenith, zenith);
@@ -1658,7 +1667,7 @@ void main() {
       gl.uniform1f(pg.mesh.u.uMatrixPermanentCave, matrix ? matrix.permanentCave || 0 : 0);
       drawParts("mesh", "mesh", true, true);
       drawMirrorSurface();
-      if (skyOn) drawSky(invViewProj, camera.position);
+      if (skyOn) drawSky(invViewProj, camera.position.y);
       // Ordinary surfaces first, then the effect-only black liner and native
       // voxel glyphs. Alpha follows the same wave as the backing shader; depth
       // still rejects hidden faces and keeps the glyphs on their real surfaces.

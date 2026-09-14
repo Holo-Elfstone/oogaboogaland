@@ -18,7 +18,8 @@ export const headquartersBasementProbe = () => {
     }
   };
   for (let x = -basement.room.radius + 0.75; x <= basement.room.radius - 0.75; x += 0.5) for (let z = -basement.room.radius + 0.75; z <= basement.room.radius - 0.75; z += 0.5) {
-    if (Math.hypot(x, z) >= basement.room.radius - 0.75) continue;
+    const radius = Math.hypot(x, z);
+    if (radius >= basement.room.radius - 0.75 || radius <= basement.hole.mouthRadius + island.unit) continue;
     inspect(basement.room.x + x, basement.room.z + z, basement.floor, true, true);
     commonSamples++;
   }

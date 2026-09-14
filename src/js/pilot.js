@@ -14,7 +14,7 @@
   // The camera swings behind while walking forward
   const FOLLOW_TURN = 1.8, DRAG_HOLD = 1.5;
   // Act button labels, action or jetpack throttle
-  const ACT_DO = "Ooga!", ACT_FLY = "Blast off!";
+  const ACT_DO = "JUMP!", ACT_FLY = "Blast off!";
   const create = (ctx) => {
     const { renderer, canvas, camera, hud, presets, pitch: [PITCH_MIN, PITCH_MAX], dist: [DIST_MIN, DIST_MAX], follow, fly, clampTarget, clampCamera, coarse, close = null } = ctx;
     let crew = null, fx = null;
@@ -26,9 +26,11 @@
     let closeWanted = false, closeMix = 0, closeExitScale = 1, closeCave = null, hiddenHead = null, hiddenHeadCameraHidden = false, viewPitch = orbit.pitch;
     let groundView = 0, groundTarget = 0, groundX = 0, groundZ = 0, groundZone = 0, groundValid = false, groundLift = 0, groundEasing = false;
     let freeFeetY = 0, freeFloorY = 0, freeFallV = 0, freeLeapX = 0, freeLeapZ = 0, freeFallValid = false, freeFalling = false;
+    let freeCloud = null;
     const resetFreeFall = () => {
       freeFallV = freeLeapX = freeLeapZ = 0;
       freeFallValid = freeFalling = false;
+      freeCloud = null;
     };
     const bind = (systems) => {
       crew = systems.crew;
@@ -102,7 +104,8 @@
     // Relabel the act button for what the press does
     const showAct = () => {
       const cave = player();
-      if (cave) hud.setAct(cave.jet ? ACT_FLY : ACT_DO);
+      if (cave) hud.setAct(cave.jet && !cave.jetRecovering ? ACT_FLY : ACT_DO);
+      hud.setJetpack(!!(cave && cave.jet), cave ? cave.jetFuel : 0);
     };
     const possess = (cave) => {
       if (!crew.control(cave)) return;
@@ -117,8 +120,9 @@
       showAct();
       hud.tooltip.hide();
       fx.say(cave, "Ooga? Me?", 1.6);
-      if (cave.jet) hud.hint(coarse ? "Left stick flies · pinch in for first person · hold Blast off to climb" : "WASD flies · scroll in for first person · hold Space to climb · Escape to let go");
-      else hud.hint(coarse ? "Left stick walks · pinch in for first person · Ooga! acts" : "WASD or both mouse buttons to walk · scroll in for first person · Space to act");
+      if (cave.jet && cave.jetRecovering) hud.hint("Jetpack recharges on the ground · restart above 20% fuel");
+      else if (cave.jet) hud.hint(coarse ? "Left stick flies · pinch in for first person · hold Blast off to climb" : "WASD flies · scroll in for first person · hold Space to climb · Escape to let go");
+      else hud.hint(coarse ? "Left stick walks · pinch in for first person · JUMP! jumps or uses a nearby control" : "WASD or both mouse buttons to walk · scroll in for first person · Space to jump or use a nearby control");
     };
     const release = (quiet = false) => {
       const cave = player();
@@ -129,17 +133,16 @@
       closeCave = null;
       crew.release();
       hud.el.act.hidden = true;
+      hud.setJetpack(false, 0);
       if (!quiet) hud.toast(`${cave.traits.name} wanders off`);
     };
-    // A jetpack wearer's Space stays unclaimed as throttle
+    // Nearby actions consume a press; a ready jetpack leaves Space as throttle.
     const action = () => {
       const cave = player();
-      if (!cave || cave.jet) return false;
-      crew.playerAction();
-      return true;
+      return cave ? crew.playerAction() : !!ctx.onFreeAction && ctx.onFreeAction();
     };
     // Held it climbs, clicked it acts; both mouse buttons on the canvas walk
-    const controls = createControls({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, chord: canvas, onAction: action });
+    const controls = createControls({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, chord: canvas, onAction: action, pressActions: true });
     let dragHold = 0, trailingViewInput = false, trailingZoomInput = false;
     const hooks = {
       onOrbit: (dx, dy) => {
@@ -285,6 +288,7 @@
     // The camera moves only on input, no drift
     const update = (dt) => {
       const cave = player();
+      hud.setJetpack(!!(cave && cave.jet), cave ? cave.jetFuel : 0);
       if (cave) {
         const p = cave.root.position;
         followTarget.x = p.x;
@@ -325,7 +329,6 @@
         if (groundReset) groundView = ground;
         else groundView = close.visualGroundAt ? close.visualGroundAt(p.x, p.z, ground) : damp(groundView, ground, CLOSE_GROUND_RATE, dt);
         groundLift = clamp(groundView - ground, -cave.baseY * 0.5, cave.baseY * 0.75);
-        groundView = ground + groundLift;
         groundTarget = ground;
         groundX = p.x;
         groundZ = p.z;
@@ -333,6 +336,8 @@
         groundValid = true;
         groundEasing = !airborne;
         crew.elevate(groundLift);
+        groundLift = cave.viewLift;
+        groundView = ground + groundLift;
         followTarget.y = p.y - cave.baseY + follow.y + cave.viewLift;
       } else {
         if (cave && close) crew.elevate(0);
@@ -375,16 +380,21 @@
             freeFallValid = true;
           }
           previousFloor = freeFloorY;
+          if (freeCloud && !freeFalling && !freeCloud.wrapped && freeCloud.node.visible && freeCloud.node.parent) {
+            eyeX += freeCloud.dx; eyeZ += freeCloud.dz;
+            freeTarget.x += freeCloud.dx; freeTarget.z += freeCloud.dz;
+          }
+          const previousFeet = freeFeetY;
           if (freeFalling) {
             freeFallV -= WALK.gravity * dt;
             freeFeetY += freeFallV * dt;
           }
-          const ground = close.groundAt(eyeX, eyeZ, freeFeetY);
+          const ground = close.groundAt(eyeX, eyeZ, freeFeetY, Math.max(previousFeet, freeFeetY));
           if (!freeFalling && freeFloorY - ground > WALK.step) {
             freeFalling = freeLedge = true;
-            freeFallV = WALK.ledgeRise;
-            freeLeapX = -Math.sin(orbit.yaw) * WALK.ledgeSpeed;
-            freeLeapZ = -Math.cos(orbit.yaw) * WALK.ledgeSpeed;
+            freeFallV = freeCloud ? 0 : WALK.ledgeRise;
+            freeLeapX = freeCloud ? 0 : -Math.sin(orbit.yaw) * WALK.ledgeSpeed;
+            freeLeapZ = freeCloud ? 0 : -Math.cos(orbit.yaw) * WALK.ledgeSpeed;
           }
           if (!freeFalling) freeFeetY = ground;
           else freeFeetY = Math.max(ground, freeFeetY);
@@ -408,6 +418,7 @@
         } else if (freeFalling && freeFallV > 0 && feet < freeFeetY - 1e-6) freeFallV = 0;
         freeFeetY = feet;
         freeFloorY = ground;
+        freeCloud = !freeFalling && close.cloudAt ? close.cloudAt(camera.position.x, camera.position.z, feet) : null;
         freeTarget.y = camera.position.y;
       }
       if (collided && !cave && orbit.target === freeTarget) {

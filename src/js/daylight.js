@@ -197,5 +197,11 @@
     };
     return state;
   };
-  BL.daylight = { PHASES, ISLAND_LATITUDE_DEG, AXIAL_TILT_DEG, phaseAt, sample, createClock };
+  // A low haze bank surrounds the island. Climbing above its eight-unit rim
+  // lowers its apparent horizon without changing any celestial direction.
+  const hazeDropAt = (eyeHeight) => {
+    const rise = Math.max(0, eyeHeight - 8);
+    return rise / Math.hypot(110, rise);
+  };
+  BL.daylight = { PHASES, ISLAND_LATITUDE_DEG, AXIAL_TILT_DEG, phaseAt, sample, createClock, hazeDropAt };
 })();

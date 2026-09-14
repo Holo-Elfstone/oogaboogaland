@@ -53,29 +53,12 @@
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, lab, hud, hooks, input, pilot, fx, pile, crew, crates, pulseNodes;
   let stateTimer = 0, hintTimer = 0, meterTimer = 0;
   const propTargets = [];
-  const usables = [];
   const addProp = (node, owner, opts) => {
     input.add(node, owner, opts);
     propTargets.push(node);
-    usables.push({ node, owner });
   };
   // A driven step stays inside the walls
   const walkable = (fromX, fromZ, toX, toZ) => Math.abs(toX) < WALL && Math.abs(toZ) < WALL && Math.hypot(toX, toZ) > pile.pileEdge() + 0.4;
-  // Nearest piece of equipment within reach
-  const useNear = (x, z, reach) => {
-    let best = null, bestD = reach;
-    for (let i = 0; i < usables.length; i++) {
-      const w = usables[i].node.world;
-      const d = Math.hypot(w[12] - x, w[14] - z);
-      if (d < bestD) {
-        bestD = d;
-        best = usables[i];
-      }
-    }
-    if (!best) return false;
-    onTap(best);
-    return true;
-  };
   const clampTarget = (t) => {
     t.x = clamp(t.x, -WALL, WALL);
     t.z = clamp(t.z, -WALL, WALL);
@@ -334,7 +317,7 @@
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
     pilot = pilotMod.create({ renderer, canvas: ctx.canvas, camera, hud, presets: PRESETS, landing: "pile", pitch: PITCH, dist: DIST, follow: FOLLOW, fly: FLY, clampTarget, clampCamera, coarse: COARSE });
-    const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: TICKER_AT, buildSpots: BUILD_SPOTS.slice(), walkIn: WALK_IN, clampDrag, viewYaw: PRESETS.pile.yaw, bedrolls: lab.bedrolls, pileScale: 0.45, onShown: (shown) => { lab.equipment.abacus.setValue(shown); meterTimer = 0; }, walkable, useNear };
+    const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: TICKER_AT, buildSpots: BUILD_SPOTS.slice(), walkIn: WALK_IN, clampDrag, viewYaw: PRESETS.pile.yaw, bedrolls: lab.bedrolls, pileScale: 0.45, onShown: (shown) => { lab.equipment.abacus.setValue(shown); meterTimer = 0; }, walkable };
     fx = shared.fx = fxMod.create(shared);
     pile = shared.pile = pileMod.create(shared);
     mark("pile");
@@ -439,7 +422,7 @@
     fx.dispose();
     pilot.dispose();
     for (const node of propTargets) input.remove(node);
-    propTargets.length = usables.length = 0;
+    propTargets.length = 0;
     removeChild(root, lab.room);
     const targets = input.targetCount;
     input.dispose();
