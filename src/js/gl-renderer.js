@@ -1552,7 +1552,7 @@ void main() {
       const f = res.fbo, sh = res.shadow, pg = res.programs;
       const skyOn = !!(horizon && zenith);
       const nLights = lights ? Math.min(lightCount, settings.lights) : 0;
-      mat4.lookAt(view, camera.position, camera.target, UP);
+      mat4.lookAt(view, camera.position, camera.target, camera.up || UP);
       mat4.perspective(proj, camera.fov, width / height, camera.near, camera.far);
       mat4.multiply(viewProj, proj, view);
       extractFrustum(viewProj);

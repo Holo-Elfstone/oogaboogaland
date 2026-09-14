@@ -1734,11 +1734,17 @@ select {
 
   .presets[data-scene="hub"] {
     grid-column: 1 / -1;
-    justify-content: center;
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
   }
 
   .presets[data-scene="hub"] button {
-    flex: 1 1 calc((100% - 18px) / 4);
+    flex: 1 0 52px;
     padding: 0 6px;
   }
 

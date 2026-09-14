@@ -65,7 +65,7 @@
     const CLIP_OUT = new Float32Array(30);
     const MIRROR_CLIP_IN = new Float32Array(30);
     const MIRROR_CLIP_OUT = new Float32Array(30);
-    const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, tip: 0, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false };
+    const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, tip: 0, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false, matrixFullCave: 0 };
     const mirrorDebug = {
       active: false, faux: true, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: true, reflectionOnlyCount: 0, planeDistance: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), skipReason: "canvas-faux"
@@ -208,6 +208,11 @@
       const mirrorFace = !!(node.mirror || node.mirrorPortal);
       const portalFace = !!node.mirrorPortal || !!node.mirrorWalkThrough && mirrorDebug.portal;
       const localMatrixGlyph = !!node.geometry.matrixGlyph;
+      // Every voxel face in a glyph shares this instance plane and basis.
+      const glyphLength = localMatrixGlyph ? Math.hypot(w[8], w[9], w[10]) : 1;
+      const glyphNx = w[8] / glyphLength, glyphNy = w[9] / glyphLength, glyphNz = w[10] / glyphLength;
+      const glyphPlane = localMatrixGlyph ? glyphNx * w[12] + glyphNy * w[13] + glyphNz * w[14] : 0;
+      const glyphDepth = localMatrixGlyph ? view[2] * w[12] + view[6] * w[13] + view[10] * w[14] + view[14] : 0;
       const matrixMode = matrixModeOf(node) || node.tip;
       if (mirrorFace && portalFace) return;
       if (faces) {
@@ -238,9 +243,9 @@
           centerX /= count;
           centerY /= count;
           centerZ /= count;
-          const flow = Math.hypot(centerX - matrixOriginX, centerZ - matrixOriginZ);
           const matrixCloud = matrixMode > 3.5;
           const matrixLiving = matrixMode > 1.5 && matrixMode < 3.5 && (matrixMode < 2.5 || face.emissive > 0);
+          const flow = matrixLiving ? Math.hypot(centerX - matrixOriginX, centerZ - matrixOriginZ) : 0;
           const staticCave = face.matrixCave || node.geometry.matrixCave || 0;
           const dynamicCave = !staticCave && matrixActive && matrixRadius >= matrixCaveNear && matrixLiving && matrixCaveBounds && flow >= matrixCaveNear;
           const cave = staticCave || (dynamicCave ? matrixLivingCave(centerX, centerY, centerZ) : 0);
@@ -248,8 +253,9 @@
           const localGlyphSurface = !face.matrixWorldGlyphSurface && !!(node.geometry.matrixLocalGlyphSurface || face.matrixLocalGlyphSurface || staticCave);
           const revealBacking = !!node.geometry.matrixRevealBacking;
           const ownedGlyph = localMatrixGlyph && cave && matrixCaves;
-          let minimumFront = permanent || localMatrixGlyph && !ownedGlyph ? 1 : 0, maximumFront = minimumFront;
-          if (!permanent && matrixActive && (!localMatrixGlyph || ownedGlyph)) {
+          const reachedGlyph = localMatrixGlyph && node.matrixFullCave && node.matrixFullCave === cave;
+          let minimumFront = permanent || reachedGlyph || localMatrixGlyph && !ownedGlyph ? 1 : 0, maximumFront = minimumFront;
+          if (!permanent && !reachedGlyph && matrixActive && (!localMatrixGlyph || ownedGlyph)) {
             let radiusSquared = 0;
             for (let k = 0; k < count; k++) radiusSquared = Math.max(radiusSquared, (V[k][0] - centerX) ** 2 + (V[k][2] - centerZ) ** 2);
             const distance = matrixCloud ? Math.min(matrixTravel(centerX, centerZ, cave), 36) : matrixTravel(centerX, centerZ, cave), margin = Math.sqrt(radiusSquared) * (cave && matrixCaves ? Math.SQRT2 : 1);
@@ -286,11 +292,13 @@
           const clipped = clipNear(CLIP_IN, surfaceCount, mirrorFace ? 1e-7 : near, CLIP_OUT);
           if (clipped < 3) continue;
           const rec = acquire();
-          let zsum = 0;
+          let zsum = 0, minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
           for (let k = 0; k < clipped; k++) {
             const cz = CLIP_OUT[k * 3 + 2];
             rec.pts[k * 2] = width / 2 + CLIP_OUT[k * 3] * f / -cz;
             rec.pts[k * 2 + 1] = height / 2 - CLIP_OUT[k * 3 + 1] * f / -cz;
+            minX = Math.min(minX, rec.pts[k * 2]); maxX = Math.max(maxX, rec.pts[k * 2]);
+            minY = Math.min(minY, rec.pts[k * 2 + 1]); maxY = Math.max(maxY, rec.pts[k * 2 + 1]);
             zsum += cz;
           }
           rec.n = clipped;
@@ -305,29 +313,36 @@
           rec.matrixPartial = partial;
           rec.matrixBacking = revealBacking;
           if (localMatrixGlyph) {
-            const len = Math.hypot(w[8], w[9], w[10]);
-            rec.matrixNx = w[8] / len; rec.matrixNy = w[9] / len; rec.matrixNz = w[10] / len;
-            rec.matrixPlane = rec.matrixNx * w[12] + rec.matrixNy * w[13] + rec.matrixNz * w[14];
-            rec.matrixCenterDepth = view[2] * w[12] + view[6] * w[13] + view[10] * w[14] + view[14];
+            rec.matrixNx = glyphNx; rec.matrixNy = glyphNy; rec.matrixNz = glyphNz;
+            rec.matrixPlane = glyphPlane; rec.matrixCenterDepth = glyphDepth;
             rec.matrixFaceNx = nx; rec.matrixFaceNy = ny; rec.matrixFaceNz = nz;
             rec.matrixFacePlane = nx * (centerX - eye.x) + ny * (centerY - eye.y) + nz * (centerZ - eye.z);
           } else if (maximumFront && localGlyphSurface) matrixPlaneSlot(nx, ny, nz, nx * centerX + ny * centerY + nz * centerZ, true, rec.depth);
+          if (maximumFront && !localMatrixGlyph) {
+            if (matrixLiving) matrixLivingSurfaces++;
+            else matrixSurfaces++;
+          }
+          // Offscreen receivers still register their plane depth for visible
+          // glyphs, but need no shading or draw record. Preserve the face stroke
+          // and antialias margin, including polygons crossing the whole view.
+          if (maxX < -2 || minX > width + 2 || maxY < -2 || minY > height + 2) { poolUsed--; continue; }
           const emissive = (face.emissive || 0) * node.glow;
           rec.matrixLiving = matrixLiving;
-          const diffuse = Math.max(diffuseFloor, nx * lightDir[0] + ny * lightDir[1] + nz * lightDir[2]);
-          const hemi = Math.max(ambientFloor, lerp(groundLuma, skyLuma, ny * 0.5 + 0.5));
-          let k = Math.min(1, hemi + diffuse * 0.7 * directStrength);
+          let k, glyphDistance = 0;
           if (localMatrixGlyph) {
-            const facingLength = Math.hypot(w[8], w[9], w[10]);
-            const side = 1 - smooth((Math.abs(nx * w[8] + ny * w[9] + nz * w[10]) / facingLength - 0.45) / 0.45);
-            const vx = eye.x - centerX, vy = eye.y - centerY, vz = eye.z - centerZ, vlen = Math.hypot(vx, vy, vz);
+            const side = 1 - smooth((Math.abs(nx * w[8] + ny * w[9] + nz * w[10]) / glyphLength - 0.45) / 0.45);
+            const vx = eye.x - centerX, vy = eye.y - centerY, vz = eye.z - centerZ, vlen = glyphDistance = Math.hypot(vx, vy, vz);
             const sideShade = 0.7 + Math.max(0, nx * lightDir[0] + ny * lightDir[1] + nz * lightDir[2]) * 0.22 + Math.max(0, (nx * vx + ny * vy + nz * vz) / vlen) * 0.08;
             k = lerp(0.78, 1.15, Math.min(1, emissive)) * lerp(1, sideShade, side);
-          } else k = lerp(k, 1.1, Math.min(1, emissive));
+          } else {
+            const diffuse = Math.max(diffuseFloor, nx * lightDir[0] + ny * lightDir[1] + nz * lightDir[2]);
+            const hemi = Math.max(ambientFloor, lerp(groundLuma, skyLuma, ny * 0.5 + 0.5));
+            k = lerp(Math.min(1, hemi + diffuse * 0.7 * directStrength), 1.1, Math.min(1, emissive));
+          }
           k = lerp(k, 1.3, node.highlight * 0.4);
           const c = face.color;
           const tip = node.tip > 1.5 ? 0 : node.tip || 0;
-          const fog = localMatrixGlyph ? smooth((Math.hypot(centerX - eye.x, centerY - eye.y, centerZ - eye.z) - fogNear) / (fogFar - fogNear)) : Math.min(1, Math.max(0, (-rec.depth - fogNear) / (fogFar - fogNear)));
+          const fog = localMatrixGlyph ? smooth((glyphDistance - fogNear) / (fogFar - fogNear)) : Math.min(1, Math.max(0, (-rec.depth - fogNear) / (fogFar - fogNear)));
           let red = lerp(lerp(c[0] * k, 214, tip * 0.88), fogRgb[0], fog);
           let green = lerp(lerp(c[1] * k, 255, tip * 0.88), fogRgb[1], fog);
           let blue = lerp(lerp(c[2] * k, 227, tip * 0.88), fogRgb[2], fog);
@@ -341,19 +356,12 @@
             red = lerp(red, mr, matrixAmount);
             green = lerp(green, mg, matrixAmount);
             blue = lerp(blue, mb, matrixAmount);
-            if (matrixLiving) matrixLivingSurfaces++;
-            else matrixSurfaces++;
           }
           if (!localMatrixGlyph) rec.style = rec.mirror ? mirrorStyle : `rgb(${Math.min(255, Math.round(red))},${Math.min(255, Math.round(green))},${Math.min(255, Math.round(blue))})`;
           rec.matrix = 0;
           if (localMatrixGlyph || maximumFront && (partial || !matrixLiving && !localGlyphSurface)) {
-            let minX = width, minY = height, maxX = 0, maxY = 0;
-            for (let k = 0; k < clipped; k++) {
-              minX = Math.min(minX, rec.pts[k * 2]); maxX = Math.max(maxX, rec.pts[k * 2]);
-              minY = Math.min(minY, rec.pts[k * 2 + 1]); maxY = Math.max(maxY, rec.pts[k * 2 + 1]);
-            }
-            rec.matrixMinX = Math.max(0, Math.floor(minX)); rec.matrixMaxX = Math.min(width, Math.ceil(maxX));
-            rec.matrixMinY = Math.max(0, Math.floor(minY)); rec.matrixMaxY = Math.min(height, Math.ceil(maxY));
+            rec.matrixMinX = Math.max(0, Math.floor(Math.min(width, minX))); rec.matrixMaxX = Math.min(width, Math.ceil(Math.max(0, maxX)));
+            rec.matrixMinY = Math.max(0, Math.floor(Math.min(height, minY))); rec.matrixMaxY = Math.min(height, Math.ceil(Math.max(0, maxY)));
             if (rec.matrixMaxX > rec.matrixMinX && rec.matrixMaxY > rec.matrixMinY) {
               if (localMatrixGlyph) {
                 rec.matrixRed = Math.max(0, red - fogRgb[0] * fog);
@@ -388,6 +396,7 @@
             rec.pts[k * 2] = width / 2 + CLIP_OUT[k * 3] * f / -cz;
             rec.pts[k * 2 + 1] = height / 2 - CLIP_OUT[k * 3 + 1] * f / -cz;
           }
+          if (Math.max(rec.pts[0], rec.pts[2]) < -7 || Math.min(rec.pts[0], rec.pts[2]) > width + 7 || Math.max(rec.pts[1], rec.pts[3]) < -7 || Math.min(rec.pts[1], rec.pts[3]) > height + 7) { poolUsed--; continue; }
           rec.n = 2;
           rec.depth = (CLIP_OUT[2] + CLIP_OUT[5]) / 2 - (node.depthBias || 0);
           rec.line = true;
@@ -423,6 +432,7 @@
         const offset = instance * 20;
         const facing = data[offset + 19];
         if (facing && (data[offset + 8] * facing * (eye.x - data[offset + 12]) + data[offset + 9] * facing * (eye.y - data[offset + 13]) + data[offset + 10] * facing * (eye.z - data[offset + 14])) <= 0) continue;
+        BATCH_NODE.matrixFullCave = 0;
         if (glyphs) {
           const x = data[offset + 12], y = data[offset + 13], z = data[offset + 14];
           const cx = view[0] * x + view[4] * y + view[8] * z + view[12];
@@ -435,7 +445,15 @@
             data[offset + 4] ** 2 + data[offset + 5] ** 2 + data[offset + 6] ** 2,
             data[offset + 8] ** 2 + data[offset + 9] ** 2 + data[offset + 10] ** 2));
           if (depth + radius < near || Math.abs(cx) > depth * tanX + radius * sideX || Math.abs(cy) > depth * tanY + radius * sideY) { matrixCulled++; continue; }
-          if (matrixCaves && node.geometry.matrixCave && node.geometry.matrixCave !== matrixPermanentCave && (!matrixActive || matrixTravel(x, z, node.geometry.matrixCave) - radius * Math.SQRT2 >= matrixRadius)) { matrixCulled++; continue; }
+          const cave = node.geometry.matrixCave;
+          if (matrixCaves && cave && cave !== matrixPermanentCave) {
+            const travel = matrixTravel(x, z, cave);
+            if (!matrixActive || travel - radius * Math.SQRT2 >= matrixRadius) { matrixCulled++; continue; }
+            // A face's center is within one sphere radius and its own radius
+            // within two. Cave travel is sqrt(2)-Lipschitz; five radii safely
+            // bound every existing face-front test, including float rounding.
+            if (matrixActive === 1 && travel + radius * 5 <= matrixRadius - 1.5) BATCH_NODE.matrixFullCave = cave;
+          }
         }
         for (let i = 0; i < 16; i++) BATCH_NODE.world[i] = data[offset + i];
         BATCH_NODE.glow = data[offset + 16];
@@ -696,7 +714,7 @@
       lastF = height / 2 / Math.tan(camera.fov / 2);
       near = camera.near;
       eye = camera.position;
-      mat4.lookAt(view, camera.position, camera.target, UP);
+      mat4.lookAt(view, camera.position, camera.target, camera.up || UP);
       const llen = Math.hypot(light.x, light.y, light.z) || 1;
       lightDir[0] = light.x / llen;
       lightDir[1] = light.y / llen;
@@ -778,16 +796,6 @@
       ctx.lineJoin = "round";
       let glyphBlend = false;
       for (const rec of active) {
-        // Keep offscreen receivers in Matrix plane registration and sorting,
-        // but do not submit their paths to Canvas. Include the widest glow
-        // stroke and antialiasing; a polygon crossing the viewport still draws.
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (let k = 0; k < rec.n; k++) {
-          minX = Math.min(minX, rec.pts[k * 2]); maxX = Math.max(maxX, rec.pts[k * 2]);
-          minY = Math.min(minY, rec.pts[k * 2 + 1]); maxY = Math.max(maxY, rec.pts[k * 2 + 1]);
-        }
-        const padding = rec.line ? 7 : 2;
-        if (maxX < -padding || minX > width + padding || maxY < -padding || minY > height + padding) continue;
         // Glyphs paint sampled rectangles, never the polygon path. Keep their
         // additive state across consecutive records without changing draw order.
         if (rec.matrixGlyph && !rec.line) {

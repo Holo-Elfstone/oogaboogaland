@@ -1,9 +1,10 @@
-// A free camera must follow a descending roof without corrective climb keys.
-// The return deliberately presses upward, reproducing grazing ceiling contact.
+// A physical first-person eye walks both directions through the real ramps.
+// Independent contact probes retain coverage of their descending roof surfaces.
 export const rampCeilingProbe = ({ id = "c730", lateral = 0, dt = 1 / 60, fromNavigation = false } = {}) => {
   const B = window.__ooga, island = B.island, H = island.headquarters, scene = window.BL.scenes.hub, o = B.pilot.orbit;
   const opening = B.cameraCave.openings.find((entry) => entry.id === id), m = opening.mouth, ramp = H.ramps.find((entry) => entry.id === id);
-  const held = new Set(), failures = [], violations = [], stages = [];
+  const held = new Set(), failures = [], violations = [], stages = [], roofFailures = [];
+  let roofChecks = 0;
   let elapsed = B.matrixCave.world.sampleStream(0).time, samples = 0, phase = "setup", stall = 0, maxStall = 0, maxStep = 0, minimumY = Infinity, roofContacts = 0, descentClimbInputs = 0;
   let previous = null, previousInput = false;
   const keys = (next) => {
@@ -50,6 +51,18 @@ export const rampCeilingProbe = ({ id = "c730", lateral = 0, dt = 1 / 60, fromNa
     B.pilot.update(0.1);
   }
   rest(1, false);
+  B.pilot.enterClose();
+  rest(1, false);
+  const initial = snapshot();
+  for (const q of ramp.samples) {
+    if (q.y >= -0.1) continue;
+    const roof = island.ceilingAt(q.x, q.y + 0.1, q.z, 0.3);
+    if (!Number.isFinite(roof) || roof - q.y < 0.6) continue;
+    roofChecks++;
+    const clear = island.clearAt(q.x, roof - 0.6, q.z, 0.299, 0.598);
+    const blocked = !island.clearAt(q.x, roof - 0.596, q.z, 0.299, 0.598);
+    if ((!clear || !blocked) && roofFailures.length < 4) roofFailures.push({ q, roof, clear, blocked });
+  }
   const seek = (name, goal, climb = false) => {
     const limit = Math.ceil(3 / dt), tolerance = Math.max(0.28, dt * 8);
     for (let frame = 0; frame < limit; frame++) {
@@ -58,9 +71,6 @@ export const rampCeilingProbe = ({ id = "c730", lateral = 0, dt = 1 / 60, fromNa
       const forward = -dx * Math.sin(o.yaw) - dz * Math.cos(o.yaw), right = dx * Math.cos(o.yaw) - dz * Math.sin(o.yaw), input = [];
       if (Math.abs(right) > Math.max(tolerance * 0.5, Math.abs(forward) * Math.tan(Math.PI / 8))) input.push(right > 0 ? "d" : "a");
       if (Math.abs(forward) > Math.max(tolerance * 0.5, Math.abs(right) * Math.tan(Math.PI / 8))) input.push(forward > 0 ? "w" : "s");
-      // This is a deliberate ceiling-hugging ascent, never a correction based
-      // on waypoint height. Descent has horizontal inputs exclusively.
-      if (climb) input.push("z");
       keys(input); step();
     }
     keys([]);
@@ -91,8 +101,7 @@ export const rampCeilingProbe = ({ id = "c730", lateral = 0, dt = 1 / 60, fromNa
       completed = follow("center", [H.room]);
     }
     if (completed) {
-      // Turn using the same look/zoom hooks as real input, in the open room.
-      B.pilot.hooks.onZoom(6 / o.tDist);
+      // Turn in the same physical walking mode using the actual look hook.
       const frames = Math.ceil(1 / dt);
       for (let i = 0; i < frames; i++) { B.pilot.hooks.onOrbit(-Math.PI / frames / 0.004, 0.25 / frames / 0.0035); step(); }
       rest(0.6);
@@ -115,6 +124,6 @@ export const rampCeilingProbe = ({ id = "c730", lateral = 0, dt = 1 / 60, fromNa
       rest(0.4);
       stages.push({ phase, ...snapshot() });
     }
-    return { id, lateral, dt, fromNavigation, backend: B.renderer.kind, completed, failures, violations, samples, maxStep, maxStall, minimumY, roofContacts, descentClimbInputs, stages, reversal, final: snapshot(), scene: B.scene, selected: !!B.pilot.player };
+    return { id, lateral, dt, fromNavigation, initial, roofChecks, roofFailures, backend: B.renderer.kind, completed, failures, violations, samples, maxStep, maxStall, minimumY, roofContacts, descentClimbInputs, stages, reversal, final: snapshot(), scene: B.scene, selected: !!B.pilot.player };
   } finally { keys([]); }
 };

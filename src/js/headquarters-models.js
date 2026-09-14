@@ -14,6 +14,82 @@
   const STONE = ["#7d6f61", "#5e5449", "#877869"];
   const MOSS = ["#6f7d3e", "#7b8945", "#65733a"];
   const ROOM_RADIUS = 14;
+  const MATTRESS = { width: 1.45, depth: 2.45, height: 0.345, wallInset: 0.65, surface: 0.245, pillowTop: 0.345, pillowZ: -0.82 };
+  // Room indices occupy eleven HQ slots and eight basement slots. Reuse their
+  // static geometry across visits without retaining a departed room or scene.
+  const mattressCache = new Array(19);
+  const fabric = (pattern, width, depth, top, bottom, centerZ, kind) => {
+    const geo = { verts: [], faces: [], lines: [] }, size = pattern.width, colors = pattern.colors;
+    const cells = new Uint32Array(size * size), used = new Uint8Array(cells.length);
+    for (let i = 0; i < cells.length; i++) cells[i] = colors[i * 3] << 16 | colors[i * 3 + 1] << 8 | colors[i * 3 + 2];
+    const quad = (a, b, c, d, color) => {
+      const i = geo.verts.length / 3;
+      geo.verts.push(...a, ...b, ...c, ...d);
+      geo.faces.push({ i: [i, i + 1, i + 2, i + 3], color: [color >>> 16, color >>> 8 & 255, color & 255], emissive: 0, mattressFabric: kind });
+    };
+    const xAt = (x) => (x / size - 0.5) * width, zAt = (z) => (z / size - 0.5) * depth + centerZ;
+    // Merge equal-color rectangles, preserving every LifeHash pixel while
+    // keeping the two renderers' face count small.
+    for (let z = 0; z < size; z++) for (let x = 0; x < size; x++) {
+      const start = z * size + x, color = cells[start];
+      if (used[start]) continue;
+      let w = 1, h = 1;
+      while (x + w < size && !used[start + w] && cells[start + w] === color) w++;
+      rows: while (z + h < size) {
+        for (let dx = 0; dx < w; dx++) if (used[start + h * size + dx] || cells[start + h * size + dx] !== color) break rows;
+        h++;
+      }
+      for (let dz = 0; dz < h; dz++) used.fill(1, start + dz * size, start + dz * size + w);
+      const x0 = xAt(x), x1 = xAt(x + w), z0 = zAt(z), z1 = zAt(z + h);
+      quad([x0, top, z0], [x0, top, z1], [x1, top, z1], [x1, top, z0], color);
+    }
+    // The edge pixels continue down the case and sheet, so their sides carry
+    // the same fabric rather than exposing an unprinted block underneath.
+    for (let edge = 0; edge < 4; edge++) for (let i = 0; i < size;) {
+      const pixel = (n) => edge < 2 ? (edge ? size - 1 : 0) * size + n : n * size + (edge === 3 ? size - 1 : 0);
+      const color = cells[pixel(i)];
+      let end = i + 1;
+      while (end < size && cells[pixel(end)] === color) end++;
+      if (edge < 2) {
+        const x0 = xAt(i), x1 = xAt(end), z = zAt(edge ? size : 0);
+        if (edge) quad([x0, bottom, z], [x1, bottom, z], [x1, top, z], [x0, top, z], color);
+        else quad([x1, bottom, z], [x0, bottom, z], [x0, top, z], [x1, top, z], color);
+      } else {
+        const x = xAt(edge === 3 ? size : 0), z0 = zAt(i), z1 = zAt(end);
+        if (edge === 3) quad([x, bottom, z1], [x, bottom, z0], [x, top, z0], [x, top, z1], color);
+        else quad([x, bottom, z0], [x, bottom, z1], [x, top, z1], [x, top, z0], color);
+      }
+      i = end;
+    }
+    return geo;
+  };
+  const mattress = (room) => {
+    const roomKey = [room.x, room.floor, room.z].map((n) => Number(n.toFixed(6))).join(",");
+    const slot = room.index + (room.basement ? 11 : 0), cached = mattressCache[slot];
+    if (cached && cached.mattress.roomKey === roomKey) return cached;
+    const sheet = { seed: `room:${roomKey}:sheet` };
+    sheet.pattern = BL.lifehash.make(sheet.seed);
+    // The wide pillow carries the same LifeHash turned a quarter turn, so
+    // its pattern follows the bedding's long axis instead of stretching across it.
+    const pattern = sheet.pattern, colors = new Uint8Array(pattern.colors.length), size = pattern.width;
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      const from = ((size - 1 - x) * size + y) * 3, to = (y * size + x) * 3;
+      colors[to] = pattern.colors[from]; colors[to + 1] = pattern.colors[from + 1]; colors[to + 2] = pattern.colors[from + 2];
+    }
+    const pillow = { seed: sheet.seed, pattern: { width: size, height: size, colors } };
+    const base = box({ w: MATTRESS.width - 0.02, h: 0.035, d: MATTRESS.depth - 0.02, color: "#c6b997", offset: { y: 0.0175 } });
+    // The blanket is the top surface. A second buried top can sort in front
+    // of its smaller printed faces in the Canvas painter.
+    base.faces.splice(4, 1);
+    const geo = merge(
+      base,
+      fabric(sheet.pattern, MATTRESS.width, MATTRESS.depth, MATTRESS.surface, 0.035, 0, "sheet"),
+      fabric(pillow.pattern, 0.9, 0.5, MATTRESS.pillowTop, MATTRESS.surface, MATTRESS.pillowZ, "pillow")
+    );
+    geo.mattress = { roomKey, width: MATTRESS.width, depth: MATTRESS.depth, height: MATTRESS.height, sheet, pillow };
+    mattressCache[slot] = geo;
+    return geo;
+  };
   const room = cached(() => {
     const parts = [box({ w: 1.3, h: 0.04, d: 1.3, color: "#39352d", offset: { y: 0.025 } })];
     for (let i = 0; i < 10; i++) {
@@ -63,5 +139,5 @@
     }
     return geometry;
   });
-  BL.headquartersModels = { room, entranceRamp, roomEntrance, ROOM_RADIUS };
+  BL.headquartersModels = { room, entranceRamp, roomEntrance, mattress, MATTRESS, ROOM_RADIUS };
 })();

@@ -9,6 +9,11 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
   const ramp = H.ramps.find((entry) => entry.id === id), held = new Set(), checkpoints = [], violations = [], visitedRooms = [];
   let elapsed = B.matrixCave.world.sampleStream(0).time, samples = 0, maxSeparation = 0, maxSeparationAt = null, maxStep = 0, maxStepAt = null, previous = null;
   let meshSamples = 0, headTop = 0, peakFeet = -Infinity, plateauFrames = 0, previousFeet = 0;
+  let previousRampFeet = NaN;
+  let previousRestricted = false;
+  let rawChecks = 0, maximumRawError = 0;
+  const rampViews = { mainDown: 0, mainUp: 0, basementDown: 0, basementUp: 0, maxSeparation: 0, maxSeparationAt: null, rawChecks: 0, maximumRawError: 0, blocked: [] };
+  const accessRamps = H.ramps.concat(H.basement.ramps);
   const keys = (next) => {
     for (const key of held) if (!next.includes(key)) { window.dispatchEvent(new KeyboardEvent("keyup", { key })); held.delete(key); }
     for (const key of next) if (!held.has(key)) { window.dispatchEvent(new KeyboardEvent("keydown", { key })); held.add(key); }
@@ -16,30 +21,65 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
   const position = () => driven ? cave.root.position : B.camera.position;
   const snapshot = () => {
     const p = position(), eye = B.camera.position;
-    return { x: p.x, y: p.y - (driven ? cave.baseY : 0), z: p.z, eye: [eye.x, eye.y, eye.z], camera: B.cameraCave.index, player: B.cameraCave.playerIndex, lightCount: B.renderOpts.lightCount };
+    return { x: p.x, y: p.y - (driven ? cave.baseY : 0), z: p.z, eye: [eye.x, eye.y, eye.z], camera: B.cameraCave.index, player: B.cameraCave.playerIndex, lightCount: B.renderOpts.lightCount, view: B.pilot.mode };
   };
   const entrances = entranceProbe && entranceProbe();
   const solid = (x, y, z) => B.island.solidAt(x, y, z) || !!entrances && entrances.solid(x, y, z);
   const inspect = () => {
     const p = B.camera.position, actor = cave && cave.root.position;
+    const restricted = B.pilot.closeMix > 0 && !B.pilot.preserveExitAngle;
+    const physicalEye = restricted && !B.cameraCave.transitioning;
+    if (B.pilot.closeMix === 0) {
+      const pitch = B.pilot.viewPitch, cp = Math.cos(pitch);
+      rawChecks++;
+      maximumRawError = Math.max(maximumRawError, Math.hypot(p.x - o.tx - Math.sin(o.yaw) * cp * o.dist, p.y - o.ty - Math.sin(pitch) * o.dist, p.z - o.tz - Math.cos(o.yaw) * cp * o.dist));
+    }
+    if (physicalEye && !B.island.clearAt(p.x, p.y - 0.3, p.z, 0.3, 0.6) && violations.length < 4) violations.push({ kind: "full eye volume", sample: samples, x: p.x, y: p.y, z: p.z });
+    if (physicalEye && previousRestricted && previous && !B.island.voxelSegmentClearAt(previous.x, previous.y - 0.3, previous.z, p.x, p.y - 0.3, p.z, 0.3, 0.6) && violations.length < 4) violations.push({ kind: "full eye sweep", sample: samples, x: p.x, y: p.y, z: p.z });
     samples++;
     if (previous) {
       const distance = Math.hypot(p.x - previous.x, p.y - previous.y, p.z - previous.z), count = Math.max(1, Math.ceil(distance / 0.1));
       if (distance > maxStep) { maxStep = distance; maxStepAt = { sample: samples, before: previous, after: { x: p.x, y: p.y, z: p.z }, actor: actor ? [actor.x, actor.y - cave.baseY, actor.z] : null, camera: B.cameraCave.index, player: B.cameraCave.playerIndex }; }
       for (let i = 1; i <= count; i++) {
         const k = i / count, x = previous.x + (p.x - previous.x) * k, y = previous.y + (p.y - previous.y) * k, z = previous.z + (p.z - previous.z) * k;
-        if (solid(x, y, z) && violations.length < 4) violations.push({ kind: "eye sweep", sample: samples, x, y, z });
+        if (physicalEye && previousRestricted && solid(x, y, z) && violations.length < 4) violations.push({ kind: "eye sweep", sample: samples, x, y, z });
         const radius = driven ? 0.09 : 0.27;
-        if (entrances && !entrances.clearAt(x, y - radius, z, radius, radius * 2) && violations.length < 4) violations.push({ kind: "doorway eye volume sweep", sample: samples, x, y, z });
+        if (physicalEye && previousRestricted && entrances && !entrances.clearAt(x, y - radius, z, radius, radius * 2) && violations.length < 4) violations.push({ kind: "doorway eye volume sweep", sample: samples, x, y, z });
       }
     }
     for (const [x, y, z] of [[0, 0, 0], [0.09, 0, 0], [-0.09, 0, 0], [0, 0.09, 0], [0, -0.09, 0], [0, 0, 0.09], [0, 0, -0.09]]) {
-      if (solid(p.x + x, p.y + y, p.z + z) && violations.length < 4) violations.push({ kind: "eye clearance", sample: samples, x: p.x + x, y: p.y + y, z: p.z + z });
+      if (physicalEye && solid(p.x + x, p.y + y, p.z + z) && violations.length < 4) violations.push({ kind: "eye clearance", sample: samples, x: p.x + x, y: p.y + y, z: p.z + z });
     }
-    if (!driven && entrances && entrances.near(p.x, p.y - 0.27, p.z, 0.27, 0.54)) for (const [x, z] of [[0, 0], [0.27, 0], [-0.27, 0], [0, 0.27], [0, -0.27], [0.19, 0.19], [-0.19, 0.19], [0.19, -0.19], [-0.19, -0.19]]) for (const y of [-0.27, 0, 0.27]) {
+    if (!driven && physicalEye && entrances && entrances.near(p.x, p.y - 0.27, p.z, 0.27, 0.54)) for (const [x, z] of [[0, 0], [0.27, 0], [-0.27, 0], [0, 0.27], [0, -0.27], [0.19, 0.19], [-0.19, 0.19], [0.19, -0.19], [-0.19, -0.19]]) for (const y of [-0.27, 0, 0.27]) {
       if (entrances.solid(p.x + x, p.y + y, p.z + z) && violations.length < 4) violations.push({ kind: "free camera doorway clearance", sample: samples, x: p.x + x, y: p.y + y, z: p.z + z });
     }
     if (actor) {
+      const feet = actor.y - cave.baseY, rise = feet - previousRampFeet;
+      previousRampFeet = feet;
+      if (Math.abs(rise) > 1e-6) for (const route of accessRamps) {
+        let nearest = Infinity, floor = 0;
+        for (let i = 1; i < route.samples.length; i++) {
+          const a = route.samples[i - 1], b = route.samples[i];
+          if (Math.abs(b.y - a.y) < 1e-6) continue;
+          const dx = b.x - a.x, dz = b.z - a.z, k = Math.max(0, Math.min(1, ((actor.x - a.x) * dx + (actor.z - a.z) * dz) / (dx * dx + dz * dz)));
+          const distance = (actor.x - a.x - dx * k) ** 2 + (actor.z - a.z - dz * k) ** 2;
+          if (distance < nearest) { nearest = distance; floor = a.y + (b.y - a.y) * k; }
+        }
+        // The center of the real sloping corridor excludes adjacent rooms,
+        // windows and the flat landing shared with the common area.
+        if (nearest > (route.width * 0.2) ** 2 || Math.abs(feet - floor) > 0.35) continue;
+        const key = `${route.basement ? "basement" : "main"}${rise > 0 ? "Up" : "Down"}`;
+        rampViews[key]++;
+        if (B.pilot.closeMix === 0 && !B.pilot.preserveExitAngle) {
+          const pitch = B.pilot.viewPitch, cp = Math.cos(pitch);
+          rampViews.rawChecks++;
+          rampViews.maximumRawError = Math.max(rampViews.maximumRawError, Math.hypot(p.x - o.tx - Math.sin(o.yaw) * cp * o.dist, p.y - o.ty - Math.sin(pitch) * o.dist, p.z - o.tz - Math.cos(o.yaw) * cp * o.dist));
+        }
+        const gap = B.cameraCave.transitioning ? 0 : Math.hypot(p.x - actor.x, p.y - feet - 1, p.z - actor.z);
+        if (gap > rampViews.maxSeparation) { rampViews.maxSeparation = gap; rampViews.maxSeparationAt = { key, checkpoint: checkpoints.at(-1)?.name, actor: [actor.x, feet, actor.z], eye: [p.x, p.y, p.z] }; }
+        if (!B.cameraCave.transitioning && !B.island.voxelSegmentClearAt(actor.x, feet + cave.headOffset * 0.95, actor.z, p.x, p.y, p.z, 0, 0) && rampViews.blocked.length < 12) rampViews.blocked.push({ key, checkpoint: checkpoints.at(-1)?.name, actor: [actor.x, feet, actor.z], eye: [p.x, p.y, p.z] });
+        break;
+      }
       const separation = Math.hypot(p.x - actor.x, p.y - actor.y + cave.baseY - 1, p.z - actor.z);
       if (separation > maxSeparation) { maxSeparation = separation; maxSeparationAt = { sample: samples, checkpoint: checkpoints.at(-1)?.name, ...snapshot() }; }
       for (const height of [0.3, cave.headOffset * 0.75]) for (const [x, z] of [[0, 0], [0.12, 0], [-0.12, 0], [0, 0.12], [0, -0.12]]) {
@@ -76,7 +116,7 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
         previousFeet = feet;
       }
     }
-    previous = { x: p.x, y: p.y, z: p.z };
+    previous = { x: p.x, y: p.y, z: p.z }; previousRestricted = physicalEye;
   };
   const step = (check = true) => { scene.update(dt, elapsed += dt); if (check) inspect(); };
   const tickFor = (seconds, input) => { keys(input); for (let i = 0; i < Math.ceil(seconds / dt); i++) step(); keys([]); };
@@ -88,13 +128,26 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
     cave.hop = cave.hopV = 0; cave.root.rotation.y = m.ry + Math.PI;
     B.pilot.possess(cave);
   }
-  o.target = target; o.tx = target.x; o.ty = target.y; o.tz = target.z;
-  o.yaw = o.tYaw = m.ry; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;
-  B.pilot.update(0.1);
-  if (close) B.pilot.hooks.onZoom(0.1);
+  if (driven) {
+    // Keep the pilot's real moving follow target. Replacing it with a static
+    // object made the old forced boom conceal an invalid trailing fixture.
+    B.pilot.enterClose();
+    B.pilot.navigate({ position: { x: start.x, y: m.floorY, z: start.z }, target, yaw: m.ry, pitch: 0, dist: 3.5 });
+    for (let i = 0; i < Math.ceil(0.5 / dt); i++) step(false);
+    if (!close) {
+      document.getElementById("scene").dispatchEvent(new WheelEvent("wheel", { deltaY: 60, cancelable: true }));
+      for (let i = 0; i < Math.ceil(0.6 / dt); i++) step(false);
+    }
+  } else {
+    o.target = target; o.tx = target.x; o.ty = target.y; o.tz = target.z;
+    o.yaw = o.tYaw = m.ry; o.pitch = o.tPitch = 0; o.dist = o.tDist = 3.5;
+    B.pilot.update(0.1);
+  }
+  if (close && !driven) B.pilot.hooks.onZoom(0.1);
   if (fromNavigation) document.querySelector('nav[data-scene="hub"] [data-preset="underground"]').click();
   for (let i = 0; i < Math.ceil(1 / dt); i++) step(false);
   const initial = snapshot();
+  initial.eyeClear = B.island.clearAt(B.camera.position.x, B.camera.position.y - 0.3, B.camera.position.z, 0.3, 0.6);
   const seek = (name, destination, seconds = 8) => {
     const before = snapshot(), limit = Math.ceil(seconds / dt), tolerance = Math.max(0.28, dt * 8);
     let reached = false, frame = 0;
@@ -236,6 +289,6 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
       }
     }
     tickFor(0.5, []);
-    return { id, mode, dt, fromNavigation, backend: B.renderer.kind, initial, completed, visitedRooms, entrances: entrances && entrances.stats(), checkpoints: checkpoints.length, failed: checkpoints.filter((checkpoint) => !checkpoint.reached), stages: checkpoints.filter((checkpoint) => checkpoint.name === "outside" || checkpoint.name === "down:32" || checkpoint.name === "up:32"), collision, reversal, underground, ceilingContact, samples, violations, maxSeparation, maxSeparationAt, maxStep, maxStepAt, final: snapshot(), scene: B.scene };
+    return { id, mode, dt, fromNavigation, backend: B.renderer.kind, initial, completed, visitedRooms, rampViews, rawChecks, maximumRawError, entrances: entrances && entrances.stats(), checkpoints: checkpoints.length, failed: checkpoints.filter((checkpoint) => !checkpoint.reached), stages: checkpoints.filter((checkpoint) => checkpoint.name === "outside" || checkpoint.name === "down:32" || checkpoint.name === "up:32"), collision, reversal, underground, ceilingContact, samples, violations, maxSeparation, maxSeparationAt, maxStep, maxStepAt, final: snapshot(), scene: B.scene };
   } finally { keys([]); }
 };

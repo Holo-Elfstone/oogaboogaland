@@ -6,23 +6,28 @@ export const windowJumpProbe = ({ basement = false, mode = "first-person", dt = 
   const room = basement || roomIndex !== null ? level.rooms.find((r) => roomIndex === null || r.index === roomIndex) : null;
   const aperture = H.windows.find((w) => room ? w.kind === "room" && w.roomIndex === room.index && !!w.basement === basement : w.kind === "panorama");
   const sx = Math.sin(aperture.angle), sz = -Math.cos(aperture.angle), o = B.pilot.orbit, held = new Set(), trace = [], violations = [];
-  let elapsed = B.renderOpts.matrix.time, previous = null, maxStep = 0, maxEyeGap = 0, samples = 0, apertureCrossing = null, largestStep = null, largestGap = null, wideEntry = null;
+  let elapsed = B.renderOpts.matrix.time, previous = null, maxStep = 0, maxEyeGap = 0, rawChecks = 0, maximumRawError = 0, samples = 0, apertureCrossing = null, largestStep = null, largestGap = null, wideEntry = null;
   const key = (value, down) => { if (held.has(value) === down) return; globalThis.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: value })); if (down) held.add(value); else held.delete(value); };
   const sample = (phase) => { const p = cave.root.position; return { phase, x: p.x, z: p.z, r: p.x * sx + p.z * sz, across: p.x * -sz + p.z * sx, y: p.y - cave.baseY, hop: cave.hop, v: cave.hopV, jet: !!cave.jet, player: B.cameraCave.playerIndex, camera: B.cameraCave.index, eye: [B.camera.position.x, B.camera.position.y, B.camera.position.z] }; };
   const step = (inspect = true) => {
     scene.update(dt, elapsed += dt);
     if (!inspect) return;
-    const p = cave.root.position, eye = B.camera.position, feet = p.y - cave.baseY;
+    const p = cave.root.position, eye = B.camera.position, feet = p.y - cave.baseY, physicalEye = B.pilot.closeMix > 0 && !B.pilot.preserveExitAngle && !B.cameraCave.transitioning;
     samples++;
+    if (B.pilot.closeMix === 0) {
+      const pitch = B.pilot.viewPitch, cp = Math.cos(pitch);
+      rawChecks++;
+      maximumRawError = Math.max(maximumRawError, Math.hypot(eye.x - o.tx - Math.sin(o.yaw) * cp * o.dist, eye.y - o.ty - Math.sin(pitch) * o.dist, eye.z - o.tz - Math.cos(o.yaw) * cp * o.dist));
+    }
     const gap = Math.hypot(eye.x - p.x, eye.y - feet - cave.headOffset * 0.95, eye.z - p.z);
     if (gap > maxEyeGap) { maxEyeGap = gap; largestGap = { ...sample("largest gap"), head: feet + cave.headOffset * 0.95 }; }
     if (!apertureCrossing && feet < 0 && p.x * sx + p.z * sz <= Math.hypot(aperture.x, aperture.z) + 0.3) apertureCrossing = { ...sample("aperture"), floor: island.supportAt(p.x, p.z, feet, 0, -120, 0.295), ceiling: island.ceilingAt(p.x, feet + 0.01, p.z, 0.295) };
     if (!island.clearAt(p.x, feet + 1e-5, p.z, 0.295, cave.bodyHeight - 1e-5) && violations.length < 8) violations.push({ kind: "body", ...sample("collision") });
-    if (!island.clearAt(eye.x, eye.y - 0.295, eye.z, 0.295, 0.59) && violations.length < 8) violations.push({ kind: "eye", ...sample("collision") });
+    if (physicalEye && !island.clearAt(eye.x, eye.y - 0.295, eye.z, 0.295, 0.59) && violations.length < 8) violations.push({ kind: "eye", ...sample("collision") });
     if (previous) {
       const distance = Math.hypot(eye.x - previous[0], eye.y - previous[1], eye.z - previous[2]);
       if (distance > maxStep) { maxStep = distance; largestStep = { from: previous, to: sample("largest step") }; }
-      if (!island.voxelSegmentClearAt(previous[0], previous[1] - 0.295, previous[2], eye.x, eye.y - 0.295, eye.z, 0.295, 0.59) && violations.length < 8) violations.push({ kind: "eye sweep", ...sample("collision") });
+      if (physicalEye && !island.voxelSegmentClearAt(previous[0], previous[1] - 0.295, previous[2], eye.x, eye.y - 0.295, eye.z, 0.295, 0.59) && violations.length < 8) violations.push({ kind: "eye sweep", ...sample("collision") });
     }
     previous = [eye.x, eye.y, eye.z];
   };
@@ -78,11 +83,11 @@ export const windowJumpProbe = ({ basement = false, mode = "first-person", dt = 
         if (!jumped && r >= Math.hypot(aperture.x, aperture.z) - 0.8) { key(" ", true); key(" ", false); jumped = true; trace.push(sample("jump out")); }
         step();
         if (i % Math.ceil(0.2 / dt) === 0) trace.push(sample("exit route"));
-        if (r > aperture.flare.edge + 0.5 && B.cameraCave.index === 0) { exited = sample("exited"); break; }
+        if (r > aperture.flare.edge + 0.5 && (mode === "trailing" || B.cameraCave.index === 0)) { exited = sample("exited"); break; }
         if (p.y - cave.baseY < level.floor - 4) break;
       }
       key("w", false);
     }
-    return { basement, mode: B.pilot.mode, dt, jet, offset, roomIndex: room?.index ?? null, window: { angle: aperture.angle, sill: aperture.sill, height: aperture.height, width: aperture.width, radius: Math.hypot(aperture.x, aperture.z), edge: aperture.flare.edge }, floor: level.floor, bodyHeight: cave.bodyHeight, completed, leftRock, secondJump, initial, wideEntry, apertureCrossing, final, exited, maxStep, maxEyeGap, largestStep, largestGap, samples, violations, trace, scene: B.scene, backend: B.renderer.kind };
+    return { basement, mode: B.pilot.mode, dt, jet, offset, roomIndex: room?.index ?? null, window: { angle: aperture.angle, sill: aperture.sill, height: aperture.height, width: aperture.width, radius: Math.hypot(aperture.x, aperture.z), edge: aperture.flare.edge }, floor: level.floor, bodyHeight: cave.bodyHeight, completed, leftRock, secondJump, initial, wideEntry, apertureCrossing, final, exited, maxStep, maxEyeGap, largestStep, largestGap, rawChecks, maximumRawError, samples, violations, trace, scene: B.scene, backend: B.renderer.kind };
   } finally { for (const value of held) key(value, false); }
 };

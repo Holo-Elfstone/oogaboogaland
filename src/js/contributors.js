@@ -8,12 +8,14 @@
     ["w-s-bitcoin", 1788178261],
     ["dplusplus1024", 1788153655],
     ["bc1gui", 1788190400],
-    ["RandyMcMillan", 1788210011],
+    ["RandyMcMillan", 1788210011, "sleeping"],
     ["MrHodlX", 1788200000],
     ["timechainb", 1788171200]
-  ].map(([name, unixSeconds]) => ({ name, lastCommitAt: unixSeconds * 1e3 }));
+  ].map(([name, unixSeconds, defaultState]) => ({ name, lastCommitAt: unixSeconds * 1e3, defaultState }));
   const SNAPSHOT_AT = 1788225311 * 1e3;
   const stateFor = (contributor, at = SNAPSHOT_AT) => {
+    // The demo's initial activity is separate from the public commit timestamp.
+    if (contributor.defaultState) return contributor.defaultState;
     const age = at - contributor.lastCommitAt;
     if (age < 24 * HOUR) return "working";
     if (age < 7 * 24 * HOUR) return "sleeping";

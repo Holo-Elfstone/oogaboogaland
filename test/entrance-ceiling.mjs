@@ -1,8 +1,8 @@
-// Keep upward flight held while crossing every HQ stone lintel in both
-// directions. The independent checker reads the rendered mesh, not colliders.
+// Walk a physical first-person eye through every HQ stone lintel in both
+// directions, and probe roof contacts against the actual rendered mesh.
 export const entranceCeilingProbe = ({ dt = 1 / 60 } = {}, createClearance) => {
   const B = window.__ooga, scene = window.BL.scenes.hub, H = B.island.headquarters, o = B.pilot.orbit, arches = createClearance();
-  const held = new Set(), failures = [], violations = [], crossed = [];
+  const held = new Set(), failures = [], violations = [], crossed = [], contacts = [];
   let elapsed = B.matrixCave.world.sampleStream(0).time, previous = null, samples = 0, maxStep = 0, maxStall = 0, stall = 0, lowest = Infinity, phase = "setup";
   const snapshot = () => ({ x: B.camera.position.x, y: B.camera.position.y, z: B.camera.position.z });
   const keys = (next) => {
@@ -23,24 +23,24 @@ export const entranceCeilingProbe = ({ dt = 1 / 60 } = {}, createClearance) => {
     }
     previous = p;
   };
-  const seek = (goal, climb = false) => {
+  const seek = (goal) => {
     const tolerance = Math.max(0.22, dt * 6);
     for (let frame = 0; frame < Math.ceil(3 / dt); frame++) {
-      const p = B.camera.position, dx = goal.x - p.x, dz = goal.z - p.z, dy = goal.y - p.y;
-      if (Math.hypot(dx, dz) <= tolerance && (climb || Math.abs(dy) < 0.15)) { keys([]); return true; }
+      const p = B.camera.position, dx = goal.x - p.x, dz = goal.z - p.z;
+      if (Math.hypot(dx, dz) <= tolerance) { keys([]); return true; }
       const right = dx * Math.cos(o.yaw) - dz * Math.sin(o.yaw), forward = -dx * Math.sin(o.yaw) - dz * Math.cos(o.yaw), input = [];
       if (Math.abs(right) > Math.max(tolerance * 0.45, Math.abs(forward) * Math.tan(Math.PI / 8))) input.push(right > 0 ? "d" : "a");
       if (Math.abs(forward) > Math.max(tolerance * 0.45, Math.abs(right) * Math.tan(Math.PI / 8))) input.push(forward > 0 ? "w" : "s");
-      if (climb) input.push("z");
-      else if (Math.abs(dy) > 0.12) input.push(dy > 0 ? "z" : "x");
       keys(input); step();
     }
     failures.push({ phase, goal, at: snapshot() }); keys([]); return false;
   };
-  const follow = (points, climb = false) => {
+  // A walking eye takes its height from actual support. The lintel base
+  // remains level while its approach ramp slopes beneath it.
+  const follow = (points) => {
     for (const q of points) {
       const p = snapshot(), count = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.z - p.z) / 0.6));
-      for (let i = 1; i <= count; i++) if (!seek({ x: p.x + (q.x - p.x) * i / count, y: p.y + (q.y - p.y) * i / count, z: p.z + (q.z - p.z) * i / count }, climb)) return false;
+      for (let i = 1; i <= count; i++) if (!seek({ x: p.x + (q.x - p.x) * i / count, y: p.y + (q.y - p.y) * i / count, z: p.z + (q.z - p.z) * i / count })) return false;
     }
     return true;
   };
@@ -49,12 +49,17 @@ export const entranceCeilingProbe = ({ dt = 1 / 60 } = {}, createClearance) => {
     const point = (along) => ({ x: node.position.x + sr * along, y: floor + 1.1, z: node.position.z + cr * along });
     phase = `${entry.ramp ? "ramp" : entry.basement ? "basement" : "upper"}:${entry.roomIndex}`;
     if (!follow([point(1.3)])) return false;
-    keys(["z"]); for (let i = 0; i < Math.ceil(1 / dt); i++) step(); keys([]);
+    // Find the first actual lintel/roof contact from clear standing eye air.
+    const center = point(0), clearAt = (eyeY) => B.island.clearAt(center.x, eyeY - 0.299, center.z, 0.299, 0.598) && arches.clearAt(center.x, eyeY - 0.299, center.z, 0.299, 0.598);
+    let low = floor + 1.1, high = floor + 4.25;
+    const standingClear = clearAt(low), overheadBlocked = !clearAt(high);
+    for (let i = 0; i < 24; i++) { const middle = (low + high) / 2; if (clearAt(middle)) low = middle; else high = middle; }
+    contacts.push({ id: phase, standingClear, overheadBlocked, y: low, clear: clearAt(low - 0.001), blocked: !clearAt(high + 0.001) });
     const before = snapshot();
     lowest = before.y;
-    if (!follow([point(-1.3)], true)) return false;
+    if (!follow([point(-1.3)])) return false;
     const inside = snapshot();
-    if (!follow([point(1.3)], true)) return false;
+    if (!follow([point(1.3)])) return false;
     crossed.push({ id: phase, before, inside, returned: snapshot(), lowest });
     return seek(point(1.3));
   };
@@ -76,6 +81,8 @@ export const entranceCeilingProbe = ({ dt = 1 / 60 } = {}, createClearance) => {
   try {
     B.pilot.release(true);
     document.querySelector('nav[data-scene="hub"] [data-preset="underground"]').click();
+    B.pilot.enterClose();
+    for (let i = 0; i < Math.ceil(1.5 / dt); i++) scene.update(dt, elapsed += dt);
     const lower = H.basement, down = lower.ramps[0], up = lower.ramps[1];
     completed = rooms(H);
     const first = B.headquarters.entrances.find((entry) => entry.ramp && entry.roomIndex === down.index);
@@ -87,6 +94,6 @@ export const entranceCeilingProbe = ({ dt = 1 / 60 } = {}, createClearance) => {
     if (completed) completed = circle(up.to, lower.floor, lower.room.radius - 2.5) && follow([...up.samples].reverse().map((p) => ({ x: p.x, y: p.y + 1.1, z: p.z })));
     const second = B.headquarters.entrances.find((entry) => entry.ramp && entry.roomIndex === up.index);
     if (completed) completed = cross(second);
-    return { completed, crossed, failures, violations, samples, maxStep, maxStall, arches: arches.stats(), scene: B.scene, mode: B.pilot.mode, selected: !!B.pilot.player, backend: B.renderer.kind };
+    return { completed, crossed, contacts, failures, violations, samples, maxStep, maxStall, arches: arches.stats(), scene: B.scene, mode: B.pilot.mode, selected: !!B.pilot.player, backend: B.renderer.kind };
   } finally { keys([]); }
 };

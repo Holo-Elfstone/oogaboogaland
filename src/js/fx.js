@@ -42,7 +42,7 @@
     ctx.globalAlpha = 1;
   };
   // Particles, bubbles, sleep marks and the ticker
-  const create = ({ root, renderer, overlay, tickerAt, overlayVisible = null }) => {
+  const create = ({ root, renderer, overlay, tickerAt, overlayVisible = null, zzzVisible = null }) => {
     const overlayCtx = overlay.getContext("2d");
     const particles = [];
     const particlePool = [];
@@ -51,7 +51,7 @@
       if (particles.length >= MAX_PARTICLES) return;
       let p = particlePool.pop();
       if (!p) {
-        p = { node: createNode({ visible: false }), vx: 0, vy: 0, vz: 0, life: 0, spin: 0 };
+        p = { node: createNode({ visible: false, sightHidden: true }), vx: 0, vy: 0, vz: 0, life: 0, spin: 0 };
         addChild(root, p.node);
       }
       p.node.geometry = geometry;
@@ -116,8 +116,8 @@
       if (bubbles.length >= MAX_BUBBLES) bubbles.shift();
       bubbles.push({ at: { x, y, z }, text, t: 0, dur });
     };
-    const zzzAt = (x, y, z) => {
-      zzz.push({ x, y, z, t: 0 });
+    const zzzAt = (x, y, z, cave = null) => {
+      zzz.push({ x, y, z, cave, t: 0 });
       if (zzz.length > 40) zzz.shift();
     };
     const showTicker = (text, dur) => {
@@ -147,6 +147,7 @@
           zzz.splice(i, 1);
           continue;
         }
+        if (zzzVisible && !zzzVisible(p.cave, p.x, p.y, p.z)) continue;
         const pos = project(p.x, p.y + p.t * 0.45, p.z);
         if (!pos) continue;
         ctx.globalAlpha = (1 - p.t / 2.4) * 0.8;
@@ -162,8 +163,9 @@
           bubbles.splice(i, 1);
           continue;
         }
-        const pos = b.cave
-          ? project(b.cave.root.position.x, b.cave.root.position.y + (b.cave.state === "sleeping" ? 0.6 : b.cave.headOffset + 0.05), b.cave.root.position.z)
+        const head = b.cave && b.cave.bedTravel && b.cave.bedTravel.mode === "rest" ? b.cave.sleepHead : null;
+        const pos = head ? project(head.x, head.y + 0.1, head.z) : b.cave
+          ? project(b.cave.root.position.x, b.cave.root.position.y + (b.cave.state === "sleeping" && !b.cave.bedTravel?.mode ? 0.6 : b.cave.headOffset + 0.05), b.cave.root.position.z)
           : project(b.at.x, b.at.y, b.at.z);
         if (!pos) continue;
         const fade = Math.min(1, b.t / 0.2, (b.dur - b.t) / 0.3);
