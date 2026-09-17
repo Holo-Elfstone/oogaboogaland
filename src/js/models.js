@@ -402,10 +402,34 @@
     ...[-0.28, 0.28].map((y) => box({ w: 0.2 * h, h: 0.03 * h, d: 0.045 * h, color: "#8a8a8a", offset: { y: y * h, z: -0.03 * h } })),
     ...[-0.28, 0.28].flatMap((y) => [-0.085, 0.085].map((x) => box({ w: 0.06 * h, h: 0.06 * h, d: 0.05 * h, color: "#1a1a1a", offset: { x: x * h, y: y * h, z: -0.07 * h } })))
   );
+  const cigaretteGeometry = (h) => merge(
+    box({ w: 0.035 * h, h: 0.035 * h, d: 0.26 * h, color: "#f3efe4", offset: { z: 0.13 * h } }),
+    box({ w: 0.037 * h, h: 0.037 * h, d: 0.06 * h, color: "#c78b42", offset: { z: 0.29 * h } }),
+    box({ w: 0.04 * h, h: 0.04 * h, d: 0.025 * h, color: "#e35b2d", emissive: 0.7, offset: { z: 0.34 * h } })
+  );
+  const energyCanCache = new Map();
+  const energyCanGeometry = (h, gold = false) => {
+    const key = `${h}/${gold}`;
+    let geo = energyCanCache.get(key);
+    if (!geo) {
+      geo = merge(
+        lathe({ profile: [[0.075 * h, -0.18 * h], [0.088 * h, -0.14 * h], [0.088 * h, 0.14 * h], [0.075 * h, 0.18 * h]], segments: 10, color: "#c9ccd2" }),
+        box({ w: 0.12 * h, h: 0.3 * h, d: 0.014 * h, color: "#2458a6", offset: { z: 0.086 * h } }),
+        box({ w: 0.014 * h, h: 0.3 * h, d: 0.12 * h, color: "#2458a6", offset: { x: 0.086 * h } }),
+        box({ w: 0.11 * h, h: 0.028 * h, d: 0.018 * h, color: "#d32f2f", offset: { y: 0.035 * h, z: 0.096 * h } }),
+        box({ w: 0.055 * h, h: 0.045 * h, d: 0.02 * h, color: "#e23d32", offset: { y: -0.045 * h, z: 0.098 * h } }),
+        lathe({ profile: [[0.072 * h, 0.18 * h], [0.065 * h, 0.195 * h], [0, 0.195 * h]], segments: 10, color: "#c9ccd2" }),
+        box({ w: 0.055 * h, h: 0.008 * h, d: 0.025 * h, color: "#5f6670", offset: { y: 0.202 * h } })
+      );
+      if (gold) for (const face of geo.faces) face.color = GOLD_CLUB_PALETTE[0];
+      energyCanCache.set(key, geo);
+    }
+    return geo;
+  };
   const caveman = (traits) => {
     const { skin, hair, height: h, belly, rand } = traits;
     const u = h / 16;
-    const P = { skin: 0, skinDk: 1, hair: 2, hairDk: 3, fur: 4, spot: 5, white: 6, black: 7, nose: 8, stubble: 9, wood: 10, stone: 11, stoneDk: 12, apple: 13, appleDk: 14, leaf: 15, knit: 16, knitDk: 17, pom: 18, lens: 19, btc: 20, gold: 21, goldDk: 22, wing: 23, wingDk: 24, goggle: 25, goggleDk: 26 };
+    const P = { skin: 0, skinDk: 1, hair: 2, hairDk: 3, fur: 4, spot: 5, white: 6, black: 7, nose: 8, stubble: 9, wood: 10, stone: 11, stoneDk: 12, apple: 13, appleDk: 14, leaf: 15, knit: 16, knitDk: 17, pom: 18, lens: 19, btc: 20, gold: 21, goldDk: 22, wing: 23, wingDk: 24, goggle: 25, goggleDk: 26, orange: 27 };
     const palette = [
       shade(skin, 1),
       shade(skin, 0.9),
@@ -433,7 +457,8 @@
       hexToRgb("#e4f3fb"),
       hexToRgb("#bcdcec"),
       hexToRgb("#3a9dff"),
-      hexToRgb("#1f6fc4")
+      hexToRgb("#1f6fc4"),
+      hexToRgb("#e89423")
     ];
     const jit = (base, dark, p) => () => rand() < p ? dark : base;
     const skinJ = jit(P.skin, P.skinDk, 0.08);
@@ -475,6 +500,7 @@
         rosettes(v, 0, 8, 0, 2, 0, 5, 8);
         v.fill(1, 7, 3, 7, 1, 4, skinJ);
       }
+      if (traits.orangeChest) v.fill(0, 8, 0, 7, 0, 5, P.orange);
       if (traits.bee) {
         // The Bee: black bands round the fuzz and two pale wings folded off the back, baked into the torso
         v.fill(1, 7, 4, 4, 1, 4, P.black);
@@ -512,13 +538,13 @@
     const clubV = traits.anunnaki ? staffVoxels(rand) : clubVoxels(rand);
     const clubOrigin = { x: -1 * u, y: -1 * u, z: -1 * u };
     const skins = {
-      club: { default: voxelGeometry(clubV, { unit: u, palette: CLUB_PALETTE, origin: clubOrigin }), gold: voxelGeometry(clubV, { unit: u, palette: GOLD_CLUB_PALETTE, origin: clubOrigin }) },
+      club: { default: traits.energyCan ? energyCanGeometry(h) : voxelGeometry(clubV, { unit: u, palette: CLUB_PALETTE, origin: clubOrigin }), gold: traits.energyCan ? energyCanGeometry(h, true) : voxelGeometry(clubV, { unit: u, palette: GOLD_CLUB_PALETTE, origin: clubOrigin }) },
       gun: { default: gunGeometry(h, GUN_PALETTE), gold: gunGeometry(h, GOLD_GUN_PALETTE) }
     };
     // The staff stands upright in the grip; the club hangs forward
     parts.club = createNode({
       position: { x: 0, y: -0.62 * h, z: 0.08 * h },
-      rotation: { x: traits.anunnaki ? 0.2 : 0.95, y: 0, z: 0 },
+      rotation: { x: traits.energyCan ? 0 : traits.anunnaki ? 0.2 : 0.95, y: 0, z: 0 },
       geometry: skins.club.default
     });
     addChild(parts.armL, parts.club);
@@ -534,6 +560,7 @@
     parts.gunBody = createNode({ geometry: skins.gun.default });
     addChild(parts.gun, parts.gunBody);
     addChild(parts.armR, parts.gun);
+    if (traits.cigarette) addChild(parts.armR, createNode({ position: { x: 0, y: -0.62 * h, z: 0.16 * h }, geometry: cigaretteGeometry(h) }));
     const headVox = makeVox();
     const eyeCells = [];
     {
@@ -558,7 +585,9 @@
       }
       if (traits.gasMask) {
         // Nose, beard and mouth sit under the mask
-      } else if (traits.slim) {
+      } else if (traits.yellowFace) {
+        // YellowBrokeIt uses a simple black nose and white muzzle below.
+      } else if (traits.slim || traits.cleanShaven) {
         v.fill(3, 3, 2, 3, 6, 6, P.nose);
       } else if (traits.skater || traits.bee) {
         // Clean-shaven under the shades: a low nose and a smirk
@@ -642,11 +671,21 @@
       if (hairy) {
         for (let x = 0; x <= 6; x++) for (let z = 0; z <= 5; z++) if (rand() < 0.08) v.set(x, 9, z, rand() < 0.5 ? P.hair : P.hairDk);
       }
-      for (const [ex0, ex1] of [[0, 1], [5, 6]]) {
-        for (let x = ex0; x <= ex1; x++) for (let y = 2; y <= 3; y++) {
+      const eyes = traits.wideEyes ? [[0, 2], [4, 6]] : [[0, 1], [5, 6]];
+      const eyeY0 = traits.wideEyes ? 1 : 2, eyeY1 = traits.wideEyes ? 4 : 3;
+      for (const [ex0, ex1] of eyes) {
+        for (let x = ex0; x <= ex1; x++) for (let y = eyeY0; y <= eyeY1; y++) {
           v.set(x, y, 5, P.white);
           eyeCells.push([x, y]);
         }
+      }
+      if (traits.yellowFace) {
+        v.fill(1, 5, 0, 1, 5, 6, P.white);
+        v.set(3, 2, 6, P.black);
+        v.set(0, 5, 6, P.black);
+        v.set(1, 4, 6, P.black);
+        v.set(6, 5, 6, P.black);
+        v.set(5, 4, 6, P.black);
       }
       v.set(1, 2, 5, P.black);
       v.set(5, 2, 5, P.black);
