@@ -1035,14 +1035,19 @@ select {
   transition: width 0.2s ease, background 0.15s ease, transform 0.15s ease;
 }
 
-.jetpack-hud:hover,
+.jetpack-hud:hover:not(:disabled),
 .jetpack-hud:focus-visible {
   background: linear-gradient(160deg, #504b47, #45413d 55%, #363330);
   outline: none;
 }
 
-.jetpack-hud:active {
+.jetpack-hud:active:not(:disabled) {
   transform: translateY(1px);
+}
+
+.jetpack-hud:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .jetpack-hud[data-equipped="true"] {

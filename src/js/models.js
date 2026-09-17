@@ -235,7 +235,7 @@
   const banana = () => createNode({ geometry: bananaGeometry() });
   // A centered copy for the pile skin. It has the full depth and dimensions of a
   // carried banana, while its origin lets it sit evenly across the mound surface.
-  const bananaTileGeometry = cached(() => tube({
+  const bananaTileNearGeometry = cached(() => tube({
     rings: 8,
     segments: 5,
     path: (t) => {
@@ -245,6 +245,20 @@
     radius: (t) => 0.085 * Math.pow(Math.sin(Math.PI * t), 0.55) + 0.012,
     colorFn: (t) => t < 0.08 || t > 0.92 ? "#5a3a1a" : t < 0.2 || t > 0.8 ? "#c9b23a" : "#f5c542"
   }));
+  const bananaTileDistantGeometry = cached(() => {
+    const source = bananaTileNearGeometry(), geo = geometry(), rings = [0, 1, 2, 4, 6, 7, 8];
+    // Merge only the middle yellow spans; the tips and cross section stay exact.
+    for (const ring of rings) for (let segment = 0; segment < 5; segment++) {
+      const i = (ring * 5 + segment) * 3;
+      geo.verts.push(source.verts[i], source.verts[i + 1], source.verts[i + 2]);
+    }
+    for (let p = 0; p < rings.length - 1; p++) for (let s = 0; s < 5; s++) {
+      const next = (s + 1) % 5, original = source.faces[rings[p] * 5 + s];
+      face(geo, [p * 5 + s, p * 5 + next, (p + 1) * 5 + next, (p + 1) * 5 + s], original.color, original);
+    }
+    return geo;
+  });
+  const bananaTileGeometry = (distant = false) => distant ? bananaTileDistantGeometry() : bananaTileNearGeometry();
   const bananaPileCoreGeometry = (worldRadius = 0.45, worldHeight = 0.48, faceSize = 0.16) => {
     const geo = geometry();
     const segments = Math.max(24, Math.min(384, Math.ceil(Math.PI * 2 * worldRadius / faceSize)));

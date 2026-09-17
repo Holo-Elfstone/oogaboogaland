@@ -58,6 +58,7 @@ void main() {
   vec4 w = m * vec4(aPos, 1.0);
   vNormal = normalize(mat3(m) * aNormal);
   vColor = aColor;
+  vColor.rgb *= 1.0 - clamp(-aParams.y, 0.0, 1.0) * 0.88;
   // Cave ownership shares the otherwise nonnegative emissive channel. Decode it
   // before lighting so leaving the portal restores the original material exactly.
   float encoded = max(0.0, -aColor.a - 1.0);
@@ -69,6 +70,7 @@ void main() {
   vMatrixCave = floor(encoded * 0.5);
   vColor.a = aColor.a < 0.0 ? encoded - vMatrixCave * 2.0 : aColor.a;
   vParams = aParams;
+  vParams.y = max(0.0, aParams.y);
   vShadow = uLightViewProj * w;
   vWorld = w.xyz;
   vInstanceFacing = normalize(aM2.xyz);
@@ -406,7 +408,13 @@ void main() {
       return;
     }
   }
-  float emissive = clamp(vColor.a * vParams.x, 0.0, 1.0);
+  // Negative instance glow is body heat; ordinary material emission remains
+  // nonnegative. Keep color variation and directional shading in the embers.
+  float ember = clamp(-vParams.x, 0.0, 1.0);
+  float detail = 0.72 + dot(base, vec3(0.2126, 0.7152, 0.0722)) * 0.28;
+  vec3 heat = vec3(1.0, 0.12 + ember * 0.85, 0.01 + ember * ember * ember * 0.74) * detail;
+  base = mix(base, heat, ember * 0.9);
+  float emissive = max(clamp(vColor.a * max(0.0, vParams.x), 0.0, 1.0), ember * 0.9);
   vec3 lightFactor = lightFactorAt(n);
   vec3 lit = base * lightFactor;
   vec3 col = mix(lit, base * 1.15, emissive);
@@ -465,6 +473,8 @@ void main() {
   vec4 cb = m * vec4(aB, 1.0);
   vColor = aColor;
   vParams = aParams;
+  vColor.rgb *= 1.0 - clamp(-aParams.y, 0.0, 1.0) * 0.88;
+  vParams.y = max(0.0, aParams.y);
   if (ca.w < 0.05 && cb.w < 0.05) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
@@ -489,10 +499,14 @@ in vec4 vParams;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oBright;
 void main() {
-  float glow = clamp(vColor.a * vParams.x, 0.0, 1.0);
-  vec3 col = mix(vColor.rgb, vec3(1.0), glow * 0.35);
+  float ember = clamp(-vParams.x, 0.0, 1.0);
+  float detail = 0.72 + dot(vColor.rgb, vec3(0.2126, 0.7152, 0.0722)) * 0.28;
+  vec3 heat = vec3(1.0, 0.12 + ember * 0.85, 0.01 + ember * ember * ember * 0.74) * detail;
+  vec3 base = mix(vColor.rgb, heat, ember * 0.9);
+  float glow = max(clamp(vColor.a * max(0.0, vParams.x), 0.0, 1.0), ember * 0.9);
+  vec3 col = mix(base, vec3(1.0), glow * 0.35);
   oColor = vec4(col, 1.0);
-  oBright = vec4(vColor.rgb * glow, 1.0);
+  oBright = vec4(base * glow, 1.0);
 }`;
   const MIRROR_VS = `#version 300 es
 precision highp float;
@@ -816,7 +830,7 @@ void main() {
       destroyMirrorTarget();
       const samples = Math.min(settings.msaa, gl.getParameter(gl.MAX_SAMPLES));
       mirror.tex = createTexture(w, h, gl.RGBA8, gl.LINEAR);
-      mirror.depth = createRenderbuffer(w, h, gl.DEPTH_COMPONENT16, samples);
+      mirror.depth = createRenderbuffer(w, h, gl.DEPTH_COMPONENT24, samples);
       mirror.fb = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, mirror.fb);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, mirror.tex, 0);
@@ -1175,8 +1189,10 @@ void main() {
         const n = rec.nodes[i];
         const o = i * INSTANCE_FLOATS;
         d.set(n.world, o);
-        d[o + 16] = n.glow;
-        d[o + 17] = n.highlight;
+        // Body heat shares the negative half of the nonnegative glow channel.
+        d[o + 16] = n.ember > 0 ? -n.ember : n.glow;
+        // Scorch shares the negative half of the nonnegative highlight channel.
+        d[o + 17] = n.scorch > 0 ? -n.scorch : n.highlight;
         d[o + 18] = matrixModeOf(n);
         d[o + 19] = 0;
       }
@@ -1337,11 +1353,11 @@ void main() {
       width = canvas.clientWidth;
       height = canvas.clientHeight;
       const budget = Math.sqrt(MAX_PIXELS / Math.max(1, width * height));
-      dpr = Math.max(0.75, Math.min(window.devicePixelRatio || 1, settings.dpr, budget));
+      dpr = Math.min(budget, Math.max(0.75, Math.min(window.devicePixelRatio || 1, settings.dpr)));
       size.width = width;
       size.height = height;
-      pw = Math.max(1, Math.round(width * dpr));
-      ph = Math.max(1, Math.round(height * dpr));
+      pw = Math.max(1, Math.floor(width * dpr));
+      ph = Math.max(1, Math.floor(height * dpr));
       canvas.width = pw;
       canvas.height = ph;
       buildFbo();
@@ -1400,8 +1416,16 @@ void main() {
           }
         }
         if (kind === "line") gl.uniform1f(res.programs.line.u.uWidth, part.width * dpr);
+        // Surface overlays stay above their backing at distant zooms in both color
+        // passes. Keep the shadow depth and subsequent ordinary meshes unchanged.
+        const offset = kind === "mesh" && useProgram === "mesh" && rec.geometry.depthOffset;
+        if (offset) {
+          gl.enable(gl.POLYGON_OFFSET_FILL);
+          gl.polygonOffset(0, -4);
+        }
         gl.bindVertexArray(part.vao);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, part.count, n);
+        if (offset) gl.disable(gl.POLYGON_OFFSET_FILL);
       }
     };
     // Celestial rays depend only on orientation. Removing translation before
