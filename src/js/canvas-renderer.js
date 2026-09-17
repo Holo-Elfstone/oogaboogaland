@@ -68,7 +68,7 @@
     const CLIP_OUT = new Float32Array(30);
     const MIRROR_CLIP_IN = new Float32Array(30);
     const MIRROR_CLIP_OUT = new Float32Array(30);
-    const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, tip: 0, smokeOpacity: 1, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false, matrixFullCave: 0 };
+    const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, scorch: 0, ember: 0, tip: 0, smokeOpacity: 1, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false, matrixFullCave: 0 };
     const mirrorDebug = {
       active: false, faux: true, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: true, reflectionOnlyCount: 0, planeDistance: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), skipReason: "canvas-faux"
@@ -209,6 +209,8 @@
       const { verts, faces, lines } = node.geometry;
       const w = node.world;
       const f = lastF;
+      const ember = Math.min(1, node.ember || 0), scorch = 1 - Math.min(1, node.scorch || 0) * 0.88;
+      const materialGlow = ember > 0 ? 0 : node.glow;
       const mirrorFace = !!(node.mirror || node.mirrorPortal);
       const portalFace = !!node.mirrorPortal || !!node.mirrorWalkThrough && mirrorDebug.portal;
       const localMatrixGlyph = !!node.geometry.matrixGlyph;
@@ -343,7 +345,7 @@
           // glyphs, but need no shading or draw record. Preserve the face stroke
           // and antialias margin, including polygons crossing the whole view.
           if (maxX < -2 || minX > width + 2 || maxY < -2 || minY > height + 2) { poolUsed--; continue; }
-          const emissive = (face.emissive || 0) * node.glow;
+          const emissive = Math.max((face.emissive || 0) * materialGlow, ember * 0.9);
           rec.matrixLiving = matrixLiving;
           let k, glyphDistance = 0;
           if (localMatrixGlyph) {
@@ -356,13 +358,18 @@
             const hemi = Math.max(ambientFloor, lerp(groundLuma, skyLuma, ny * 0.5 + 0.5));
             k = lerp(Math.min(1, hemi + diffuse * 0.7 * directStrength), 1.1, Math.min(1, emissive));
           }
-          k = lerp(k, 1.3, node.highlight * 0.4);
+          k = lerp(k, 1.3, node.scorch > 0 ? 0 : node.highlight * 0.4);
           const c = face.color;
+          const detail = 0.72 + (c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722) / 255 * scorch * 0.28;
+          const heat = 255 * detail;
+          const cr = lerp(c[0] * scorch, heat, ember * 0.9);
+          const cg = lerp(c[1] * scorch, heat * (0.12 + ember * 0.85), ember * 0.9);
+          const cb = lerp(c[2] * scorch, heat * (0.01 + ember * ember * ember * 0.74), ember * 0.9);
           const tip = node.tip > 1.5 ? 0 : node.tip || 0;
           const fog = localMatrixGlyph ? smooth((glyphDistance - fogNear) / (fogFar - fogNear)) : Math.min(1, Math.max(0, (-rec.depth - fogNear) / (fogFar - fogNear)));
-          let red = lerp(lerp(c[0] * k, 214, tip * 0.88), fogRgb[0], fog);
-          let green = lerp(lerp(c[1] * k, 255, tip * 0.88), fogRgb[1], fog);
-          let blue = lerp(lerp(c[2] * k, 227, tip * 0.88), fogRgb[2], fog);
+          let red = lerp(lerp(cr * k, 214, tip * 0.88), fogRgb[0], fog);
+          let green = lerp(lerp(cg * k, 255, tip * 0.88), fogRgb[1], fog);
+          let blue = lerp(lerp(cb * k, 227, tip * 0.88), fogRgb[2], fog);
           if (maximumFront && !localMatrixGlyph) {
             const pulse = matrixLiving ? 0.88 + Math.sin(matrixTime * 2.2 - flow * 0.5) * 0.08 : 0;
             const matrixFog = smooth((Math.hypot(centerX - eye.x, centerY - eye.y, centerZ - eye.z) - fogNear) / (fogFar - fogNear));
@@ -419,10 +426,14 @@
           rec.line = true;
           rec.mirror = false;
           rec.portal = false;
-          rec.lineGlow = (line.emissive || 0) * node.glow;
+          rec.lineGlow = Math.max((line.emissive || 0) * materialGlow, ember * 0.9);
           const c = line.color;
-          rec.style = `rgb(${c[0]},${c[1]},${c[2]})`;
-          rec.coreStyle = rec.lineGlow > 0.5 ? `rgb(${Math.round(c[0] + (255 - c[0]) * 0.55)},${Math.round(c[1] + (255 - c[1]) * 0.55)},${Math.round(c[2] + (255 - c[2]) * 0.55)})` : "";
+          const heat = 255 * (0.72 + (c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722) / 255 * scorch * 0.28);
+          const red = lerp(c[0] * scorch, heat, ember * 0.9);
+          const green = lerp(c[1] * scorch, heat * (0.12 + ember * 0.85), ember * 0.9);
+          const blue = lerp(c[2] * scorch, heat * (0.01 + ember * ember * ember * 0.74), ember * 0.9);
+          rec.style = `rgb(${Math.round(red)},${Math.round(green)},${Math.round(blue)})`;
+          rec.coreStyle = rec.lineGlow > 0.5 ? `rgb(${Math.round(red + (255 - red) * 0.55)},${Math.round(green + (255 - green) * 0.55)},${Math.round(blue + (255 - blue) * 0.55)})` : "";
         }
       }
     };
@@ -473,8 +484,10 @@
           }
         }
         for (let i = 0; i < 16; i++) BATCH_NODE.world[i] = data[offset + i];
-        BATCH_NODE.glow = data[offset + 16];
-        BATCH_NODE.highlight = data[offset + 17];
+        BATCH_NODE.glow = Math.max(0, data[offset + 16]);
+        BATCH_NODE.ember = Math.max(0, -data[offset + 16]);
+        BATCH_NODE.highlight = Math.max(0, data[offset + 17]);
+        BATCH_NODE.scorch = Math.max(0, -data[offset + 17]);
         BATCH_NODE.tip = Math.max(0, data[offset + 18]);
         BATCH_NODE.smokeOpacity = data[offset + 18] < 0 ? -1 - data[offset + 18] : 1;
         shadeNode(BATCH_NODE);

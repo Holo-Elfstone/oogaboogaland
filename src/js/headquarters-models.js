@@ -18,6 +18,7 @@
   // Room indices occupy eleven HQ slots and eight basement slots. Reuse their
   // static geometry across visits without retaining a departed room or scene.
   const mattressCache = new Array(19);
+  const roomSignCache = new Array(19);
   const fabric = (pattern, width, depth, top, bottom, centerZ, kind) => {
     const geo = { verts: [], faces: [], lines: [] }, size = pattern.width, colors = pattern.colors;
     const cells = new Uint32Array(size * size), used = new Uint8Array(cells.length);
@@ -76,7 +77,7 @@
       const from = ((size - 1 - x) * size + y) * 3, to = (y * size + x) * 3;
       colors[to] = pattern.colors[from]; colors[to + 1] = pattern.colors[from + 1]; colors[to + 2] = pattern.colors[from + 2];
     }
-    const pillow = { seed: sheet.seed, pattern: { width: size, height: size, colors } };
+    const pillow = { seed: sheet.seed, pattern: { width: size, height: size, colors, hash: pattern.hash } };
     const base = box({ w: MATTRESS.width - 0.02, h: 0.035, d: MATTRESS.depth - 0.02, color: "#c6b997", offset: { y: 0.0175 } });
     // The blanket is the top surface. A second buried top can sort in front
     // of its smaller printed faces in the Canvas painter.
@@ -88,6 +89,45 @@
     );
     geo.mattress = { roomKey, width: MATTRESS.width, depth: MATTRESS.depth, height: MATTRESS.height, sheet, pillow };
     mattressCache[slot] = geo;
+    return geo;
+  };
+  const roomSign = (room) => {
+    const bedding = mattress(room).mattress, slot = room.index + (room.basement ? 11 : 0), cached = roomSignCache[slot];
+    if (cached && cached.roomLifehashSign.roomKey === bedding.roomKey) return cached;
+    const hash = bedding.sheet.pattern.hash, text = hash.slice(0, 8).toUpperCase(), width = 2.12, height = 0.72, cell = 0.055, pixel = 0.047;
+    const geo = merge(
+      box({ w: width, h: height, d: 0.08, color: "#4a3319" }),
+      box({ w: width - 0.08, h: 0.345, d: 0.025, color: "#8f6538", offset: { y: 0.1775, z: 0.04 } }),
+      box({ w: width - 0.08, h: 0.345, d: 0.025, color: "#9c7040", offset: { y: -0.1775, z: 0.04 } }),
+      ...[-0.72, 0.72].map((x) => box({ w: 0.035, h: 0.30, d: 0.035, color: "#63472f", offset: { x, y: 0.48, z: -0.08 } })),
+      ...[-1, 1].flatMap((x) => [-0.27, 0.27].map((y) => box({ w: 0.035, h: 0.035, d: 0.015, color: "#3a2a18", offset: { x, y, z: 0.058 } })))
+    );
+    for (let ch = 0; ch < text.length; ch++) {
+      const glyph = BL.hubModels.SIGN_GLYPHS[text[ch]];
+      for (let row = 0; row < glyph.length; row++) for (let col = 0; col < 3;) {
+        if (glyph[row][col] !== "1") { col++; continue; }
+        const start = col++;
+        while (col < 3 && glyph[row][col] === "1") col++;
+        // Merge each horizontal ink stroke into one face. The inscription
+        // is static geometry shared across visits in both renderers.
+        const x0 = -(text.length * 4 - 1) * cell / 2 + (ch * 4 + start) * cell + (cell - pixel) / 2;
+        const x1 = x0 + (col - start - 1) * cell + pixel, y = (2 - row) * cell;
+        const at = geo.verts.length / 3;
+        geo.verts.push(x0, y - pixel / 2, 0.054, x1, y - pixel / 2, 0.054, x1, y + pixel / 2, 0.054, x0, y + pixel / 2, 0.054);
+        geo.faces.push({ i: [at, at + 1, at + 2, at + 3], color: [211, 193, 155], emissive: 0, roomSignInk: true });
+      }
+    }
+    // The hanging point is the origin, so impacts rotate the whole sign
+    // around its cords rather than around the middle of the board.
+    const size = 0.56;
+    for (let i = 0; i < geo.verts.length; i += 3) {
+      geo.verts[i] *= size;
+      geo.verts[i + 1] = (geo.verts[i + 1] - 0.63) * size;
+      geo.verts[i + 2] = (geo.verts[i + 2] + 0.08) * size;
+    }
+    geo.roomLifehashSign = { roomKey: bedding.roomKey, hash, lines: [text], width: width * size, height: height * size,
+      board: new Float64Array([-width * size / 2, (-height / 2 - 0.63) * size, 0.04 * size, width * size / 2, (height / 2 - 0.63) * size, 0.1455 * size]) };
+    roomSignCache[slot] = geo;
     return geo;
   };
   const room = cached(() => {
@@ -143,5 +183,5 @@
   };
   const roomEntrance = variants((i) => buildRoomEntrance(i, false));
   const rampEntrance = variants((i) => buildRoomEntrance(i, true));
-  BL.headquartersModels = { room, entranceRamp, roomEntrance, rampEntrance, mattress, MATTRESS, ROOM_RADIUS };
+  BL.headquartersModels = { room, entranceRamp, roomEntrance, rampEntrance, mattress, roomSign, MATTRESS, ROOM_RADIUS };
 })();

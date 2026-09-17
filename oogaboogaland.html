@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-K2h3hI3JOHtvSuLHUYlu5jHUg8AwG2H6ksvWpwcEEKk='; style-src 'sha256-oj9QNAb7A/gm/c0Gt4Isoom5ipi1b8VBn14h0JWsIUI='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-w+tpLNVJ5IuTePmBIfJeY/gtwI3lDMPmPFn8SfQu/d0='; style-src 'sha256-bUniAqV9i1OXnHgmaaPJUkFdggoLsv7E79OLnEsrCLk='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -1049,14 +1049,19 @@ select {
   transition: width 0.2s ease, background 0.15s ease, transform 0.15s ease;
 }
 
-.jetpack-hud:hover,
+.jetpack-hud:hover:not(:disabled),
 .jetpack-hud:focus-visible {
   background: linear-gradient(160deg, #504b47, #45413d 55%, #363330);
   outline: none;
 }
 
-.jetpack-hud:active {
+.jetpack-hud:active:not(:disabled) {
   transform: translateY(1px);
+}
+
+.jetpack-hud:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .jetpack-hud[data-equipped="true"] {
@@ -3365,17 +3370,23 @@ select {
   };
   const localHour = (date) => date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600 + date.getMilliseconds() / 3600000;
   const localDay = (date) => Math.floor((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(date.getFullYear(), 0, 0)) / 86400000);
-  const createClock = ({ hour, daylen, day, now = new Date() } = {}) => {
+  const parseTime = (time) => {
+    if (typeof time !== "string" || time.length !== 4 || !/^[0-2][0-9][0-5][0-9]$/.test(time)) return NaN;
+    const hour = Number(time.slice(0, 2)), minute = Number(time.slice(2));
+    return hour < 24 ? hour + minute / 60 : NaN;
+  };
+  const createClock = ({ hour, daylen, day, time, now = new Date() } = {}) => {
+    const fixedHour = parseTime(time), fixed = Number.isFinite(fixedHour);
     const pinned = Number.isFinite(hour);
-    const baseHour = wrap(pinned ? hour : localHour(now), 24);
+    const baseHour = fixed ? fixedHour : wrap(pinned ? hour : localHour(now), 24);
     const baseDay = clamp(Number.isFinite(day) ? Math.round(day) : localDay(now), 1, 366);
-    const running = daylen > 0 || !pinned;
+    const running = !fixed && (daylen > 0 || !pinned);
     const rate = daylen > 0 ? 24 / daylen : 1 / 3600;
     const start = performance.now();
     const state = { hour: baseHour, continuousDay: baseDay - 1 + baseHour / 24, dayOfYear: baseDay, read: null };
     state.read = () => {
       const hours = baseHour + (running ? (performance.now() - start) * 0.001 * rate : 0);
-      state.hour = wrap(hours, 24);
+      state.hour = running ? wrap(hours, 24) : baseHour;
       state.continuousDay = baseDay - 1 + hours / 24;
       state.dayOfYear = Math.floor(wrap(state.continuousDay, 366)) + 1;
       return state.hour;
@@ -3388,7 +3399,7 @@ select {
     const rise = Math.max(0, eyeHeight - 8);
     return rise / Math.hypot(110, rise);
   };
-  BL.daylight = { PHASES, ISLAND_LATITUDE_DEG, AXIAL_TILT_DEG, phaseAt, sample, createClock, hazeDropAt };
+  BL.daylight = { PHASES, ISLAND_LATITUDE_DEG, AXIAL_TILT_DEG, phaseAt, sample, parseTime, createClock, hazeDropAt };
 })();
 
 // ---- js/scene.js ----
@@ -3399,10 +3410,13 @@ select {
   const createNode = (options = {}) => ({
     position: { x: 0, y: 0, z: 0 },
     rotation: { x: 0, y: 0, z: 0 },
+    poseYaw: 0,
     scale: { x: 1, y: 1, z: 1 },
     geometry: null,
     glow: 1,
     highlight: 0,
+    scorch: 0,
+    ember: 0,
     visible: true,
     cameraHidden: false,
     parent: null,
@@ -3430,6 +3444,15 @@ select {
     // A node carrying a quaternion turns by it instead of its Euler rotation
     if (node.quaternion) mat4.fromTQS(node.local, node.position, node.quaternion, node.scale);
     else mat4.fromTRS(node.local, node.position, node.rotation, node.scale);
+    // A body pose turns both the part and its pivot in the parent's frame,
+    // without changing its authored gait or the character's facing direction.
+    if (node.poseYaw) {
+      const m = node.local, c = Math.cos(node.poseYaw), s = Math.sin(node.poseYaw);
+      for (let i = 0; i < 16; i += 4) {
+        const x = m[i], z = m[i + 2];
+        m[i] = c * x + s * z; m[i + 2] = c * z - s * x;
+      }
+    }
     if (parentWorld) mat4.multiply(node.world, parentWorld, node.local);
     else node.world.set(node.local);
     for (const child of node.children) updateWorld(child, node.world);
@@ -3567,6 +3590,7 @@ void main() {
   vec4 w = m * vec4(aPos, 1.0);
   vNormal = normalize(mat3(m) * aNormal);
   vColor = aColor;
+  vColor.rgb *= 1.0 - clamp(-aParams.y, 0.0, 1.0) * 0.88;
   // Cave ownership shares the otherwise nonnegative emissive channel. Decode it
   // before lighting so leaving the portal restores the original material exactly.
   float encoded = max(0.0, -aColor.a - 1.0);
@@ -3578,6 +3602,7 @@ void main() {
   vMatrixCave = floor(encoded * 0.5);
   vColor.a = aColor.a < 0.0 ? encoded - vMatrixCave * 2.0 : aColor.a;
   vParams = aParams;
+  vParams.y = max(0.0, aParams.y);
   // Smoke fades through coverage without a separate transparent draw pass.
   vSmokeOpacity = aParams.z < 0.0 ? -aParams.z - 1.0 : 1.0;
   vParams.z = max(0.0, aParams.z);
@@ -3925,7 +3950,13 @@ void main() {
       return;
     }
   }
-  float emissive = clamp(vColor.a * vParams.x, 0.0, 1.0);
+  // Negative instance glow is body heat; ordinary material emission remains
+  // nonnegative. Keep color variation and directional shading in the embers.
+  float ember = clamp(-vParams.x, 0.0, 1.0);
+  float detail = 0.72 + dot(base, vec3(0.2126, 0.7152, 0.0722)) * 0.28;
+  vec3 heat = vec3(1.0, 0.12 + ember * 0.85, 0.01 + ember * ember * ember * 0.74) * detail;
+  base = mix(base, heat, ember * 0.9);
+  float emissive = max(clamp(vColor.a * max(0.0, vParams.x), 0.0, 1.0), ember * 0.9);
   vec3 lightFactor = lightFactorAt(n);
   vec3 lit = base * lightFactor;
   vec3 col = mix(lit, base * 1.15, emissive);
@@ -3984,6 +4015,8 @@ void main() {
   vec4 cb = m * vec4(aB, 1.0);
   vColor = aColor;
   vParams = aParams;
+  vColor.rgb *= 1.0 - clamp(-aParams.y, 0.0, 1.0) * 0.88;
+  vParams.y = max(0.0, aParams.y);
   if (ca.w < 0.05 && cb.w < 0.05) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
@@ -4008,10 +4041,14 @@ in vec4 vParams;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oBright;
 void main() {
-  float glow = clamp(vColor.a * vParams.x, 0.0, 1.0);
-  vec3 col = mix(vColor.rgb, vec3(1.0), glow * 0.35);
+  float ember = clamp(-vParams.x, 0.0, 1.0);
+  float detail = 0.72 + dot(vColor.rgb, vec3(0.2126, 0.7152, 0.0722)) * 0.28;
+  vec3 heat = vec3(1.0, 0.12 + ember * 0.85, 0.01 + ember * ember * ember * 0.74) * detail;
+  vec3 base = mix(vColor.rgb, heat, ember * 0.9);
+  float glow = max(clamp(vColor.a * max(0.0, vParams.x), 0.0, 1.0), ember * 0.9);
+  vec3 col = mix(base, vec3(1.0), glow * 0.35);
   oColor = vec4(col, 1.0);
-  oBright = vec4(vColor.rgb * glow, 1.0);
+  oBright = vec4(base * glow, 1.0);
 }`;
   const MIRROR_VS = `#version 300 es
 precision highp float;
@@ -4335,7 +4372,7 @@ void main() {
       destroyMirrorTarget();
       const samples = Math.min(settings.msaa, gl.getParameter(gl.MAX_SAMPLES));
       mirror.tex = createTexture(w, h, gl.RGBA8, gl.LINEAR);
-      mirror.depth = createRenderbuffer(w, h, gl.DEPTH_COMPONENT16, samples);
+      mirror.depth = createRenderbuffer(w, h, gl.DEPTH_COMPONENT24, samples);
       mirror.fb = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, mirror.fb);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, mirror.tex, 0);
@@ -4694,8 +4731,10 @@ void main() {
         const n = rec.nodes[i];
         const o = i * INSTANCE_FLOATS;
         d.set(n.world, o);
-        d[o + 16] = n.glow;
-        d[o + 17] = n.highlight;
+        // Body heat shares the negative half of the nonnegative glow channel.
+        d[o + 16] = n.ember > 0 ? -n.ember : n.glow;
+        // Scorch shares the negative half of the nonnegative highlight channel.
+        d[o + 17] = n.scorch > 0 ? -n.scorch : n.highlight;
         d[o + 18] = n.smokeOpacity === undefined ? matrixModeOf(n) : -1 - n.smokeOpacity;
         d[o + 19] = 0;
       }
@@ -4856,11 +4895,11 @@ void main() {
       width = canvas.clientWidth;
       height = canvas.clientHeight;
       const budget = Math.sqrt(MAX_PIXELS / Math.max(1, width * height));
-      dpr = Math.max(0.75, Math.min(window.devicePixelRatio || 1, settings.dpr, budget));
+      dpr = Math.min(budget, Math.max(0.75, Math.min(window.devicePixelRatio || 1, settings.dpr)));
       size.width = width;
       size.height = height;
-      pw = Math.max(1, Math.round(width * dpr));
-      ph = Math.max(1, Math.round(height * dpr));
+      pw = Math.max(1, Math.floor(width * dpr));
+      ph = Math.max(1, Math.floor(height * dpr));
       canvas.width = pw;
       canvas.height = ph;
       buildFbo();
@@ -4919,8 +4958,16 @@ void main() {
           }
         }
         if (kind === "line") gl.uniform1f(res.programs.line.u.uWidth, part.width * dpr);
+        // Surface overlays stay above their backing at distant zooms in both color
+        // passes. Keep the shadow depth and subsequent ordinary meshes unchanged.
+        const offset = kind === "mesh" && useProgram === "mesh" && rec.geometry.depthOffset;
+        if (offset) {
+          gl.enable(gl.POLYGON_OFFSET_FILL);
+          gl.polygonOffset(0, -4);
+        }
         gl.bindVertexArray(part.vao);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, part.count, n);
+        if (offset) gl.disable(gl.POLYGON_OFFSET_FILL);
       }
     };
     // Celestial rays depend only on orientation. Removing translation before
@@ -5400,7 +5447,7 @@ void main() {
     const CLIP_OUT = new Float32Array(30);
     const MIRROR_CLIP_IN = new Float32Array(30);
     const MIRROR_CLIP_OUT = new Float32Array(30);
-    const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, tip: 0, smokeOpacity: 1, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false, matrixFullCave: 0 };
+    const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, scorch: 0, ember: 0, tip: 0, smokeOpacity: 1, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false, matrixFullCave: 0 };
     const mirrorDebug = {
       active: false, faux: true, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: true, reflectionOnlyCount: 0, planeDistance: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), skipReason: "canvas-faux"
@@ -5541,6 +5588,8 @@ void main() {
       const { verts, faces, lines } = node.geometry;
       const w = node.world;
       const f = lastF;
+      const ember = Math.min(1, node.ember || 0), scorch = 1 - Math.min(1, node.scorch || 0) * 0.88;
+      const materialGlow = ember > 0 ? 0 : node.glow;
       const mirrorFace = !!(node.mirror || node.mirrorPortal);
       const portalFace = !!node.mirrorPortal || !!node.mirrorWalkThrough && mirrorDebug.portal;
       const localMatrixGlyph = !!node.geometry.matrixGlyph;
@@ -5675,7 +5724,7 @@ void main() {
           // glyphs, but need no shading or draw record. Preserve the face stroke
           // and antialias margin, including polygons crossing the whole view.
           if (maxX < -2 || minX > width + 2 || maxY < -2 || minY > height + 2) { poolUsed--; continue; }
-          const emissive = (face.emissive || 0) * node.glow;
+          const emissive = Math.max((face.emissive || 0) * materialGlow, ember * 0.9);
           rec.matrixLiving = matrixLiving;
           let k, glyphDistance = 0;
           if (localMatrixGlyph) {
@@ -5688,13 +5737,18 @@ void main() {
             const hemi = Math.max(ambientFloor, lerp(groundLuma, skyLuma, ny * 0.5 + 0.5));
             k = lerp(Math.min(1, hemi + diffuse * 0.7 * directStrength), 1.1, Math.min(1, emissive));
           }
-          k = lerp(k, 1.3, node.highlight * 0.4);
+          k = lerp(k, 1.3, node.scorch > 0 ? 0 : node.highlight * 0.4);
           const c = face.color;
+          const detail = 0.72 + (c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722) / 255 * scorch * 0.28;
+          const heat = 255 * detail;
+          const cr = lerp(c[0] * scorch, heat, ember * 0.9);
+          const cg = lerp(c[1] * scorch, heat * (0.12 + ember * 0.85), ember * 0.9);
+          const cb = lerp(c[2] * scorch, heat * (0.01 + ember * ember * ember * 0.74), ember * 0.9);
           const tip = node.tip > 1.5 ? 0 : node.tip || 0;
           const fog = localMatrixGlyph ? smooth((glyphDistance - fogNear) / (fogFar - fogNear)) : Math.min(1, Math.max(0, (-rec.depth - fogNear) / (fogFar - fogNear)));
-          let red = lerp(lerp(c[0] * k, 214, tip * 0.88), fogRgb[0], fog);
-          let green = lerp(lerp(c[1] * k, 255, tip * 0.88), fogRgb[1], fog);
-          let blue = lerp(lerp(c[2] * k, 227, tip * 0.88), fogRgb[2], fog);
+          let red = lerp(lerp(cr * k, 214, tip * 0.88), fogRgb[0], fog);
+          let green = lerp(lerp(cg * k, 255, tip * 0.88), fogRgb[1], fog);
+          let blue = lerp(lerp(cb * k, 227, tip * 0.88), fogRgb[2], fog);
           if (maximumFront && !localMatrixGlyph) {
             const pulse = matrixLiving ? 0.88 + Math.sin(matrixTime * 2.2 - flow * 0.5) * 0.08 : 0;
             const matrixFog = smooth((Math.hypot(centerX - eye.x, centerY - eye.y, centerZ - eye.z) - fogNear) / (fogFar - fogNear));
@@ -5751,10 +5805,14 @@ void main() {
           rec.line = true;
           rec.mirror = false;
           rec.portal = false;
-          rec.lineGlow = (line.emissive || 0) * node.glow;
+          rec.lineGlow = Math.max((line.emissive || 0) * materialGlow, ember * 0.9);
           const c = line.color;
-          rec.style = `rgb(${c[0]},${c[1]},${c[2]})`;
-          rec.coreStyle = rec.lineGlow > 0.5 ? `rgb(${Math.round(c[0] + (255 - c[0]) * 0.55)},${Math.round(c[1] + (255 - c[1]) * 0.55)},${Math.round(c[2] + (255 - c[2]) * 0.55)})` : "";
+          const heat = 255 * (0.72 + (c[0] * 0.2126 + c[1] * 0.7152 + c[2] * 0.0722) / 255 * scorch * 0.28);
+          const red = lerp(c[0] * scorch, heat, ember * 0.9);
+          const green = lerp(c[1] * scorch, heat * (0.12 + ember * 0.85), ember * 0.9);
+          const blue = lerp(c[2] * scorch, heat * (0.01 + ember * ember * ember * 0.74), ember * 0.9);
+          rec.style = `rgb(${Math.round(red)},${Math.round(green)},${Math.round(blue)})`;
+          rec.coreStyle = rec.lineGlow > 0.5 ? `rgb(${Math.round(red + (255 - red) * 0.55)},${Math.round(green + (255 - green) * 0.55)},${Math.round(blue + (255 - blue) * 0.55)})` : "";
         }
       }
     };
@@ -5805,8 +5863,10 @@ void main() {
           }
         }
         for (let i = 0; i < 16; i++) BATCH_NODE.world[i] = data[offset + i];
-        BATCH_NODE.glow = data[offset + 16];
-        BATCH_NODE.highlight = data[offset + 17];
+        BATCH_NODE.glow = Math.max(0, data[offset + 16]);
+        BATCH_NODE.ember = Math.max(0, -data[offset + 16]);
+        BATCH_NODE.highlight = Math.max(0, data[offset + 17]);
+        BATCH_NODE.scorch = Math.max(0, -data[offset + 17]);
         BATCH_NODE.tip = Math.max(0, data[offset + 18]);
         BATCH_NODE.smokeOpacity = data[offset + 18] < 0 ? -1 - data[offset + 18] : 1;
         shadeNode(BATCH_NODE);
@@ -6508,7 +6568,7 @@ void main() {
   const banana = () => createNode({ geometry: bananaGeometry() });
   // A centered copy for the pile skin. It has the full depth and dimensions of a
   // carried banana, while its origin lets it sit evenly across the mound surface.
-  const bananaTileGeometry = cached(() => tube({
+  const bananaTileNearGeometry = cached(() => tube({
     rings: 8,
     segments: 5,
     path: (t) => {
@@ -6518,6 +6578,20 @@ void main() {
     radius: (t) => 0.085 * Math.pow(Math.sin(Math.PI * t), 0.55) + 0.012,
     colorFn: (t) => t < 0.08 || t > 0.92 ? "#5a3a1a" : t < 0.2 || t > 0.8 ? "#c9b23a" : "#f5c542"
   }));
+  const bananaTileDistantGeometry = cached(() => {
+    const source = bananaTileNearGeometry(), geo = geometry(), rings = [0, 1, 2, 4, 6, 7, 8];
+    // Merge only the middle yellow spans; the tips and cross section stay exact.
+    for (const ring of rings) for (let segment = 0; segment < 5; segment++) {
+      const i = (ring * 5 + segment) * 3;
+      geo.verts.push(source.verts[i], source.verts[i + 1], source.verts[i + 2]);
+    }
+    for (let p = 0; p < rings.length - 1; p++) for (let s = 0; s < 5; s++) {
+      const next = (s + 1) % 5, original = source.faces[rings[p] * 5 + s];
+      face(geo, [p * 5 + s, p * 5 + next, (p + 1) * 5 + next, (p + 1) * 5 + s], original.color, original);
+    }
+    return geo;
+  });
+  const bananaTileGeometry = (distant = false) => distant ? bananaTileDistantGeometry() : bananaTileNearGeometry();
   const bananaPileCoreGeometry = (worldRadius = 0.45, worldHeight = 0.48, faceSize = 0.16) => {
     const geo = geometry();
     const segments = Math.max(24, Math.min(384, Math.ceil(Math.PI * 2 * worldRadius / faceSize)));
@@ -6661,10 +6735,34 @@ void main() {
     ...[-0.28, 0.28].map((y) => box({ w: 0.2 * h, h: 0.03 * h, d: 0.045 * h, color: "#8a8a8a", offset: { y: y * h, z: -0.03 * h } })),
     ...[-0.28, 0.28].flatMap((y) => [-0.085, 0.085].map((x) => box({ w: 0.06 * h, h: 0.06 * h, d: 0.05 * h, color: "#1a1a1a", offset: { x: x * h, y: y * h, z: -0.07 * h } })))
   );
+  const cigaretteGeometry = (h) => merge(
+    box({ w: 0.035 * h, h: 0.035 * h, d: 0.26 * h, color: "#f3efe4", offset: { z: 0.13 * h } }),
+    box({ w: 0.037 * h, h: 0.037 * h, d: 0.06 * h, color: "#c78b42", offset: { z: 0.29 * h } }),
+    box({ w: 0.04 * h, h: 0.04 * h, d: 0.025 * h, color: "#e35b2d", emissive: 0.7, offset: { z: 0.34 * h } })
+  );
+  const energyCanCache = new Map();
+  const energyCanGeometry = (h, gold = false) => {
+    const key = `${h}/${gold}`;
+    let geo = energyCanCache.get(key);
+    if (!geo) {
+      geo = merge(
+        lathe({ profile: [[0.075 * h, -0.18 * h], [0.088 * h, -0.14 * h], [0.088 * h, 0.14 * h], [0.075 * h, 0.18 * h]], segments: 10, color: "#c9ccd2" }),
+        box({ w: 0.12 * h, h: 0.3 * h, d: 0.014 * h, color: "#2458a6", offset: { z: 0.086 * h } }),
+        box({ w: 0.014 * h, h: 0.3 * h, d: 0.12 * h, color: "#2458a6", offset: { x: 0.086 * h } }),
+        box({ w: 0.11 * h, h: 0.028 * h, d: 0.018 * h, color: "#d32f2f", offset: { y: 0.035 * h, z: 0.096 * h } }),
+        box({ w: 0.055 * h, h: 0.045 * h, d: 0.02 * h, color: "#e23d32", offset: { y: -0.045 * h, z: 0.098 * h } }),
+        lathe({ profile: [[0.072 * h, 0.18 * h], [0.065 * h, 0.195 * h], [0, 0.195 * h]], segments: 10, color: "#c9ccd2" }),
+        box({ w: 0.055 * h, h: 0.008 * h, d: 0.025 * h, color: "#5f6670", offset: { y: 0.202 * h } })
+      );
+      if (gold) for (const face of geo.faces) face.color = GOLD_CLUB_PALETTE[0];
+      energyCanCache.set(key, geo);
+    }
+    return geo;
+  };
   const caveman = (traits) => {
     const { skin, hair, height: h, belly, rand } = traits;
     const u = h / 16;
-    const P = { skin: 0, skinDk: 1, hair: 2, hairDk: 3, fur: 4, spot: 5, white: 6, black: 7, nose: 8, stubble: 9, wood: 10, stone: 11, stoneDk: 12, apple: 13, appleDk: 14, leaf: 15, knit: 16, knitDk: 17, pom: 18, lens: 19, btc: 20, gold: 21, goldDk: 22, wing: 23, wingDk: 24, goggle: 25, goggleDk: 26 };
+    const P = { skin: 0, skinDk: 1, hair: 2, hairDk: 3, fur: 4, spot: 5, white: 6, black: 7, nose: 8, stubble: 9, wood: 10, stone: 11, stoneDk: 12, apple: 13, appleDk: 14, leaf: 15, knit: 16, knitDk: 17, pom: 18, lens: 19, btc: 20, gold: 21, goldDk: 22, wing: 23, wingDk: 24, goggle: 25, goggleDk: 26, orange: 27 };
     const palette = [
       shade(skin, 1),
       shade(skin, 0.9),
@@ -6692,7 +6790,8 @@ void main() {
       hexToRgb("#e4f3fb"),
       hexToRgb("#bcdcec"),
       hexToRgb("#3a9dff"),
-      hexToRgb("#1f6fc4")
+      hexToRgb("#1f6fc4"),
+      hexToRgb("#e89423")
     ];
     const jit = (base, dark, p) => () => rand() < p ? dark : base;
     const skinJ = jit(P.skin, P.skinDk, 0.08);
@@ -6734,6 +6833,7 @@ void main() {
         rosettes(v, 0, 8, 0, 2, 0, 5, 8);
         v.fill(1, 7, 3, 7, 1, 4, skinJ);
       }
+      if (traits.orangeChest) v.fill(0, 8, 0, 7, 0, 5, P.orange);
       if (traits.bee) {
         // The Bee: black bands round the fuzz and two pale wings folded off the back, baked into the torso
         v.fill(1, 7, 4, 4, 1, 4, P.black);
@@ -6771,13 +6871,13 @@ void main() {
     const clubV = traits.anunnaki ? staffVoxels(rand) : clubVoxels(rand);
     const clubOrigin = { x: -1 * u, y: -1 * u, z: -1 * u };
     const skins = {
-      club: { default: voxelGeometry(clubV, { unit: u, palette: CLUB_PALETTE, origin: clubOrigin }), gold: voxelGeometry(clubV, { unit: u, palette: GOLD_CLUB_PALETTE, origin: clubOrigin }) },
+      club: { default: traits.energyCan ? energyCanGeometry(h) : voxelGeometry(clubV, { unit: u, palette: CLUB_PALETTE, origin: clubOrigin }), gold: traits.energyCan ? energyCanGeometry(h, true) : voxelGeometry(clubV, { unit: u, palette: GOLD_CLUB_PALETTE, origin: clubOrigin }) },
       gun: { default: gunGeometry(h, GUN_PALETTE), gold: gunGeometry(h, GOLD_GUN_PALETTE) }
     };
     // The staff stands upright in the grip; the club hangs forward
     parts.club = createNode({
       position: { x: 0, y: -0.62 * h, z: 0.08 * h },
-      rotation: { x: traits.anunnaki ? 0.2 : 0.95, y: 0, z: 0 },
+      rotation: { x: traits.energyCan ? 0 : traits.anunnaki ? 0.2 : 0.95, y: 0, z: 0 },
       geometry: skins.club.default
     });
     addChild(parts.armL, parts.club);
@@ -6793,6 +6893,7 @@ void main() {
     parts.gunBody = createNode({ geometry: skins.gun.default });
     addChild(parts.gun, parts.gunBody);
     addChild(parts.armR, parts.gun);
+    if (traits.cigarette) addChild(parts.armR, createNode({ position: { x: 0, y: -0.62 * h, z: 0.16 * h }, geometry: cigaretteGeometry(h) }));
     const headVox = makeVox();
     const eyeCells = [];
     {
@@ -6817,7 +6918,9 @@ void main() {
       }
       if (traits.gasMask) {
         // Nose, beard and mouth sit under the mask
-      } else if (traits.slim) {
+      } else if (traits.yellowFace) {
+        // YellowBrokeIt uses a simple black nose and white muzzle below.
+      } else if (traits.slim || traits.cleanShaven) {
         v.fill(3, 3, 2, 3, 6, 6, P.nose);
       } else if (traits.skater || traits.bee) {
         // Clean-shaven under the shades: a low nose and a smirk
@@ -6901,11 +7004,21 @@ void main() {
       if (hairy) {
         for (let x = 0; x <= 6; x++) for (let z = 0; z <= 5; z++) if (rand() < 0.08) v.set(x, 9, z, rand() < 0.5 ? P.hair : P.hairDk);
       }
-      for (const [ex0, ex1] of [[0, 1], [5, 6]]) {
-        for (let x = ex0; x <= ex1; x++) for (let y = 2; y <= 3; y++) {
+      const eyes = traits.wideEyes ? [[0, 2], [4, 6]] : [[0, 1], [5, 6]];
+      const eyeY0 = traits.wideEyes ? 1 : 2, eyeY1 = traits.wideEyes ? 4 : 3;
+      for (const [ex0, ex1] of eyes) {
+        for (let x = ex0; x <= ex1; x++) for (let y = eyeY0; y <= eyeY1; y++) {
           v.set(x, y, 5, P.white);
           eyeCells.push([x, y]);
         }
+      }
+      if (traits.yellowFace) {
+        v.fill(1, 5, 0, 1, 5, 6, P.white);
+        v.set(3, 2, 6, P.black);
+        v.set(0, 5, 6, P.black);
+        v.set(1, 4, 6, P.black);
+        v.set(6, 5, 6, P.black);
+        v.set(5, 4, 6, P.black);
       }
       v.set(1, 2, 5, P.black);
       v.set(5, 2, 5, P.black);
@@ -7641,7 +7754,8 @@ void main() {
   const PATH_TILE = {
     verts: [-PATH_UNIT / 2, 0, -PATH_UNIT / 2, PATH_UNIT / 2, 0, -PATH_UNIT / 2, PATH_UNIT / 2, 0, PATH_UNIT / 2, -PATH_UNIT / 2, 0, PATH_UNIT / 2],
     faces: [{ i: [0, 3, 2, 1], color: PALETTE[P.path], emissive: 0 }],
-    lines: []
+    lines: [],
+    depthOffset: true
   };
   const UNDER_BANDS = [P.dirt, P.stoneDark, P.dirt, P.stone];
   const undersideDepthAt = (radius) => Math.max(0, UNDER_SPHERE_CENTER + Math.sqrt(Math.max(0, UNDER_SPHERE_RADIUS * UNDER_SPHERE_RADIUS - radius * radius)));
@@ -9454,8 +9568,8 @@ void main() {
       ...[-1, 1].flatMap((side) => [half * 0.5, -half * 0.5].map((y) => box({ w: 0.12, h: half, d: 0.16, color: "#4a3319", offset: { x: side * (width * 0.5 - 0.06), y, z: 0.15 } }))),
       box({ w: width + 0.3, h: 0.08, d: 0.34, color: WOOD_DK, offset: { y: half + 0.18, z: 0.08 } }),
       ...[-1, 1].map((side) => box({ w: 0.06, h: 0.2, d: 0.06, color: "#3a2a18", offset: { x: side * (width * 0.5 - 0.3), y: half + 0.07, z: 0.08 } })),
-      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: 0.2, z: SIGN_FRONT + 0.0175 } }),
-      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: -0.22, z: SIGN_FRONT + 0.0175 } })
+      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: 0.235, z: SIGN_FRONT + 0.0175 } }),
+      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: -0.31, z: SIGN_FRONT + 0.0175 } })
     ];
     let cursor = -textW * 0.5;
     for (const ch of text) {
@@ -9640,7 +9754,8 @@ void main() {
   const bedroll = cached(() => merge(box({ w: 1.9, h: 0.09, d: 0.85, color: "#2e2724" }), box({ w: 0.4, h: 0.16, d: 0.6, color: "#40342c", offset: { x: 0.65, y: 0.1 } })));
   const GREENS = ["#3f7a2b", "#4f8f36", "#5fa243", "#74b552"];
   const CANOPIES = [GREENS, ["#2f6b3a", "#3f8248", "#4f9a58", "#66b06a"], ["#5a7d2a", "#6f9436", "#86aa44", "#a2c055"], ["#c47f9d", "#d697b0", "#e8b4c6", "#f2c9d8"]];
-  const TREE_HEIGHT = 3;
+  const TREE_TRUNK_LIFT = 5;
+  const TREE_HEIGHT = 3 + TREE_TRUNK_LIFT * QUARTER;
   // Crown clumps per variant as [cx, cy, cz, rx, ry, rz] in quarter cells
   const CROWNS = [
     [[0, 8.6, 0, 4.6, 3.0, 4.4], [-2.2, 9.6, 1.4, 2.6, 2.4, 2.6], [2.0, 7.4, -1.6, 2.4, 2.0, 2.4]],
@@ -9668,7 +9783,22 @@ void main() {
       v.set(-3, 7, -1, 1);
     }
     foliage(v, rand, 2, lo, hi);
-    return voxGeo(v, { unit: QUARTER, palette: ["#6b4a2b", "#4e361f", ...CANOPIES[i]] });
+    // Keep the crown and roots intact while extending the trunk. Branch
+    // stubs rise with the leaves so neither catches a walking Ooga's head.
+    const tall = vox();
+    let canopyFloor = Infinity;
+    for (const [key, color] of v.map) {
+      const [x, y, z] = key.split(",").map(Number), lifted = y ? y + TREE_TRUNK_LIFT : 0;
+      tall.set(x, lifted, z, color);
+      if (color >= 2) canopyFloor = Math.min(canopyFloor, lifted * QUARTER);
+    }
+    tall.fill(-1, 0, 1, TREE_TRUNK_LIFT, -1, 0, bark);
+    const geometry = voxGeo(tall, { unit: QUARTER, palette: ["#6b4a2b", "#4e361f", ...CANOPIES[i]] });
+    let radius = 0;
+    for (let j = 0; j < geometry.verts.length; j += 3) radius = Math.max(radius, Math.hypot(geometry.verts[j], geometry.verts[j + 2]));
+    geometry.treeRadius = radius;
+    geometry.treeCanopyFloor = canopyFloor;
+    return geometry;
   });
   // Bush clumps per variant, small tuft to a wide berry bush
   const CLUMPS = [
@@ -9999,7 +10129,8 @@ void main() {
         colors[index] = color[0] * 255; colors[index + 1] = color[1] * 255; colors[index + 2] = color[2] * 255;
       }
     }
-    return { width: 32, height: 32, colors };
+    const hash = Array.from(digest, (v) => v.toString(16).padStart(2, "0")).join("");
+    return { width: 32, height: 32, colors, hash };
   };
   BL.lifehash = { make };
 })();
@@ -10025,6 +10156,7 @@ void main() {
   // Room indices occupy eleven HQ slots and eight basement slots. Reuse their
   // static geometry across visits without retaining a departed room or scene.
   const mattressCache = new Array(19);
+  const roomSignCache = new Array(19);
   const fabric = (pattern, width, depth, top, bottom, centerZ, kind) => {
     const geo = { verts: [], faces: [], lines: [] }, size = pattern.width, colors = pattern.colors;
     const cells = new Uint32Array(size * size), used = new Uint8Array(cells.length);
@@ -10083,7 +10215,7 @@ void main() {
       const from = ((size - 1 - x) * size + y) * 3, to = (y * size + x) * 3;
       colors[to] = pattern.colors[from]; colors[to + 1] = pattern.colors[from + 1]; colors[to + 2] = pattern.colors[from + 2];
     }
-    const pillow = { seed: sheet.seed, pattern: { width: size, height: size, colors } };
+    const pillow = { seed: sheet.seed, pattern: { width: size, height: size, colors, hash: pattern.hash } };
     const base = box({ w: MATTRESS.width - 0.02, h: 0.035, d: MATTRESS.depth - 0.02, color: "#c6b997", offset: { y: 0.0175 } });
     // The blanket is the top surface. A second buried top can sort in front
     // of its smaller printed faces in the Canvas painter.
@@ -10095,6 +10227,45 @@ void main() {
     );
     geo.mattress = { roomKey, width: MATTRESS.width, depth: MATTRESS.depth, height: MATTRESS.height, sheet, pillow };
     mattressCache[slot] = geo;
+    return geo;
+  };
+  const roomSign = (room) => {
+    const bedding = mattress(room).mattress, slot = room.index + (room.basement ? 11 : 0), cached = roomSignCache[slot];
+    if (cached && cached.roomLifehashSign.roomKey === bedding.roomKey) return cached;
+    const hash = bedding.sheet.pattern.hash, text = hash.slice(0, 8).toUpperCase(), width = 2.12, height = 0.72, cell = 0.055, pixel = 0.047;
+    const geo = merge(
+      box({ w: width, h: height, d: 0.08, color: "#4a3319" }),
+      box({ w: width - 0.08, h: 0.345, d: 0.025, color: "#8f6538", offset: { y: 0.1775, z: 0.04 } }),
+      box({ w: width - 0.08, h: 0.345, d: 0.025, color: "#9c7040", offset: { y: -0.1775, z: 0.04 } }),
+      ...[-0.72, 0.72].map((x) => box({ w: 0.035, h: 0.30, d: 0.035, color: "#63472f", offset: { x, y: 0.48, z: -0.08 } })),
+      ...[-1, 1].flatMap((x) => [-0.27, 0.27].map((y) => box({ w: 0.035, h: 0.035, d: 0.015, color: "#3a2a18", offset: { x, y, z: 0.058 } })))
+    );
+    for (let ch = 0; ch < text.length; ch++) {
+      const glyph = BL.hubModels.SIGN_GLYPHS[text[ch]];
+      for (let row = 0; row < glyph.length; row++) for (let col = 0; col < 3;) {
+        if (glyph[row][col] !== "1") { col++; continue; }
+        const start = col++;
+        while (col < 3 && glyph[row][col] === "1") col++;
+        // Merge each horizontal ink stroke into one face. The inscription
+        // is static geometry shared across visits in both renderers.
+        const x0 = -(text.length * 4 - 1) * cell / 2 + (ch * 4 + start) * cell + (cell - pixel) / 2;
+        const x1 = x0 + (col - start - 1) * cell + pixel, y = (2 - row) * cell;
+        const at = geo.verts.length / 3;
+        geo.verts.push(x0, y - pixel / 2, 0.054, x1, y - pixel / 2, 0.054, x1, y + pixel / 2, 0.054, x0, y + pixel / 2, 0.054);
+        geo.faces.push({ i: [at, at + 1, at + 2, at + 3], color: [211, 193, 155], emissive: 0, roomSignInk: true });
+      }
+    }
+    // The hanging point is the origin, so impacts rotate the whole sign
+    // around its cords rather than around the middle of the board.
+    const size = 0.56;
+    for (let i = 0; i < geo.verts.length; i += 3) {
+      geo.verts[i] *= size;
+      geo.verts[i + 1] = (geo.verts[i + 1] - 0.63) * size;
+      geo.verts[i + 2] = (geo.verts[i + 2] + 0.08) * size;
+    }
+    geo.roomLifehashSign = { roomKey: bedding.roomKey, hash, lines: [text], width: width * size, height: height * size,
+      board: new Float64Array([-width * size / 2, (-height / 2 - 0.63) * size, 0.04 * size, width * size / 2, (height / 2 - 0.63) * size, 0.1455 * size]) };
+    roomSignCache[slot] = geo;
     return geo;
   };
   const room = cached(() => {
@@ -10150,7 +10321,7 @@ void main() {
   };
   const roomEntrance = variants((i) => buildRoomEntrance(i, false));
   const rampEntrance = variants((i) => buildRoomEntrance(i, true));
-  BL.headquartersModels = { room, entranceRamp, roomEntrance, rampEntrance, mattress, MATTRESS, ROOM_RADIUS };
+  BL.headquartersModels = { room, entranceRamp, roomEntrance, rampEntrance, mattress, roomSign, MATTRESS, ROOM_RADIUS };
 })();
 
 // ---- js/headquarters-sleep.js ----
@@ -13261,7 +13432,8 @@ void main() {
     ["bc1gui", 1788190400],
     ["RandyMcMillan", 1788210011, "sleeping"],
     ["MrHodlX", 1788200000],
-    ["timechainb", 1788171200]
+    ["timechainb", 1788171200],
+    ["YellowBrokeIt", 1788225311]
   ].map(([name, unixSeconds, defaultState]) => ({ name, lastCommitAt: unixSeconds * 1e3, defaultState }));
   const SNAPSHOT_AT = 1788225311 * 1e3;
   const stateFor = (contributor, at = SNAPSHOT_AT) => {
@@ -13287,7 +13459,8 @@ void main() {
     dplusplus1024: { build: "slim", hair: "#b9dcaa" },
     bc1gui: { skater: true, skin: "#f2a33c", hair: "#e4561f", fur: "#8f4f17" },
     RandyMcMillan: { bee: true, skin: "#f3b52a", hair: "#151515" },
-    timechainb: { anunnaki: true, skin: "#b8703c", hair: "#33200f" }
+    timechainb: { anunnaki: true, skin: "#b8703c", hair: "#33200f" },
+    YellowBrokeIt: { bald: true, cleanShaven: true, wideEyes: true, yellowFace: true, cigarette: true, energyCan: true, orangeChest: true, skin: "#ffe36a", hair: "#21160e", fur: "#ed9b24" }
   };
   const SKINS = ["#c98a5b", "#a9744c", "#8a5a3a", "#d9a06b", "#b58057"];
   const HAIRS = ["#2b1b10", "#4a2c14", "#151312", "#5c4425", "#7a2e12"];
@@ -13303,12 +13476,18 @@ void main() {
       name,
       slim,
       bald: !!likeness.bald,
+      cleanShaven: !!likeness.cleanShaven,
       apple: !!likeness.apple,
       gasMask: !!likeness.gasMask,
       symmetricTusks: !!likeness.symmetricTusks,
       skater: !!likeness.skater,
       anunnaki: !!likeness.anunnaki,
       bee: !!likeness.bee,
+      wideEyes: !!likeness.wideEyes,
+      cigarette: !!likeness.cigarette,
+      energyCan: !!likeness.energyCan,
+      yellowFace: !!likeness.yellowFace,
+      orangeChest: !!likeness.orangeChest,
       skin: likeness.skin || skin,
       hair: likeness.hair || hashedHair,
       fur: likeness.fur || FURS[Math.floor(rand() * FURS.length)],
@@ -13814,7 +13993,8 @@ void main() {
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { clamp, damp, quat } = BL.math;
+  const { clamp, damp, mat4, quat } = BL.math;
+  const { boundsOf, updateWorld } = BL.scene;
   const { create: createControls } = BL.controls;
   const BASE_FOV = 48 * Math.PI / 180;
   const MAX_FOV = 64 * Math.PI / 180;
@@ -13822,7 +14002,7 @@ void main() {
   const YAW_RATE = 1.7, PITCH_RATE = 1.1;
   // Keep a tiny horizontal component so the vertical view retains its yaw.
   const TRAILING_PITCH = [-Math.PI / 2 + 1e-4, Math.PI / 2 - 1e-4];
-  const CLOSE_RATE = 12, CLOSE_SNAP = 0.001, CLOSE_PINCH_EXIT = 1.08, CLOSE_LOOK_DIST = 4, CLOSE_HEAD_MIX = 0.1;
+  const CLOSE_RATE = 12, CLOSE_SNAP = 0.001, CLOSE_PINCH_EXIT = 1.08, CLOSE_LOOK_DIST = 4;
   const CLOSE_GROUND_RATE = 9, CLOSE_TELEPORT = 0.8;
   const WALK = { speed: 7.75, gravity: 9.8, step: 0.6, ledgeRise: 2.4, ledgeSpeed: 3, ledgeDrag: 1.5 };
   // The camera swings behind while walking forward
@@ -13876,6 +14056,7 @@ void main() {
     let releaseMix = 0, closeCameraActive = false;
     let headOrbit = false, exitAngleHold = false, exitBodyX = 0, exitBodyY = 0, exitBodyZ = 0;
     const headOrbitOffset = { x: 0, y: 0, z: 0 };
+    const headInverse = mat4.create(), headPartMatrix = mat4.create(), headEye = new Float64Array(3), headNear = new Float64Array(3), headBounds = new Float64Array(6);
     const entryPosition = { x: 0, y: 0, z: 0 };
     let entryRebase = false, entryOffsetActive = false, freeEntry = false;
     const previousEye = { x: 0, y: 0, z: 0 }, eyeVelocity = { x: 0, y: 0, z: 0 }, dollyVelocity = { x: 0, y: 0, z: 0 };
@@ -13923,6 +14104,54 @@ void main() {
       hiddenHead = cave;
       hiddenHeadCameraHidden = cave.parts.head.cameraHidden;
       cave.parts.head.cameraHidden = true;
+    };
+    const includeHeadPart = (node) => {
+      if (!node.visible) return;
+      if (node.geometry) {
+        const b = boundsOf(node.geometry), m = headPartMatrix;
+        mat4.multiply(m, headInverse, node.world);
+        const cx = b.center[0], cy = b.center[1], cz = b.center[2];
+        const hx = (b.max[0] - b.min[0]) * 0.5, hy = (b.max[1] - b.min[1]) * 0.5, hz = (b.max[2] - b.min[2]) * 0.5;
+        for (let axis = 0; axis < 3; axis++) {
+          const center = m[axis] * cx + m[axis + 4] * cy + m[axis + 8] * cz + m[axis + 12];
+          const extent = Math.abs(m[axis]) * hx + Math.abs(m[axis + 4]) * hy + Math.abs(m[axis + 8]) * hz;
+          headBounds[axis] = Math.min(headBounds[axis], center - extent);
+          headBounds[axis + 3] = Math.max(headBounds[axis + 3], center + extent);
+        }
+      }
+      for (const child of node.children) includeHeadPart(child);
+    };
+    const syncHeadVisibility = (cave) => {
+      if (!cave) { restoreHead(); return; }
+      // The near plane can expose interior faces before the eye enters.
+      // Include the whole head subtree so hats and masks cannot flash either.
+      updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+      const head = cave.parts.head;
+      mat4.invert(headInverse, head.world);
+      headBounds[0] = headBounds[1] = headBounds[2] = Infinity;
+      headBounds[3] = headBounds[4] = headBounds[5] = -Infinity;
+      includeHeadPart(head);
+      mat4.transformPoint(headEye, headInverse, camera.position.x, camera.position.y, camera.position.z);
+      if (headEye[0] >= headBounds[0] && headEye[0] <= headBounds[3]
+        && headEye[1] >= headBounds[1] && headEye[1] <= headBounds[4]
+        && headEye[2] >= headBounds[2] && headEye[2] <= headBounds[5]) { hideHead(cave); return; }
+      let fx = camera.target.x - camera.position.x, fy = camera.target.y - camera.position.y, fz = camera.target.z - camera.position.z;
+      const length = Math.hypot(fx, fy, fz);
+      fx /= length; fy /= length; fz /= length;
+      const up = camera.up, ux = up ? up.x : 0, uy = up ? up.y : 1, uz = up ? up.z : 0;
+      let rx = fy * uz - fz * uy, ry = fz * ux - fx * uz, rz = fx * uy - fy * ux;
+      const rightLength = Math.hypot(rx, ry, rz);
+      rx /= rightLength; ry /= rightLength; rz /= rightLength;
+      const vx = ry * fz - rz * fy, vy = rz * fx - rx * fz, vz = rx * fy - ry * fx;
+      const halfH = camera.near * Math.tan(camera.fov * 0.5), halfW = halfH * renderer.size.width / Math.max(1, renderer.size.height);
+      mat4.transformPoint(headNear, headInverse, camera.position.x + fx * camera.near, camera.position.y + fy * camera.near, camera.position.z + fz * camera.near);
+      for (let axis = 0; axis < 3; axis++) {
+        const m = headInverse;
+        const extent = Math.abs(m[axis] * rx + m[axis + 4] * ry + m[axis + 8] * rz) * halfW
+          + Math.abs(m[axis] * vx + m[axis + 4] * vy + m[axis + 8] * vz) * halfH;
+        if (headNear[axis] + extent < headBounds[axis] || headNear[axis] - extent > headBounds[axis + 3]) { restoreHead(); return; }
+      }
+      hideHead(cave);
     };
     const setFreeEye = () => {
       resetFreeFall();
@@ -14033,6 +14262,7 @@ void main() {
       headOrbit = exitAngleHold = closeCameraActive = trailingPitchChosen = true;
       releaseMix = 0;
       closeWanted = false;
+      syncHeadVisibility(cave);
       // The new orbit starts at the displayed eye, including an interrupted
       // entry. Begin its outward dolly there without changing that position.
       closeMix = 1;
@@ -14048,12 +14278,12 @@ void main() {
     // Relabel the act button for what the press does
     const syncJetpackHud = () => {
       const cave = player(), status = ctx.jetpackStatus && ctx.jetpackStatus(cave);
-      if (status) hud.setJetpack(status.owned, status.equipped, status.fuel);
+      if (status) hud.setJetpack(status.owned, status.equipped, status.fuel, status.blocked);
       else hud.setJetpack(!!(cave && cave.jet), !!(cave && cave.jet), cave ? cave.jetFuel : 0);
     };
     const showAct = () => {
       const cave = player();
-      if (cave) hud.setAct(crew.sleeping ? "WAKE UP!" : cave.jet && !cave.jetRecovering ? ACT_FLY : ACT_DO);
+      if (cave) hud.setAct(cave.camp.burning ? "DROP & ROLL!" : cave.camp.seat ? "STAND UP!" : crew.sleeping ? "WAKE UP!" : cave.jet && !cave.jetRecovering ? ACT_FLY : ACT_DO);
       syncJetpackHud();
     };
     const possess = (cave) => {
@@ -14354,8 +14584,6 @@ void main() {
           closeVelocity = 0;
         }
       } else closeMix = closeVelocity = 0;
-      if (cave && closeMix > CLOSE_HEAD_MIX) hideHead(cave);
-      else restoreHead();
       orbit.yaw = directTrailingView ? orbit.tYaw : damp(orbit.yaw, orbit.tYaw, 14, dt);
       orbit.pitch = directTrailingView ? orbit.tPitch : damp(orbit.pitch, orbit.tPitch, 14, dt);
       if (cave && close && !sleeping) crew.look(orbit.yaw + Math.PI, orbit.pitch, closeMix);
@@ -14572,6 +14800,7 @@ void main() {
         camera.up = sleepCameraUp;
       }
       if (sleeping && closeWanted && closeMix > 0) crew.look(0, 0, closeMix, cameraRotation);
+      syncHeadVisibility(cave);
       if (cave && close) headAnchor(cave, motionAnchor);
       else {
         const anchor = cave ? cave.root.position : freeTarget;
@@ -14651,6 +14880,10 @@ void main() {
     };
     return { orbit, hooks, controls, bind, readInput, update, goPreset, navigate, enterClose, possess, release, action, showAct, dispose, get player() {
       return player();
+    }, get moving() {
+      // A press can arrive between frames, before readInput updates crew steer.
+      const cave = player(), a = controls.read();
+      return !!cave && (Math.hypot(a.x, a.y) > 0.05 || cave.hop > 0 || cave.hopV > 0);
     }, get mode() {
       return closeWanted ? (player() ? "first-person" : "eye-level") : (player() ? "trailing" : "orbit");
     }, get closeMix() {
@@ -15029,17 +15262,20 @@ void main() {
     const setAct = (label) => {
       el.act.textContent = label;
     };
-    let jetpackShown = false, jetpackEquipped = false, jetpackPercent = -1;
-    const setJetpack = (owned, equipped, fuel) => {
+    let jetpackShown = false, jetpackEquipped = false, jetpackBlocked = false, jetpackPercent = -1;
+    const setJetpack = (owned, equipped, fuel, blocked = false) => {
       if (owned !== jetpackShown) {
         jetpackShown = owned;
         el.jetpack.hidden = !owned;
       }
-      if (equipped !== jetpackEquipped) {
+      if (equipped !== jetpackEquipped || blocked !== jetpackBlocked) {
         jetpackEquipped = equipped;
+        jetpackBlocked = blocked;
+        el.jetpack.disabled = blocked;
         el.jetpack.dataset.equipped = String(equipped);
         el.jetpack.setAttribute("aria-pressed", String(equipped));
-        el.jetpack.setAttribute("aria-label", equipped ? "Take off jetpack" : "Put on jetpack");
+        el.jetpack.setAttribute("aria-label", blocked ? "Jetpack unavailable underground" : equipped ? "Take off jetpack" : "Put on jetpack");
+        el.jetpack.title = blocked ? "Jetpack unavailable underground" : "";
       }
       if (!owned) return;
       const percent = Math.ceil(fuel * 100);
@@ -15358,11 +15594,11 @@ void main() {
     const particles = [];
     const particlePool = [];
     const MAX_PARTICLES = 240;
-    const spawnParticle = (geometry, x, y, z, vx, vy, vz, life, spin = 6) => {
+    const spawnParticle = (geometry, x, y, z, vx, vy, vz, life, spin = 6, gravity = 3.2, floor = 0.03) => {
       if (particles.length >= MAX_PARTICLES) return null;
       let p = particlePool.pop();
       if (!p) {
-        p = { node: createNode({ visible: false, sightHidden: true }), vx: 0, vy: 0, vz: 0, life: 0, spin: 0, smoke: false, maxLife: 0 };
+        p = { node: createNode({ visible: false, sightHidden: true }), vx: 0, vy: 0, vz: 0, life: 0, spin: 0, gravity: 3.2, floor: 0.03, smoke: false, maxLife: 0 };
         addChild(root, p.node);
       }
       p.node.geometry = geometry;
@@ -15376,6 +15612,8 @@ void main() {
       p.spin = spin;
       p.smoke = false;
       p.maxLife = life;
+      p.gravity = gravity;
+      p.floor = floor;
       particles.push(p);
       return p;
     };
@@ -15403,12 +15641,12 @@ void main() {
           p.node.scale.x = p.node.scale.y = p.node.scale.z = s;
           continue;
         }
-        p.vy -= 3.2 * dt;
+        p.vy -= p.gravity * dt;
         p.node.position.x += p.vx * dt;
         p.node.position.y += p.vy * dt;
         p.node.position.z += p.vz * dt;
-        if (p.node.position.y < 0.03) {
-          p.node.position.y = 0.03;
+        if (p.node.position.y < p.floor) {
+          p.node.position.y = p.floor;
           p.vy *= -0.3;
           p.vx *= 0.7;
           p.vz *= 0.7;
@@ -16331,6 +16569,7 @@ void main() {
   const FAN_ARC = 2.2;
   // The widest the fan opens, so the near side stays clear however many eat
   const FAN_SPREAD = 5;
+  const FAN_SLOT_MAX = 128;
   const POKES = ["Ooga?", "Booga!", "No poke.", "Hmm banana?", "Ooga booga booga."];
   const SLEEP_POKES = ["zzz... grr", "five more minutes", "zzz"];
   const SLEEP_POSES = ["left", "stomach", "back", "right"];
@@ -16349,6 +16588,8 @@ void main() {
   const { WALK } = BL.pilot;
   const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = WALK.speed;
   const PLAYER_STEP = 0.125;
+  const SHOULDER_GAP = 0.68, SHOULDER_REACH = 1.3, SHOULDER_TWIST = 1.05;
+  const FIRE_FLEE_REACH = 8, FIRE_FLEE_CLEAR = 10, FIRE_MEMORY_RELEASE = 3, NPC_WALK_SPEED = 1.6;
   const NAV_WIDTH = 21, NAV_SIZE = NAV_WIDTH * NAV_WIDTH, NAV_HALF = 10, NAV_CELL = 0.5, NAV_CENTER = NAV_HALF * NAV_WIDTH + NAV_HALF;
   const JUMP_SPEED = 4.8, JET_FUEL_SECONDS = 8, JET_MOVE_SECONDS = JET_FUEL_SECONDS * 2, JET_REFILL_SECONDS = 4, JET_LAUNCH_FUEL = 0.2;
   // Fuel limits range and altitude; releasing thrust uses ordinary gravity.
@@ -16362,6 +16603,9 @@ void main() {
   const MASK_SMOKE_CAP = MASK_PORTS.length * 36;
   const MASK_SMOKE_SMALL = 0.34, MASK_SMOKE_MERGE_MAX = 12;
   const MASK_SMOKE_MAX = MASK_SMOKE_SMALL * Math.cbrt(MASK_SMOKE_MERGE_MAX);
+  const BURN_FLAMES = [models.particleGeometry("#ff8a2a", 0.14, 1), models.particleGeometry("#ffc148", 0.12, 1)];
+  const BURN_SMOKE = models.particleGeometry("#70685f", 0.18, 0);
+  const ROLL_SECONDS = 3, SOOT_SECONDS = 10, EMBER_HEAT_SECONDS = 4;
   // A drop deeper than a step, mirroring the hub's STEP_MAX
   const STEP = WALK.step;
   const YAWN_DUR = 2.4;
@@ -16518,7 +16762,9 @@ void main() {
         sleepParts: { armLX: cave.parts.armL.position.x, armRX: cave.parts.armR.position.x, headX: cave.parts.head.position.x, headY: cave.parts.head.position.y, headZ: cave.parts.head.position.z, equipment: cave.root.children.filter((node) => !BODY_PARTS.some((key) => cave.parts[key] === node)) },
         phase: i * 1.37,
         baseY: cave.root.position.y,
+        camp: { seat: null, burning: false, rolling: false, burnAge: 0, reactionDelay: 0, ignitions: 0, contactBurning: false, contactBounds: new Float64Array(6), panic: { active: false, threat: null, remembered: false, memory: new Float64Array(contributors.roster.length * 4), speed: 0, heading: 0, turnAt: 0, phase: 0, escapeX: 0, escapeZ: 0, resumeSleep: false, resumeWalk: null, rand: math.mulberry32(math.fnv1a(contributor.name + "/panic")) }, rollTime: 0, soot: 0, fadeTime: 0, puff: 0, smokeTime: 0, cooldown: 0, spread: new Float32Array(BODY_PARTS.length), burnTime: new Float32Array(BODY_PARTS.length), scorch: new Float32Array(BODY_PARTS.length), rollScorch: new Float32Array(BODY_PARTS.length), x: 0, z: 0, floor: 0, heading: 0, rotation: math.quat.create(), base: math.quat.create(), turn: math.quat.create() },
         bodyHeight: bodyHeightOf(cave),
+        shoulder: { phase: 0, other: null, rear: false, prop: false, side: 1, dodge: 1, amount: 0, yaw: 0, targetYaw: 0, attempted: false, originX: 0, originZ: 0, forwardX: 0, forwardZ: 1, heading: 0, snapX: 0, snapZ: 0, motionX: 0, motionZ: 0, snapVX: 0, snapVZ: 0, propOffset: 0, obstacle: { node: null, minAlong: 0, maxAlong: 0, minAcross: 0, maxAcross: 0, minContactAcross: 0, maxContactAcross: 0 } },
         state: "away",
         contributor,
         zzzTimer: 0,
@@ -16554,6 +16800,7 @@ void main() {
         jetFuel: 1,
         jetRecovering: false,
         cloudSupport: null,
+        riding: { support: null, x: 0, y: 0, z: 0, vy: 0, updated: false, continuous: false },
         viewLift: 0,
         act: { kind: "eat", until: 0, trips: 0, sayAt: 0, said: true, phase: 0, spot: { x: 0, z: 0, ry: NaN } },
         swagNodes: []
@@ -16620,8 +16867,19 @@ void main() {
       head.quaternion = null;
       setVec(head.position, cave.headLookPosition.x, cave.headLookPosition.y, cave.headLookPosition.z);
     };
+    const clearShoulder = (cave) => {
+      const s = cave.shoulder;
+      s.phase = s.yaw = s.targetYaw = 0;
+      s.other = null;
+      s.obstacle.node = null;
+      s.rear = s.prop = false;
+      s.motionX = s.motionZ = 0;
+      s.attempted = false;
+      for (const part of cave.root.children) part.poseYaw = 0;
+    };
     const resetPose = (cave) => {
       clearHeadLook(cave);
+      clearShoulder(cave);
       Object.assign(cave.root.rotation, { x: 0, y: 0, z: 0 });
       cave.root.quaternion = null;
       Object.assign(cave.root.scale, { x: 1, y: 1, z: 1 });
@@ -16699,6 +16957,7 @@ void main() {
       refreshRosterRow(cave);
     };
     const applyState = (cave, state) => {
+      if (cave.camp.burning || cave.camp.panic.active) return;
       if (cave.state === state) {
         // Re-seat a moved eater, interrupt nothing else
         if (state === "working") walkToSlot(cave);
@@ -16779,17 +17038,22 @@ void main() {
       const farSide = FAN_CENTER;
       const eaters = entries.filter(isWorking);
       fanSlots.length = 0;
-      // Neighbours stand FAN_ARC apart at any radius, closer only when the fan would wrap
-      const angleStep = Math.min(clamp(FAN_ARC / fanRadius, 0.5, 1.1), FAN_SPREAD / Math.max(1, eaters.length - 1));
+      const count = Math.min(FAN_SLOT_MAX, Math.max(eaters.length, Math.floor(FAN_SPREAD * fanRadius / FAN_ARC) + 1));
+      // Growing circumference makes room for spare destinations without
+      // spreading neighbouring slots farther apart or filling the near side.
+      const angleStep = Math.min(FAN_ARC / fanRadius, 1.1, FAN_SPREAD / Math.max(1, count - 1));
+      for (let i = 0; i < count; i++) {
+        const angle = farSide + (i - (count - 1) / 2) * angleStep;
+        fanSlots.push({ x: Math.cos(angle) * fanRadius, z: Math.sin(angle) * fanRadius });
+      }
       // Nobody stands between the camera and the pile
       eaters.forEach((cave, i) => {
-        const angle = farSide + (i - (eaters.length - 1) / 2) * angleStep;
-        cave.slot = { x: Math.cos(angle) * fanRadius, z: Math.sin(angle) * fanRadius };
-        fanSlots.push(cave.slot);
+        cave.slot = fanSlots[eaters.length > 1 ? Math.round(i * (count - 1) / (eaters.length - 1)) : Math.floor(count / 2)];
       });
     };
     const slotAvailable = (cave, slot) => {
       const floor = groundAt(slot.x, slot.z, 0, 0, cave);
+      if (ctx.npcLandingAllowed && !ctx.npcLandingAllowed(slot.x, floor, slot.z, cave.bodyHeight)) return false;
       for (const other of cavemen.values()) {
         if (other === cave || !other.root.visible) continue;
         const p = other.root.position, feet = p.y - other.baseY;
@@ -17043,6 +17307,382 @@ void main() {
       parts.armL.rotation.x = parts.armR.rotation.x = -0.2;
       parts.torso.rotation.x = parts.torso.rotation.z = 0;
     };
+    const standPlayer = (cave = player) => {
+      if (!cave || !cave.camp.seat) return false;
+      const seat = cave.camp.seat;
+      let exitZ = seat.walkAt.z, clear = false;
+      for (let i = 0; i < 3; i++) {
+        exitZ = seat.walkAt.z + (i === 1 ? 0.65 : i === 2 ? -0.65 : 0);
+        if (walkable(seat.walkAt.x, exitZ, seat.walkAt.x, exitZ, seat.floor, cave.bodyHeight, cave)) { clear = true; break; }
+      }
+      if (!clear) return false;
+      seat.sitter = null;
+      cave.camp.seat = null;
+      cave.root.quaternion = null;
+      cave.root.rotation.x = cave.root.rotation.z = 0;
+      standPose(cave);
+      setVec(cave.root.position, seat.walkAt.x, seat.floor + cave.baseY, exitZ);
+      cave.hop = cave.hopV = 0;
+      return true;
+    };
+    const sitPlayer = (seat) => {
+      const cave = player;
+      if (!cave || cave.camp.burning || cave.camp.rolling || cave.camp.seat || seat.sitter || !grounded(cave)) return false;
+      if (!walkable(seat.walkAt.x, seat.walkAt.z, seat.walkAt.x, seat.walkAt.z, seat.floor, cave.bodyHeight, cave)) return false;
+      elevatePlayer(0);
+      removeJetpack(cave);
+      releaseBuild(cave);
+      cave.walk = null;
+      cave.hop = cave.hopV = cave.cheer = cave.catchT = 0;
+      cave.leap.vx = cave.leap.vz = 0;
+      cave.camp.seat = seat;
+      seat.sitter = cave;
+      cave.root.rotation.y = seat.ry;
+      setVec(cave.root.position, seat.x, seat.y + cave.traits.height * 0.08, seat.z);
+      return true;
+    };
+    const beginPanic = (cave) => {
+      const panic = cave.camp.panic;
+      if (panic.active) return;
+      panic.speed = (cave.walk ? cave.walk.speed : NPC_WALK_SPEED) * 2;
+      panic.resumeWalk = cave.walk;
+      panic.resumeSleep = cave.state === "sleeping";
+      panic.active = cave !== player;
+      panic.phase = 0;
+      panic.heading = cave.root.rotation.y;
+      panic.turnAt = 0;
+      if (cave.state === "sleeping" || cave.bedTravel.mode) {
+        const sleepingPose = cave.state === "sleeping" && !ctx.bedRoute;
+        standFromBed(cave);
+        releaseBedroll(cave);
+        cave.bedTravel.bed = null;
+        cave.state = "working";
+        if (cave === player) cave.override = "working";
+        cave.parts.head.geometry = cave.headOpen;
+        if (sleepingPose) cave.root.position.y = groundY(cave);
+        assignFanSlots([...cavemen.values()], (entry) => entry.state === "working");
+        refreshRosterRow(cave);
+      }
+      releaseBuild(cave);
+      cave.walk = null;
+      cave.avoidance.navigation.mode = 0;
+      cave.avoidance.active = false;
+      cave.avoidance.stalled = 0;
+      cave.avoidance.tx = NaN;
+      if (cave.pathing) cave.pathing.tx = NaN;
+      cave.act.kind = cave === player ? "player" : "panic";
+      cave.cheer = cave.catchT = cave.yawn = 0;
+      cave.parts.snack.visible = cave.parts.gun.visible = false;
+    };
+    const finishPanic = (cave) => {
+      const panic = cave.camp.panic, resumeWalk = panic.resumeWalk, resumeSleep = panic.resumeSleep;
+      panic.active = false;
+      panic.threat = panic.resumeWalk = null;
+      panic.resumeSleep = false;
+      cave.avoidance.navigation.mode = 0;
+      cave.avoidance.active = false;
+      cave.avoidance.stalled = 0;
+      cave.avoidance.tx = NaN;
+      if (cave.pathing) cave.pathing.tx = NaN;
+      standPose(cave);
+      if (cave === player) { cave.act.kind = "player"; return; }
+      if (resumeSleep) {
+        if (ctx.bedRoute) startSleep(cave);
+        else applyState(cave, "sleeping");
+        return;
+      }
+      cave.act.kind = "idle";
+      cave.act.until = elapsed + 1.5;
+      cave.act.said = true;
+      const p = cave.root.position, feet = p.y - cave.baseY;
+      if (ctx.bedRoute && feet < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(p.x, p.z, feet, cave))) startBedRoute(cave, null, false);
+      else if (resumeWalk) {
+        cave.walk = resumeWalk;
+        cave.act.kind = resumeWalk.to === "spot" ? "wander" : "rush";
+      }
+    };
+    const ignite = (cave) => {
+      const c = cave.camp;
+      if (c.burning || c.rolling || c.cooldown > 0 || !cave.root.visible || cave.state === "away") return false;
+      if (c.seat && !standPlayer(cave)) return false;
+      beginPanic(cave);
+      const variation = math.fnv1a(cave.traits.name + "/fire/" + ++c.ignitions) / 4294967296;
+      const reaction = (cave.index + c.ignitions - 1) % 3;
+      c.reactionDelay = reaction === 0 ? 0.6 + variation * 0.65 : reaction === 1 ? 3 + variation * 3 : 10.5 + variation * 2.5;
+      c.burning = true;
+      c.burnAge = c.rollTime = c.puff = 0;
+      c.spread.fill(0);
+      c.burnTime.fill(0);
+      updateFireSpread(cave);
+      ctx.fx.say(cave, "HOT! DROP & ROLL!", 2);
+      return true;
+    };
+    const updateFireThreats = () => {
+      for (const cave of cavemen.values()) {
+        const panic = cave.camp.panic, memory = panic.memory, p = cave.root.position;
+        panic.threat = null;
+        panic.remembered = false;
+        panic.escapeX = panic.escapeZ = 0;
+        if (cave === player || !cave.root.visible || cave.state === "away") { memory.fill(0); continue; }
+        if (cave.camp.rolling) continue;
+        const reach = panic.active ? FIRE_FLEE_CLEAR : FIRE_FLEE_REACH, feet = p.y - cave.baseY;
+        let nearest = Infinity;
+        for (const other of cavemen.values()) {
+          const at = other.index * 4;
+          if (other === cave || !other.root.visible || !other.camp.burning) { memory[at + 3] = 0; continue; }
+          const q = other.root.position, floor = other.camp.rolling ? other.camp.floor : q.y - other.baseY;
+          const floorReach = Math.max(0.8, cave.bodyHeight * 0.65);
+          if (Math.abs(feet - floor) > floorReach) { memory[at + 3] = 0; continue; }
+          const distance = Math.hypot(p.x - q.x, p.z - q.z);
+          const y = Math.max(feet, floor) + Math.min(cave.bodyHeight, other.bodyHeight) * 0.35;
+          if (distance < reach && (!ctx.fireReachable || ctx.fireReachable(p.x, y, p.z, q.x, y, q.z))) {
+            memory[at] = q.x; memory[at + 1] = q.z; memory[at + 2] = floor; memory[at + 3] = 1;
+          } else if (memory[at + 3] && distance >= Math.max(FIRE_FLEE_CLEAR + FIRE_MEMORY_RELEASE, Math.hypot(p.x - memory[at], p.z - memory[at + 1]) + FIRE_MEMORY_RELEASE)) {
+            // Running beyond sight does not make a stationary fire safe. Only
+            // the source moving farther away (or going out) releases its memory.
+            memory[at + 3] = 0;
+          }
+          if (!memory[at + 3]) continue;
+          panic.remembered = true;
+          const dx = p.x - memory[at], dz = p.z - memory[at + 1], rememberedDistance = Math.hypot(dx, dz);
+          if (rememberedDistance >= FIRE_FLEE_CLEAR || Math.abs(feet - memory[at + 2]) > floorReach) continue;
+          if (rememberedDistance < nearest) { nearest = rememberedDistance; panic.threat = other; }
+          const weight = (FIRE_FLEE_CLEAR - rememberedDistance) / Math.max(0.04, rememberedDistance * rememberedDistance);
+          panic.escapeX += dx * weight; panic.escapeZ += dz * weight;
+        }
+      }
+    };
+    const runPanic = (cave, dt) => {
+      const c = cave.camp, panic = c.panic, p = cave.root.position;
+      clearHeadLook(cave);
+      if (panic.threat && Math.hypot(panic.escapeX, panic.escapeZ) > 1e-6) panic.heading = Math.atan2(panic.escapeX, panic.escapeZ);
+      else if (c.burning && c.burnAge >= panic.turnAt) {
+        panic.heading += (panic.rand() - 0.5) * 2.8;
+        panic.turnAt = c.burnAge + 0.55 + panic.rand() * 0.8;
+      }
+      const tx = p.x + Math.sin(panic.heading) * 3, tz = p.z + Math.cos(panic.heading) * 3;
+      let remaining = panic.speed * dt * (inBananas(cave) ? 0.5 : 1), moved = 0;
+      // Physical substeps keep the fast run solid. Direct targets deliberately
+      // bypass the path network, even when the escape crosses the meadow.
+      while (remaining > 1e-8) {
+        const distance = walkToward(cave, tx, tz, remaining);
+        if (!distance) break;
+        remaining -= distance; moved += distance;
+      }
+      if (moved > 0) {
+        panic.phase += moved * 5;
+        walkPose(cave, panic.phase);
+        p.y = groundY(cave);
+        if (c.burning && !panic.threat && cave.avoidance.active) panic.heading = cave.root.rotation.y;
+      } else standPose(cave);
+      if (c.burning) {
+        cave.parts.armL.rotation.x = -1.8 + Math.sin(panic.phase) * 0.3;
+        cave.parts.armR.rotation.x = -1.8 - Math.sin(panic.phase) * 0.3;
+      }
+      cave.parts.snack.visible = cave.parts.gun.visible = false;
+    };
+    const dropRoll = (cave = player) => {
+      if (!cave || !cave.camp.burning) return false;
+      const c = cave.camp;
+      if (c.rolling) return true;
+      clearShoulder(cave);
+      if (cave === player) elevatePlayer(0);
+      removeJetpack(cave);
+      cave.walk = null;
+      releaseBuild(cave);
+      cave.hop = cave.hopV = cave.cheer = cave.catchT = 0;
+      cave.leap.vx = cave.leap.vz = 0;
+      c.rolling = true;
+      c.rollTime = 0;
+      c.rollScorch.set(c.scorch);
+      c.fadeTime = SOOT_SECONDS;
+      c.x = cave.root.position.x; c.z = cave.root.position.z;
+      c.floor = groundY(cave) - cave.baseY;
+      c.heading = cave.root.rotation.y;
+      math.quat.fromEuler(c.base, -Math.PI / 2, c.heading, 0);
+      cave.root.quaternion = c.rotation;
+      return true;
+    };
+    const runCamp = (cave, dt) => {
+      const c = cave.camp, parts = cave.parts, p = cave.root.position;
+      if (c.seat || c.rolling) clearHeadLook(cave);
+      if (cave !== player && cave.root.visible && cave.state !== "away" && !c.rolling) {
+        if (c.burning || c.panic.threat || c.panic.remembered) {
+          if (c.seat && !standPlayer(cave)) return true;
+          beginPanic(cave);
+          if (grounded(cave)) {
+            if (c.burning && c.burnAge >= c.reactionDelay) dropRoll(cave);
+            else if (!c.burning && !c.panic.threat) { standPose(cave); return true; }
+            else { runPanic(cave, dt); return true; }
+          }
+        } else if (c.panic.active && grounded(cave)) {
+          finishPanic(cave);
+        }
+      }
+      if (c.seat) {
+        if (cave === player && Math.hypot(steer.x, steer.z) > 0.05 && standPlayer(cave)) return false;
+        standPose(cave);
+        parts.legL.rotation.x = parts.legR.rotation.x = -Math.PI / 2;
+        parts.armL.rotation.x = parts.armR.rotation.x = -0.75;
+        parts.snack.visible = false;
+        return true;
+      }
+      if (!c.rolling) return false;
+      c.rollTime = Math.min(ROLL_SECONDS, c.rollTime + dt);
+      const progress = c.rollTime / ROLL_SECONDS, cooled = progress * progress * (3 - 2 * progress);
+      for (let i = 0; i < BODY_PARTS.length; i++) c.scorch[i] = lerp(c.rollScorch[i], Math.max(c.rollScorch[i], c.spread[i]), cooled);
+      const angle = Math.sin(c.rollTime * 7) * 1.25, offset = Math.sin(c.rollTime * 7) * 0.35;
+      const x = c.x + Math.cos(c.heading) * offset, z = c.z - Math.sin(c.heading) * offset;
+      // Keep the sweep on clear ground; a wall or bench limits the travel,
+      // while the roll continues to put the flames out in place.
+      if (flyable(p.x, p.z, x, z, c.floor + 0.02, Math.max(0.5, cave.bodyHeight * 0.35), cave)) { p.x = x; p.z = z; }
+      p.y = c.floor + cave.traits.height * 0.26;
+      math.quat.fromEuler(c.turn, 0, angle, 0);
+      math.quat.multiply(c.rotation, c.base, c.turn);
+      parts.legL.rotation.x = parts.legR.rotation.x = -0.65;
+      parts.armL.rotation.x = parts.armR.rotation.x = -1.5;
+      parts.snack.visible = false;
+      // Plant the lowest part of the rotating body rather than sinking its
+      // wide shoulders into the floor as it rolls onto either side.
+      BL.scene.updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+      let bottom = Infinity;
+      for (const key of BODY_PARTS) {
+        const part = parts[key], b = BL.scene.boundsOf(part.geometry), m = part.world;
+        const center = m[1] * b.center[0] + m[5] * b.center[1] + m[9] * b.center[2] + m[13];
+        const extent = (Math.abs(m[1]) * (b.max[0] - b.min[0]) + Math.abs(m[5]) * (b.max[1] - b.min[1]) + Math.abs(m[9]) * (b.max[2] - b.min[2])) * 0.5;
+        bottom = Math.min(bottom, center - extent);
+      }
+      p.y += c.floor + 0.015 - bottom;
+      if (c.rollTime === ROLL_SECONDS) {
+        c.burning = c.rolling = false;
+        c.fadeTime = SOOT_SECONDS;
+        c.smokeTime = 3;
+        c.cooldown = 1.2;
+        c.puff = 0;
+        cave.root.quaternion = null;
+        cave.root.rotation.x = cave.root.rotation.z = 0;
+        cave.root.rotation.y = c.heading;
+        standPose(cave);
+        p.y = groundY(cave);
+        finishPanic(cave);
+      }
+      return true;
+    };
+    const updateFireSpread = (cave) => {
+      const c = cave.camp;
+      BL.scene.updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+      const front = cave.root.position.y - cave.baseY + cave.bodyHeight * Math.min(1.05, 0.12 + c.burnAge * 0.09);
+      for (let i = 0; i < BODY_PARTS.length; i++) {
+        const part = cave.parts[BODY_PARTS[i]], b = BL.scene.boundsOf(part.geometry), m = part.world;
+        const center = m[1] * b.center[0] + m[5] * b.center[1] + m[9] * b.center[2] + m[13];
+        const extent = (Math.abs(m[1]) * (b.max[0] - b.min[0]) + Math.abs(m[5]) * (b.max[1] - b.min[1]) + Math.abs(m[9]) * (b.max[2] - b.min[2])) * 0.5;
+        // The dangling hands catch from the legs after a short delay.
+        const transfer = i >= 4 ? clamp((c.burnAge - 1) / 2, 0, 1) : 1;
+        c.spread[i] = Math.max(c.spread[i], clamp((front - center + extent) / (extent * 2), 0, 1) * transfer);
+      }
+    };
+    const updateCampEffects = (cave, dt) => {
+      const c = cave.camp;
+      c.cooldown = Math.max(0, c.cooldown - dt);
+      if (c.burning && !c.rolling) {
+        c.burnAge += dt;
+        updateFireSpread(cave);
+      }
+      const remaining = Math.max(0, c.fadeTime - (c.rolling ? 0 : dt)), fade = c.fadeTime > 0 ? remaining / c.fadeTime : 0;
+      c.fadeTime = remaining;
+      c.soot = 0;
+      const progress = c.rollTime / ROLL_SECONDS;
+      const heat = c.burning ? (c.rolling ? 1 - progress * progress * (3 - 2 * progress) : 1) : 0;
+      for (let i = 0; i < BODY_PARTS.length; i++) {
+        if (c.burning && !c.rolling && c.spread[i] > 0) c.burnTime[i] = Math.min(EMBER_HEAT_SECONDS, c.burnTime[i] + dt);
+        c.scorch[i] *= fade;
+        const part = cave.parts[BODY_PARTS[i]];
+        part.scorch = c.scorch[i];
+        // Each limb heats from the moment the front reaches it. Older flames
+        // brighten independently, then cool into the accumulating char in a roll.
+        const temperature = 0.22 + 0.78 * c.burnTime[i] / EMBER_HEAT_SECONDS;
+        part.ember = c.spread[i] * temperature * heat * (0.96 + Math.sin(elapsed * 11 + cave.phase + i * 1.7) * 0.025 + Math.sin(elapsed * 23 + i) * 0.015);
+        // Fixed head surfaces, such as the gas mask, share its heat and char.
+        // The removable hat and face swag remain separate attachments.
+        if (part === cave.parts.head) for (const child of part.children) {
+          if (child === cave.parts.hat || child === cave.parts.face) continue;
+          child.ember = part.ember;
+          child.scorch = part.scorch;
+        }
+        c.soot = Math.max(c.soot, c.scorch[i]);
+      }
+      c.smokeTime = Math.max(0, c.smokeTime - dt);
+      if (!c.burning && c.smokeTime === 0 || !cave.root.visible || dt === 0) return;
+      c.puff -= dt;
+      if (c.puff > 0) return;
+      c.puff = c.burning ? 0.08 : 0.2;
+      BL.scene.updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+      let total = 0;
+      for (let i = 0; i < BODY_PARTS.length; i++) total += c.spread[i];
+      const count = c.burning ? Math.ceil(4 * (c.rolling ? 1 - c.rollTime / ROLL_SECONDS : 1)) : 0;
+      for (let i = 0; i < count + 1; i++) {
+        // Emit from the reached surfaces of the actual limbs. Their world
+        // transforms keep the flames attached while walking and rolling.
+        let pick = Math.random() * total, index = BODY_PARTS.length - 1;
+        for (let j = 0; j < BODY_PARTS.length; j++) {
+          pick -= c.spread[j];
+          if (pick < 0) { index = j; break; }
+        }
+        const part = cave.parts[BODY_PARTS[index]], b = BL.scene.boundsOf(part.geometry), m = part.world;
+        const side = Math.random() < 0.5, edge = Math.random() < 0.5 ? -1 : 1;
+        const x = side ? b.center[0] + edge * ((b.max[0] - b.min[0]) * 0.5 + 0.035) : lerp(b.min[0], b.max[0], Math.random());
+        const y = lerp(b.min[1], b.max[1], Math.random() * c.spread[index]);
+        const z = side ? lerp(b.min[2], b.max[2], Math.random()) : b.center[2] + edge * ((b.max[2] - b.min[2]) * 0.5 + 0.035);
+        const wx = m[0] * x + m[4] * y + m[8] * z + m[12], wy = m[1] * x + m[5] * y + m[9] * z + m[13], wz = m[2] * x + m[6] * y + m[10] * z + m[14];
+        if (i < count) ctx.fx.spawnParticle(BURN_FLAMES[i % 2], wx, wy, wz, (Math.random() - 0.5) * 0.2, 0.5 + Math.random() * 0.5, (Math.random() - 0.5) * 0.2, 0.45, 2, -0.2, -Infinity);
+        else ctx.fx.spawnParticle(BURN_SMOKE, wx, wy + 0.12, wz, (Math.random() - 0.5) * 0.25, 0.6, (Math.random() - 0.5) * 0.25, 1.2, 0.5, -0.15, -Infinity);
+      }
+    };
+    const updateFireContacts = () => {
+      let burning = false;
+      for (const cave of cavemen.values()) if (cave.root.visible && cave.camp.burning) { burning = true; break; }
+      if (!burning) return;
+      for (const cave of cavemen.values()) {
+        const c = cave.camp, p = cave.root.position, b = c.contactBounds;
+        c.contactBurning = c.burning;
+        if (!cave.root.visible || cave.state === "away") continue;
+        if (!cave.root.quaternion) {
+          // Match the standing collision body, including its head clearance.
+          b[0] = p.x - 0.38; b[1] = p.y - cave.baseY; b[2] = p.z - 0.38;
+          b[3] = p.x + 0.38; b[4] = b[1] + cave.bodyHeight; b[5] = p.z + 0.38;
+        } else {
+          BL.scene.updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+          b[0] = b[1] = b[2] = Infinity;
+          b[3] = b[4] = b[5] = -Infinity;
+          for (const key of BODY_PARTS) {
+            const part = cave.parts[key], bounds = BL.scene.boundsOf(part.geometry), m = part.world;
+            for (let axis = 0; axis < 3; axis++) {
+              const center = m[axis] * bounds.center[0] + m[axis + 4] * bounds.center[1] + m[axis + 8] * bounds.center[2] + m[axis + 12];
+              const extent = (Math.abs(m[axis]) * (bounds.max[0] - bounds.min[0]) + Math.abs(m[axis + 4]) * (bounds.max[1] - bounds.min[1]) + Math.abs(m[axis + 8]) * (bounds.max[2] - bounds.min[2])) * 0.5;
+              b[axis] = Math.min(b[axis], center - extent);
+              b[axis + 3] = Math.max(b[axis + 3], center + extent);
+            }
+          }
+        }
+      }
+      for (const source of cavemen.values()) {
+        if (!source.root.visible || !source.camp.contactBurning) continue;
+        const a = source.camp.contactBounds;
+        for (const target of cavemen.values()) {
+          if (source === target || !target.root.visible || target.state === "away" || target.camp.burning || target.camp.cooldown > 0) continue;
+          const b = target.camp.contactBounds;
+          if (a[1] > b[4] + 0.06 || b[1] > a[4] + 0.06) continue;
+          if (!source.root.quaternion && !target.root.quaternion) {
+            // A blocked movement substep stops just outside the collision
+            // radius; touching the flame fringe still transfers the fire.
+            if (Math.hypot(source.root.position.x - target.root.position.x, source.root.position.z - target.root.position.z) > 0.81) continue;
+          } else if (Math.hypot(Math.max(0, a[0] - b[3], b[0] - a[3]), Math.max(0, a[2] - b[5], b[2] - a[5])) > 0.06) continue;
+          const y = (Math.max(a[1], b[1]) + Math.min(a[4], b[4])) * 0.5;
+          if (ctx.fireReachable && !ctx.fireReachable((a[0] + a[3]) * 0.5, y, (a[2] + a[5]) * 0.5, (b[0] + b[3]) * 0.5, y, (b[2] + b[5]) * 0.5)) continue;
+          ignite(target);
+        }
+      }
+    };
     const sleepParts = (cave, k) => {
       clearHeadLook(cave);
       const parts = cave.parts, travel = cave.bedTravel;
@@ -17169,10 +17809,133 @@ void main() {
       fitSleepPose(cave, pose);
       travel.roll = 0;
     };
+    const shoulderNeighbor = (cave, other) => {
+      if (other === cave || !other.root.visible || other.state === "away" || other.root.quaternion || other.camp.seat) return false;
+      const feet = cave.root.position.y - cave.baseY, floor = other.root.position.y - other.baseY;
+      return feet < floor + other.bodyHeight - 0.05 && feet + cave.bodyHeight > floor + 0.05 && Math.abs(feet - floor) < STEP;
+    };
+    // The same swept clearance as the hub's upright actors, also used in the
+    // lab. Passing changes the path, never the bodies' collision radii.
+    const shoulderClear = (cave, x, z) => {
+      const p = cave.root.position, dx = x - p.x, dz = z - p.z, length = dx * dx + dz * dz;
+      for (const other of cavemen.values()) {
+        if (!shoulderNeighbor(cave, other)) continue;
+        const q = other.root.position, ox = p.x - q.x, oz = p.z - q.z, before = ox * ox + oz * oz;
+        if (before < SHOULDER_GAP * SHOULDER_GAP && (x - q.x) ** 2 + (z - q.z) ** 2 > before && ox * dx + oz * dz >= 0) continue;
+        const t = length ? clamp(-(ox * dx + oz * dz) / length, 0, 1) : 0;
+        if ((ox + dx * t) ** 2 + (oz + dz * t) ** 2 < SHOULDER_GAP * SHOULDER_GAP - 1e-8) return false;
+      }
+      return true;
+    };
+    const shoulderStep = (cave, fx, fz, distance, npc, reach = SHOULDER_REACH) => {
+      const s = cave.shoulder, p = cave.root.position;
+      if (cave.hop > 0 || cave.hopV > 0 || cave.root.quaternion || cave.camp.seat || cave.camp.panic.active) return -1;
+      // A deliberate turn starts a new line. Returning never moves an actor
+      // without input, or pulls a player back against a changed heading.
+      if (s.phase && fx * s.forwardX + fz * s.forwardZ < (npc ? 0.3 : 0.94)) { s.phase = 0; s.other = null; }
+      if (!s.phase) {
+        let nearest = SHOULDER_REACH, found = null, across = 0, rear = false;
+        for (const other of cavemen.values()) {
+          if (!shoulderNeighbor(cave, other)) continue;
+          const dx = other.shoulder.snapX - s.snapX, dz = other.shoulder.snapZ - s.snapZ;
+          const along = dx * fx + dz * fz, side = dx * fz - dz * fx;
+          if (Math.abs(along) >= nearest || Math.abs(side) >= SHOULDER_GAP || dx * dx + dz * dz < SHOULDER_GAP * SHOULDER_GAP - 1e-6) continue;
+          // A moving leader yields only to a faster walker closing from
+          // behind; standing neighbors and receding walkers do not push it.
+          if (along <= 0 && (along < -0.95 || (other.shoulder.snapVX - s.snapVX) * fx + (other.shoulder.snapVZ - s.snapVZ) * fz < 0.08)) continue;
+          nearest = Math.abs(along); found = other; across = side; rear = along <= 0;
+        }
+        const hit = s.obstacle, prop = !!ctx.shoulderObstacle && ctx.shoulderObstacle(cave, fx, fz, reach, hit)
+          && (!found || hit.minAlong < nearest - SHOULDER_GAP);
+        if (!found && !prop) return -1;
+        s.phase = 1; s.other = prop ? null : found; s.prop = prop; s.rear = !prop && rear;
+        s.originX = p.x; s.originZ = p.z;
+        s.forwardX = fx; s.forwardZ = fz;
+        s.heading = npc ? Math.atan2(fx, fz) : cave.root.rotation.y;
+        if (prop) across = (hit.minAcross + hit.maxAcross) * 0.5;
+        const dx = prop ? fx * hit.minAlong + fz * across : found.shoulder.snapX - s.snapX;
+        const dz = prop ? fz * hit.minAlong - fx * across : found.shoulder.snapZ - s.snapZ;
+        const side = dx * Math.cos(s.heading) - dz * Math.sin(s.heading);
+        s.side = Math.abs(side) < 0.02 ? 1 : Math.sign(side);
+        s.dodge = Math.abs(across) < 0.02 ? (s.rear ? -1 : 1) : Math.sign(across);
+        s.amount = prop ? clamp(1 - Math.max(hit.minContactAcross, -hit.maxContactAcross, 0) / 0.3, 0, 1) : clamp(1 - Math.abs(across) / SHOULDER_GAP, 0, 1);
+        if (prop) s.propOffset = s.dodge > 0 ? hit.minAcross - 0.315 : hit.maxAcross + 0.315;
+      }
+      fx = s.forwardX; fz = s.forwardZ;
+      const offset = (p.x - s.originX) * fz - (p.z - s.originZ) * fx;
+      let targetOffset = 0, along = 0;
+      if (s.phase === 1) {
+        if (s.prop) {
+          const hit = s.obstacle, progress = (p.x - s.originX) * fx + (p.z - s.originZ) * fz;
+          const lineX = s.originX + fx * progress, lineZ = s.originZ + fz * progress;
+          along = Math.max(0, hit.minAlong - progress);
+          // Test the original line at the body's current height. This keeps
+          // long benches and irregular trunks beside us until their actual
+          // rear surface clears, rather than returning through a broad box.
+          if (!ctx.shoulderObstacleActive(hit.node) || progress > hit.minAlong + 0.3
+            && ctx.shoulderPropClear(cave, lineX + fx * 0.3, lineZ + fz * 0.3)
+            && (npc ? walkerClear(cave, lineX + fx * 0.3, lineZ + fz * 0.3) : canStep(cave, false, p.x, p.z, lineX + fx * 0.3, lineZ + fz * 0.3))) s.phase = 2;
+          else {
+            targetOffset = s.propOffset;
+            s.targetYaw = s.side * s.amount * SHOULDER_TWIST * clamp((SHOULDER_REACH - along) / 0.8, 0, 1);
+          }
+        } else if (!shoulderNeighbor(cave, s.other)) s.phase = 2;
+        else {
+          const q = s.other.root.position;
+          along = (q.x - p.x) * fx + (q.z - p.z) * fz;
+          if ((s.rear ? along > SHOULDER_GAP + 0.12 : along < -SHOULDER_GAP - 0.12) || Math.hypot(q.x - p.x, q.z - p.z) > SHOULDER_REACH + 0.5) s.phase = 2;
+          else {
+            const otherOffset = (q.x - s.originX) * fz - (q.z - s.originZ) * fx;
+            targetOffset = -s.dodge * Math.max(0, SHOULDER_GAP + 0.015 - s.dodge * otherOffset);
+            s.targetYaw = (s.rear ? -1 : 1) * s.side * s.amount * SHOULDER_TWIST * clamp((SHOULDER_REACH - Math.abs(along)) / 0.8, 0, 1);
+          }
+        }
+      }
+      if (s.phase === 2 && Math.abs(offset) < 0.005) { s.phase = 0; s.other = null; s.obstacle.node = null; return -1; }
+      s.attempted = true;
+      const turn = Math.atan2(targetOffset - offset, s.phase === 1 ? Math.max(0.28, Math.abs(along) * 0.65) : 0.6);
+      let moved = false;
+      // Start with a continuous, proportional sidestep. If the bodies are
+      // already close, tighten toward their tangent in small angular steps.
+      for (let i = 0; i <= 18; i++) {
+        const angle = i ? turn - s.dodge * i * Math.PI / 36 : turn;
+        if (Math.abs(angle) > Math.PI / 2 + 1e-6) break;
+        const forward = Math.cos(angle) * distance, side = Math.sin(angle) * distance;
+        const x = p.x + fx * forward + fz * side, z = p.z + fz * forward - fx * side;
+        if (s.prop && !ctx.shoulderPropClear(cave, x, z)) continue;
+        if (!shoulderClear(cave, x, z) || !(npc ? walkerClear(cave, x, z) : canStep(cave, false, p.x, p.z, x, z))) continue;
+        p.x = x; p.z = z; p.y = groundY(cave);
+        moved = true; break;
+      }
+      // A wall may prevent the sidestep before the shoulders actually meet.
+      // Keep any clear forward travel, then stop at the real body boundary.
+      if (!moved) {
+        const x = p.x + fx * distance, z = p.z + fz * distance;
+        if ((!s.prop || ctx.shoulderPropClear(cave, x, z)) && shoulderClear(cave, x, z) && (npc ? walkerClear(cave, x, z) : canStep(cave, false, p.x, p.z, x, z))) {
+          p.x = x; p.z = z; p.y = groundY(cave);
+          moved = true;
+        }
+      }
+      if (npc) cave.root.rotation.y = s.heading;
+      return moved ? distance : 0;
+    };
+    const poseShoulder = (cave, dt) => {
+      const s = cave.shoulder;
+      if (cave.root.quaternion || cave.camp.seat || cave.hop > 0 || cave.hopV > 0 || cave.camp.panic.active) { clearShoulder(cave); return; }
+      if (!s.attempted) { s.phase = 0; s.other = null; s.obstacle.node = null; }
+      s.yaw = damp(s.yaw, s.attempted ? s.targetYaw : 0, 16, dt);
+      if (Math.abs(s.yaw) < 1e-5) s.yaw = 0;
+      for (const part of cave.root.children) part.poseYaw = part === cave.parts.head ? 0 : s.yaw;
+    };
     // Walkers use the same swept body as the visitor. Hold one detour side
     // until the direct route clears, instead of alternating at every corner.
     const walkerClear = (cave, x, z) => {
       const p = cave.root.position, feet = p.y - cave.baseY;
+      const panic = cave.camp.panic;
+      if (panic.active && panic.threat) {
+        const threat = panic.threat.root.position;
+        if (Math.hypot(x - threat.x, z - threat.z) < Math.min(1.1, Math.hypot(p.x - threat.x, p.z - threat.z)) - 1e-7) return false;
+      }
       return npcWalkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave) && groundAt(x, z, feet, feet, cave) >= feet - STEP - 1e-7;
     };
     const recoverWalker = (cave, tx, tz, dt) => {
@@ -17242,6 +18005,7 @@ void main() {
         if (nextY >= clearance) moving = true;
         const remaining = Math.hypot(endX - x, endZ - z), step = moving ? Math.min(0.075, remaining) : 0;
         const nx = remaining ? x + (endX - x) * step / remaining : x, nz = remaining ? z + (endZ - z) * step / remaining : z;
+        if (ctx.npcHazardClear && !ctx.npcHazardClear(x, y, z, nx, nextY, nz, cave.bodyHeight)) return;
         if (moving && velocity < 0 && nextY <= landing && Math.hypot(endX - nx, endZ - nz) < 0.6) {
           if (!flyable(nx, nz, nx, nz, landing + 1e-5, cave.bodyHeight, cave)) return;
           nav.mode = 4; nav.jumpX = endX; nav.jumpZ = endZ; nav.clearance = clearance; nav.double = double;
@@ -17270,6 +18034,12 @@ void main() {
       const p = cave.root.position, dx = tx - p.x, dz = tz - p.z, remaining = Math.hypot(dx, dz);
       if (remaining < 1e-7) return 0;
       const step = Math.min(distance, PLAYER_STEP, remaining), heading = Math.atan2(dx, dz), avoidance = cave.avoidance;
+      // A clear stop in front of a wall must not trigger a pass around the
+      // wall beyond it. Probe only the route this walker still needs to take.
+      // Recovery waypoints already clear solid bodies. A shoulder detour here
+      // can circle a blocked waypoint forever instead of invalidating the route.
+      const passing = nav.mode === 2 ? -1 : shoulderStep(cave, dx / remaining, dz / remaining, step, true, Math.min(SHOULDER_REACH, remaining));
+      if (passing >= 0) { avoidance.active = false; return passing; }
       let angle = heading;
       const ahead = nav.mode === 2 ? step : avoidance.active ? Math.min(0.9, remaining) : step;
       if (walkerClear(cave, p.x + Math.sin(heading) * step, p.z + Math.cos(heading) * step)
@@ -17418,8 +18188,8 @@ void main() {
       parts.armL.rotation.x = parts.armR.rotation.x = -1.1;
     };
     const runWalk = (cave, dt) => {
-      // Donations can cover a destination after it was chosen. Choose a new
-      // clear spot instead of circling a point now buried inside the mound.
+      // A growing pile or newly lit fire can cover a destination after it was
+      // chosen. Choose a safe spot instead of circling an unreachable goal.
       if (cave.walk.to === "spot" && npcDestinationBlocked(cave, cave.walk.tx, cave.walk.tz)) startWander(cave);
       const w = cave.walk, p = cave.root.position;
       if (w.to === "slot" && !slotAvailable(cave, cave.slot)) {
@@ -17438,6 +18208,7 @@ void main() {
         moved += step; remaining -= step;
       }
       if (Math.hypot(w.tx - p.x, w.tz - p.z) < 1e-6) {
+        cave.shoulder.phase = 0; cave.shoulder.other = null;
         if (w.to === "spot") {
           arriveAtSpot(cave);
         } else {
@@ -17551,6 +18322,8 @@ void main() {
       dz /= steps;
       for (let i = 0; i < steps; i++) {
         const speed = inBananas(cave) ? 0.5 : 1, sx = dx * speed, sz = dz * speed;
+        const distance = Math.hypot(sx, sz);
+        if (!flying && distance > 1e-8 && shoulderStep(cave, sx / distance, sz / distance, distance, false) >= 0) continue;
         if (canStep(cave, flying, p.x, p.z, p.x + sx, p.z + sz)) {
           p.x += sx;
           p.z += sz;
@@ -17575,7 +18348,7 @@ void main() {
     };
     // Move the visitor's caveman
     const runPlayer = (cave, dt, driving = true) => {
-      const p = cave.root.position, leap = cave.leap;
+      const p = cave.root.position, leap = cave.leap, fromX = p.x, fromZ = p.z;
       const wasGround = groundY(cave);
       if (cave.jet) runJet(cave, dt);
       clampPlayerCeiling(cave, wasGround);
@@ -17586,19 +18359,7 @@ void main() {
       if (len > 0.05) {
         const k = Math.min(1, len) * (flying ? JET_SPEED : PLAYER_SPEED) * dt;
         const dx = steer.x / len * k, dz = steer.z / len * k;
-        const fromX = p.x, fromZ = p.z;
         movePlayer(cave, flying, dx, dz);
-        if (!cave.traits.gasMask && !flying && cave.hop === 0 && cave.hopV <= 0) {
-          // Heels kick up a smoke trail in proportion to the ground actually covered
-          cave.smoke += Math.hypot(p.x - fromX, p.z - fromZ);
-          if (cave.smoke >= SMOKE_STEP) {
-            cave.smoke -= SMOKE_STEP;
-            const backX = -Math.sin(cave.root.rotation.y), backZ = -Math.cos(cave.root.rotation.y);
-            ctx.fx.puff(p.x + backX * 0.14, p.y - cave.baseY + 0.07, p.z + backZ * 0.14,
-              backX * 0.25 + (Math.random() - 0.5) * 0.3, 0.4 + Math.random() * 0.3, backZ * 0.25 + (Math.random() - 0.5) * 0.3,
-              0.8 + Math.random() * 0.4);
-          }
-        }
         const heading = Math.atan2(steer.x, steer.z);
         if (Math.abs(steer.forward) > 0.05 && Math.abs(steer.strafe) <= 0.05) cave.root.rotation.y = heading;
         else cave.root.rotation.y += Math.atan2(Math.sin(heading - cave.root.rotation.y), Math.cos(heading - cave.root.rotation.y)) * Math.min(1, 12 * dt) * (1 - steer.view);
@@ -17653,6 +18414,17 @@ void main() {
       // Keep that exact destination layer if it drifts away next frame.
       if (ctx.cloudAt) cave.cloudSupport = ctx.cloudAt(p.x, p.z, p.y - cave.baseY);
       if (grounded(cave)) {
+        if (len > 0.05 && !cave.traits.gasMask && !flying) {
+          // Heels kick up a smoke trail in proportion to the ground actually covered
+          cave.smoke += Math.hypot(p.x - fromX, p.z - fromZ);
+          if (cave.smoke >= SMOKE_STEP) {
+            cave.smoke -= SMOKE_STEP;
+            const backX = -Math.sin(cave.root.rotation.y), backZ = -Math.cos(cave.root.rotation.y);
+            ctx.fx.puff(p.x + backX * 0.14, p.y - cave.baseY + 0.07, p.z + backZ * 0.14,
+              backX * 0.25 + (Math.random() - 0.5) * 0.3, 0.4 + Math.random() * 0.3, backZ * 0.25 + (Math.random() - 0.5) * 0.3,
+              0.8 + Math.random() * 0.4);
+          }
+        }
         cave.jumps = 0;
       } else cave.jumps = Math.max(1, cave.jumps);
       if (cave.hop === 0 && (leap.vx || leap.vz)) {
@@ -17834,7 +18606,7 @@ void main() {
     // ---------- the visitor's caveman ----------
     const sleepPlayer = (bed) => {
       const cave = player;
-      if (!cave || cave.state === "sleeping" || !bed || bed.sleeper && bed.sleeper !== cave) return false;
+      if (!cave || cave.camp.burning || cave.camp.seat || cave.state === "sleeping" || !bed || bed.sleeper && bed.sleeper !== cave) return false;
       // The view's step smoothing can still be settling when SLEEP appears.
       // Admission uses the planted feet, before clearing that visual offset.
       if (!grounded(cave)) return false;
@@ -17872,6 +18644,7 @@ void main() {
     const control = (cave) => {
       if (cave === player || cave.state !== "working" && cave.state !== "sleeping") return false;
       release();
+      clearShoulder(cave);
       if (cave.state === "sleeping" && (!ctx.bedRoute || cave.bedTravel.mode === "rest" || cave.bedTravel.mode === "lie")) {
         player = cave;
         cave.bedTravel.manual = true;
@@ -17894,6 +18667,11 @@ void main() {
         refreshRosterRow(cave);
       }
       player = cave;
+      cave.camp.panic.active = false;
+      cave.camp.panic.threat = cave.camp.panic.resumeWalk = null;
+      cave.camp.panic.remembered = false;
+      cave.camp.panic.memory.fill(0);
+      cave.camp.panic.resumeSleep = false;
       releaseBuild(cave);
       cave.avoidance.navigation.mode = 0; cave.avoidance.tx = NaN;
       cave.walk = null;
@@ -17914,6 +18692,11 @@ void main() {
       if (player) clearHeadLook(player);
       if (!player) return;
       const cave = player;
+      clearShoulder(cave);
+      if (cave.camp.seat && !standPlayer(cave)) {
+        cave.camp.seat.sitter = null;
+        cave.camp.seat = null;
+      }
       if (cave.bedTravel.manual && cave.state === "sleeping") {
         cave.bedTravel.manual = false;
         player = null;
@@ -17930,13 +18713,15 @@ void main() {
         cave.jet.power = 0;
         cave.jet.flame.visible = false;
       }
-      standPose(cave);
-      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave)) cave.root.position.y = groundY(cave) + cave.hop;
+      if (!cave.camp.rolling) {
+        standPose(cave);
+        if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave)) cave.root.position.y = groundY(cave) + cave.hop;
+      }
       cave.act.kind = "idle";
       cave.act.until = elapsed + 1.5;
       cave.act.said = true;
       cave.act.trips = 0;
-      if (ctx.bedRoute && cave.root.position.y - cave.baseY < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave))) startBedRoute(cave, null, false);
+      if (!cave.camp.burning && ctx.bedRoute && cave.root.position.y - cave.baseY < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave))) startBedRoute(cave, null, false);
     };
     const steerPlayer = (x, z, view = 0, forward = 0, strafe = 0) => {
       steer.x = x;
@@ -17949,6 +18734,9 @@ void main() {
     const relocatePlayer = (position, heading) => {
       const cave = player;
       if (!cave) return;
+      clearShoulder(cave);
+      if (cave.camp.seat) { cave.camp.seat.sitter = null; cave.camp.seat = null; }
+      if (cave.camp.rolling) { cave.camp.rolling = false; cave.root.quaternion = null; }
       if (cave.bedTravel.manual) wakePlayer();
       elevatePlayer(0);
       steer.x = steer.z = steer.view = steer.forward = steer.strafe = 0;
@@ -17976,8 +18764,14 @@ void main() {
     const lookPlayer = (heading, pitch, mix, viewRotation = null) => {
       if (!player) return;
       clearHeadLook(player);
+      if (player.camp.rolling) return;
       if (mix <= 0) return;
       const root = player.root, head = player.parts.head;
+      if (player.camp.seat) {
+        head.rotation.y = clamp(Math.atan2(Math.sin(heading - root.rotation.y), Math.cos(heading - root.rotation.y)), -1.2, 1.2) * mix;
+        head.rotation.x = pitch * mix;
+        return;
+      }
       if (player.bedTravel.manual) {
         if (!viewRotation || !root.quaternion) return;
         const q = root.quaternion, look = player.headLookRotation;
@@ -18003,7 +18797,7 @@ void main() {
     // Shift the visible body while its root remains on the exact collision surface.
     // Scaling each leg about its hip keeps the feet on that same voxel step.
     const elevatePlayer = (lift) => {
-      if (!player || player.bedTravel.manual) return;
+      if (!player || player.bedTravel.manual || player.camp.seat || player.camp.rolling) return;
       const cave = player, parts = cave.parts;
       // Step smoothing moves the rendered head after physics. Keep that lift
       // within the same full-footprint ceiling used by walking and jumping.
@@ -18025,10 +18819,10 @@ void main() {
       parts.legL.scale.y = parts.legR.scale.y = (cave.baseY + lift) / cave.baseY;
     };
     const jumpPlayer = () => {
-      if (!player || player.bedTravel.manual || player.jet && !player.jetRecovering) return false;
+      if (!player || player.bedTravel.manual || player.camp.seat || player.camp.rolling || player.jet && !player.jetRecovering) return false;
       if (grounded(player)) player.jumps = 0;
       else player.jumps = Math.max(1, player.jumps);
-      if (player.jumps >= 2) return false;
+      if (player.jumps >= 2 && !inBananas(player)) return false;
       // A takeoff leaves step smoothing behind before testing its headroom.
       elevatePlayer(0);
       player.jumps++;
@@ -18039,6 +18833,8 @@ void main() {
     // a nearby action consumes the press and airborne presses add no impulse.
     const playerAction = () => {
       if (!player) return false;
+      if (player.camp.burning) return dropRoll();
+      if (player.camp.seat) return standPlayer();
       if (player.bedTravel.manual) return wakePlayer();
       const p = player.root.position, feet = p.y - player.baseY;
       if (ctx.useNear && ctx.useNear(p.x, p.z, REACH + 0.6, feet)) return true;
@@ -18211,36 +19007,86 @@ void main() {
       batch.instanceCount = count;
       batch.instanceVersion++;
     };
+    // Resolve a standing stack from its bottom up, once per actor, so the
+    // passenger receives this frame's movement regardless of roster order.
+    const updateMember = (cave, dt) => {
+      const riding = cave.riding;
+      if (riding.updated) return;
+      if (riding.support) updateMember(riding.support, dt);
+      const p = cave.root.position, x = p.x, y = p.y, z = p.z;
+      // Test both endpoints against the same current heap. A resize or a
+      // relocation between frames must not masquerade as an exit.
+      const wasInBananas = cave.root.visible && cave.state === "working" && inBananas(cave);
+      const support = riding.support;
+      if (support && support.root.visible && support.riding.continuous) {
+        const q = support.root.position, from = support.riding;
+        ctx.carryCharacter(cave, q.x - from.x, q.y - from.y, q.z - from.z);
+      }
+      const ownX = p.x, ownY = p.y, ownZ = p.z;
+      if (!runCamp(cave, dt)) updateCaveman(cave, dt);
+      if (ctx.characterSupportAt) riding.support = ctx.characterSupportAt(cave);
+      poseShoulder(cave, dt);
+      if (dt > 0 && cave.root.visible && cave.state === "working" && ctx.onBodyMove) ctx.onBodyMove(cave, x, y, z, dt);
+      if (dt > 0) {
+        const s = cave.shoulder, continuous = Math.hypot(p.x - x, p.z - z) <= PLAYER_SPEED * dt + 1e-5;
+        s.motionX = continuous ? (p.x - x) / dt : 0; s.motionZ = continuous ? (p.z - z) / dt : 0;
+      }
+      updateCampEffects(cave, dt);
+      runMaskBreath(cave, dt);
+      packMaskSmoke(cave);
+      if (wasInBananas && dt > 0 && cave.root.visible && cave.state === "working" && !inBananas(cave) && ctx.pile.spill) {
+        const dx = p.x - x, dy = p.y - y, dz = p.z - z;
+        // Respawns and scripted arrivals can move during an update too.
+        // Only continuous character movement should carry fruit with it.
+        if (Math.hypot(dx, dz) <= (JET_SPEED + WALK.ledgeSpeed) * dt + 1e-5 && Math.abs(dy) <= Math.abs(cave.hopV) * dt + STEP + 1e-5
+          && Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 1e-7) {
+          const feet = p.y - cave.baseY;
+          // Upward exits shed fruit at the feet crossing the top. Side
+          // exits scatter the fruit carried along the whole body.
+          const height = dy > Math.hypot(dx, dz) ? 0 : cave.bodyHeight;
+          ctx.pile.spill(p.x, feet + 0.04, p.z, dx / dt, dy / dt, dz / dt, height);
+        }
+      }
+      if (grounded(cave)) {
+        if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
+        if (cave.jetFuel < 1 && (!cave.jet || !cave.jet.spending)) cave.jetFuel = Math.min(1, cave.jetFuel + dt / JET_REFILL_SECONDS);
+      }
+      if (cave.jetFuel > JET_LAUNCH_FUEL) cave.jetRecovering = false;
+      // Check only this actor's own motion: a stack can add several legitimate
+      // walking velocities. Keep the old fall speed when a landing zeros hopV.
+      // Respawns and scripted arrivals must never teleport their passengers.
+      riding.continuous = dt > 0 && Math.hypot(p.x - ownX, p.z - ownZ) <= (Math.max(PLAYER_SPEED, JET_SPEED) + WALK.ledgeSpeed) * dt + 1e-5
+        && Math.abs(p.y - ownY) <= Math.max(Math.abs(riding.vy), Math.abs(cave.hopV)) * dt + STEP + WALK.gravity * dt * dt + 1e-5;
+      riding.updated = true;
+    };
     const update = (dt, now) => {
       elapsed = now;
+      // Snapshot both sides before anyone moves, so a centered meeting gives
+      // both walkers the same right-shoulder default regardless of update order.
+      // Previous-frame motion distinguishes an overtaker from someone behind.
       for (const cave of cavemen.values()) {
-        const p = cave.root.position, x = p.x, y = p.y, z = p.z;
-        // Test both endpoints against the same current heap. A resize or a
-        // relocation between frames must not masquerade as an exit.
-        const wasInBananas = cave.root.visible && cave.state === "working" && inBananas(cave);
-        updateCaveman(cave, dt);
-        runMaskBreath(cave, dt);
-        packMaskSmoke(cave);
-        if (wasInBananas && dt > 0 && cave.root.visible && cave.state === "working" && !inBananas(cave) && ctx.pile.spill) {
-          const dx = p.x - x, dy = p.y - y, dz = p.z - z;
-          // Respawns and scripted arrivals can move during an update too.
-          // Only continuous character movement should carry fruit with it.
-          if (Math.hypot(dx, dz) <= (JET_SPEED + WALK.ledgeSpeed) * dt + 1e-5 && Math.abs(dy) <= Math.abs(cave.hopV) * dt + STEP + 1e-5
-            && Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 1e-7) {
-            ctx.pile.spill(p.x, p.y - cave.baseY + cave.bodyHeight * 0.5, p.z, dx / dt, dy / dt, dz / dt);
-          }
-        }
-        if (grounded(cave)) {
-          if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
-          if (cave.jetFuel < 1 && (!cave.jet || !cave.jet.spending)) cave.jetFuel = Math.min(1, cave.jetFuel + dt / JET_REFILL_SECONDS);
-        }
-        if (cave.jetFuel > JET_LAUNCH_FUEL) cave.jetRecovering = false;
+        const s = cave.shoulder, riding = cave.riding, p = cave.root.position;
+        riding.support = null; riding.updated = riding.continuous = false;
+        riding.x = p.x; riding.y = p.y; riding.z = p.z;
+        riding.vy = cave.hopV;
+        s.snapX = p.x; s.snapZ = p.z;
+        s.snapVX = s.motionX; s.snapVZ = s.motionZ;
+        s.attempted = false; s.targetYaw = 0;
       }
+      if (dt > 0 && ctx.characterSupportAt) for (const cave of cavemen.values()) cave.riding.support = ctx.characterSupportAt(cave);
+      if (dt > 0) updateFireContacts();
+      updateFireThreats();
+      for (const cave of cavemen.values()) updateMember(cave, dt);
+      if (dt > 0) updateFireContacts();
+      // Collision exclusions belong only to this ordered physics update.
+      // Input, dragging and relocation outside it must see ordinary bodies.
+      for (const cave of cavemen.values()) cave.riding.support = null;
     };
     const dispose = () => {
       player = null;
       for (const cave of cavemen.values()) {
         releaseBedroll(cave);
+        if (cave.camp.seat) cave.camp.seat.sitter = null;
         for (const key of BODY_PARTS) input.remove(cave.parts[key]);
         removeChild(root, cave.root);
         if (cave.breathBatch) removeChild(root, cave.breathBatch);
@@ -18257,8 +19103,8 @@ void main() {
     };
     const stats = () => ({ built: builtEquipment.length });
     return {
-      cavemen, stateOf, stateCounts, workingCavemen, eatingCavemen, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, drawQuotes,
-      control, release, relocatePlayer, sleepPlayer, wakePlayer, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, wearJetpack, removeJetpack, thrust, update, dispose, stats,
+      cavemen, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, drawQuotes,
+      control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, ignite, dropRoll, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, wearJetpack, removeJetpack, thrust, update, dispose, stats,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
         return player;
@@ -18484,6 +19330,7 @@ void main() {
   const BACKLOG_VISUAL_CAPACITY = Math.max(1, Math.floor((BACKLOG_SECONDS - DROP_DURATION_MAX - FRAME_TIME_MAX) * DROP_THROUGHPUT));
   const MAX_WEBGL_TILES = 65536;
   const MAX_CANVAS_TILES = 512;
+  const DISTANT_SHELL_MIN_TILES = 1000, SHELL_DETAIL_NEAR = 8, SHELL_DETAIL_FAR = 10;
   const footprintFor = (count, scale = 0.45) => scale * (count > DISK_BANANAS ? Math.cbrt(count / DISK_BANANAS) : 1);
   const visualFootprintFor = (count, scale = 0.45) => {
     const mix = Math.min(1, Math.max(0, (count - DISK_BANANAS) / DISK_BANANAS));
@@ -18522,6 +19369,7 @@ void main() {
     const core = createNode({ geometry: models.bananaPileCoreGeometry(SCALE * 6, BASE_HEIGHT * 6, coreFaceSize), visible: false });
     const bananaGeometry = models.bananaGeometry();
     const shellGeometry = models.bananaTileGeometry();
+    const distantShellGeometry = models.bananaTileGeometry(true);
     let shellMinZ = Infinity, shellReach = 0;
     for (let i = 0; i < shellGeometry.verts.length; i += 3) {
       shellMinZ = Math.min(shellMinZ, shellGeometry.verts[i + 2]);
@@ -18653,7 +19501,7 @@ void main() {
       spillNode.visible = count > 0;
       spillNode.instanceVersion++;
     };
-    const spill = (x, y, z, vx, vy, vz) => {
+    const spill = (x, y, z, vx, vy, vz, height = 0.3) => {
       // Cap inherited speed so a very fast flight does not scatter fruit far
       // beyond the character. Cosmetic random variation needs no new objects.
       const speed = Math.hypot(vx, vy, vz), inherit = speed > 8 ? 4 / speed : 0.5;
@@ -18663,7 +19511,10 @@ void main() {
         const slot = spillSlots[i];
         if (slot.life) continue;
         const side = (Math.random() - 0.5) * 0.7, ahead = Math.random() * 0.18;
-        setVec(slot.position, x + dx * ahead - dz * side, y + (Math.random() - 0.5) * 0.3, z + dz * ahead + dx * side);
+        // Stratify the burst so even a small emission includes fruit near
+        // the feet, torso and head wherever those meet the mound.
+        const lift = height * (emitted % 3 + Math.random() * 0.25) / 2.25;
+        setVec(slot.position, x + dx * ahead - dz * side, y + lift, z + dz * ahead + dx * side);
         setVec(slot.velocity, vx * inherit - dz * side * 2 + dx * 0.4, vy * inherit + 1.4 + Math.random() * 0.7, vz * inherit + dx * side * 2 + dz * 0.4);
         setVec(slot.rotation, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
         setVec(slot.spin, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12);
@@ -19044,10 +19895,26 @@ void main() {
       syncPile(true);
       return true;
     };
+    const updateDetail = () => {
+      if (shell.instanceCount < DISTANT_SHELL_MIN_TILES) {
+        shell.geometry = shellGeometry;
+        return;
+      }
+      // Measure from the nearest possible surface, not the mound's centre: a
+      // camera beside even the largest pile must retain the original bananas.
+      // The box includes the warped dome and the full reach of its shell fruit.
+      const eye = ctx.camera.position, radius = core.scale.x * 1.05 + shellReach;
+      const dx = Math.max(0, Math.abs(eye.x) - radius), dz = Math.max(0, Math.abs(eye.z) - radius);
+      const dy = Math.max(0, BASE_Y - shellReach - eye.y, eye.y - BASE_Y - core.scale.y - shellReach);
+      const distance = Math.hypot(dx, dy, dz);
+      if (distance > SHELL_DETAIL_FAR) shell.geometry = distantShellGeometry;
+      else if (distance < SHELL_DETAIL_NEAR) shell.geometry = shellGeometry;
+    };
     const update = (dt) => {
       delivery.activeTime += dt;
       const target = Math.floor(world.level);
       if (target !== counted) syncPile();
+      updateDetail();
       pumpDrops(dt);
       updateSpills(dt);
       if (!outstandingValue() && hatchTarget === 1) hatchTarget = 0;
@@ -19061,6 +19928,10 @@ void main() {
       for (const slot of dropSlots) removeChild(root, slot.node);
       removeChild(root, core);
       removeChild(root, shell);
+      // Both detail levels cache this visit's instance matrices. End their GPU
+      // lifetime here so another scene's pile cannot reuse a matching version.
+      ctx.renderer.releaseGeometry(shellGeometry);
+      ctx.renderer.releaseGeometry(distantShellGeometry);
       removeChild(root, spillNode);
       spillSlots.length = 0;
       spillState.active = spillNode.instanceCount = 0;
@@ -19115,11 +19986,12 @@ void main() {
       world.level = Math.max(0, Math.min(MAX_BANANAS, Number(level) || 0));
       syncPile(true);
     };
+    const liveGeometry = (set) => set.add(shellGeometry).add(distantShellGeometry);
     // Crew slots are assigned immediately after construction. Publish the
     // loaded pile's real footprint before the crew exists or starts walking.
     reflow(Math.max(0, Math.min(MAX_BANANAS, Math.floor(world.level))));
     return {
-      slots: pileSlots, drops: dropSlots, core, shell, syncPile, deliverBananas, pileEdge, eatFromPile, update, dispose, stats, setLevel, delivery: deliveryDebug, spill, spillEffect,
+      slots: pileSlots, drops: dropSlots, core, shell, syncPile, deliverBananas, pileEdge, eatFromPile, update, dispose, stats, setLevel, liveGeometry, delivery: deliveryDebug, spill, spillEffect,
       get shown() {
         return counted;
       },
@@ -21040,6 +21912,8 @@ void main() {
   };
   const create = () => {
     const entries = [], registered = new Map(), transforms = new WeakMap(), stack = new Int32Array(64), triangle = new Float64Array(9), query = new Float64Array(6);
+    const clipA = new Float64Array(15), clipB = new Float64Array(15);
+    let shoulderPolygons = new Float64Array(0), shoulderAcross = new Float64Array(0), shoulderSeen = new Uint8Array(0), shoulderQueue = new Int32Array(0);
     const stats = { nodes: 0, active: 0, transforms: 0, triangles: 0, queries: 0, triangleTests: 0 };
     let generation = 0;
     // Refresh only registered meshes and their ancestors, once per sync.
@@ -21062,12 +21936,18 @@ void main() {
       for (let at = node; at; at = at.parent) if (at === root) return true;
       return false;
     };
-    const add = (root) => {
+    const add = (root, shoulderOnly = false) => {
       const visit = (node) => {
         if (node.geometry && node.geometry.faces.length && !node.instanceData && !registered.has(node)) {
           const geometry = geometryOf(node.geometry);
           if (geometry.nodes.length) {
-            const entry = { node, geometry, world: mat4.create(), inverse: mat4.create(), box: new Float64Array(6), active: false, initialized: false, orientation: 1 };
+            const count = geometry.triangles.length / 3;
+            if (count > shoulderSeen.length) {
+              shoulderPolygons = new Float64Array(count * 15);
+              shoulderAcross = new Float64Array(count * 2);
+              shoulderSeen = new Uint8Array(count); shoulderQueue = new Int32Array(count);
+            }
+            const entry = { node, geometry, world: mat4.create(), inverse: mat4.create(), box: new Float64Array(6), active: false, initialized: false, orientation: 1, shoulderOnly };
             entries.push(entry); registered.set(node, entry);
             stats.triangles += geometry.triangles.length / 3;
           }
@@ -21156,7 +22036,7 @@ void main() {
       const limit = y * direction + maxStep;
       for (const entry of entries) {
         const box = entry.box;
-        if (!entry.active || ignore && belongs(entry.node, ignore) || box[0] > x + radius || box[3] < x - radius || box[2] > z + radius || box[5] < z - radius) continue;
+        if (!entry.active || entry.shoulderOnly || ignore && belongs(entry.node, ignore) || box[0] > x + radius || box[3] < x - radius || box[2] > z + radius || box[5] < z - radius) continue;
         const low = direction > 0 ? box[1] : Math.max(box[1], y - maxStep), high = direction > 0 ? Math.min(box[4], y + maxStep) : box[4];
         if (low > high + EPS) continue;
         localQuery(entry, x - radius, low, z - radius, x + radius, high, z + radius);
@@ -21208,7 +22088,7 @@ void main() {
       stats.queries++;
       const x0 = Math.min(x, toX) - radius, x1 = Math.max(x, toX) + radius, y0 = Math.min(y, toY), y1 = Math.max(y, toY) + height, z0 = Math.min(z, toZ) - radius, z1 = Math.max(z, toZ) + radius;
       for (const entry of entries) {
-        if (!entry.active || ignore && belongs(entry.node, ignore) || !overlaps(entry.box, x0, y0, z0, x1, y1, z1)) continue;
+        if (!entry.active || entry.shoulderOnly || ignore && belongs(entry.node, ignore) || !overlaps(entry.box, x0, y0, z0, x1, y1, z1)) continue;
         if (inside(entry, x, y + height / 2, z) || inside(entry, toX, toY + height / 2, toZ)) return false;
         localQuery(entry, x0, y0, z0, x1, y1, z1);
         let size = 1; stack[0] = 0;
@@ -21225,8 +22105,153 @@ void main() {
       }
       return true;
     };
+    const clipHeight = (from, count, to, height, direction) => {
+      let written = 0, previous = (count - 1) * 3;
+      for (let i = 0; i < count; i++) {
+        const at = i * 3, a = (from[previous + 1] - height) * direction, b = (from[at + 1] - height) * direction;
+        if (a < 0 && b > 0 || a > 0 && b < 0) {
+          const t = a / (a - b), out = written++ * 3;
+          to[out] = from[previous] + (from[at] - from[previous]) * t;
+          to[out + 1] = height;
+          to[out + 2] = from[previous + 2] + (from[at + 2] - from[previous + 2]) * t;
+        }
+        if (b >= 0) {
+          const out = written++ * 3;
+          to[out] = from[at]; to[out + 1] = from[at + 1]; to[out + 2] = from[at + 2];
+        }
+        previous = at;
+      }
+      return written;
+    };
+    // A clipped triangle has at most five vertices. Its horizontal projection
+    // is convex, including the line segments made by vertical mesh faces.
+    const shoulderSeparate = (a, b, dx, dz) => {
+      const data = shoulderPolygons;
+      let lowA = Infinity, highA = -Infinity, lowB = Infinity, highB = -Infinity;
+      for (let i = 0; i < data[a]; i++) {
+        const at = a + 5 + i * 2, value = data[at] * dx + data[at + 1] * dz;
+        lowA = Math.min(lowA, value); highA = Math.max(highA, value);
+      }
+      for (let i = 0; i < data[b]; i++) {
+        const at = b + 5 + i * 2, value = data[at] * dx + data[at + 1] * dz;
+        lowB = Math.min(lowB, value); highB = Math.max(highB, value);
+      }
+      return lowA > highB + EPS || lowB > highA + EPS;
+    };
+    const shoulderTouches = (a, b) => {
+      const data = shoulderPolygons;
+      if (data[a + 1] > data[b + 2] + EPS || data[b + 1] > data[a + 2] + EPS || data[a + 3] > data[b + 4] + EPS || data[b + 3] > data[a + 4] + EPS) return false;
+      for (let shape = 0; shape < 2; shape++) {
+        const start = shape ? b : a, count = data[start];
+        for (let i = 0; i < count; i++) {
+          const at = start + 5 + i * 2, next = start + 5 + (i + 1) % count * 2;
+          const dx = data[next] - data[at], dz = data[next + 1] - data[at + 1];
+          if (shoulderSeparate(a, b, -dz, dx)) return false;
+        }
+      }
+      return true;
+    };
+    const shoulderDistance = (start, radius) => {
+      const data = shoulderPolygons, count = data[start];
+      let first = Infinity, last = -Infinity;
+      for (let i = 0; i < count; i++) {
+        const at = start + 5 + i * 2, next = start + 5 + (i + 1) % count * 2;
+        const along = data[at], across = data[at + 1], da = data[next] - along, dc = data[next + 1] - across;
+        let lo = 0, hi = 1;
+        if (dc) {
+          const a = (-radius - across) / dc, b = (radius - across) / dc;
+          lo = Math.max(0, Math.min(a, b)); hi = Math.min(1, Math.max(a, b));
+        } else if (Math.abs(across) > radius) continue;
+        if (lo > hi) continue;
+        for (let end = 0; end < 2; end++) {
+          const t = end ? hi : lo, c = across + dc * t, reach = Math.sqrt(Math.max(0, radius * radius - c * c)), l = along + da * t;
+          first = Math.min(first, l - reach); last = Math.max(last, l + reach);
+        }
+        if (dc) {
+          const acrossAt = radius * da * Math.sign(dc) / Math.hypot(da, dc);
+          const near = (-acrossAt - across) / dc, far = (acrossAt - across) / dc;
+          if (near > lo && near < hi) first = Math.min(first, along + da * near - Math.sqrt(Math.max(0, radius * radius - acrossAt * acrossAt)));
+          if (far > lo && far < hi) last = Math.max(last, along + da * far + Math.sqrt(Math.max(0, radius * radius - acrossAt * acrossAt)));
+        }
+      }
+      return last >= 0 ? Math.max(0, first) : Infinity;
+    };
+    const shoulderPolygon = (start, vertices, x, z, fx, fz) => {
+      const data = shoulderPolygons;
+      data[start] = vertices;
+      data[start + 1] = data[start + 3] = Infinity; data[start + 2] = data[start + 4] = -Infinity;
+      for (let p = 0; p < vertices; p++) {
+        const dx = clipB[p * 3] - x, dz = clipB[p * 3 + 2] - z, along = dx * fx + dz * fz, across = dx * fz - dz * fx;
+        data[start + 5 + p * 2] = along; data[start + 6 + p * 2] = across;
+        data[start + 1] = Math.min(data[start + 1], along); data[start + 2] = Math.max(data[start + 2], along);
+        data[start + 3] = Math.min(data[start + 3], across); data[start + 4] = Math.max(data[start + 4], across);
+      }
+    };
+    // y/height describe the blocking slice above a walker's climbable step.
+    // Return the first connected surface in its forward/right coordinate frame;
+    // a canopy or a separate arch post must not enlarge the contacted trunk.
+    // bottomY includes its lower tiers only after that blocking contact exists;
+    // contactAcross retains the blocking slice for the shoulder's twist strength.
+    const shoulderAt = (x, y, z, fx, fz, radius, height, reach, out, bottomY = y) => {
+      stats.queries++;
+      out.node = null;
+      if (height <= EPS) return false;
+      const margin = reach + radius, toX = x + fx * reach, toZ = z + fz * reach;
+      const x0 = Math.min(x, toX) - margin, x1 = Math.max(x, toX) + margin, z0 = Math.min(z, toZ) - margin, z1 = Math.max(z, toZ) + margin;
+      let best = reach + EPS;
+      for (const entry of entries) {
+        if (!entry.active || !overlaps(entry.box, x0, bottomY, z0, x1, y + height, z1)) continue;
+        localQuery(entry, x0, bottomY, z0, x1, y + height, z1);
+        let size = 1, count = 0, nearest = -1; stack[0] = 0;
+        while (size) {
+          const node = entry.geometry.nodes[stack[--size]];
+          if (!overlaps(node.box, query[0], query[1], query[2], query[3], query[4], query[5])) continue;
+          if (node.left >= 0) { stack[size++] = node.left; stack[size++] = node.right; continue; }
+          for (let i = node.from; i < node.to; i++) {
+            transformTriangle(entry, entry.geometry.order[i]);
+            const top = Math.max(triangle[1], triangle[4], triangle[7]);
+            if (top <= bottomY + EPS || Math.min(triangle[1], triangle[4], triangle[7]) >= y + height - EPS) continue;
+            const start = count * 15, contact = count * 2;
+            shoulderAcross[contact] = Infinity; shoulderAcross[contact + 1] = -Infinity;
+            let distance = Infinity;
+            if (bottomY < y && top > y + EPS) {
+              const lower = clipHeight(triangle, 3, clipA, y, 1), vertices = clipHeight(clipA, lower, clipB, y + height, -1);
+              shoulderPolygon(start, vertices, x, z, fx, fz);
+              shoulderAcross[contact] = shoulderPolygons[start + 3]; shoulderAcross[contact + 1] = shoulderPolygons[start + 4];
+              distance = shoulderDistance(start, radius);
+            }
+            const lower = clipHeight(triangle, 3, clipA, bottomY, 1), vertices = clipHeight(clipA, lower, clipB, y + height, -1);
+            if (!vertices) continue;
+            shoulderPolygon(start, vertices, x, z, fx, fz);
+            if (bottomY === y) {
+              shoulderAcross[contact] = shoulderPolygons[start + 3]; shoulderAcross[contact + 1] = shoulderPolygons[start + 4];
+              distance = shoulderDistance(start, radius);
+            }
+            if (distance < best) { best = distance; nearest = count; }
+            count++;
+          }
+        }
+        if (nearest < 0) continue;
+        shoulderSeen.fill(0, 0, count); shoulderSeen[nearest] = 1; shoulderQueue[0] = nearest;
+        out.node = entry.node; out.minAlong = out.minAcross = Infinity; out.maxAlong = out.maxAcross = -Infinity;
+        out.minContactAcross = Infinity; out.maxContactAcross = -Infinity;
+        let end = 1;
+        for (let at = 0; at < end; at++) {
+          const start = shoulderQueue[at] * 15, data = shoulderPolygons;
+          out.minAlong = Math.min(out.minAlong, data[start + 1]); out.maxAlong = Math.max(out.maxAlong, data[start + 2]);
+          out.minAcross = Math.min(out.minAcross, data[start + 3]); out.maxAcross = Math.max(out.maxAcross, data[start + 4]);
+          const contact = shoulderQueue[at] * 2;
+          out.minContactAcross = Math.min(out.minContactAcross, shoulderAcross[contact]); out.maxContactAcross = Math.max(out.maxContactAcross, shoulderAcross[contact + 1]);
+          for (let i = 0; i < count; i++) if (!shoulderSeen[i] && shoulderTouches(start, i * 15)) {
+            shoulderSeen[i] = 1; shoulderQueue[end++] = i;
+          }
+        }
+      }
+      return !!out.node;
+    };
     return {
-      add, remove, sync, segmentClear, stats,
+      add, remove, sync, segmentClear, shoulderAt, stats,
+      isActive: (node) => !!registered.get(node)?.active,
       clearAt: (x, y, z, radius, height, ignore = null) => segmentClear(x, y, z, x, y, z, radius, height, ignore),
       supportAt: (x, z, y, maxStep = 0, radius = 0, ignore = null) => surfaceAt(x, z, y, maxStep, radius, ignore, 1),
       ceilingAt: (x, z, y, radius = 0, ignore = null) => surfaceAt(x, z, y, 0, radius, ignore, -1),
@@ -21241,7 +22266,7 @@ void main() {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod } = BL;
-  const { lerp, ease, fnv1a, mulberry32 } = math;
+  const { clamp, lerp, ease, fnv1a, mulberry32 } = math;
   const { createNode, addChild, removeChild, createCamera, addTween, stepTweens, tweenCount, traverseVisible } = BL.scene;
   const { EAT_RATE, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS } = crewMod;
   const { DROP_HEIGHT } = pileMod;
@@ -21254,15 +22279,17 @@ void main() {
   const yawParam = parseFloat(params.get("yaw"));
   // Debug clock: a pinned hour and a day length in seconds
   const DEBUG = params.has("debug");
+  const timeParam = DEBUG ? params.get("time") : null;
   const hourParam = DEBUG ? parseFloat(params.get("hour")) : NaN;
   const daylenParam = DEBUG ? parseFloat(params.get("daylen")) : NaN;
   const dayParam = DEBUG ? parseFloat(params.get("day")) : NaN;
   const latitudeParam = DEBUG ? parseFloat(params.get("latitude")) : NaN;
   const requestedView = DEBUG ? params.get("view") : null;
-  const preloadedView = requestedView === "hq" ? "underground" : requestedView === "pile" || requestedView === "lab" || requestedView === "mirror" ? requestedView : null;
+  const preloadedView = requestedView === "hq" ? "underground" : requestedView === "bsmt" ? "basement" : requestedView === "pile" || requestedView === "lab" || requestedView === "mirror" ? requestedView : null;
   const preloadedFirstPerson = DEBUG && params.get("firstperson") === "1";
   const preloadedCharacter = DEBUG ? params.get("character")?.trim().toLowerCase() : null;
   const preloadedJetpack = DEBUG && params.get("jetpack") === "1";
+  const preloadedJetpackWear = preloadedJetpack && preloadedView !== "underground" && preloadedView !== "basement";
   const islandLatitude = Number.isFinite(latitudeParam) ? Math.max(-66, Math.min(66, latitudeParam)) : daylight.ISLAND_LATITUDE_DEG;
   // Island measures, owned by terrain.js
   const MEADOW = 22, RADIUS = 30;
@@ -21294,8 +22321,8 @@ void main() {
   // The island's one jetpack waits above a distant moving cloud.
   const JETPACK_HOVER = 0.5, JETPACK_REACH = 1.35, JETPACK_FAR = 44;
   const JETPACK_FALL_GRAVITY = 9.8, JETPACK_RESPAWN_Y = -60;
-  // Reach at which a caveman enters the lab or uses the plane on the roof
-  const TUNNEL_REACH = 2.2, LAUNCH_REACH = 2.6;
+  // Launch reach includes room around the kart plinth and the plane's wings.
+  const TUNNEL_REACH = 2.2, RALLY_REACH = 3.2, LAUNCH_REACH = 4, RALLY_KART_Z = -3.6;
   const MATRIX_TYPES = 8;
   const MATRIX_RAIN_GAP = 0.19;
   const MATRIX_SURFACE_PITCH = 0.12, MATRIX_SURFACE_GAP = 0.13, MATRIX_GLYPH_HZ = 20;
@@ -21334,6 +22361,7 @@ void main() {
   const LAMP_STAGGER = 0.12, LAMP_RAMP = 0.4, LAMP_OFF = 0.12;
   const CAVE_TORCH_GAP = 0.12;
   const FIRE_DEGREES = [130, 125, 135, 120, 140, 115, 145], FIRE_RADIUS = 11.5, FIRE_SEATS = 6, FIRE_SEAT_RADIUS = 1.8;
+  const FIRE_CONTACT_RADIUS = 0.65, FIRE_AVOID_RADIUS = 1, FIRE_BOTTOM = 0.12, FIRE_TOP = 0.85;
   const NIGHT = 0.5, FIRE_SEAT_CHANCE = 0.5;
   // Clock angle to a meadow point
   const polar = (deg, r) => ({ x: Math.sin(deg * DEG) * r, z: -Math.cos(deg * DEG) * r });
@@ -21354,7 +22382,7 @@ void main() {
   const RIPEN = 25, TREE_CHANCE = 0.5, BUSH_CHANCE = 0.25;
   const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · solid", crate: "Crate · locked", barrel: "Barrel · empty", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", windsock: "Windsock · a fair wind", gate: null };
   const MATRIX_LIVING_PROPS = new Set(["tree"]);
-  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel"]);
+  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit"]);
   const BUSH_WORDS = ["Something rustles.", "A beetle. Ooga leaves it.", "Just a bush."];
   const LEAF = models.particleGeometry("#4a8530", 0.12, 0);
   const PETALS = ["#e04a3a", "#f2c94c", "#f3efe4"].map((c) => models.particleGeometry(c, 0.09, 0));
@@ -21378,7 +22406,7 @@ void main() {
 
   // One visit's state, made in enter and dropped in leave
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, jetpack, jetpackState, jetpackCarrier, jetpackWearer, lastJetpackCloud, mirrorCave, matrixCave, matrixControl, gateRain, fire, headquarters;
-  const JETPACK_HUD_STATE = { owned: false, equipped: false, fuel: 1 };
+  const JETPACK_HUD_STATE = { owned: false, equipped: false, fuel: 1, blocked: false };
   let enteringTween = null;
   let stateTimer = 0, hintTimer = 0, meterTimer = 0, now = 0, hour = 12;
   let phase = null;
@@ -21389,6 +22417,7 @@ void main() {
   const lamps = [];
   const entranceLights = [];
   const fireSeats = [];
+  const fireHazards = [];
   const sleepers = [];
   const labels = [];
   const spots = [];
@@ -22218,6 +23247,7 @@ void main() {
     const pit = place(hubModels.firepit(), p.x, p.z, 0, 0, "firepit", 1.2);
     const flame = createNode({ geometry: hubModels.fireFlame(), matrixEmissiveLiving: true });
     addChild(pit, flame);
+    fireHazards.push({ node: flame, x: p.x, y: pit.position.y, z: p.z });
     addLamp(flame, LAMP.fire, p.x, 0.6, p.z, true, 3, "firepit");
     claim(p.x, p.z, 1.4);
     for (let i = 0; i < FIRE_SEATS; i++) {
@@ -22239,6 +23269,7 @@ void main() {
       const geometry = hubModels.sealedCaveFace(sealedCaveVariant(slot.id));
       const seal = createNode({ position: { x: 0, y: 0, z: 0.52 }, geometry, matrixExterior: true, sightSolid: true });
       addChild(group, seal);
+      solids.add(seal);
       sealedCaves.push({ caveIndex, mouth: m, node: seal, sr: ax, cr: az, stopZ: seal.position.z + geometry.frontZ + 0.01 });
     } else {
       const opening = rim.geometry.openingBounds;
@@ -22251,9 +23282,9 @@ void main() {
     if (slot.status === "open" && slot.scene === "race") {
       // The rally garage: a kart up on a stone plinth, spare wheels, a crate and a barrel
       const kart = BL.raceModels.kart("#d98a2e");
-      Object.assign(kart.node.position, { x: 0, y: 0.5, z: -3.6 });
+      Object.assign(kart.node.position, { x: 0, y: 0.5, z: RALLY_KART_Z });
       kart.node.rotation.y = 0.5;
-      const plinth = createNode({ position: { x: 0, y: 0, z: -3.6 }, geometry: hubModels.altarSlab() });
+      const plinth = createNode({ position: { x: 0, y: 0, z: RALLY_KART_Z }, geometry: hubModels.altarSlab() });
       Object.assign(plinth.scale, { x: 1.4, y: 0.5, z: 1.4 });
       const wheels = createNode({ position: { x: -1.7, y: 0, z: -2.6 } });
       for (let i = 0; i < 3; i++) addChild(wheels, createNode({ position: { x: 0, y: 0.12 + i * 0.24, z: 0 }, rotation: { x: 0, y: 0, z: Math.PI / 2 }, geometry: BL.raceModels.kartWheel() }));
@@ -22372,12 +23403,16 @@ void main() {
     const room = createNode({ position: { x: 0, y: floor, z: 0 }, geometry: headquartersModels.room() });
     addChild(root, room);
     placed.push(room);
-    const entrances = [], lights = [], mattresses = [];
+    solids.add(room);
+    const benches = [];
+    for (const x of [-2.6, 2.6]) for (const z of [-0.55, 0.55]) benches.push({ kind: "bench", x, y: floor + 0.58, z, floor, ry: Math.atan2(-x, -z), sitter: null, walkAt: { x: x - Math.sign(x) * 0.85, z } });
+    const entrances = [], lights = [], mattresses = [], roomSigns = [];
     FLY.yMin = basement.floor - 1;
     const addEntrance = (node, roomIndex, lower, ramp = false) => {
       node.sightSolid = true;
       addChild(root, node);
       placed.push(node);
+      solids.add(node, true);
       const bounds = BL.scene.boundsOf(node.geometry);
       entrances.push({ roomIndex, node, basement: lower, ramp, sr: Math.sin(node.rotation.y), cr: Math.cos(node.rotation.y), radius: Math.hypot(Math.max(Math.abs(bounds.min[0]), Math.abs(bounds.max[0])) * node.scale.x, Math.max(Math.abs(bounds.min[2]), Math.abs(bounds.max[2]))), minY: node.position.y + bounds.min[1], maxY: node.position.y + bounds.max[1] });
     };
@@ -22393,6 +23428,11 @@ void main() {
       addEntrance(entrance, i, level === basement);
       const dimensions = headquartersModels.MATTRESS, across = -(cave.width / 2 - dimensions.wallInset - dimensions.width / 2), along = cave.depth / 2 - dimensions.wallInset - dimensions.depth / 2;
       const sx = Math.sin(angle), cx = Math.cos(angle), geometry = headquartersModels.mattress(cave);
+      const sign = createNode({ position: { x: cave.entrance.x - sx * 0.28, y: cave.floor + 3.78, z: cave.entrance.z + cx * 0.28 }, rotation: { x: 0, y: -angle, z: 0 }, geometry: headquartersModels.roomSign(cave) });
+      addChild(root, sign);
+      placed.push(sign);
+      const hanging = { roomIndex: i, basement: level === basement, room: cave, node: sign, sr: -sx, cr: cx, velocity: 0, hits: 0, contacts: 0 };
+      roomSigns.push(hanging);
       const node = createNode({ position: { x: cave.x + cx * across + sx * along, y: cave.floor, z: cave.z + sx * across - cx * along }, rotation: { x: 0, y: -angle, z: 0 }, geometry });
       addChild(root, node);
       placed.push(node);
@@ -22416,8 +23456,10 @@ void main() {
       torchAt(Math.sin(angle) * radius, p.y + 0.6, -Math.cos(angle) * radius);
     }
     const firepit = createNode({ position: { x: 0, y: floor, z: 0 }, geometry: hubModels.firepit() });
+    solids.add(firepit);
     const flame = createNode({ geometry: hubModels.fireFlame(), glow: 0.9, matrixEmissiveLiving: true });
     addChild(firepit, flame);
+    fireHazards.push({ node: flame, x: 0, y: floor, z: 0 });
     addChild(root, firepit);
     placed.push(firepit);
     const hearth = { id: "headquarters:hearth", node: flame, x: 0, y: floor + 0.6, z: 0, phase: 23 };
@@ -22426,7 +23468,7 @@ void main() {
     // openings and ramp torches remain emissive landmarks, but neither creates
     // camera-proximity lighting that spills into an unclaimed room.
     const sources = [hearth];
-    return { node: room, entrances, mattresses, lights, sources, hearth, firepit, rooms: island.headquarters.rooms, windows: island.headquarters.windows, ramps: island.headquarters.ramps, openFloor: island.headquarters.room, basement, sleepMarksVisible };
+    return { node: room, entrances, mattresses, roomSigns, benches, fireHazards, lights, sources, hearth, firepit, rooms: island.headquarters.rooms, windows: island.headquarters.windows, ramps: island.headquarters.ramps, openFloor: island.headquarters.room, basement, sleepMarksVisible };
   };
   // Dock over the drop and ladder on the bluff
   const buildRim = () => {
@@ -22448,6 +23490,23 @@ void main() {
   // Scatter props by rejection, keeping off paths and mouths
   const scatter = () => {
     const rand = mulberry32(SEED);
+    const treeGroundClear = (geometry, x, z, y) => {
+      // Scan every voxel column touched by the crown and a walking body's
+      // radius. Four corner samples miss narrow, higher steps on cave roofs.
+      const reach = geometry.treeRadius + PLAYER_RADIUS, unit = island.unit, half = unit / 2;
+      // Two units fit the tallest Ooga's full head-look envelope with room to spare.
+      const rootRadius = Math.hypot(0.5, 0.25), ceiling = y + geometry.treeCanopyFloor - 2;
+      const grid = island.sightGrid, minX = Math.floor((x - reach - grid[1]) / unit), maxX = Math.floor((x + reach - grid[1]) / unit);
+      const minZ = Math.floor((z - reach - grid[3]) / unit), maxZ = Math.floor((z + reach - grid[3]) / unit);
+      for (let gx = minX; gx <= maxX; gx++) for (let gz = minZ; gz <= maxZ; gz++) {
+        const px = grid[1] + (gx + 0.5) * unit, pz = grid[3] + (gz + 0.5) * unit;
+        const distance = Math.hypot(Math.max(0, Math.abs(px - x) - half), Math.max(0, Math.abs(pz - z) - half));
+        if (distance > reach) continue;
+        const floor = island.surfaceAt(px, pz);
+        if (floor > ceiling || distance < rootRadius && floor > y) return false;
+      }
+      return true;
+    };
     const candidateFree = (x, z, radius) => {
       for (let i = 0; i < sceneryClaims.length; i++) {
         const c = sceneryClaims[i];
@@ -22460,7 +23519,8 @@ void main() {
       const reservation = claim(x, z, footprint);
       sceneryClaims.push(reservation);
       const quiet = kind === "grass";
-      const node = place(geometry, x, z, ry, y, quiet ? null : kind, footprint + 0.3);
+      const pickRadius = kind === "tree" ? BL.scene.boundsOf(geometry).radius : footprint + 0.3;
+      const node = place(geometry, x, z, ry, y, quiet ? null : kind, pickRadius);
       if (quiet || kind === "flower" || kind === "bush") node.sightHidden = true;
       if (MATRIX_LIVING_PROPS.has(kind)) node.matrixLiving = true;
       const owner = quiet ? { kind: "prop", prop: kind, node, x, z, ripe: 0, pickRadius: 0, active: true } : props[props.length - 1];
@@ -22479,7 +23539,9 @@ void main() {
       }
     };
     const cliff = (count, radius, minHeight, kind, geometryAt) => {
-      for (let n = 0, tries = 0; n < count && tries < 1200; tries++) {
+      // Safe root ledges are rarer than decorative bush sites. Keep the
+      // seeded search bounded while retaining the full grove on the cliffs.
+      for (let n = 0, tries = 0; n < count && tries < (kind === "tree" ? 24000 : 1200); tries++) {
         const { x, z } = polar(rand() * 360, lerp(CLIFF_INNER, CLIFF_OUTER, rand()));
         const h = island.surfaceAt(x, z);
         if (h < minHeight || !free(x, z, radius)) continue;
@@ -22489,7 +23551,9 @@ void main() {
           if (island.surfaceAt(x + Math.cos(a) * 1.2, z + Math.sin(a) * 1.2) > h + 1.5) clear = false;
         }
         if (!clear || nearMouth(x, z, 4) || !candidateFree(x, z, radius)) continue;
-        addScenery(geometryAt(n), x, z, rand() * Math.PI * 2, h, kind, radius);
+        const geometry = geometryAt(n);
+        if (kind === "tree" && !treeGroundClear(geometry, x, z, h)) continue;
+        addScenery(geometry, x, z, rand() * Math.PI * 2, h, kind, radius);
         n++;
       }
     };
@@ -22545,6 +23609,7 @@ void main() {
     JETPACK_HUD_STATE.owned = !!jetpackState && jetpackState.owned;
     JETPACK_HUD_STATE.equipped = !!(cave && cave.jet);
     JETPACK_HUD_STATE.fuel = cave && jetpackCarrier === cave ? cave.jetFuel : jetpackState ? jetpackState.fuel : 1;
+    JETPACK_HUD_STATE.blocked = JETPACK_HUD_STATE.owned && (cave ? !jetpackAllowed(cave) : cameraCaveIndex !== 0);
     return JETPACK_HUD_STATE;
   };
   const syncJetpackFuel = () => {
@@ -22666,7 +23731,7 @@ void main() {
   // By the fire at night, else anywhere on the meadow
   const npcWanderPointClear = (s, cave) => {
     const feet = island.surfaceAt(s.x, s.z), height = cave ? cave.bodyHeight : 1.5;
-    return !npcPileAt(s.x, feet, s.z, height) && walkable(s.x, s.z, s.x, s.z, feet, height, cave);
+    return !npcPileAt(s.x, feet, s.z, height) && npcFireClear(s.x, feet, s.z, s.x, feet, s.z, height) && walkable(s.x, s.z, s.x, s.z, feet, height, cave);
   };
   const wanderSpot = (out, cave = null) => {
     let s = RENDER_OPTS.stars > NIGHT && Math.random() < FIRE_SEAT_CHANCE ? freeSeat() : null;
@@ -22752,6 +23817,32 @@ void main() {
     const dx = Math.max(b[0] - x, 0, x - b[3]), dz = Math.max(b[2] - z, 0, z - b[5]);
     return dx * dx + dz * dz < radius * radius - 1e-8;
   };
+  const uprightCharacter = (cave) => cave.root.visible && cave.state === "working" && !cave.root.quaternion && !cave.camp.seat && !cave.camp.rolling;
+  const standingPassenger = (cave) => uprightCharacter(cave) && cave.hop <= 1e-7 && cave.hopV <= 0 && !cave.jet?.thrust;
+  const passengerOf = (cave, support) => {
+    if (!support || !cave.riding.support || !uprightCharacter(support)) return false;
+    // Links exist only during the crew's ordered update. Bound chains by the
+    // roster even if two bodies were placed into an invalid shared position.
+    for (let n = 0; cave && n < crew.cavemen.size; n++) {
+      if (!standingPassenger(cave)) return false;
+      cave = cave.riding.support;
+      if (cave === support) return true;
+    }
+    return false;
+  };
+  const characterSupportAt = (cave) => {
+    if (!standingPassenger(cave)) return null;
+    const p = cave.root.position, feet = p.y - cave.baseY;
+    let support = null, distance = Infinity;
+    for (const other of crew.cavemen.values()) {
+      if (other === cave || !uprightCharacter(other)) continue;
+      const b = actorBounds(other);
+      if (Math.abs(b[4] - feet) > 1e-6 || !bodyOverlaps(other, b, p.x, p.z, PLAYER_RADIUS)) continue;
+      const q = other.root.position, d = (p.x - q.x) ** 2 + (p.z - q.z) ** 2;
+      if (d < distance) { support = other; distance = d; }
+    }
+    return support && Math.abs(playerSupportAt(p.x, p.z, feet, feet, cave) - feet) <= 1e-6 ? support : null;
+  };
   const propSupportAt = (x, z, y, rise, actor) => {
     let floor = solids ? solids.supportAt(x, z, y, rise, PLAYER_RADIUS) : -Infinity;
     if (altar && ALTAR_HEIGHT <= y + rise + 1e-7 && Math.hypot(x, z) < altar.platformRadius + PLAYER_RADIUS - 1e-7) floor = Math.max(floor, ALTAR_HEIGHT);
@@ -22766,17 +23857,17 @@ void main() {
     let ceiling = solids ? solids.ceilingAt(x, z, y, radius) : Infinity;
     if (altar && y < ALTAR_HEIGHT - 1e-7 && Math.hypot(x, z) < altar.platformRadius + radius - 1e-7) ceiling = Math.min(ceiling, 0);
     if (crew) for (const other of crew.cavemen.values()) {
-      if (other === actor || !other.root.visible) continue;
+      if (other === actor || !other.root.visible || passengerOf(other, actor)) continue;
       const b = actorBounds(other);
       if (b[1] > y + 1e-7 && y < b[4] - 1e-7 && bodyOverlaps(other, b, x, z, radius)) ceiling = Math.min(ceiling, b[1]);
     }
     return ceiling;
   };
-  const propSegmentClear = (x, y, z, toX, toY, toZ, radius, height, actor) => {
+  const propSegmentClear = (x, y, z, toX, toY, toZ, radius, height, actor, carrying = false) => {
     if (solids && !solids.segmentClear(x, y, z, toX, toY, toZ, radius, height)) return false;
     if (altar && !cylinderSegmentClear(x, y, z, toX, toY, toZ, radius, height, 0, 0, 0, ALTAR_HEIGHT, altar.platformRadius)) return false;
     if (crew) for (const other of crew.cavemen.values()) {
-      if (other === actor || !other.root.visible) continue;
+      if (other === actor || !other.root.visible || passengerOf(other, actor) || carrying && passengerOf(actor, other)) continue;
       const b = actorBounds(other), p = other.root.position;
       if (other.root.quaternion) {
         if (!terrain.segmentBoxClear(x, y, z, toX - x, toY - y, toZ - z, radius, height, b[0], b[1], b[2], b[3], b[4], b[5])) return false;
@@ -22890,6 +23981,89 @@ void main() {
     }
     return ceiling;
   };
+  const ROOM_SIGN_LIMIT = 1.35, ROOM_SIGN_HEAD_RADIUS = 0.22;
+  // Sweep the head through the board's rotated coordinates. These light
+  // hanging props yield to the body; the stone frame still owns collision.
+  const roomSignHeadClear = (sign, x, y, z, dx, dy, dz) => {
+    const a = sign.node.rotation.x, c = Math.cos(a), s = Math.sin(a), b = sign.node.geometry.roomLifehashSign.board, r = ROOM_SIGN_HEAD_RADIUS;
+    return terrain.segmentBoxClear(x, y * c + z * s - r, z * c - y * s, dx, dy * c + dz * s, dz * c - dy * s, r, r * 2, b[0], b[1], b[2], b[3], b[4], b[5]);
+  };
+  const moveRoomSigns = (cave, x, y, z, dt) => {
+    const p = cave.root.position, dx = p.x - x, dy = p.y - y, dz = p.z - z, bit = 1 << cave.index;
+    const continuous = Math.hypot(dx, dz) <= (JET_SPEED + pilotMod.WALK.speed) * dt + 1e-5 && Math.abs(dy) <= Math.abs(cave.hopV) * dt + STEP_MAX + 1e-5;
+    for (const sign of headquarters.roomSigns) {
+      const ox = x - sign.node.position.x, oz = z - sign.node.position.z;
+      const lx = ox * sign.cr - oz * sign.sr, lz = ox * sign.sr + oz * sign.cr;
+      const ly = y - cave.baseY + cave.bodyHeight + cave.viewLift - ROOM_SIGN_HEAD_RADIUS - sign.node.position.y;
+      const vx = dx * sign.cr - dz * sign.sr, vz = dx * sign.sr + dz * sign.cr;
+      if (!sign.node.visible || !continuous || Math.abs(lx + vx) > sign.node.geometry.roomLifehashSign.width / 2 + ROOM_SIGN_HEAD_RADIUS
+        || Math.abs(lz + vz) > 1.1 || ly + dy < -1.1 || ly + dy > 0.3) { sign.contacts &= ~bit; continue; }
+      if (roomSignHeadClear(sign, lx, ly, lz, vx, dy, vz)) continue;
+      const direction = sign.contacts & bit ? Math.sign(sign.node.rotation.x || sign.velocity) : Math.abs(vz) > 1e-6 ? -Math.sign(vz) : lz >= 0.07 ? 1 : -1;
+      if (!(sign.contacts & bit)) {
+        sign.velocity = direction * Math.min(7, 2 + Math.hypot(dx, dy, dz) / dt * 0.65);
+        sign.contacts |= bit;
+        sign.hits++;
+      }
+      // Resolve overlap by moving the board, preserving the jump's velocity.
+      // The bounded angular steps let the head push it farther as it passes.
+      for (let n = 0; n < 68 && !roomSignHeadClear(sign, lx + vx, ly + dy, lz + vz, 0, 0, 0); n++) {
+        const angle = clamp(sign.node.rotation.x + direction * 0.04, -ROOM_SIGN_LIMIT, ROOM_SIGN_LIMIT);
+        if (angle === sign.node.rotation.x) break;
+        sign.node.rotation.x = angle;
+      }
+    }
+  };
+  const updateRoomSigns = (dt) => {
+    for (const sign of headquarters.roomSigns) {
+      if (!sign.velocity && !sign.node.rotation.x) continue;
+      let remaining = Math.min(dt, 0.1);
+      while (remaining > 1e-7) {
+        const step = Math.min(remaining, 1 / 120);
+        sign.velocity += (-18 * sign.node.rotation.x - 4 * sign.velocity) * step;
+        sign.node.rotation.x += sign.velocity * step;
+        if (Math.abs(sign.node.rotation.x) > ROOM_SIGN_LIMIT) { sign.node.rotation.x = clamp(sign.node.rotation.x, -ROOM_SIGN_LIMIT, ROOM_SIGN_LIMIT); sign.velocity *= -0.2; }
+        remaining -= step;
+      }
+      if (Math.abs(sign.velocity) < 0.001 && Math.abs(sign.node.rotation.x) < 0.001) sign.velocity = sign.node.rotation.x = 0;
+    }
+  };
+  const moveCampBody = (cave, x, y, z, dt) => {
+    moveRoomSigns(cave, x, y, z, dt);
+    if (cave.camp.burning || cave.camp.rolling || cave.camp.cooldown > 0) return;
+    const p = cave.root.position, dx = p.x - x, dz = p.z - z, distance = dx * dx + dz * dz;
+    for (const hazard of fireHazards) {
+      if (!hazard.node.visible) continue;
+      const t = distance ? clamp(((hazard.x - x) * dx + (hazard.z - z) * dz) / distance, 0, 1) : 0;
+      const feet = y + (p.y - y) * t - cave.baseY;
+      if (feet < hazard.y + FIRE_TOP && feet + cave.bodyHeight > hazard.y + FIRE_BOTTOM
+        && (x + dx * t - hazard.x) ** 2 + (z + dz * t - hazard.z) ** 2 < FIRE_CONTACT_RADIUS ** 2) { crew.ignite(cave); break; }
+    }
+  };
+  // Flames are traversable by the visitor, but voluntary NPC steps keep a
+  // margin around them. Clip the sweep to the flame's floor before testing
+  // its footprint, so fires never obstruct another storey or a safe high jump.
+  const npcFireClear = (x, y, z, toX, toY, toZ, height) => {
+    const dx = toX - x, dy = toY - y, dz = toZ - z, length = dx * dx + dz * dz;
+    for (const hazard of fireHazards) {
+      if (!hazard.node.visible) continue;
+      const low = hazard.y + FIRE_BOTTOM - height, high = hazard.y + FIRE_TOP;
+      let enter = 0, exit = 1;
+      if (dy) {
+        const a = (low - y) / dy, b = (high - y) / dy;
+        enter = Math.max(0, Math.min(a, b)); exit = Math.min(1, Math.max(a, b));
+        if (enter >= exit) continue;
+      } else if (y <= low || y >= high) continue;
+      const ox = x - hazard.x, oz = z - hazard.z, before = ox * ox + oz * oz;
+      // A fire can light beneath a walker. Let them move outward, never
+      // deeper into it; a stationary point inside is still an unsafe goal.
+      if (y > low && y < high && before < FIRE_AVOID_RADIUS ** 2 && length > 0
+        && ox * dx + oz * dz >= 0 && (ox + dx) ** 2 + (oz + dz) ** 2 > before) continue;
+      const t = length ? clamp(-(ox * dx + oz * dz) / length, enter, exit) : enter;
+      if ((ox + dx * t) ** 2 + (oz + dz * t) ** 2 < FIRE_AVOID_RADIUS ** 2) return false;
+    }
+    return true;
+  };
   const physicalClearAt = (x, y, z, radius, height, actor = pilot?.player) => island.clearAt(x, y, z, radius, height) && y + height <= Math.min(entranceCeilingAt(x, z, y, radius), bedCeilingAt(x, z, y, radius), propCeilingAt(x, z, y, radius, actor)) + 1e-7 && (!solids || solids.clearAt(x, y, z, radius, height));
   const JETPACK_COLUMN = { caveIndex: 0, floor: 0, ceiling: 0 };
   const jetpackAllowed = (cave) => {
@@ -22938,13 +24112,23 @@ void main() {
     }
     return ceiling;
   };
-  const ceilingAt = (x, z, y, actor = pilot?.player) => {
+  const ceilingAt = (x, z, y, actor = pilot?.player, passengers = true) => {
     let ceiling = Math.min(island.ceilingAt(x, y, z, PLAYER_RADIUS), entranceCeilingAt(x, z, y, PLAYER_RADIUS), bedCeilingAt(x, z, y, PLAYER_RADIUS), matrixGateCeilingAt(x, z, y), propCeilingAt(x, z, y, PLAYER_RADIUS, actor));
     for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
       const entry = CAMERA_OPENINGS[i], m = entry.mouth, rim = entry.rim;
       const dx = x - m.x, dz = z - m.z, along = dx * entry.sr + dz * entry.cr, across = dx * entry.cr - dz * entry.sr;
       if (y < m.floorY - STEP_MAX || y > m.floorY + rim.ceilingY || along < rim.minZ + PORTAL_Z - PLAYER_RADIUS || along > rim.maxZ + PORTAL_Z + PLAYER_RADIUS || across < rim.minX - PLAYER_RADIUS || across > rim.maxX + PLAYER_RADIUS) continue;
       ceiling = Math.min(ceiling, m.floorY + rim.ceilingY);
+    }
+    if (passengers && actor && crew && (actor.hopV > 0 || y > actor.riding.y - actor.baseY + 1e-7)) for (const rider of crew.cavemen.values()) {
+      if (rider === actor || !passengerOf(rider, actor)) continue;
+      const from = actor.riding, riding = rider.riding;
+      const offset = riding.y - rider.baseY - from.y + actor.baseY;
+      const roof = ceilingAt(x + riding.x - from.x, z + riding.z - from.z, y + offset, rider, false);
+      // Convert each passenger's headroom into a limit for the lower body.
+      // Upward motion cannot push it through a roof; level travel may leave
+      // a passenger behind at a wall that the lower body can pass beneath.
+      ceiling = Math.min(ceiling, roof - offset - rider.bodyHeight - Math.max(0, rider.viewLift) + actor.bodyHeight + Math.max(0, actor.viewLift));
     }
     return ceiling;
   };
@@ -22971,18 +24155,53 @@ void main() {
     return feet + height <= ceilingAt(toX, toZ, feet, actor) + 1e-7 && physicalClearAt(toX, feet + STEP_MAX, toZ, PLAYER_RADIUS, Math.max(0, height - STEP_MAX), actor) && propSegmentClear(fromX, feet + STEP_MAX, fromZ, toX, feet + STEP_MAX, toZ, PLAYER_RADIUS, Math.max(0, height - STEP_MAX), actor) && matrixGateSegmentClear(fromX, y, fromZ, toX, feet, toZ, PLAYER_RADIUS, height);
   };
   const flyable = (fromX, fromZ, toX, toZ, y = 0, height = 1.5, actor = pilot?.player) => Math.hypot(toX, toZ) <= FLY_BOUND && !crossesSealedCave(fromX, fromZ, toX, toZ, y) && y + height <= ceilingAt(toX, toZ, y, actor) + 1e-7 && physicalClearAt(toX, y, toZ, PLAYER_RADIUS, height, actor) && propSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height, actor) && bedSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height) && matrixGateSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height);
+  const characterCarryClear = (cave, x, y, z, toX, toY, toZ) => {
+    const height = cave.bodyHeight + Math.max(0, cave.viewLift), feet = y + 1e-7, toFeet = toY + 1e-7;
+    return Math.hypot(toX, toZ) <= FLY_BOUND && !crossesSealedCave(x, z, toX, toZ, Math.min(y, toY))
+      && toY + height <= ceilingAt(toX, toZ, toY, cave) + 1e-7
+      && physicalClearAt(toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7, cave)
+      && island.voxelSegmentClearAt(x, feet, z, toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7)
+      && propSegmentClear(x, feet, z, toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7, cave, true)
+      && bedSegmentClear(x, feet, z, toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7)
+      && matrixGateSegmentClear(x, feet, z, toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7);
+  };
+  const carryCharacter = (cave, dx, dy, dz) => {
+    if (!standingPassenger(cave) || !cave.riding.support || !uprightCharacter(cave.riding.support)) return;
+    const distance = Math.hypot(dx, dy, dz);
+    if (distance < 1e-9) return;
+    const p = cave.root.position, steps = Math.max(1, Math.ceil(distance / 0.125));
+    dx /= steps; dy /= steps; dz /= steps;
+    for (let n = 0; n < steps; n++) {
+      const feet = p.y - cave.baseY;
+      if (characterCarryClear(cave, p.x, feet, p.z, p.x + dx, feet + dy, p.z + dz)) {
+        p.x += dx; p.y += dy; p.z += dz;
+        continue;
+      }
+      // Preserve contact with the obstacle instead of crossing it or losing
+      // an entire frame of safe movement near a wall or low ceiling.
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 8; i++) {
+        const t = (lo + hi) / 2;
+        if (characterCarryClear(cave, p.x, feet, p.z, p.x + dx * t, feet + dy * t, p.z + dz * t)) lo = t;
+        else hi = t;
+      }
+      p.x += dx * lo; p.y += dy * lo; p.z += dz * lo;
+      break;
+    }
+  };
   const inBananas = (cave, x = cave.root.position.x, z = cave.root.position.z) => bananaCover.intersectsBody(x, cave.root.position.y - cave.baseY, z, cave.bodyHeight);
   const npcPileAt = (x, feet, z, height) => feet <= ALTAR_HEIGHT + STEP_MAX && feet + height > 0 && Math.hypot(x, z) < altar.platformRadius + PLAYER_RADIUS
     || bananaCover.intersectsBody(x, feet, z, height);
   const npcDestinationBlocked = (cave, x, z) => {
     const feet = cave.root.position.y - cave.baseY;
-    return npcPileAt(x, feet, z, cave.bodyHeight) || !walkable(x, z, x, z, feet, cave.bodyHeight, cave);
+    return npcPileAt(x, feet, z, cave.bodyHeight) || !npcFireClear(x, feet, z, x, feet, z, cave.bodyHeight) || !walkable(x, z, x, z, feet, cave.bodyHeight, cave);
   };
   const npcWalkable = (fromX, fromZ, toX, toZ, y, height, actor) => {
     if (!walkable(fromX, fromZ, toX, toZ, y, height, actor)) return false;
     // Sweep to the actual downhill support too. Checking at the previous,
     // higher floor can clear a move whose lowered torso intersects the wall.
     const feet = playerSupportAt(toX, toZ, y, y, actor);
+    if (!npcFireClear(fromX, y, fromZ, toX, feet, toZ, height)) return false;
     // Voluntary walkers go around fruit. A growing pile or a landing may put
     // one inside; keep their way out passable rather than trapping them.
     if (!npcPileAt(fromX, y, fromZ, height)) {
@@ -23306,10 +24525,13 @@ void main() {
     if (!o.active) return;
     reactProp(o);
   };
-  const WAKE_ACTION = { kind: "wake" };
+  const WAKE_ACTION = { kind: "wake" }, ROLL_ACTION = { kind: "roll" }, STAND_ACTION = { kind: "stand" };
   const nearbyAction = (x, y, z, reach) => {
     const player = pilot.player;
+    if (player && player.camp.burning) return ROLL_ACTION;
+    if (player && player.camp.seat) return STAND_ACTION;
     if (player && crew.sleeping) return WAKE_ACTION;
+    if (player && pilot.moving) return null;
     if (player && player.hop < 0.03 && player.hopV <= 0 && headquarters) {
       const feet = player.root.position.y - player.baseY;
       const floor = bedSupportAt(x, z, feet + 0.04, 0, PLAYER_RADIUS);
@@ -23324,18 +24546,29 @@ void main() {
       if (gate) return gate;
     }
     if (matrixControl && matrixControlNear(x, y, z, reach)) return matrixControl;
+    if (player && player.hop < 0.03 && player.hopV <= 0 && headquarters) {
+      let nearest = null, distance = Math.min(reach, 1.5) ** 2;
+      for (const seat of headquarters.benches) {
+        const d = (x - seat.x) ** 2 + (z - seat.z) ** 2;
+        if (!seat.sitter && d < distance && Math.abs(y - 1.1 - seat.floor) < 0.7) { nearest = seat; distance = d; }
+      }
+      if (nearest) return nearest;
+    }
     for (let i = 0; i < openMouths.length; i++) {
       const entry = openMouths[i], m = entry.m;
-      if (entry.slot.scene === "race" && actionWithinReach(x, y, z, m.inside.x, m.floorY + 1.1, m.inside.z, reach)) return entry;
+      if (entry.slot.scene === "race" && actionWithinReach(x, y, z, entry.actionX, m.floorY + 1.1, entry.actionZ, RALLY_REACH)) return entry;
     }
     for (let i = 0; i < launchers.length; i++) {
       const launcher = launchers[i];
-      if (actionWithinReach(x, y, z, launcher.x, launcher.y + 1.1, launcher.z, Math.min(reach, LAUNCH_REACH))) return launcher;
+      if (actionWithinReach(x, y, z, launcher.x, launcher.y + 1.1, launcher.z, LAUNCH_REACH)) return launcher;
     }
     return null;
   };
   const useNearbyAction = (action) => {
     if (action === WAKE_ACTION) crew.wakePlayer();
+    else if (action === ROLL_ACTION) crew.dropRoll();
+    else if (action === STAND_ACTION) crew.standPlayer();
+    else if (action.kind === "bench") crew.sitPlayer(action);
     else if (action.sleep) crew.sleepPlayer(action);
     else if (action.kind === "matrix-gate") {
       action.localOpen = action.open = action.raising = true;
@@ -23350,7 +24583,7 @@ void main() {
     useNearbyAction(action);
     return true;
   };
-  // Only functional controls take priority over a jump or jetpack thrust.
+  // Stationary functional controls take priority over a jump or jetpack thrust.
   const useNear = (x, z, reach, feetY) => {
     const action = nearbyAction(x, feetY + 1.1, z, reach);
     if (!action) return false;
@@ -23562,6 +24795,14 @@ void main() {
     return true;
   };
   const toggleMatrixControl = () => setMatrixUnlocked(!matrixCave.unlocked);
+  const respawnAtPile = () => {
+    setMatrixUnlocked(false, true);
+    setMatrixInside(false);
+    // Respawn arrives in the ordinary world immediately, without a retreating
+    // wave keeping the pile and the returning character in Matrix mode.
+    MATRIX_WORLD.active = MATRIX_WORLD.direction = MATRIX_WORLD.radius = 0;
+    navigate("pile");
+  };
   const matrixControlNear = (x, y, z, reach = MATRIX_BUTTON_REACH) => !!matrixControl && actionWithinReach(x, y, z, matrixControl.x, matrixCave.mouth.floorY + matrixControl.button.position.y, matrixControl.z, reach);
   const nearbyMatrixGate = (x, y, z, reach) => {
     let nearest = null, distance = reach;
@@ -23630,6 +24871,15 @@ void main() {
       if (action === WAKE_ACTION) {
         hud.hint(COARSE ? "Tap WAKE UP! to get up" : "Space wakes up · WASD changes sleeping pose");
         hud.setAct("WAKE UP!");
+      } else if (action === ROLL_ACTION) {
+        hud.hint(COARSE ? "Tap DROP & ROLL! to put the fire out" : "Press Space to drop and roll until the fire goes out");
+        hud.setAct("DROP & ROLL!");
+      } else if (action === STAND_ACTION) {
+        hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up");
+        hud.setAct("STAND UP!");
+      } else if (action.kind === "bench") {
+        hud.hint(COARSE ? "Tap SIT to sit facing the fire" : "Press Space to sit facing the fire");
+        hud.setAct("SIT");
       } else if (action.sleep) {
         hud.hint(COARSE ? "Tap SLEEP to lie down" : "Press Space to sleep");
         hud.setAct("SLEEP");
@@ -24474,6 +25724,7 @@ void main() {
     updateSleepingSolids();
     pilot.readInput(dt);
     crew.update(dt, elapsed);
+    updateRoomSigns(dt);
     pile.update(dt);
     const player = pilot.player;
     if (jetpackWearer && jetpackWearer !== player) {
@@ -24484,9 +25735,9 @@ void main() {
     syncJetpackFuel();
     if (player && player.root.position.y - player.baseY < ABYSS_RESPAWN_Y && abyssAt(player.root.position.x, player.root.position.z, player.root.position.y - player.baseY)) {
       loseJetpack(player);
-      navigate("pile");
+      respawnAtPile();
     }
-    else if (!player && pilot.freeFalling && camera.position.y - CLOSE_VIEW.eyeHeight < ABYSS_RESPAWN_Y && abyssAt(camera.position.x, camera.position.z, camera.position.y - CLOSE_VIEW.eyeHeight)) navigate("pile");
+    else if (!player && pilot.freeFalling && camera.position.y - CLOSE_VIEW.eyeHeight < ABYSS_RESPAWN_Y && abyssAt(camera.position.x, camera.position.z, camera.position.y - CLOSE_VIEW.eyeHeight)) respawnAtPile();
     updatePlayerCave(player);
     if (player && player.jet && !jetpackAllowed(player)) {
       syncJetpackFuel();
@@ -24720,13 +25971,16 @@ void main() {
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
     jetpackState = world.jetpack || (world.jetpack = { owned: false, fuel: 1 });
     jetpackState.fuel = Math.max(0, Math.min(1, Number.isFinite(jetpackState.fuel) ? jetpackState.fuel : 1));
+    // Underground starts carry the requested pack without equipping it or
+    // automatically selecting an Ooga. Ownership survives the trip outside.
+    if (ctx.from === null && preloadedJetpack && !preloadedJetpackWear) jetpackState.owned = true;
     jetpackCarrier = jetpackWearer = lastJetpackCloud = null;
     MATRIX_WORLD.active = MATRIX_WORLD.direction = MATRIX_WORLD.radius = MATRIX_WORLD.time = MATRIX_WORLD.permanentCave = 0;
     MATRIX_WORLD.density = renderer.kind === "canvas2d" ? MATRIX_DENSITY.canvas2d / MATRIX_DENSITY.high : MATRIX_DENSITY[renderer.quality] / MATRIX_DENSITY.high;
     camera = createCamera({ fov: 48, near: 0.5, far: 140 });
     root = createNode();
     solids = BL.solidProps.create();
-    clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, now: new Date() });
+    clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, time: timeParam, now: new Date() });
     phase = null;
     island = terrain.island({ seed: SEED });
     guideSegmentClear.boxGrid = island.sightGrid;
@@ -24797,7 +26051,7 @@ void main() {
       claim(m.x, m.z, 3.5);
       if (slot.scene) {
         presets[slot.scene] = mouthView(m);
-        openMouths.push({ slot, m });
+        openMouths.push({ slot, m, actionX: m.x + Math.sin(m.ry) * RALLY_KART_Z, actionZ: m.z + Math.cos(m.ry) * RALLY_KART_Z });
       }
     }
     // The roof view the drop launch dollies onto
@@ -24819,10 +26073,28 @@ void main() {
     mark("props");
     const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, overlayVisible: matrixOverlayVisible, zzzVisible: sleepMarksVisible, tickerAt: TICKER_AT, buildSpots: buildSpotsList, walkIn: WALK_IN, clampDrag, viewYaw: PILE_VIEW.yaw, bedrolls, pileScale: PILE_SCALE, pileY: ALTAR_HEIGHT + 0.02, matrixLivingPile: true, onLayout: layoutPile, onShown: () => { meterTimer = 0; }, crateRadius: () => Math.max(4.4, altar.platformRadius + 0.8), groundAt: playerSupportAt, prepareCloudSupport, cloudAt, ceilingAt, wanderSpot, walkable, flyable, glideJetCeiling, useNear, abyssAt, abyssRespawnY: ABYSS_RESPAWN_Y, jetpackAllowed, phase: () => phase };
     fx = shared.fx = fxMod.create(shared);
+    shared.characterSupportAt = characterSupportAt;
+    shared.carryCharacter = carryCharacter;
     shared.npcWalkable = npcWalkable;
+    shared.shoulderObstacleActive = solids.isActive;
+    shared.shoulderObstacle = (cave, fx, fz, reach, out) => {
+      const p = cave.root.position;
+      return solids.shoulderAt(p.x, p.y - cave.baseY + STEP_MAX, p.z, fx, fz, PLAYER_RADIUS, Math.max(0, cave.bodyHeight - STEP_MAX), reach, out, p.y - cave.baseY + 1e-7);
+    };
+    // Once a tall prop causes a shoulder pass, stay beside its lower tiers
+    // instead of mounting one and interrupting the return to the walking line.
+    shared.shoulderPropClear = (cave, x, z) => {
+      const p = cave.root.position, feet = p.y - cave.baseY + 1e-5;
+      return solids.segmentClear(p.x, feet, p.z, x, feet, z, PLAYER_RADIUS, cave.bodyHeight - 1e-5);
+    };
+    shared.onBodyMove = moveCampBody;
+    shared.fireReachable = (x, y, z, toX, toY, toZ) => actionReachable(x, y, z, toX, toY, toZ)
+      && solids.segmentClear(x, y, z, toX, toY, toZ, 0.01, 0.02)
+      && matrixGateSegmentClear(x, y, z, toX, toY, toZ, 0.01, 0.02);
     shared.inBananas = inBananas;
     shared.npcDestinationBlocked = npcDestinationBlocked;
-    shared.npcLandingAllowed = (x, y, z, height) => !npcPileAt(x, y, z, height);
+    shared.npcLandingAllowed = (x, y, z, height) => !npcPileAt(x, y, z, height) && npcFireClear(x, y, z, x, y, z, height);
+    shared.npcHazardClear = npcFireClear;
     shared.onModelChange = refreshObjectGuides;
     cameraCover = BL.cameraCover.create(ctx.overlay);
     headquarters.cameraCover = cameraCover.state;
@@ -24901,7 +26173,7 @@ void main() {
     meterTimer = 0;
     crew.refreshStates(true);
     let initialCharacter = ctx.from === null && preloadedCharacter ? contributors.roster.find((entry) => entry.name.toLowerCase() === preloadedCharacter) : null;
-    if (ctx.from === null && preloadedJetpack && !params.has("character") && preloadedView !== "underground") initialCharacter = contributors.roster.find((entry) => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.roster[0];
+    if (ctx.from === null && preloadedJetpackWear && !params.has("character")) initialCharacter = contributors.roster.find((entry) => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.roster[0];
     if (initialCharacter) {
       const cave = crew.cavemen.get(initialCharacter.name);
       if (crew.stateOf(cave) !== "working") {
@@ -24913,8 +26185,8 @@ void main() {
     const initialFirstPerson = ctx.from === null && preloadedFirstPerson;
     if (initialFirstPerson) pilot.enterClose();
     if (preloadedView || initialCharacter || initialFirstPerson) navigate(preloadedView || "pile");
-    if (initialCharacter && preloadedJetpack && preloadedView !== "underground") {
-      grantJetpack(pilot.player, true);
+    if (initialCharacter && preloadedJetpack) {
+      grantJetpack(pilot.player, preloadedJetpackWear);
     }
     // Once a minute, refresh states and trim the pool
     stateTimer = window.setInterval(() => {
@@ -25145,7 +26417,7 @@ void main() {
           return DAYLIGHT_DEBUG;
         },
         setHour: (h, daylen = NaN, day = clock.dayOfYear) => {
-          clock = daylight.createClock({ hour: h, daylen, day });
+          clock = daylight.createClock({ hour: h, daylen, day, time: timeParam });
         },
         get jetpack() {
           return {
@@ -25195,6 +26467,7 @@ void main() {
     for (const node of targets) input.remove(node);
     for (const node of placed) removeChild(root, node);
     targets.length = placed.length = claimed.length = scenery.length = sceneryClaims.length = matrixInteriors.length = matrixGates.length = sealedCaves.length = clouds.length = lamps.length = entranceLights.length = fireSeats.length = sleepers.length = labels.length = spots.length = openMouths.length = launchers.length = props.length = 0;
+    fireHazards.length = 0;
     cloudHit = null;
     RENDER_OPTS.lightCount = 0;
     MATRIX_WORLD.active = MATRIX_WORLD.direction = MATRIX_WORLD.radius = MATRIX_WORLD.permanentCave = 0;
@@ -25225,6 +26498,7 @@ void main() {
     return { targets: count };
   };
   const liveGeometry = (set) => {
+    pile.liveGeometry(set);
     for (const cave of crew.cavemen.values()) set.add(cave.headOpen).add(cave.headClosed);
   };
   const stats = () => {
@@ -25238,6 +26512,7 @@ void main() {
     root: null, camera: null, input: null, debug: null,
     get inMotion() {
       if (pile.inMotion || fx.inMotion || jetpack || MATRIX_WORLD.active || mirrorGuides.state.doorway) return true;
+      for (const sign of headquarters.roomSigns) if (sign.velocity || sign.node.rotation.x) return true;
       for (let i = 0; i < matrixGates.length; i++) if (matrixCave && (matrixGates[i].raising || matrixCave.unlocked && matrixGates[i].node.position.y !== MATRIX_GATE_HIDDEN_Y)) return true;
       return false;
     }
@@ -25682,6 +26957,7 @@ void main() {
     return { targets };
   };
   const liveGeometry = (set) => {
+    pile.liveGeometry(set);
     for (const cave of crew.cavemen.values()) set.add(cave.headOpen).add(cave.headClosed);
   };
   const stats = () => {
@@ -29784,6 +31060,7 @@ void main() {
   const params = new URLSearchParams(location.search);
   const DEBUG = params.has("debug");
   const COARSE = window.matchMedia("(pointer: coarse)").matches;
+  const timeParam = DEBUG ? params.get("time") : null;
   const hourParam = DEBUG ? parseFloat(params.get("hour")) : NaN;
   const daylenParam = DEBUG ? parseFloat(params.get("daylen")) : NaN;
   const dayParam = DEBUG ? parseFloat(params.get("day")) : NaN;
@@ -30518,7 +31795,7 @@ void main() {
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
     camera = createCamera({ fov: 50, near: 0.4, far: 820 });
     root = createNode();
-    clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, now: new Date() });
+    clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, time: timeParam, now: new Date() });
     island = terrain.island({ seed: SEED });
     hud = hudMod.create({ roster: contributors.roster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled });
     hooks = {};
@@ -30824,6 +32101,7 @@ void main() {
   const CLOCK_NS = "http://www.w3.org/2000/svg";
   const clockSvg = document.createElementNS(CLOCK_NS, "svg");
   const clockPath = document.createElementNS(CLOCK_NS, "path");
+  const clockTime = DEBUG ? window.BL.daylight.parseTime(params.get("time")) : NaN;
   const clockDaylen = DEBUG ? Number(params.get("daylen")) : NaN;
   const clockStartDate = new Date();
   const requestedClockHour = DEBUG && params.has("hour") ? Number(params.get("hour")) : NaN;
@@ -30839,7 +32117,11 @@ void main() {
     if (now < clockNextUpdate) return;
     clockNextUpdate = now + 100;
     let hours, minutes;
-    if (clockDaylen > 0) {
+    if (Number.isFinite(clockTime)) {
+      const total = Math.round(clockTime * 60);
+      hours = Math.floor(total / 60);
+      minutes = total % 60;
+    } else if (clockDaylen > 0) {
       const sceneDaylight = active && active.debug && active.debug.daylight;
       const relative = sceneDaylight && Number.isFinite(sceneDaylight.hour) ? sceneDaylight.hour : clockBaseHour + elapsed * 24 / clockDaylen;
       const total = Math.floor(((relative % 24 + 24) % 24) * 60) % 1440;
@@ -30869,7 +32151,7 @@ void main() {
     const label = text.trimStart();
     clockPath.setAttribute("d", d);
     worldClock.dateTime = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-    worldClock.setAttribute("aria-label", `${clockDaylen > 0 ? "Ooga Booga time" : "Local time"} ${label}`);
+    worldClock.setAttribute("aria-label", `${Number.isFinite(clockTime) || clockDaylen > 0 ? "Ooga Booga time" : "Local time"} ${label}`);
   };
   const go = (id) => {
     const next = scenes[id];

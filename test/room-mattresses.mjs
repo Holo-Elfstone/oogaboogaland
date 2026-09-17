@@ -70,6 +70,171 @@ export const roomMattressGeometryProbe = async () => {
   return { beds: beds.length, nodes: nodes.length, rooms: rooms.length, uniqueRooms: new Set(beds.map((b) => b.room)).size, uniqueGeometry: new Set(beds.map((b) => b.node.geometry)).size, signatures, uniqueFabrics: new Set(signatures.filter((_, i) => !(i % 2))).size, rotations, rows, pixels, edges, vertices, floorSamples, cached, unclaimed, failures };
 };
 
+// Check the written hash against an independent SHA-256 of the bedding seed,
+// then inspect the actual inscription faces and hanging placement.
+export const roomLifehashSignProbe = async () => {
+  const B = window.__ooga, BL = window.BL, H = B.headquarters, scene = BL.scenes.hub, rows = [], failures = [];
+  BL.scene.updateWorld(scene.root);
+  const nodes = [];
+  BL.scene.traverseVisible(scene.root, (node) => { if (node.geometry?.roomLifehashSign) nodes.push(node); });
+  for (const entry of H.roomSigns) {
+    const room = entry.room, node = entry.node, geo = node.geometry, inscription = geo.roomLifehashSign;
+    const bed = H.mattresses.find((bed) => bed.room === room), c = Math.cos(room.angle), s = Math.sin(room.angle);
+    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(bed.sheet.seed)));
+    const expected = Array.from(digest, (v) => v.toString(16).padStart(2, "0")).join("");
+    const across = (node.position.x - room.entrance.x) * c + (node.position.z - room.entrance.z) * s;
+    const forward = -(node.position.x - room.entrance.x) * s + (node.position.z - room.entrance.z) * c;
+    const ink = geo.faces.filter((face) => face.roomSignInk), bounds = BL.scene.boundsOf(geo);
+    let pixels = 0, mismatches = 0;
+    for (let ch = 0; ch < 8; ch++) {
+      const glyph = BL.hubModels.SIGN_GLYPHS[expected[ch].toUpperCase()];
+      for (let y = 0; y < 5; y++) for (let x = 0; x < 3; x++) {
+        const px = (-31 * 0.055 / 2 + (ch * 4 + x + 0.5) * 0.055) * 0.56, py = ((2 - y) * 0.055 - 0.63) * 0.56;
+        const printed = ink.filter((face) => px > Math.min(...face.i.map((i) => geo.verts[i * 3])) && px < Math.max(...face.i.map((i) => geo.verts[i * 3])) && py > Math.min(...face.i.map((i) => geo.verts[i * 3 + 1])) && py < Math.max(...face.i.map((i) => geo.verts[i * 3 + 1]))).length;
+        if (printed !== (glyph[y][x] === "1" ? 1 : 0)) mismatches++;
+        pixels++;
+      }
+    }
+    const matches = inscription.hash === expected && inscription.lines.length === 1 && inscription.lines[0] === expected.slice(0, 8).toUpperCase() && bed.sheet.pattern.hash === expected && bed.pillow.pattern.hash === expected && inscription.roomKey === bed.roomKey;
+    const centered = Math.abs(across) < 1e-6 && Math.abs(forward - 0.28) < 1e-6 && node.rotation.y === -room.angle && Math.abs(node.position.y - room.floor - 3.78) < 1e-6;
+    const hung = Math.abs(bounds.max[1]) < 1e-6 && bounds.min[1] + 3.78 > 3 && Math.abs(bounds.max[0] - bounds.min[0] - 2.12 * 0.56) < 1e-6;
+    const cached = BL.headquartersModels.roomSign(room) === geo;
+    const attached = node.parent === scene.root && nodes.filter((candidate) => candidate === node).length === 1;
+    const ok = matches && centered && hung && cached && attached && mismatches === 0 && geo.faces.every((face) => !face.emissive);
+    if (!ok) failures.push({ room: room.index, basement: entry.basement, matches, centered, hung, cached, attached, mismatches });
+    rows.push({ room: room.index, basement: entry.basement, hash: expected, pixels, ink: ink.length, ok });
+  }
+  return { signs: H.roomSigns.length, nodes: nodes.length, rows, failures };
+};
+
+export const roomLifehashSignVisibilityProbe = () => {
+  const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, canvas = document.getElementById("scene"), rows = [];
+  const gl = B.renderer.kind === "webgl2" ? canvas.getContext("webgl2") : null;
+  const ctx = gl ? null : document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  if (ctx) { ctx.canvas.width = canvas.width; ctx.canvas.height = canvas.height; }
+  const before = new Uint8Array(canvas.width * canvas.height * 4), after = new Uint8Array(before.length);
+  const position = { ...B.camera.position }, target = { ...B.camera.target };
+  const capture = (out) => { B.renderer.render(scene.root, B.camera, B.renderOpts); if (gl) gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, out); else { ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.drawImage(canvas, 0, 0); out.set(ctx.getImageData(0, 0, canvas.width, canvas.height).data); } };
+  try {
+    for (const entry of B.headquarters.roomSigns) {
+      const node = entry.node, room = entry.room, visible = node.visible;
+      Object.assign(B.camera.position, { x: node.position.x - Math.sin(room.angle) * 2, y: node.position.y, z: node.position.z + Math.cos(room.angle) * 2 });
+      Object.assign(B.camera.target, node.position);
+      try {
+        node.visible = false; capture(before); node.visible = true; capture(after);
+        let changed = 0, samples = 0;
+        for (const face of node.geometry.faces) {
+          if (!face.roomSignInk) continue;
+          let x = 0, y = 0, z = 0;
+          for (const i of face.i) { x += node.geometry.verts[i * 3]; y += node.geometry.verts[i * 3 + 1]; z += node.geometry.verts[i * 3 + 2]; }
+          x /= face.i.length; y /= face.i.length; z /= face.i.length;
+          const m = node.world, p = B.renderer.project(m[0] * x + m[4] * y + m[8] * z + m[12], m[1] * x + m[5] * y + m[9] * z + m[13], m[2] * x + m[6] * y + m[10] * z + m[14], {});
+          if (!p) continue;
+          const px = Math.floor(p.x * canvas.width / B.renderer.size.width), py = Math.floor(p.y * canvas.height / B.renderer.size.height);
+          if (px < 0 || py < 0 || px >= canvas.width || py >= canvas.height) continue;
+          const at = ((gl ? canvas.height - 1 - py : py) * canvas.width + px) * 4;
+          samples++; if ([0, 1, 2].some((channel) => Math.abs(after[at + channel] - before[at + channel]) > 3)) changed++;
+        }
+        rows.push({ room: room.index, basement: entry.basement, samples, changed });
+      } finally { node.visible = visible; }
+    }
+  } finally { Object.assign(B.camera.position, position); Object.assign(B.camera.target, target); B.renderer.render(scene.root, B.camera, B.renderOpts); }
+  return { backend: B.renderer.kind, rows };
+};
+
+export const roomLifehashSignImpactProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
+  const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, cave = [...B.cavemen.values()].find((c) => c.state === "working"), rows = [];
+  const hidden = [...B.cavemen.values()].filter((c) => c !== cave).map((c) => [c.root, c.root.visible]);
+  let time = B.renderOpts.matrix.time;
+  const tick = (seconds) => { for (let n = 0; n < Math.ceil(seconds / dt); n++) scene.update(dt, time += dt); };
+  const tap = () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: " " })); tick(dt); window.dispatchEvent(new KeyboardEvent("keyup", { key: " " })); };
+  B.pilot.possess(cave); B.crew.removeJetpack(cave);
+  if (mode === "first-person") B.pilot.enterClose();
+  for (const [node] of hidden) node.visible = false;
+  try {
+    for (const sign of B.headquarters.roomSigns) {
+      const room = sign.room, c = Math.cos(room.angle), s = Math.sin(room.angle), before = sign.hits;
+      const place = (forward = 0.34) => {
+        B.crew.relocatePlayer({ x: room.entrance.x - s * forward, y: room.floor, z: room.entrance.z + c * forward }, 0);
+        tick(0.1);
+      };
+      place(); tick(0.4);
+      const still = sign.node.rotation.x === 0 && sign.hits === before;
+      tap(); tick(0.18); tap();
+      let maximum = 0, continued = false;
+      for (let n = 0; n < Math.ceil(1 / dt); n++) {
+        tick(dt); maximum = Math.max(maximum, Math.abs(sign.node.rotation.x));
+        if (sign.hits > before && cave.hopV > 0) continued = true;
+      }
+      const hits = sign.hits - before;
+      for (let n = 0; n < 120; n++) scene.update(0.05, time += 0.05);
+      const settled = sign.node.rotation.x === 0 && sign.velocity === 0;
+      place(1); tap(); tick(0.18); tap(); tick(1.2);
+      const miss = sign.hits === before + hits && sign.node.rotation.x === 0;
+      rows.push({ room: room.index, basement: sign.basement, still, hits, continued, maximum, settled, miss });
+    }
+    return { mode: B.pilot.mode, backend: B.renderer.kind, dt, rows };
+  } finally {
+    window.dispatchEvent(new KeyboardEvent("keyup", { key: " " }));
+    for (const [node, visible] of hidden) node.visible = visible;
+  }
+};
+
+// Compare the same moving jump with the board hidden and present: a hanging
+// sign must yield on either face without changing the actor's trajectory.
+export const roomSignPassingProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
+  const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, cave = [...B.cavemen.values()].find((c) => c.state === "working"), rows = [];
+  const hidden = [...B.cavemen.values()].filter((c) => c !== cave).map((c) => [c.root, c.root.visible]);
+  let time = B.renderOpts.matrix.time;
+  B.pilot.possess(cave); B.crew.removeJetpack(cave);
+  if (mode === "first-person") B.pilot.enterClose();
+  const tick = () => scene.update(dt, time += dt);
+  const key = (down, value) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: value }));
+  for (const [node] of hidden) node.visible = false;
+  try {
+    for (const sign of B.headquarters.roomSigns.filter((entry, i) => i === 0 || entry.basement && entry.roomIndex === 0)) for (const side of [-1, 1]) {
+      const room = sign.room, c = Math.cos(room.angle), s = Math.sin(room.angle), paths = [];
+      for (const visible of [false, true]) {
+        sign.node.visible = visible; sign.node.rotation.x = sign.velocity = sign.contacts = 0;
+        const start = sign.hits, path = [];
+        B.crew.relocatePlayer({ x: sign.node.position.x - s * side * 0.9, y: room.floor, z: sign.node.position.z + c * side * 0.9 }, 0);
+        B.pilot.orbit.yaw = B.pilot.orbit.tYaw = -room.angle + (side < 0 ? Math.PI : 0);
+        B.pilot.orbit.pitch = B.pilot.orbit.tPitch = 0;
+        tick();
+        key(true, " "); tick(); key(false, " ");
+        for (let n = 0; n < Math.ceil(0.20 / dt); n++) tick();
+        key(true, " "); tick(); key(false, " ");
+        for (let n = 0; n < Math.ceil(1 / dt) && cave.root.position.y - cave.baseY + cave.bodyHeight < room.floor + 3.12 && cave.hopV > 0; n++) tick();
+        key(true, "w");
+        let maximum = 0, direction = 0, continued = false, rendered = false;
+        for (let n = 0; n < Math.ceil(0.30 / dt); n++) {
+          tick();
+          const p = cave.root.position;
+          path.push([p.x, p.y, p.z, cave.hopV]);
+          maximum = Math.max(maximum, Math.abs(sign.node.rotation.x));
+          if (sign.hits > start && !direction) { direction = Math.sign(sign.node.rotation.x); continued = cave.hopV > 0; }
+          BL.scene.updateWorld(scene.root);
+          if (Math.abs(sign.node.world[9]) > 0.1) rendered = true;
+        }
+        key(false, "w");
+        const p = cave.root.position, crossed = side * ((p.x - sign.node.position.x) * sign.sr + (p.z - sign.node.position.z) * sign.cr) < -0.4;
+        const hits = sign.hits - start;
+        for (let n = 0; n < 140; n++) scene.update(0.05, time += 0.05);
+        paths.push({ path, hits, maximum, direction, continued, rendered, crossed, settled: sign.node.rotation.x === 0 && sign.velocity === 0 });
+      }
+      const [reference, actual] = paths;
+      let error = 0;
+      for (let n = 0; n < reference.path.length; n++) for (let axis = 0; axis < 4; axis++) error = Math.max(error, Math.abs(reference.path[n][axis] - actual.path[n][axis]));
+      rows.push({ basement: sign.basement, side, error, ...actual, path: undefined });
+    }
+    return { mode: B.pilot.mode, dt, backend: B.renderer.kind, rows };
+  } finally {
+    key(false, "w"); key(false, " ");
+    for (const sign of B.headquarters.roomSigns) sign.node.visible = true;
+    for (const [node, visible] of hidden) node.visible = visible;
+  }
+};
+
 // Hide each complete authored bed for a reference frame. Both independent
 // renderers must show changed pixels at its sheet and pillow in the actual room.
 export const roomMattressVisibilityProbe = () => {
@@ -327,8 +492,10 @@ export const roomManualSleepProbe = ({ mode = "trailing", dt = 1 / 60, basement 
   const off = state();
   try {
     B.pilot.hooks.onOrbit(0, 0); key("a", true);
-    for (let n = 0; n < Math.ceil(2 / dt) && document.getElementById("act").textContent !== "SLEEP"; n++) step();
-    key("a", false);
+    // Context actions now appear only after movement stops. Reach the fabric
+    // physically before releasing movement and checking the Sleep prompt.
+    for (let n = 0; n < Math.ceil(2 / dt) && (Math.abs(local().x) >= bed.width / 2 - 0.1 || Math.abs(local().y - bed.sleep.surface) > 1e-6); n++) step();
+    key("a", false); step();
     const on = state();
     key(" ", true); tick(1.2);
     window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", repeat: true })); tick(0.2);

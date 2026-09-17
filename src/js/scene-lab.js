@@ -433,6 +433,7 @@
     return { targets };
   };
   const liveGeometry = (set) => {
+    pile.liveGeometry(set);
     for (const cave of crew.cavemen.values()) set.add(cave.headOpen).add(cave.headClosed);
   };
   const stats = () => {

@@ -12,6 +12,7 @@
   const FAN_ARC = 2.2;
   // The widest the fan opens, so the near side stays clear however many eat
   const FAN_SPREAD = 5;
+  const FAN_SLOT_MAX = 128;
   const POKES = ["Ooga?", "Booga!", "No poke.", "Hmm banana?", "Ooga booga booga."];
   const SLEEP_POKES = ["zzz... grr", "five more minutes", "zzz"];
   const SLEEP_POSES = ["left", "stomach", "back", "right"];
@@ -30,6 +31,8 @@
   const { WALK } = BL.pilot;
   const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = WALK.speed;
   const PLAYER_STEP = 0.125;
+  const SHOULDER_GAP = 0.68, SHOULDER_REACH = 1.3, SHOULDER_TWIST = 1.05;
+  const FIRE_FLEE_REACH = 8, FIRE_FLEE_CLEAR = 10, FIRE_MEMORY_RELEASE = 3, NPC_WALK_SPEED = 1.6;
   const NAV_WIDTH = 21, NAV_SIZE = NAV_WIDTH * NAV_WIDTH, NAV_HALF = 10, NAV_CELL = 0.5, NAV_CENTER = NAV_HALF * NAV_WIDTH + NAV_HALF;
   const JUMP_SPEED = 4.8, JET_FUEL_SECONDS = 8, JET_MOVE_SECONDS = JET_FUEL_SECONDS * 2, JET_REFILL_SECONDS = 4, JET_LAUNCH_FUEL = 0.2;
   // Fuel limits range and altitude; releasing thrust uses ordinary gravity.
@@ -43,6 +46,9 @@
   const MASK_SMOKE_CAP = MASK_PORTS.length * 36;
   const MASK_SMOKE_SMALL = 0.34, MASK_SMOKE_MERGE_MAX = 12;
   const MASK_SMOKE_MAX = MASK_SMOKE_SMALL * Math.cbrt(MASK_SMOKE_MERGE_MAX);
+  const BURN_FLAMES = [models.particleGeometry("#ff8a2a", 0.14, 1), models.particleGeometry("#ffc148", 0.12, 1)];
+  const BURN_SMOKE = models.particleGeometry("#70685f", 0.18, 0);
+  const ROLL_SECONDS = 3, SOOT_SECONDS = 10, EMBER_HEAT_SECONDS = 4;
   // A drop deeper than a step, mirroring the hub's STEP_MAX
   const STEP = WALK.step;
   const YAWN_DUR = 2.4;
@@ -199,7 +205,9 @@
         sleepParts: { armLX: cave.parts.armL.position.x, armRX: cave.parts.armR.position.x, headX: cave.parts.head.position.x, headY: cave.parts.head.position.y, headZ: cave.parts.head.position.z, equipment: cave.root.children.filter((node) => !BODY_PARTS.some((key) => cave.parts[key] === node)) },
         phase: i * 1.37,
         baseY: cave.root.position.y,
+        camp: { seat: null, burning: false, rolling: false, burnAge: 0, reactionDelay: 0, ignitions: 0, contactBurning: false, contactBounds: new Float64Array(6), panic: { active: false, threat: null, remembered: false, memory: new Float64Array(contributors.roster.length * 4), speed: 0, heading: 0, turnAt: 0, phase: 0, escapeX: 0, escapeZ: 0, resumeSleep: false, resumeWalk: null, rand: math.mulberry32(math.fnv1a(contributor.name + "/panic")) }, rollTime: 0, soot: 0, fadeTime: 0, puff: 0, smokeTime: 0, cooldown: 0, spread: new Float32Array(BODY_PARTS.length), burnTime: new Float32Array(BODY_PARTS.length), scorch: new Float32Array(BODY_PARTS.length), rollScorch: new Float32Array(BODY_PARTS.length), x: 0, z: 0, floor: 0, heading: 0, rotation: math.quat.create(), base: math.quat.create(), turn: math.quat.create() },
         bodyHeight: bodyHeightOf(cave),
+        shoulder: { phase: 0, other: null, rear: false, prop: false, side: 1, dodge: 1, amount: 0, yaw: 0, targetYaw: 0, attempted: false, originX: 0, originZ: 0, forwardX: 0, forwardZ: 1, heading: 0, snapX: 0, snapZ: 0, motionX: 0, motionZ: 0, snapVX: 0, snapVZ: 0, propOffset: 0, obstacle: { node: null, minAlong: 0, maxAlong: 0, minAcross: 0, maxAcross: 0, minContactAcross: 0, maxContactAcross: 0 } },
         state: "away",
         contributor,
         zzzTimer: 0,
@@ -235,6 +243,7 @@
         jetFuel: 1,
         jetRecovering: false,
         cloudSupport: null,
+        riding: { support: null, x: 0, y: 0, z: 0, vy: 0, updated: false, continuous: false },
         viewLift: 0,
         act: { kind: "eat", until: 0, trips: 0, sayAt: 0, said: true, phase: 0, spot: { x: 0, z: 0, ry: NaN } },
         swagNodes: []
@@ -301,8 +310,19 @@
       head.quaternion = null;
       setVec(head.position, cave.headLookPosition.x, cave.headLookPosition.y, cave.headLookPosition.z);
     };
+    const clearShoulder = (cave) => {
+      const s = cave.shoulder;
+      s.phase = s.yaw = s.targetYaw = 0;
+      s.other = null;
+      s.obstacle.node = null;
+      s.rear = s.prop = false;
+      s.motionX = s.motionZ = 0;
+      s.attempted = false;
+      for (const part of cave.root.children) part.poseYaw = 0;
+    };
     const resetPose = (cave) => {
       clearHeadLook(cave);
+      clearShoulder(cave);
       Object.assign(cave.root.rotation, { x: 0, y: 0, z: 0 });
       cave.root.quaternion = null;
       Object.assign(cave.root.scale, { x: 1, y: 1, z: 1 });
@@ -380,6 +400,7 @@
       refreshRosterRow(cave);
     };
     const applyState = (cave, state) => {
+      if (cave.camp.burning || cave.camp.panic.active) return;
       if (cave.state === state) {
         // Re-seat a moved eater, interrupt nothing else
         if (state === "working") walkToSlot(cave);
@@ -460,17 +481,22 @@
       const farSide = FAN_CENTER;
       const eaters = entries.filter(isWorking);
       fanSlots.length = 0;
-      // Neighbours stand FAN_ARC apart at any radius, closer only when the fan would wrap
-      const angleStep = Math.min(clamp(FAN_ARC / fanRadius, 0.5, 1.1), FAN_SPREAD / Math.max(1, eaters.length - 1));
+      const count = Math.min(FAN_SLOT_MAX, Math.max(eaters.length, Math.floor(FAN_SPREAD * fanRadius / FAN_ARC) + 1));
+      // Growing circumference makes room for spare destinations without
+      // spreading neighbouring slots farther apart or filling the near side.
+      const angleStep = Math.min(FAN_ARC / fanRadius, 1.1, FAN_SPREAD / Math.max(1, count - 1));
+      for (let i = 0; i < count; i++) {
+        const angle = farSide + (i - (count - 1) / 2) * angleStep;
+        fanSlots.push({ x: Math.cos(angle) * fanRadius, z: Math.sin(angle) * fanRadius });
+      }
       // Nobody stands between the camera and the pile
       eaters.forEach((cave, i) => {
-        const angle = farSide + (i - (eaters.length - 1) / 2) * angleStep;
-        cave.slot = { x: Math.cos(angle) * fanRadius, z: Math.sin(angle) * fanRadius };
-        fanSlots.push(cave.slot);
+        cave.slot = fanSlots[eaters.length > 1 ? Math.round(i * (count - 1) / (eaters.length - 1)) : Math.floor(count / 2)];
       });
     };
     const slotAvailable = (cave, slot) => {
       const floor = groundAt(slot.x, slot.z, 0, 0, cave);
+      if (ctx.npcLandingAllowed && !ctx.npcLandingAllowed(slot.x, floor, slot.z, cave.bodyHeight)) return false;
       for (const other of cavemen.values()) {
         if (other === cave || !other.root.visible) continue;
         const p = other.root.position, feet = p.y - other.baseY;
@@ -724,6 +750,382 @@
       parts.armL.rotation.x = parts.armR.rotation.x = -0.2;
       parts.torso.rotation.x = parts.torso.rotation.z = 0;
     };
+    const standPlayer = (cave = player) => {
+      if (!cave || !cave.camp.seat) return false;
+      const seat = cave.camp.seat;
+      let exitZ = seat.walkAt.z, clear = false;
+      for (let i = 0; i < 3; i++) {
+        exitZ = seat.walkAt.z + (i === 1 ? 0.65 : i === 2 ? -0.65 : 0);
+        if (walkable(seat.walkAt.x, exitZ, seat.walkAt.x, exitZ, seat.floor, cave.bodyHeight, cave)) { clear = true; break; }
+      }
+      if (!clear) return false;
+      seat.sitter = null;
+      cave.camp.seat = null;
+      cave.root.quaternion = null;
+      cave.root.rotation.x = cave.root.rotation.z = 0;
+      standPose(cave);
+      setVec(cave.root.position, seat.walkAt.x, seat.floor + cave.baseY, exitZ);
+      cave.hop = cave.hopV = 0;
+      return true;
+    };
+    const sitPlayer = (seat) => {
+      const cave = player;
+      if (!cave || cave.camp.burning || cave.camp.rolling || cave.camp.seat || seat.sitter || !grounded(cave)) return false;
+      if (!walkable(seat.walkAt.x, seat.walkAt.z, seat.walkAt.x, seat.walkAt.z, seat.floor, cave.bodyHeight, cave)) return false;
+      elevatePlayer(0);
+      removeJetpack(cave);
+      releaseBuild(cave);
+      cave.walk = null;
+      cave.hop = cave.hopV = cave.cheer = cave.catchT = 0;
+      cave.leap.vx = cave.leap.vz = 0;
+      cave.camp.seat = seat;
+      seat.sitter = cave;
+      cave.root.rotation.y = seat.ry;
+      setVec(cave.root.position, seat.x, seat.y + cave.traits.height * 0.08, seat.z);
+      return true;
+    };
+    const beginPanic = (cave) => {
+      const panic = cave.camp.panic;
+      if (panic.active) return;
+      panic.speed = (cave.walk ? cave.walk.speed : NPC_WALK_SPEED) * 2;
+      panic.resumeWalk = cave.walk;
+      panic.resumeSleep = cave.state === "sleeping";
+      panic.active = cave !== player;
+      panic.phase = 0;
+      panic.heading = cave.root.rotation.y;
+      panic.turnAt = 0;
+      if (cave.state === "sleeping" || cave.bedTravel.mode) {
+        const sleepingPose = cave.state === "sleeping" && !ctx.bedRoute;
+        standFromBed(cave);
+        releaseBedroll(cave);
+        cave.bedTravel.bed = null;
+        cave.state = "working";
+        if (cave === player) cave.override = "working";
+        cave.parts.head.geometry = cave.headOpen;
+        if (sleepingPose) cave.root.position.y = groundY(cave);
+        assignFanSlots([...cavemen.values()], (entry) => entry.state === "working");
+        refreshRosterRow(cave);
+      }
+      releaseBuild(cave);
+      cave.walk = null;
+      cave.avoidance.navigation.mode = 0;
+      cave.avoidance.active = false;
+      cave.avoidance.stalled = 0;
+      cave.avoidance.tx = NaN;
+      if (cave.pathing) cave.pathing.tx = NaN;
+      cave.act.kind = cave === player ? "player" : "panic";
+      cave.cheer = cave.catchT = cave.yawn = 0;
+      cave.parts.snack.visible = cave.parts.gun.visible = false;
+    };
+    const finishPanic = (cave) => {
+      const panic = cave.camp.panic, resumeWalk = panic.resumeWalk, resumeSleep = panic.resumeSleep;
+      panic.active = false;
+      panic.threat = panic.resumeWalk = null;
+      panic.resumeSleep = false;
+      cave.avoidance.navigation.mode = 0;
+      cave.avoidance.active = false;
+      cave.avoidance.stalled = 0;
+      cave.avoidance.tx = NaN;
+      if (cave.pathing) cave.pathing.tx = NaN;
+      standPose(cave);
+      if (cave === player) { cave.act.kind = "player"; return; }
+      if (resumeSleep) {
+        if (ctx.bedRoute) startSleep(cave);
+        else applyState(cave, "sleeping");
+        return;
+      }
+      cave.act.kind = "idle";
+      cave.act.until = elapsed + 1.5;
+      cave.act.said = true;
+      const p = cave.root.position, feet = p.y - cave.baseY;
+      if (ctx.bedRoute && feet < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(p.x, p.z, feet, cave))) startBedRoute(cave, null, false);
+      else if (resumeWalk) {
+        cave.walk = resumeWalk;
+        cave.act.kind = resumeWalk.to === "spot" ? "wander" : "rush";
+      }
+    };
+    const ignite = (cave) => {
+      const c = cave.camp;
+      if (c.burning || c.rolling || c.cooldown > 0 || !cave.root.visible || cave.state === "away") return false;
+      if (c.seat && !standPlayer(cave)) return false;
+      beginPanic(cave);
+      const variation = math.fnv1a(cave.traits.name + "/fire/" + ++c.ignitions) / 4294967296;
+      const reaction = (cave.index + c.ignitions - 1) % 3;
+      c.reactionDelay = reaction === 0 ? 0.6 + variation * 0.65 : reaction === 1 ? 3 + variation * 3 : 10.5 + variation * 2.5;
+      c.burning = true;
+      c.burnAge = c.rollTime = c.puff = 0;
+      c.spread.fill(0);
+      c.burnTime.fill(0);
+      updateFireSpread(cave);
+      ctx.fx.say(cave, "HOT! DROP & ROLL!", 2);
+      return true;
+    };
+    const updateFireThreats = () => {
+      for (const cave of cavemen.values()) {
+        const panic = cave.camp.panic, memory = panic.memory, p = cave.root.position;
+        panic.threat = null;
+        panic.remembered = false;
+        panic.escapeX = panic.escapeZ = 0;
+        if (cave === player || !cave.root.visible || cave.state === "away") { memory.fill(0); continue; }
+        if (cave.camp.rolling) continue;
+        const reach = panic.active ? FIRE_FLEE_CLEAR : FIRE_FLEE_REACH, feet = p.y - cave.baseY;
+        let nearest = Infinity;
+        for (const other of cavemen.values()) {
+          const at = other.index * 4;
+          if (other === cave || !other.root.visible || !other.camp.burning) { memory[at + 3] = 0; continue; }
+          const q = other.root.position, floor = other.camp.rolling ? other.camp.floor : q.y - other.baseY;
+          const floorReach = Math.max(0.8, cave.bodyHeight * 0.65);
+          if (Math.abs(feet - floor) > floorReach) { memory[at + 3] = 0; continue; }
+          const distance = Math.hypot(p.x - q.x, p.z - q.z);
+          const y = Math.max(feet, floor) + Math.min(cave.bodyHeight, other.bodyHeight) * 0.35;
+          if (distance < reach && (!ctx.fireReachable || ctx.fireReachable(p.x, y, p.z, q.x, y, q.z))) {
+            memory[at] = q.x; memory[at + 1] = q.z; memory[at + 2] = floor; memory[at + 3] = 1;
+          } else if (memory[at + 3] && distance >= Math.max(FIRE_FLEE_CLEAR + FIRE_MEMORY_RELEASE, Math.hypot(p.x - memory[at], p.z - memory[at + 1]) + FIRE_MEMORY_RELEASE)) {
+            // Running beyond sight does not make a stationary fire safe. Only
+            // the source moving farther away (or going out) releases its memory.
+            memory[at + 3] = 0;
+          }
+          if (!memory[at + 3]) continue;
+          panic.remembered = true;
+          const dx = p.x - memory[at], dz = p.z - memory[at + 1], rememberedDistance = Math.hypot(dx, dz);
+          if (rememberedDistance >= FIRE_FLEE_CLEAR || Math.abs(feet - memory[at + 2]) > floorReach) continue;
+          if (rememberedDistance < nearest) { nearest = rememberedDistance; panic.threat = other; }
+          const weight = (FIRE_FLEE_CLEAR - rememberedDistance) / Math.max(0.04, rememberedDistance * rememberedDistance);
+          panic.escapeX += dx * weight; panic.escapeZ += dz * weight;
+        }
+      }
+    };
+    const runPanic = (cave, dt) => {
+      const c = cave.camp, panic = c.panic, p = cave.root.position;
+      clearHeadLook(cave);
+      if (panic.threat && Math.hypot(panic.escapeX, panic.escapeZ) > 1e-6) panic.heading = Math.atan2(panic.escapeX, panic.escapeZ);
+      else if (c.burning && c.burnAge >= panic.turnAt) {
+        panic.heading += (panic.rand() - 0.5) * 2.8;
+        panic.turnAt = c.burnAge + 0.55 + panic.rand() * 0.8;
+      }
+      const tx = p.x + Math.sin(panic.heading) * 3, tz = p.z + Math.cos(panic.heading) * 3;
+      let remaining = panic.speed * dt * (inBananas(cave) ? 0.5 : 1), moved = 0;
+      // Physical substeps keep the fast run solid. Direct targets deliberately
+      // bypass the path network, even when the escape crosses the meadow.
+      while (remaining > 1e-8) {
+        const distance = walkToward(cave, tx, tz, remaining);
+        if (!distance) break;
+        remaining -= distance; moved += distance;
+      }
+      if (moved > 0) {
+        panic.phase += moved * 5;
+        walkPose(cave, panic.phase);
+        p.y = groundY(cave);
+        if (c.burning && !panic.threat && cave.avoidance.active) panic.heading = cave.root.rotation.y;
+      } else standPose(cave);
+      if (c.burning) {
+        cave.parts.armL.rotation.x = -1.8 + Math.sin(panic.phase) * 0.3;
+        cave.parts.armR.rotation.x = -1.8 - Math.sin(panic.phase) * 0.3;
+      }
+      cave.parts.snack.visible = cave.parts.gun.visible = false;
+    };
+    const dropRoll = (cave = player) => {
+      if (!cave || !cave.camp.burning) return false;
+      const c = cave.camp;
+      if (c.rolling) return true;
+      clearShoulder(cave);
+      if (cave === player) elevatePlayer(0);
+      removeJetpack(cave);
+      cave.walk = null;
+      releaseBuild(cave);
+      cave.hop = cave.hopV = cave.cheer = cave.catchT = 0;
+      cave.leap.vx = cave.leap.vz = 0;
+      c.rolling = true;
+      c.rollTime = 0;
+      c.rollScorch.set(c.scorch);
+      c.fadeTime = SOOT_SECONDS;
+      c.x = cave.root.position.x; c.z = cave.root.position.z;
+      c.floor = groundY(cave) - cave.baseY;
+      c.heading = cave.root.rotation.y;
+      math.quat.fromEuler(c.base, -Math.PI / 2, c.heading, 0);
+      cave.root.quaternion = c.rotation;
+      return true;
+    };
+    const runCamp = (cave, dt) => {
+      const c = cave.camp, parts = cave.parts, p = cave.root.position;
+      if (c.seat || c.rolling) clearHeadLook(cave);
+      if (cave !== player && cave.root.visible && cave.state !== "away" && !c.rolling) {
+        if (c.burning || c.panic.threat || c.panic.remembered) {
+          if (c.seat && !standPlayer(cave)) return true;
+          beginPanic(cave);
+          if (grounded(cave)) {
+            if (c.burning && c.burnAge >= c.reactionDelay) dropRoll(cave);
+            else if (!c.burning && !c.panic.threat) { standPose(cave); return true; }
+            else { runPanic(cave, dt); return true; }
+          }
+        } else if (c.panic.active && grounded(cave)) {
+          finishPanic(cave);
+        }
+      }
+      if (c.seat) {
+        if (cave === player && Math.hypot(steer.x, steer.z) > 0.05 && standPlayer(cave)) return false;
+        standPose(cave);
+        parts.legL.rotation.x = parts.legR.rotation.x = -Math.PI / 2;
+        parts.armL.rotation.x = parts.armR.rotation.x = -0.75;
+        parts.snack.visible = false;
+        return true;
+      }
+      if (!c.rolling) return false;
+      c.rollTime = Math.min(ROLL_SECONDS, c.rollTime + dt);
+      const progress = c.rollTime / ROLL_SECONDS, cooled = progress * progress * (3 - 2 * progress);
+      for (let i = 0; i < BODY_PARTS.length; i++) c.scorch[i] = lerp(c.rollScorch[i], Math.max(c.rollScorch[i], c.spread[i]), cooled);
+      const angle = Math.sin(c.rollTime * 7) * 1.25, offset = Math.sin(c.rollTime * 7) * 0.35;
+      const x = c.x + Math.cos(c.heading) * offset, z = c.z - Math.sin(c.heading) * offset;
+      // Keep the sweep on clear ground; a wall or bench limits the travel,
+      // while the roll continues to put the flames out in place.
+      if (flyable(p.x, p.z, x, z, c.floor + 0.02, Math.max(0.5, cave.bodyHeight * 0.35), cave)) { p.x = x; p.z = z; }
+      p.y = c.floor + cave.traits.height * 0.26;
+      math.quat.fromEuler(c.turn, 0, angle, 0);
+      math.quat.multiply(c.rotation, c.base, c.turn);
+      parts.legL.rotation.x = parts.legR.rotation.x = -0.65;
+      parts.armL.rotation.x = parts.armR.rotation.x = -1.5;
+      parts.snack.visible = false;
+      // Plant the lowest part of the rotating body rather than sinking its
+      // wide shoulders into the floor as it rolls onto either side.
+      BL.scene.updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+      let bottom = Infinity;
+      for (const key of BODY_PARTS) {
+        const part = parts[key], b = BL.scene.boundsOf(part.geometry), m = part.world;
+        const center = m[1] * b.center[0] + m[5] * b.center[1] + m[9] * b.center[2] + m[13];
+        const extent = (Math.abs(m[1]) * (b.max[0] - b.min[0]) + Math.abs(m[5]) * (b.max[1] - b.min[1]) + Math.abs(m[9]) * (b.max[2] - b.min[2])) * 0.5;
+        bottom = Math.min(bottom, center - extent);
+      }
+      p.y += c.floor + 0.015 - bottom;
+      if (c.rollTime === ROLL_SECONDS) {
+        c.burning = c.rolling = false;
+        c.fadeTime = SOOT_SECONDS;
+        c.smokeTime = 3;
+        c.cooldown = 1.2;
+        c.puff = 0;
+        cave.root.quaternion = null;
+        cave.root.rotation.x = cave.root.rotation.z = 0;
+        cave.root.rotation.y = c.heading;
+        standPose(cave);
+        p.y = groundY(cave);
+        finishPanic(cave);
+      }
+      return true;
+    };
+    const updateFireSpread = (cave) => {
+      const c = cave.camp;
+      BL.scene.updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+      const front = cave.root.position.y - cave.baseY + cave.bodyHeight * Math.min(1.05, 0.12 + c.burnAge * 0.09);
+      for (let i = 0; i < BODY_PARTS.length; i++) {
+        const part = cave.parts[BODY_PARTS[i]], b = BL.scene.boundsOf(part.geometry), m = part.world;
+        const center = m[1] * b.center[0] + m[5] * b.center[1] + m[9] * b.center[2] + m[13];
+        const extent = (Math.abs(m[1]) * (b.max[0] - b.min[0]) + Math.abs(m[5]) * (b.max[1] - b.min[1]) + Math.abs(m[9]) * (b.max[2] - b.min[2])) * 0.5;
+        // The dangling hands catch from the legs after a short delay.
+        const transfer = i >= 4 ? clamp((c.burnAge - 1) / 2, 0, 1) : 1;
+        c.spread[i] = Math.max(c.spread[i], clamp((front - center + extent) / (extent * 2), 0, 1) * transfer);
+      }
+    };
+    const updateCampEffects = (cave, dt) => {
+      const c = cave.camp;
+      c.cooldown = Math.max(0, c.cooldown - dt);
+      if (c.burning && !c.rolling) {
+        c.burnAge += dt;
+        updateFireSpread(cave);
+      }
+      const remaining = Math.max(0, c.fadeTime - (c.rolling ? 0 : dt)), fade = c.fadeTime > 0 ? remaining / c.fadeTime : 0;
+      c.fadeTime = remaining;
+      c.soot = 0;
+      const progress = c.rollTime / ROLL_SECONDS;
+      const heat = c.burning ? (c.rolling ? 1 - progress * progress * (3 - 2 * progress) : 1) : 0;
+      for (let i = 0; i < BODY_PARTS.length; i++) {
+        if (c.burning && !c.rolling && c.spread[i] > 0) c.burnTime[i] = Math.min(EMBER_HEAT_SECONDS, c.burnTime[i] + dt);
+        c.scorch[i] *= fade;
+        const part = cave.parts[BODY_PARTS[i]];
+        part.scorch = c.scorch[i];
+        // Each limb heats from the moment the front reaches it. Older flames
+        // brighten independently, then cool into the accumulating char in a roll.
+        const temperature = 0.22 + 0.78 * c.burnTime[i] / EMBER_HEAT_SECONDS;
+        part.ember = c.spread[i] * temperature * heat * (0.96 + Math.sin(elapsed * 11 + cave.phase + i * 1.7) * 0.025 + Math.sin(elapsed * 23 + i) * 0.015);
+        // Fixed head surfaces, such as the gas mask, share its heat and char.
+        // The removable hat and face swag remain separate attachments.
+        if (part === cave.parts.head) for (const child of part.children) {
+          if (child === cave.parts.hat || child === cave.parts.face) continue;
+          child.ember = part.ember;
+          child.scorch = part.scorch;
+        }
+        c.soot = Math.max(c.soot, c.scorch[i]);
+      }
+      c.smokeTime = Math.max(0, c.smokeTime - dt);
+      if (!c.burning && c.smokeTime === 0 || !cave.root.visible || dt === 0) return;
+      c.puff -= dt;
+      if (c.puff > 0) return;
+      c.puff = c.burning ? 0.08 : 0.2;
+      BL.scene.updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+      let total = 0;
+      for (let i = 0; i < BODY_PARTS.length; i++) total += c.spread[i];
+      const count = c.burning ? Math.ceil(4 * (c.rolling ? 1 - c.rollTime / ROLL_SECONDS : 1)) : 0;
+      for (let i = 0; i < count + 1; i++) {
+        // Emit from the reached surfaces of the actual limbs. Their world
+        // transforms keep the flames attached while walking and rolling.
+        let pick = Math.random() * total, index = BODY_PARTS.length - 1;
+        for (let j = 0; j < BODY_PARTS.length; j++) {
+          pick -= c.spread[j];
+          if (pick < 0) { index = j; break; }
+        }
+        const part = cave.parts[BODY_PARTS[index]], b = BL.scene.boundsOf(part.geometry), m = part.world;
+        const side = Math.random() < 0.5, edge = Math.random() < 0.5 ? -1 : 1;
+        const x = side ? b.center[0] + edge * ((b.max[0] - b.min[0]) * 0.5 + 0.035) : lerp(b.min[0], b.max[0], Math.random());
+        const y = lerp(b.min[1], b.max[1], Math.random() * c.spread[index]);
+        const z = side ? lerp(b.min[2], b.max[2], Math.random()) : b.center[2] + edge * ((b.max[2] - b.min[2]) * 0.5 + 0.035);
+        const wx = m[0] * x + m[4] * y + m[8] * z + m[12], wy = m[1] * x + m[5] * y + m[9] * z + m[13], wz = m[2] * x + m[6] * y + m[10] * z + m[14];
+        if (i < count) ctx.fx.spawnParticle(BURN_FLAMES[i % 2], wx, wy, wz, (Math.random() - 0.5) * 0.2, 0.5 + Math.random() * 0.5, (Math.random() - 0.5) * 0.2, 0.45, 2, -0.2, -Infinity);
+        else ctx.fx.spawnParticle(BURN_SMOKE, wx, wy + 0.12, wz, (Math.random() - 0.5) * 0.25, 0.6, (Math.random() - 0.5) * 0.25, 1.2, 0.5, -0.15, -Infinity);
+      }
+    };
+    const updateFireContacts = () => {
+      let burning = false;
+      for (const cave of cavemen.values()) if (cave.root.visible && cave.camp.burning) { burning = true; break; }
+      if (!burning) return;
+      for (const cave of cavemen.values()) {
+        const c = cave.camp, p = cave.root.position, b = c.contactBounds;
+        c.contactBurning = c.burning;
+        if (!cave.root.visible || cave.state === "away") continue;
+        if (!cave.root.quaternion) {
+          // Match the standing collision body, including its head clearance.
+          b[0] = p.x - 0.38; b[1] = p.y - cave.baseY; b[2] = p.z - 0.38;
+          b[3] = p.x + 0.38; b[4] = b[1] + cave.bodyHeight; b[5] = p.z + 0.38;
+        } else {
+          BL.scene.updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+          b[0] = b[1] = b[2] = Infinity;
+          b[3] = b[4] = b[5] = -Infinity;
+          for (const key of BODY_PARTS) {
+            const part = cave.parts[key], bounds = BL.scene.boundsOf(part.geometry), m = part.world;
+            for (let axis = 0; axis < 3; axis++) {
+              const center = m[axis] * bounds.center[0] + m[axis + 4] * bounds.center[1] + m[axis + 8] * bounds.center[2] + m[axis + 12];
+              const extent = (Math.abs(m[axis]) * (bounds.max[0] - bounds.min[0]) + Math.abs(m[axis + 4]) * (bounds.max[1] - bounds.min[1]) + Math.abs(m[axis + 8]) * (bounds.max[2] - bounds.min[2])) * 0.5;
+              b[axis] = Math.min(b[axis], center - extent);
+              b[axis + 3] = Math.max(b[axis + 3], center + extent);
+            }
+          }
+        }
+      }
+      for (const source of cavemen.values()) {
+        if (!source.root.visible || !source.camp.contactBurning) continue;
+        const a = source.camp.contactBounds;
+        for (const target of cavemen.values()) {
+          if (source === target || !target.root.visible || target.state === "away" || target.camp.burning || target.camp.cooldown > 0) continue;
+          const b = target.camp.contactBounds;
+          if (a[1] > b[4] + 0.06 || b[1] > a[4] + 0.06) continue;
+          if (!source.root.quaternion && !target.root.quaternion) {
+            // A blocked movement substep stops just outside the collision
+            // radius; touching the flame fringe still transfers the fire.
+            if (Math.hypot(source.root.position.x - target.root.position.x, source.root.position.z - target.root.position.z) > 0.81) continue;
+          } else if (Math.hypot(Math.max(0, a[0] - b[3], b[0] - a[3]), Math.max(0, a[2] - b[5], b[2] - a[5])) > 0.06) continue;
+          const y = (Math.max(a[1], b[1]) + Math.min(a[4], b[4])) * 0.5;
+          if (ctx.fireReachable && !ctx.fireReachable((a[0] + a[3]) * 0.5, y, (a[2] + a[5]) * 0.5, (b[0] + b[3]) * 0.5, y, (b[2] + b[5]) * 0.5)) continue;
+          ignite(target);
+        }
+      }
+    };
     const sleepParts = (cave, k) => {
       clearHeadLook(cave);
       const parts = cave.parts, travel = cave.bedTravel;
@@ -850,10 +1252,133 @@
       fitSleepPose(cave, pose);
       travel.roll = 0;
     };
+    const shoulderNeighbor = (cave, other) => {
+      if (other === cave || !other.root.visible || other.state === "away" || other.root.quaternion || other.camp.seat) return false;
+      const feet = cave.root.position.y - cave.baseY, floor = other.root.position.y - other.baseY;
+      return feet < floor + other.bodyHeight - 0.05 && feet + cave.bodyHeight > floor + 0.05 && Math.abs(feet - floor) < STEP;
+    };
+    // The same swept clearance as the hub's upright actors, also used in the
+    // lab. Passing changes the path, never the bodies' collision radii.
+    const shoulderClear = (cave, x, z) => {
+      const p = cave.root.position, dx = x - p.x, dz = z - p.z, length = dx * dx + dz * dz;
+      for (const other of cavemen.values()) {
+        if (!shoulderNeighbor(cave, other)) continue;
+        const q = other.root.position, ox = p.x - q.x, oz = p.z - q.z, before = ox * ox + oz * oz;
+        if (before < SHOULDER_GAP * SHOULDER_GAP && (x - q.x) ** 2 + (z - q.z) ** 2 > before && ox * dx + oz * dz >= 0) continue;
+        const t = length ? clamp(-(ox * dx + oz * dz) / length, 0, 1) : 0;
+        if ((ox + dx * t) ** 2 + (oz + dz * t) ** 2 < SHOULDER_GAP * SHOULDER_GAP - 1e-8) return false;
+      }
+      return true;
+    };
+    const shoulderStep = (cave, fx, fz, distance, npc, reach = SHOULDER_REACH) => {
+      const s = cave.shoulder, p = cave.root.position;
+      if (cave.hop > 0 || cave.hopV > 0 || cave.root.quaternion || cave.camp.seat || cave.camp.panic.active) return -1;
+      // A deliberate turn starts a new line. Returning never moves an actor
+      // without input, or pulls a player back against a changed heading.
+      if (s.phase && fx * s.forwardX + fz * s.forwardZ < (npc ? 0.3 : 0.94)) { s.phase = 0; s.other = null; }
+      if (!s.phase) {
+        let nearest = SHOULDER_REACH, found = null, across = 0, rear = false;
+        for (const other of cavemen.values()) {
+          if (!shoulderNeighbor(cave, other)) continue;
+          const dx = other.shoulder.snapX - s.snapX, dz = other.shoulder.snapZ - s.snapZ;
+          const along = dx * fx + dz * fz, side = dx * fz - dz * fx;
+          if (Math.abs(along) >= nearest || Math.abs(side) >= SHOULDER_GAP || dx * dx + dz * dz < SHOULDER_GAP * SHOULDER_GAP - 1e-6) continue;
+          // A moving leader yields only to a faster walker closing from
+          // behind; standing neighbors and receding walkers do not push it.
+          if (along <= 0 && (along < -0.95 || (other.shoulder.snapVX - s.snapVX) * fx + (other.shoulder.snapVZ - s.snapVZ) * fz < 0.08)) continue;
+          nearest = Math.abs(along); found = other; across = side; rear = along <= 0;
+        }
+        const hit = s.obstacle, prop = !!ctx.shoulderObstacle && ctx.shoulderObstacle(cave, fx, fz, reach, hit)
+          && (!found || hit.minAlong < nearest - SHOULDER_GAP);
+        if (!found && !prop) return -1;
+        s.phase = 1; s.other = prop ? null : found; s.prop = prop; s.rear = !prop && rear;
+        s.originX = p.x; s.originZ = p.z;
+        s.forwardX = fx; s.forwardZ = fz;
+        s.heading = npc ? Math.atan2(fx, fz) : cave.root.rotation.y;
+        if (prop) across = (hit.minAcross + hit.maxAcross) * 0.5;
+        const dx = prop ? fx * hit.minAlong + fz * across : found.shoulder.snapX - s.snapX;
+        const dz = prop ? fz * hit.minAlong - fx * across : found.shoulder.snapZ - s.snapZ;
+        const side = dx * Math.cos(s.heading) - dz * Math.sin(s.heading);
+        s.side = Math.abs(side) < 0.02 ? 1 : Math.sign(side);
+        s.dodge = Math.abs(across) < 0.02 ? (s.rear ? -1 : 1) : Math.sign(across);
+        s.amount = prop ? clamp(1 - Math.max(hit.minContactAcross, -hit.maxContactAcross, 0) / 0.3, 0, 1) : clamp(1 - Math.abs(across) / SHOULDER_GAP, 0, 1);
+        if (prop) s.propOffset = s.dodge > 0 ? hit.minAcross - 0.315 : hit.maxAcross + 0.315;
+      }
+      fx = s.forwardX; fz = s.forwardZ;
+      const offset = (p.x - s.originX) * fz - (p.z - s.originZ) * fx;
+      let targetOffset = 0, along = 0;
+      if (s.phase === 1) {
+        if (s.prop) {
+          const hit = s.obstacle, progress = (p.x - s.originX) * fx + (p.z - s.originZ) * fz;
+          const lineX = s.originX + fx * progress, lineZ = s.originZ + fz * progress;
+          along = Math.max(0, hit.minAlong - progress);
+          // Test the original line at the body's current height. This keeps
+          // long benches and irregular trunks beside us until their actual
+          // rear surface clears, rather than returning through a broad box.
+          if (!ctx.shoulderObstacleActive(hit.node) || progress > hit.minAlong + 0.3
+            && ctx.shoulderPropClear(cave, lineX + fx * 0.3, lineZ + fz * 0.3)
+            && (npc ? walkerClear(cave, lineX + fx * 0.3, lineZ + fz * 0.3) : canStep(cave, false, p.x, p.z, lineX + fx * 0.3, lineZ + fz * 0.3))) s.phase = 2;
+          else {
+            targetOffset = s.propOffset;
+            s.targetYaw = s.side * s.amount * SHOULDER_TWIST * clamp((SHOULDER_REACH - along) / 0.8, 0, 1);
+          }
+        } else if (!shoulderNeighbor(cave, s.other)) s.phase = 2;
+        else {
+          const q = s.other.root.position;
+          along = (q.x - p.x) * fx + (q.z - p.z) * fz;
+          if ((s.rear ? along > SHOULDER_GAP + 0.12 : along < -SHOULDER_GAP - 0.12) || Math.hypot(q.x - p.x, q.z - p.z) > SHOULDER_REACH + 0.5) s.phase = 2;
+          else {
+            const otherOffset = (q.x - s.originX) * fz - (q.z - s.originZ) * fx;
+            targetOffset = -s.dodge * Math.max(0, SHOULDER_GAP + 0.015 - s.dodge * otherOffset);
+            s.targetYaw = (s.rear ? -1 : 1) * s.side * s.amount * SHOULDER_TWIST * clamp((SHOULDER_REACH - Math.abs(along)) / 0.8, 0, 1);
+          }
+        }
+      }
+      if (s.phase === 2 && Math.abs(offset) < 0.005) { s.phase = 0; s.other = null; s.obstacle.node = null; return -1; }
+      s.attempted = true;
+      const turn = Math.atan2(targetOffset - offset, s.phase === 1 ? Math.max(0.28, Math.abs(along) * 0.65) : 0.6);
+      let moved = false;
+      // Start with a continuous, proportional sidestep. If the bodies are
+      // already close, tighten toward their tangent in small angular steps.
+      for (let i = 0; i <= 18; i++) {
+        const angle = i ? turn - s.dodge * i * Math.PI / 36 : turn;
+        if (Math.abs(angle) > Math.PI / 2 + 1e-6) break;
+        const forward = Math.cos(angle) * distance, side = Math.sin(angle) * distance;
+        const x = p.x + fx * forward + fz * side, z = p.z + fz * forward - fx * side;
+        if (s.prop && !ctx.shoulderPropClear(cave, x, z)) continue;
+        if (!shoulderClear(cave, x, z) || !(npc ? walkerClear(cave, x, z) : canStep(cave, false, p.x, p.z, x, z))) continue;
+        p.x = x; p.z = z; p.y = groundY(cave);
+        moved = true; break;
+      }
+      // A wall may prevent the sidestep before the shoulders actually meet.
+      // Keep any clear forward travel, then stop at the real body boundary.
+      if (!moved) {
+        const x = p.x + fx * distance, z = p.z + fz * distance;
+        if ((!s.prop || ctx.shoulderPropClear(cave, x, z)) && shoulderClear(cave, x, z) && (npc ? walkerClear(cave, x, z) : canStep(cave, false, p.x, p.z, x, z))) {
+          p.x = x; p.z = z; p.y = groundY(cave);
+          moved = true;
+        }
+      }
+      if (npc) cave.root.rotation.y = s.heading;
+      return moved ? distance : 0;
+    };
+    const poseShoulder = (cave, dt) => {
+      const s = cave.shoulder;
+      if (cave.root.quaternion || cave.camp.seat || cave.hop > 0 || cave.hopV > 0 || cave.camp.panic.active) { clearShoulder(cave); return; }
+      if (!s.attempted) { s.phase = 0; s.other = null; s.obstacle.node = null; }
+      s.yaw = damp(s.yaw, s.attempted ? s.targetYaw : 0, 16, dt);
+      if (Math.abs(s.yaw) < 1e-5) s.yaw = 0;
+      for (const part of cave.root.children) part.poseYaw = part === cave.parts.head ? 0 : s.yaw;
+    };
     // Walkers use the same swept body as the visitor. Hold one detour side
     // until the direct route clears, instead of alternating at every corner.
     const walkerClear = (cave, x, z) => {
       const p = cave.root.position, feet = p.y - cave.baseY;
+      const panic = cave.camp.panic;
+      if (panic.active && panic.threat) {
+        const threat = panic.threat.root.position;
+        if (Math.hypot(x - threat.x, z - threat.z) < Math.min(1.1, Math.hypot(p.x - threat.x, p.z - threat.z)) - 1e-7) return false;
+      }
       return npcWalkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave) && groundAt(x, z, feet, feet, cave) >= feet - STEP - 1e-7;
     };
     const recoverWalker = (cave, tx, tz, dt) => {
@@ -923,6 +1448,7 @@
         if (nextY >= clearance) moving = true;
         const remaining = Math.hypot(endX - x, endZ - z), step = moving ? Math.min(0.075, remaining) : 0;
         const nx = remaining ? x + (endX - x) * step / remaining : x, nz = remaining ? z + (endZ - z) * step / remaining : z;
+        if (ctx.npcHazardClear && !ctx.npcHazardClear(x, y, z, nx, nextY, nz, cave.bodyHeight)) return;
         if (moving && velocity < 0 && nextY <= landing && Math.hypot(endX - nx, endZ - nz) < 0.6) {
           if (!flyable(nx, nz, nx, nz, landing + 1e-5, cave.bodyHeight, cave)) return;
           nav.mode = 4; nav.jumpX = endX; nav.jumpZ = endZ; nav.clearance = clearance; nav.double = double;
@@ -951,6 +1477,12 @@
       const p = cave.root.position, dx = tx - p.x, dz = tz - p.z, remaining = Math.hypot(dx, dz);
       if (remaining < 1e-7) return 0;
       const step = Math.min(distance, PLAYER_STEP, remaining), heading = Math.atan2(dx, dz), avoidance = cave.avoidance;
+      // A clear stop in front of a wall must not trigger a pass around the
+      // wall beyond it. Probe only the route this walker still needs to take.
+      // Recovery waypoints already clear solid bodies. A shoulder detour here
+      // can circle a blocked waypoint forever instead of invalidating the route.
+      const passing = nav.mode === 2 ? -1 : shoulderStep(cave, dx / remaining, dz / remaining, step, true, Math.min(SHOULDER_REACH, remaining));
+      if (passing >= 0) { avoidance.active = false; return passing; }
       let angle = heading;
       const ahead = nav.mode === 2 ? step : avoidance.active ? Math.min(0.9, remaining) : step;
       if (walkerClear(cave, p.x + Math.sin(heading) * step, p.z + Math.cos(heading) * step)
@@ -1099,8 +1631,8 @@
       parts.armL.rotation.x = parts.armR.rotation.x = -1.1;
     };
     const runWalk = (cave, dt) => {
-      // Donations can cover a destination after it was chosen. Choose a new
-      // clear spot instead of circling a point now buried inside the mound.
+      // A growing pile or newly lit fire can cover a destination after it was
+      // chosen. Choose a safe spot instead of circling an unreachable goal.
       if (cave.walk.to === "spot" && npcDestinationBlocked(cave, cave.walk.tx, cave.walk.tz)) startWander(cave);
       const w = cave.walk, p = cave.root.position;
       if (w.to === "slot" && !slotAvailable(cave, cave.slot)) {
@@ -1119,6 +1651,7 @@
         moved += step; remaining -= step;
       }
       if (Math.hypot(w.tx - p.x, w.tz - p.z) < 1e-6) {
+        cave.shoulder.phase = 0; cave.shoulder.other = null;
         if (w.to === "spot") {
           arriveAtSpot(cave);
         } else {
@@ -1232,6 +1765,8 @@
       dz /= steps;
       for (let i = 0; i < steps; i++) {
         const speed = inBananas(cave) ? 0.5 : 1, sx = dx * speed, sz = dz * speed;
+        const distance = Math.hypot(sx, sz);
+        if (!flying && distance > 1e-8 && shoulderStep(cave, sx / distance, sz / distance, distance, false) >= 0) continue;
         if (canStep(cave, flying, p.x, p.z, p.x + sx, p.z + sz)) {
           p.x += sx;
           p.z += sz;
@@ -1256,7 +1791,7 @@
     };
     // Move the visitor's caveman
     const runPlayer = (cave, dt, driving = true) => {
-      const p = cave.root.position, leap = cave.leap;
+      const p = cave.root.position, leap = cave.leap, fromX = p.x, fromZ = p.z;
       const wasGround = groundY(cave);
       if (cave.jet) runJet(cave, dt);
       clampPlayerCeiling(cave, wasGround);
@@ -1267,19 +1802,7 @@
       if (len > 0.05) {
         const k = Math.min(1, len) * (flying ? JET_SPEED : PLAYER_SPEED) * dt;
         const dx = steer.x / len * k, dz = steer.z / len * k;
-        const fromX = p.x, fromZ = p.z;
         movePlayer(cave, flying, dx, dz);
-        if (!cave.traits.gasMask && !flying && cave.hop === 0 && cave.hopV <= 0) {
-          // Heels kick up a smoke trail in proportion to the ground actually covered
-          cave.smoke += Math.hypot(p.x - fromX, p.z - fromZ);
-          if (cave.smoke >= SMOKE_STEP) {
-            cave.smoke -= SMOKE_STEP;
-            const backX = -Math.sin(cave.root.rotation.y), backZ = -Math.cos(cave.root.rotation.y);
-            ctx.fx.puff(p.x + backX * 0.14, p.y - cave.baseY + 0.07, p.z + backZ * 0.14,
-              backX * 0.25 + (Math.random() - 0.5) * 0.3, 0.4 + Math.random() * 0.3, backZ * 0.25 + (Math.random() - 0.5) * 0.3,
-              0.8 + Math.random() * 0.4);
-          }
-        }
         const heading = Math.atan2(steer.x, steer.z);
         if (Math.abs(steer.forward) > 0.05 && Math.abs(steer.strafe) <= 0.05) cave.root.rotation.y = heading;
         else cave.root.rotation.y += Math.atan2(Math.sin(heading - cave.root.rotation.y), Math.cos(heading - cave.root.rotation.y)) * Math.min(1, 12 * dt) * (1 - steer.view);
@@ -1334,6 +1857,17 @@
       // Keep that exact destination layer if it drifts away next frame.
       if (ctx.cloudAt) cave.cloudSupport = ctx.cloudAt(p.x, p.z, p.y - cave.baseY);
       if (grounded(cave)) {
+        if (len > 0.05 && !cave.traits.gasMask && !flying) {
+          // Heels kick up a smoke trail in proportion to the ground actually covered
+          cave.smoke += Math.hypot(p.x - fromX, p.z - fromZ);
+          if (cave.smoke >= SMOKE_STEP) {
+            cave.smoke -= SMOKE_STEP;
+            const backX = -Math.sin(cave.root.rotation.y), backZ = -Math.cos(cave.root.rotation.y);
+            ctx.fx.puff(p.x + backX * 0.14, p.y - cave.baseY + 0.07, p.z + backZ * 0.14,
+              backX * 0.25 + (Math.random() - 0.5) * 0.3, 0.4 + Math.random() * 0.3, backZ * 0.25 + (Math.random() - 0.5) * 0.3,
+              0.8 + Math.random() * 0.4);
+          }
+        }
         cave.jumps = 0;
       } else cave.jumps = Math.max(1, cave.jumps);
       if (cave.hop === 0 && (leap.vx || leap.vz)) {
@@ -1515,7 +2049,7 @@
     // ---------- the visitor's caveman ----------
     const sleepPlayer = (bed) => {
       const cave = player;
-      if (!cave || cave.state === "sleeping" || !bed || bed.sleeper && bed.sleeper !== cave) return false;
+      if (!cave || cave.camp.burning || cave.camp.seat || cave.state === "sleeping" || !bed || bed.sleeper && bed.sleeper !== cave) return false;
       // The view's step smoothing can still be settling when SLEEP appears.
       // Admission uses the planted feet, before clearing that visual offset.
       if (!grounded(cave)) return false;
@@ -1553,6 +2087,7 @@
     const control = (cave) => {
       if (cave === player || cave.state !== "working" && cave.state !== "sleeping") return false;
       release();
+      clearShoulder(cave);
       if (cave.state === "sleeping" && (!ctx.bedRoute || cave.bedTravel.mode === "rest" || cave.bedTravel.mode === "lie")) {
         player = cave;
         cave.bedTravel.manual = true;
@@ -1575,6 +2110,11 @@
         refreshRosterRow(cave);
       }
       player = cave;
+      cave.camp.panic.active = false;
+      cave.camp.panic.threat = cave.camp.panic.resumeWalk = null;
+      cave.camp.panic.remembered = false;
+      cave.camp.panic.memory.fill(0);
+      cave.camp.panic.resumeSleep = false;
       releaseBuild(cave);
       cave.avoidance.navigation.mode = 0; cave.avoidance.tx = NaN;
       cave.walk = null;
@@ -1595,6 +2135,11 @@
       if (player) clearHeadLook(player);
       if (!player) return;
       const cave = player;
+      clearShoulder(cave);
+      if (cave.camp.seat && !standPlayer(cave)) {
+        cave.camp.seat.sitter = null;
+        cave.camp.seat = null;
+      }
       if (cave.bedTravel.manual && cave.state === "sleeping") {
         cave.bedTravel.manual = false;
         player = null;
@@ -1611,13 +2156,15 @@
         cave.jet.power = 0;
         cave.jet.flame.visible = false;
       }
-      standPose(cave);
-      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave)) cave.root.position.y = groundY(cave) + cave.hop;
+      if (!cave.camp.rolling) {
+        standPose(cave);
+        if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave)) cave.root.position.y = groundY(cave) + cave.hop;
+      }
       cave.act.kind = "idle";
       cave.act.until = elapsed + 1.5;
       cave.act.said = true;
       cave.act.trips = 0;
-      if (ctx.bedRoute && cave.root.position.y - cave.baseY < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave))) startBedRoute(cave, null, false);
+      if (!cave.camp.burning && ctx.bedRoute && cave.root.position.y - cave.baseY < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave))) startBedRoute(cave, null, false);
     };
     const steerPlayer = (x, z, view = 0, forward = 0, strafe = 0) => {
       steer.x = x;
@@ -1630,6 +2177,9 @@
     const relocatePlayer = (position, heading) => {
       const cave = player;
       if (!cave) return;
+      clearShoulder(cave);
+      if (cave.camp.seat) { cave.camp.seat.sitter = null; cave.camp.seat = null; }
+      if (cave.camp.rolling) { cave.camp.rolling = false; cave.root.quaternion = null; }
       if (cave.bedTravel.manual) wakePlayer();
       elevatePlayer(0);
       steer.x = steer.z = steer.view = steer.forward = steer.strafe = 0;
@@ -1657,8 +2207,14 @@
     const lookPlayer = (heading, pitch, mix, viewRotation = null) => {
       if (!player) return;
       clearHeadLook(player);
+      if (player.camp.rolling) return;
       if (mix <= 0) return;
       const root = player.root, head = player.parts.head;
+      if (player.camp.seat) {
+        head.rotation.y = clamp(Math.atan2(Math.sin(heading - root.rotation.y), Math.cos(heading - root.rotation.y)), -1.2, 1.2) * mix;
+        head.rotation.x = pitch * mix;
+        return;
+      }
       if (player.bedTravel.manual) {
         if (!viewRotation || !root.quaternion) return;
         const q = root.quaternion, look = player.headLookRotation;
@@ -1684,7 +2240,7 @@
     // Shift the visible body while its root remains on the exact collision surface.
     // Scaling each leg about its hip keeps the feet on that same voxel step.
     const elevatePlayer = (lift) => {
-      if (!player || player.bedTravel.manual) return;
+      if (!player || player.bedTravel.manual || player.camp.seat || player.camp.rolling) return;
       const cave = player, parts = cave.parts;
       // Step smoothing moves the rendered head after physics. Keep that lift
       // within the same full-footprint ceiling used by walking and jumping.
@@ -1706,10 +2262,10 @@
       parts.legL.scale.y = parts.legR.scale.y = (cave.baseY + lift) / cave.baseY;
     };
     const jumpPlayer = () => {
-      if (!player || player.bedTravel.manual || player.jet && !player.jetRecovering) return false;
+      if (!player || player.bedTravel.manual || player.camp.seat || player.camp.rolling || player.jet && !player.jetRecovering) return false;
       if (grounded(player)) player.jumps = 0;
       else player.jumps = Math.max(1, player.jumps);
-      if (player.jumps >= 2) return false;
+      if (player.jumps >= 2 && !inBananas(player)) return false;
       // A takeoff leaves step smoothing behind before testing its headroom.
       elevatePlayer(0);
       player.jumps++;
@@ -1720,6 +2276,8 @@
     // a nearby action consumes the press and airborne presses add no impulse.
     const playerAction = () => {
       if (!player) return false;
+      if (player.camp.burning) return dropRoll();
+      if (player.camp.seat) return standPlayer();
       if (player.bedTravel.manual) return wakePlayer();
       const p = player.root.position, feet = p.y - player.baseY;
       if (ctx.useNear && ctx.useNear(p.x, p.z, REACH + 0.6, feet)) return true;
@@ -1892,36 +2450,86 @@
       batch.instanceCount = count;
       batch.instanceVersion++;
     };
+    // Resolve a standing stack from its bottom up, once per actor, so the
+    // passenger receives this frame's movement regardless of roster order.
+    const updateMember = (cave, dt) => {
+      const riding = cave.riding;
+      if (riding.updated) return;
+      if (riding.support) updateMember(riding.support, dt);
+      const p = cave.root.position, x = p.x, y = p.y, z = p.z;
+      // Test both endpoints against the same current heap. A resize or a
+      // relocation between frames must not masquerade as an exit.
+      const wasInBananas = cave.root.visible && cave.state === "working" && inBananas(cave);
+      const support = riding.support;
+      if (support && support.root.visible && support.riding.continuous) {
+        const q = support.root.position, from = support.riding;
+        ctx.carryCharacter(cave, q.x - from.x, q.y - from.y, q.z - from.z);
+      }
+      const ownX = p.x, ownY = p.y, ownZ = p.z;
+      if (!runCamp(cave, dt)) updateCaveman(cave, dt);
+      if (ctx.characterSupportAt) riding.support = ctx.characterSupportAt(cave);
+      poseShoulder(cave, dt);
+      if (dt > 0 && cave.root.visible && cave.state === "working" && ctx.onBodyMove) ctx.onBodyMove(cave, x, y, z, dt);
+      if (dt > 0) {
+        const s = cave.shoulder, continuous = Math.hypot(p.x - x, p.z - z) <= PLAYER_SPEED * dt + 1e-5;
+        s.motionX = continuous ? (p.x - x) / dt : 0; s.motionZ = continuous ? (p.z - z) / dt : 0;
+      }
+      updateCampEffects(cave, dt);
+      runMaskBreath(cave, dt);
+      packMaskSmoke(cave);
+      if (wasInBananas && dt > 0 && cave.root.visible && cave.state === "working" && !inBananas(cave) && ctx.pile.spill) {
+        const dx = p.x - x, dy = p.y - y, dz = p.z - z;
+        // Respawns and scripted arrivals can move during an update too.
+        // Only continuous character movement should carry fruit with it.
+        if (Math.hypot(dx, dz) <= (JET_SPEED + WALK.ledgeSpeed) * dt + 1e-5 && Math.abs(dy) <= Math.abs(cave.hopV) * dt + STEP + 1e-5
+          && Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 1e-7) {
+          const feet = p.y - cave.baseY;
+          // Upward exits shed fruit at the feet crossing the top. Side
+          // exits scatter the fruit carried along the whole body.
+          const height = dy > Math.hypot(dx, dz) ? 0 : cave.bodyHeight;
+          ctx.pile.spill(p.x, feet + 0.04, p.z, dx / dt, dy / dt, dz / dt, height);
+        }
+      }
+      if (grounded(cave)) {
+        if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
+        if (cave.jetFuel < 1 && (!cave.jet || !cave.jet.spending)) cave.jetFuel = Math.min(1, cave.jetFuel + dt / JET_REFILL_SECONDS);
+      }
+      if (cave.jetFuel > JET_LAUNCH_FUEL) cave.jetRecovering = false;
+      // Check only this actor's own motion: a stack can add several legitimate
+      // walking velocities. Keep the old fall speed when a landing zeros hopV.
+      // Respawns and scripted arrivals must never teleport their passengers.
+      riding.continuous = dt > 0 && Math.hypot(p.x - ownX, p.z - ownZ) <= (Math.max(PLAYER_SPEED, JET_SPEED) + WALK.ledgeSpeed) * dt + 1e-5
+        && Math.abs(p.y - ownY) <= Math.max(Math.abs(riding.vy), Math.abs(cave.hopV)) * dt + STEP + WALK.gravity * dt * dt + 1e-5;
+      riding.updated = true;
+    };
     const update = (dt, now) => {
       elapsed = now;
+      // Snapshot both sides before anyone moves, so a centered meeting gives
+      // both walkers the same right-shoulder default regardless of update order.
+      // Previous-frame motion distinguishes an overtaker from someone behind.
       for (const cave of cavemen.values()) {
-        const p = cave.root.position, x = p.x, y = p.y, z = p.z;
-        // Test both endpoints against the same current heap. A resize or a
-        // relocation between frames must not masquerade as an exit.
-        const wasInBananas = cave.root.visible && cave.state === "working" && inBananas(cave);
-        updateCaveman(cave, dt);
-        runMaskBreath(cave, dt);
-        packMaskSmoke(cave);
-        if (wasInBananas && dt > 0 && cave.root.visible && cave.state === "working" && !inBananas(cave) && ctx.pile.spill) {
-          const dx = p.x - x, dy = p.y - y, dz = p.z - z;
-          // Respawns and scripted arrivals can move during an update too.
-          // Only continuous character movement should carry fruit with it.
-          if (Math.hypot(dx, dz) <= (JET_SPEED + WALK.ledgeSpeed) * dt + 1e-5 && Math.abs(dy) <= Math.abs(cave.hopV) * dt + STEP + 1e-5
-            && Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 1e-7) {
-            ctx.pile.spill(p.x, p.y - cave.baseY + cave.bodyHeight * 0.5, p.z, dx / dt, dy / dt, dz / dt);
-          }
-        }
-        if (grounded(cave)) {
-          if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
-          if (cave.jetFuel < 1 && (!cave.jet || !cave.jet.spending)) cave.jetFuel = Math.min(1, cave.jetFuel + dt / JET_REFILL_SECONDS);
-        }
-        if (cave.jetFuel > JET_LAUNCH_FUEL) cave.jetRecovering = false;
+        const s = cave.shoulder, riding = cave.riding, p = cave.root.position;
+        riding.support = null; riding.updated = riding.continuous = false;
+        riding.x = p.x; riding.y = p.y; riding.z = p.z;
+        riding.vy = cave.hopV;
+        s.snapX = p.x; s.snapZ = p.z;
+        s.snapVX = s.motionX; s.snapVZ = s.motionZ;
+        s.attempted = false; s.targetYaw = 0;
       }
+      if (dt > 0 && ctx.characterSupportAt) for (const cave of cavemen.values()) cave.riding.support = ctx.characterSupportAt(cave);
+      if (dt > 0) updateFireContacts();
+      updateFireThreats();
+      for (const cave of cavemen.values()) updateMember(cave, dt);
+      if (dt > 0) updateFireContacts();
+      // Collision exclusions belong only to this ordered physics update.
+      // Input, dragging and relocation outside it must see ordinary bodies.
+      for (const cave of cavemen.values()) cave.riding.support = null;
     };
     const dispose = () => {
       player = null;
       for (const cave of cavemen.values()) {
         releaseBedroll(cave);
+        if (cave.camp.seat) cave.camp.seat.sitter = null;
         for (const key of BODY_PARTS) input.remove(cave.parts[key]);
         removeChild(root, cave.root);
         if (cave.breathBatch) removeChild(root, cave.breathBatch);
@@ -1938,8 +2546,8 @@
     };
     const stats = () => ({ built: builtEquipment.length });
     return {
-      cavemen, stateOf, stateCounts, workingCavemen, eatingCavemen, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, drawQuotes,
-      control, release, relocatePlayer, sleepPlayer, wakePlayer, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, wearJetpack, removeJetpack, thrust, update, dispose, stats,
+      cavemen, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, drawQuotes,
+      control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, ignite, dropRoll, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, wearJetpack, removeJetpack, thrust, update, dispose, stats,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
         return player;

@@ -2,7 +2,7 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod } = BL;
-  const { lerp, ease, fnv1a, mulberry32 } = math;
+  const { clamp, lerp, ease, fnv1a, mulberry32 } = math;
   const { createNode, addChild, removeChild, createCamera, addTween, stepTweens, tweenCount, traverseVisible } = BL.scene;
   const { EAT_RATE, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS } = crewMod;
   const { DROP_HEIGHT } = pileMod;
@@ -15,15 +15,17 @@
   const yawParam = parseFloat(params.get("yaw"));
   // Debug clock: a pinned hour and a day length in seconds
   const DEBUG = params.has("debug");
+  const timeParam = DEBUG ? params.get("time") : null;
   const hourParam = DEBUG ? parseFloat(params.get("hour")) : NaN;
   const daylenParam = DEBUG ? parseFloat(params.get("daylen")) : NaN;
   const dayParam = DEBUG ? parseFloat(params.get("day")) : NaN;
   const latitudeParam = DEBUG ? parseFloat(params.get("latitude")) : NaN;
   const requestedView = DEBUG ? params.get("view") : null;
-  const preloadedView = requestedView === "hq" ? "underground" : requestedView === "pile" || requestedView === "lab" || requestedView === "mirror" ? requestedView : null;
+  const preloadedView = requestedView === "hq" ? "underground" : requestedView === "bsmt" ? "basement" : requestedView === "pile" || requestedView === "lab" || requestedView === "mirror" ? requestedView : null;
   const preloadedFirstPerson = DEBUG && params.get("firstperson") === "1";
   const preloadedCharacter = DEBUG ? params.get("character")?.trim().toLowerCase() : null;
   const preloadedJetpack = DEBUG && params.get("jetpack") === "1";
+  const preloadedJetpackWear = preloadedJetpack && preloadedView !== "underground" && preloadedView !== "basement";
   const islandLatitude = Number.isFinite(latitudeParam) ? Math.max(-66, Math.min(66, latitudeParam)) : daylight.ISLAND_LATITUDE_DEG;
   // Island measures, owned by terrain.js
   const MEADOW = 22, RADIUS = 30;
@@ -55,8 +57,8 @@
   // The island's one jetpack waits above a distant moving cloud.
   const JETPACK_HOVER = 0.5, JETPACK_REACH = 1.35, JETPACK_FAR = 44;
   const JETPACK_FALL_GRAVITY = 9.8, JETPACK_RESPAWN_Y = -60;
-  // Reach at which a caveman enters the lab or uses the plane on the roof
-  const TUNNEL_REACH = 2.2, LAUNCH_REACH = 2.6;
+  // Launch reach includes room around the kart plinth and the plane's wings.
+  const TUNNEL_REACH = 2.2, RALLY_REACH = 3.2, LAUNCH_REACH = 4, RALLY_KART_Z = -3.6;
   const MATRIX_TYPES = 8;
   const MATRIX_RAIN_GAP = 0.19;
   const MATRIX_SURFACE_PITCH = 0.12, MATRIX_SURFACE_GAP = 0.13, MATRIX_GLYPH_HZ = 20;
@@ -95,6 +97,7 @@
   const LAMP_STAGGER = 0.12, LAMP_RAMP = 0.4, LAMP_OFF = 0.12;
   const CAVE_TORCH_GAP = 0.12;
   const FIRE_DEGREES = [130, 125, 135, 120, 140, 115, 145], FIRE_RADIUS = 11.5, FIRE_SEATS = 6, FIRE_SEAT_RADIUS = 1.8;
+  const FIRE_CONTACT_RADIUS = 0.65, FIRE_AVOID_RADIUS = 1, FIRE_BOTTOM = 0.12, FIRE_TOP = 0.85;
   const NIGHT = 0.5, FIRE_SEAT_CHANCE = 0.5;
   // Clock angle to a meadow point
   const polar = (deg, r) => ({ x: Math.sin(deg * DEG) * r, z: -Math.cos(deg * DEG) * r });
@@ -115,7 +118,7 @@
   const RIPEN = 25, TREE_CHANCE = 0.5, BUSH_CHANCE = 0.25;
   const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · solid", crate: "Crate · locked", barrel: "Barrel · empty", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", windsock: "Windsock · a fair wind", gate: null };
   const MATRIX_LIVING_PROPS = new Set(["tree"]);
-  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel"]);
+  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit"]);
   const BUSH_WORDS = ["Something rustles.", "A beetle. Ooga leaves it.", "Just a bush."];
   const LEAF = models.particleGeometry("#4a8530", 0.12, 0);
   const PETALS = ["#e04a3a", "#f2c94c", "#f3efe4"].map((c) => models.particleGeometry(c, 0.09, 0));
@@ -139,7 +142,7 @@
 
   // One visit's state, made in enter and dropped in leave
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, jetpack, jetpackState, jetpackCarrier, jetpackWearer, lastJetpackCloud, mirrorCave, matrixCave, matrixControl, gateRain, fire, headquarters;
-  const JETPACK_HUD_STATE = { owned: false, equipped: false, fuel: 1 };
+  const JETPACK_HUD_STATE = { owned: false, equipped: false, fuel: 1, blocked: false };
   let enteringTween = null;
   let stateTimer = 0, hintTimer = 0, meterTimer = 0, now = 0, hour = 12;
   let phase = null;
@@ -150,6 +153,7 @@
   const lamps = [];
   const entranceLights = [];
   const fireSeats = [];
+  const fireHazards = [];
   const sleepers = [];
   const labels = [];
   const spots = [];
@@ -979,6 +983,7 @@
     const pit = place(hubModels.firepit(), p.x, p.z, 0, 0, "firepit", 1.2);
     const flame = createNode({ geometry: hubModels.fireFlame(), matrixEmissiveLiving: true });
     addChild(pit, flame);
+    fireHazards.push({ node: flame, x: p.x, y: pit.position.y, z: p.z });
     addLamp(flame, LAMP.fire, p.x, 0.6, p.z, true, 3, "firepit");
     claim(p.x, p.z, 1.4);
     for (let i = 0; i < FIRE_SEATS; i++) {
@@ -1000,6 +1005,7 @@
       const geometry = hubModels.sealedCaveFace(sealedCaveVariant(slot.id));
       const seal = createNode({ position: { x: 0, y: 0, z: 0.52 }, geometry, matrixExterior: true, sightSolid: true });
       addChild(group, seal);
+      solids.add(seal);
       sealedCaves.push({ caveIndex, mouth: m, node: seal, sr: ax, cr: az, stopZ: seal.position.z + geometry.frontZ + 0.01 });
     } else {
       const opening = rim.geometry.openingBounds;
@@ -1012,9 +1018,9 @@
     if (slot.status === "open" && slot.scene === "race") {
       // The rally garage: a kart up on a stone plinth, spare wheels, a crate and a barrel
       const kart = BL.raceModels.kart("#d98a2e");
-      Object.assign(kart.node.position, { x: 0, y: 0.5, z: -3.6 });
+      Object.assign(kart.node.position, { x: 0, y: 0.5, z: RALLY_KART_Z });
       kart.node.rotation.y = 0.5;
-      const plinth = createNode({ position: { x: 0, y: 0, z: -3.6 }, geometry: hubModels.altarSlab() });
+      const plinth = createNode({ position: { x: 0, y: 0, z: RALLY_KART_Z }, geometry: hubModels.altarSlab() });
       Object.assign(plinth.scale, { x: 1.4, y: 0.5, z: 1.4 });
       const wheels = createNode({ position: { x: -1.7, y: 0, z: -2.6 } });
       for (let i = 0; i < 3; i++) addChild(wheels, createNode({ position: { x: 0, y: 0.12 + i * 0.24, z: 0 }, rotation: { x: 0, y: 0, z: Math.PI / 2 }, geometry: BL.raceModels.kartWheel() }));
@@ -1133,12 +1139,16 @@
     const room = createNode({ position: { x: 0, y: floor, z: 0 }, geometry: headquartersModels.room() });
     addChild(root, room);
     placed.push(room);
-    const entrances = [], lights = [], mattresses = [];
+    solids.add(room);
+    const benches = [];
+    for (const x of [-2.6, 2.6]) for (const z of [-0.55, 0.55]) benches.push({ kind: "bench", x, y: floor + 0.58, z, floor, ry: Math.atan2(-x, -z), sitter: null, walkAt: { x: x - Math.sign(x) * 0.85, z } });
+    const entrances = [], lights = [], mattresses = [], roomSigns = [];
     FLY.yMin = basement.floor - 1;
     const addEntrance = (node, roomIndex, lower, ramp = false) => {
       node.sightSolid = true;
       addChild(root, node);
       placed.push(node);
+      solids.add(node, true);
       const bounds = BL.scene.boundsOf(node.geometry);
       entrances.push({ roomIndex, node, basement: lower, ramp, sr: Math.sin(node.rotation.y), cr: Math.cos(node.rotation.y), radius: Math.hypot(Math.max(Math.abs(bounds.min[0]), Math.abs(bounds.max[0])) * node.scale.x, Math.max(Math.abs(bounds.min[2]), Math.abs(bounds.max[2]))), minY: node.position.y + bounds.min[1], maxY: node.position.y + bounds.max[1] });
     };
@@ -1154,6 +1164,11 @@
       addEntrance(entrance, i, level === basement);
       const dimensions = headquartersModels.MATTRESS, across = -(cave.width / 2 - dimensions.wallInset - dimensions.width / 2), along = cave.depth / 2 - dimensions.wallInset - dimensions.depth / 2;
       const sx = Math.sin(angle), cx = Math.cos(angle), geometry = headquartersModels.mattress(cave);
+      const sign = createNode({ position: { x: cave.entrance.x - sx * 0.28, y: cave.floor + 3.78, z: cave.entrance.z + cx * 0.28 }, rotation: { x: 0, y: -angle, z: 0 }, geometry: headquartersModels.roomSign(cave) });
+      addChild(root, sign);
+      placed.push(sign);
+      const hanging = { roomIndex: i, basement: level === basement, room: cave, node: sign, sr: -sx, cr: cx, velocity: 0, hits: 0, contacts: 0 };
+      roomSigns.push(hanging);
       const node = createNode({ position: { x: cave.x + cx * across + sx * along, y: cave.floor, z: cave.z + sx * across - cx * along }, rotation: { x: 0, y: -angle, z: 0 }, geometry });
       addChild(root, node);
       placed.push(node);
@@ -1177,8 +1192,10 @@
       torchAt(Math.sin(angle) * radius, p.y + 0.6, -Math.cos(angle) * radius);
     }
     const firepit = createNode({ position: { x: 0, y: floor, z: 0 }, geometry: hubModels.firepit() });
+    solids.add(firepit);
     const flame = createNode({ geometry: hubModels.fireFlame(), glow: 0.9, matrixEmissiveLiving: true });
     addChild(firepit, flame);
+    fireHazards.push({ node: flame, x: 0, y: floor, z: 0 });
     addChild(root, firepit);
     placed.push(firepit);
     const hearth = { id: "headquarters:hearth", node: flame, x: 0, y: floor + 0.6, z: 0, phase: 23 };
@@ -1187,7 +1204,7 @@
     // openings and ramp torches remain emissive landmarks, but neither creates
     // camera-proximity lighting that spills into an unclaimed room.
     const sources = [hearth];
-    return { node: room, entrances, mattresses, lights, sources, hearth, firepit, rooms: island.headquarters.rooms, windows: island.headquarters.windows, ramps: island.headquarters.ramps, openFloor: island.headquarters.room, basement, sleepMarksVisible };
+    return { node: room, entrances, mattresses, roomSigns, benches, fireHazards, lights, sources, hearth, firepit, rooms: island.headquarters.rooms, windows: island.headquarters.windows, ramps: island.headquarters.ramps, openFloor: island.headquarters.room, basement, sleepMarksVisible };
   };
   // Dock over the drop and ladder on the bluff
   const buildRim = () => {
@@ -1209,6 +1226,23 @@
   // Scatter props by rejection, keeping off paths and mouths
   const scatter = () => {
     const rand = mulberry32(SEED);
+    const treeGroundClear = (geometry, x, z, y) => {
+      // Scan every voxel column touched by the crown and a walking body's
+      // radius. Four corner samples miss narrow, higher steps on cave roofs.
+      const reach = geometry.treeRadius + PLAYER_RADIUS, unit = island.unit, half = unit / 2;
+      // Two units fit the tallest Ooga's full head-look envelope with room to spare.
+      const rootRadius = Math.hypot(0.5, 0.25), ceiling = y + geometry.treeCanopyFloor - 2;
+      const grid = island.sightGrid, minX = Math.floor((x - reach - grid[1]) / unit), maxX = Math.floor((x + reach - grid[1]) / unit);
+      const minZ = Math.floor((z - reach - grid[3]) / unit), maxZ = Math.floor((z + reach - grid[3]) / unit);
+      for (let gx = minX; gx <= maxX; gx++) for (let gz = minZ; gz <= maxZ; gz++) {
+        const px = grid[1] + (gx + 0.5) * unit, pz = grid[3] + (gz + 0.5) * unit;
+        const distance = Math.hypot(Math.max(0, Math.abs(px - x) - half), Math.max(0, Math.abs(pz - z) - half));
+        if (distance > reach) continue;
+        const floor = island.surfaceAt(px, pz);
+        if (floor > ceiling || distance < rootRadius && floor > y) return false;
+      }
+      return true;
+    };
     const candidateFree = (x, z, radius) => {
       for (let i = 0; i < sceneryClaims.length; i++) {
         const c = sceneryClaims[i];
@@ -1221,7 +1255,8 @@
       const reservation = claim(x, z, footprint);
       sceneryClaims.push(reservation);
       const quiet = kind === "grass";
-      const node = place(geometry, x, z, ry, y, quiet ? null : kind, footprint + 0.3);
+      const pickRadius = kind === "tree" ? BL.scene.boundsOf(geometry).radius : footprint + 0.3;
+      const node = place(geometry, x, z, ry, y, quiet ? null : kind, pickRadius);
       if (quiet || kind === "flower" || kind === "bush") node.sightHidden = true;
       if (MATRIX_LIVING_PROPS.has(kind)) node.matrixLiving = true;
       const owner = quiet ? { kind: "prop", prop: kind, node, x, z, ripe: 0, pickRadius: 0, active: true } : props[props.length - 1];
@@ -1240,7 +1275,9 @@
       }
     };
     const cliff = (count, radius, minHeight, kind, geometryAt) => {
-      for (let n = 0, tries = 0; n < count && tries < 1200; tries++) {
+      // Safe root ledges are rarer than decorative bush sites. Keep the
+      // seeded search bounded while retaining the full grove on the cliffs.
+      for (let n = 0, tries = 0; n < count && tries < (kind === "tree" ? 24000 : 1200); tries++) {
         const { x, z } = polar(rand() * 360, lerp(CLIFF_INNER, CLIFF_OUTER, rand()));
         const h = island.surfaceAt(x, z);
         if (h < minHeight || !free(x, z, radius)) continue;
@@ -1250,7 +1287,9 @@
           if (island.surfaceAt(x + Math.cos(a) * 1.2, z + Math.sin(a) * 1.2) > h + 1.5) clear = false;
         }
         if (!clear || nearMouth(x, z, 4) || !candidateFree(x, z, radius)) continue;
-        addScenery(geometryAt(n), x, z, rand() * Math.PI * 2, h, kind, radius);
+        const geometry = geometryAt(n);
+        if (kind === "tree" && !treeGroundClear(geometry, x, z, h)) continue;
+        addScenery(geometry, x, z, rand() * Math.PI * 2, h, kind, radius);
         n++;
       }
     };
@@ -1306,6 +1345,7 @@
     JETPACK_HUD_STATE.owned = !!jetpackState && jetpackState.owned;
     JETPACK_HUD_STATE.equipped = !!(cave && cave.jet);
     JETPACK_HUD_STATE.fuel = cave && jetpackCarrier === cave ? cave.jetFuel : jetpackState ? jetpackState.fuel : 1;
+    JETPACK_HUD_STATE.blocked = JETPACK_HUD_STATE.owned && (cave ? !jetpackAllowed(cave) : cameraCaveIndex !== 0);
     return JETPACK_HUD_STATE;
   };
   const syncJetpackFuel = () => {
@@ -1427,7 +1467,7 @@
   // By the fire at night, else anywhere on the meadow
   const npcWanderPointClear = (s, cave) => {
     const feet = island.surfaceAt(s.x, s.z), height = cave ? cave.bodyHeight : 1.5;
-    return !npcPileAt(s.x, feet, s.z, height) && walkable(s.x, s.z, s.x, s.z, feet, height, cave);
+    return !npcPileAt(s.x, feet, s.z, height) && npcFireClear(s.x, feet, s.z, s.x, feet, s.z, height) && walkable(s.x, s.z, s.x, s.z, feet, height, cave);
   };
   const wanderSpot = (out, cave = null) => {
     let s = RENDER_OPTS.stars > NIGHT && Math.random() < FIRE_SEAT_CHANCE ? freeSeat() : null;
@@ -1513,6 +1553,32 @@
     const dx = Math.max(b[0] - x, 0, x - b[3]), dz = Math.max(b[2] - z, 0, z - b[5]);
     return dx * dx + dz * dz < radius * radius - 1e-8;
   };
+  const uprightCharacter = (cave) => cave.root.visible && cave.state === "working" && !cave.root.quaternion && !cave.camp.seat && !cave.camp.rolling;
+  const standingPassenger = (cave) => uprightCharacter(cave) && cave.hop <= 1e-7 && cave.hopV <= 0 && !cave.jet?.thrust;
+  const passengerOf = (cave, support) => {
+    if (!support || !cave.riding.support || !uprightCharacter(support)) return false;
+    // Links exist only during the crew's ordered update. Bound chains by the
+    // roster even if two bodies were placed into an invalid shared position.
+    for (let n = 0; cave && n < crew.cavemen.size; n++) {
+      if (!standingPassenger(cave)) return false;
+      cave = cave.riding.support;
+      if (cave === support) return true;
+    }
+    return false;
+  };
+  const characterSupportAt = (cave) => {
+    if (!standingPassenger(cave)) return null;
+    const p = cave.root.position, feet = p.y - cave.baseY;
+    let support = null, distance = Infinity;
+    for (const other of crew.cavemen.values()) {
+      if (other === cave || !uprightCharacter(other)) continue;
+      const b = actorBounds(other);
+      if (Math.abs(b[4] - feet) > 1e-6 || !bodyOverlaps(other, b, p.x, p.z, PLAYER_RADIUS)) continue;
+      const q = other.root.position, d = (p.x - q.x) ** 2 + (p.z - q.z) ** 2;
+      if (d < distance) { support = other; distance = d; }
+    }
+    return support && Math.abs(playerSupportAt(p.x, p.z, feet, feet, cave) - feet) <= 1e-6 ? support : null;
+  };
   const propSupportAt = (x, z, y, rise, actor) => {
     let floor = solids ? solids.supportAt(x, z, y, rise, PLAYER_RADIUS) : -Infinity;
     if (altar && ALTAR_HEIGHT <= y + rise + 1e-7 && Math.hypot(x, z) < altar.platformRadius + PLAYER_RADIUS - 1e-7) floor = Math.max(floor, ALTAR_HEIGHT);
@@ -1527,17 +1593,17 @@
     let ceiling = solids ? solids.ceilingAt(x, z, y, radius) : Infinity;
     if (altar && y < ALTAR_HEIGHT - 1e-7 && Math.hypot(x, z) < altar.platformRadius + radius - 1e-7) ceiling = Math.min(ceiling, 0);
     if (crew) for (const other of crew.cavemen.values()) {
-      if (other === actor || !other.root.visible) continue;
+      if (other === actor || !other.root.visible || passengerOf(other, actor)) continue;
       const b = actorBounds(other);
       if (b[1] > y + 1e-7 && y < b[4] - 1e-7 && bodyOverlaps(other, b, x, z, radius)) ceiling = Math.min(ceiling, b[1]);
     }
     return ceiling;
   };
-  const propSegmentClear = (x, y, z, toX, toY, toZ, radius, height, actor) => {
+  const propSegmentClear = (x, y, z, toX, toY, toZ, radius, height, actor, carrying = false) => {
     if (solids && !solids.segmentClear(x, y, z, toX, toY, toZ, radius, height)) return false;
     if (altar && !cylinderSegmentClear(x, y, z, toX, toY, toZ, radius, height, 0, 0, 0, ALTAR_HEIGHT, altar.platformRadius)) return false;
     if (crew) for (const other of crew.cavemen.values()) {
-      if (other === actor || !other.root.visible) continue;
+      if (other === actor || !other.root.visible || passengerOf(other, actor) || carrying && passengerOf(actor, other)) continue;
       const b = actorBounds(other), p = other.root.position;
       if (other.root.quaternion) {
         if (!terrain.segmentBoxClear(x, y, z, toX - x, toY - y, toZ - z, radius, height, b[0], b[1], b[2], b[3], b[4], b[5])) return false;
@@ -1651,6 +1717,89 @@
     }
     return ceiling;
   };
+  const ROOM_SIGN_LIMIT = 1.35, ROOM_SIGN_HEAD_RADIUS = 0.22;
+  // Sweep the head through the board's rotated coordinates. These light
+  // hanging props yield to the body; the stone frame still owns collision.
+  const roomSignHeadClear = (sign, x, y, z, dx, dy, dz) => {
+    const a = sign.node.rotation.x, c = Math.cos(a), s = Math.sin(a), b = sign.node.geometry.roomLifehashSign.board, r = ROOM_SIGN_HEAD_RADIUS;
+    return terrain.segmentBoxClear(x, y * c + z * s - r, z * c - y * s, dx, dy * c + dz * s, dz * c - dy * s, r, r * 2, b[0], b[1], b[2], b[3], b[4], b[5]);
+  };
+  const moveRoomSigns = (cave, x, y, z, dt) => {
+    const p = cave.root.position, dx = p.x - x, dy = p.y - y, dz = p.z - z, bit = 1 << cave.index;
+    const continuous = Math.hypot(dx, dz) <= (JET_SPEED + pilotMod.WALK.speed) * dt + 1e-5 && Math.abs(dy) <= Math.abs(cave.hopV) * dt + STEP_MAX + 1e-5;
+    for (const sign of headquarters.roomSigns) {
+      const ox = x - sign.node.position.x, oz = z - sign.node.position.z;
+      const lx = ox * sign.cr - oz * sign.sr, lz = ox * sign.sr + oz * sign.cr;
+      const ly = y - cave.baseY + cave.bodyHeight + cave.viewLift - ROOM_SIGN_HEAD_RADIUS - sign.node.position.y;
+      const vx = dx * sign.cr - dz * sign.sr, vz = dx * sign.sr + dz * sign.cr;
+      if (!sign.node.visible || !continuous || Math.abs(lx + vx) > sign.node.geometry.roomLifehashSign.width / 2 + ROOM_SIGN_HEAD_RADIUS
+        || Math.abs(lz + vz) > 1.1 || ly + dy < -1.1 || ly + dy > 0.3) { sign.contacts &= ~bit; continue; }
+      if (roomSignHeadClear(sign, lx, ly, lz, vx, dy, vz)) continue;
+      const direction = sign.contacts & bit ? Math.sign(sign.node.rotation.x || sign.velocity) : Math.abs(vz) > 1e-6 ? -Math.sign(vz) : lz >= 0.07 ? 1 : -1;
+      if (!(sign.contacts & bit)) {
+        sign.velocity = direction * Math.min(7, 2 + Math.hypot(dx, dy, dz) / dt * 0.65);
+        sign.contacts |= bit;
+        sign.hits++;
+      }
+      // Resolve overlap by moving the board, preserving the jump's velocity.
+      // The bounded angular steps let the head push it farther as it passes.
+      for (let n = 0; n < 68 && !roomSignHeadClear(sign, lx + vx, ly + dy, lz + vz, 0, 0, 0); n++) {
+        const angle = clamp(sign.node.rotation.x + direction * 0.04, -ROOM_SIGN_LIMIT, ROOM_SIGN_LIMIT);
+        if (angle === sign.node.rotation.x) break;
+        sign.node.rotation.x = angle;
+      }
+    }
+  };
+  const updateRoomSigns = (dt) => {
+    for (const sign of headquarters.roomSigns) {
+      if (!sign.velocity && !sign.node.rotation.x) continue;
+      let remaining = Math.min(dt, 0.1);
+      while (remaining > 1e-7) {
+        const step = Math.min(remaining, 1 / 120);
+        sign.velocity += (-18 * sign.node.rotation.x - 4 * sign.velocity) * step;
+        sign.node.rotation.x += sign.velocity * step;
+        if (Math.abs(sign.node.rotation.x) > ROOM_SIGN_LIMIT) { sign.node.rotation.x = clamp(sign.node.rotation.x, -ROOM_SIGN_LIMIT, ROOM_SIGN_LIMIT); sign.velocity *= -0.2; }
+        remaining -= step;
+      }
+      if (Math.abs(sign.velocity) < 0.001 && Math.abs(sign.node.rotation.x) < 0.001) sign.velocity = sign.node.rotation.x = 0;
+    }
+  };
+  const moveCampBody = (cave, x, y, z, dt) => {
+    moveRoomSigns(cave, x, y, z, dt);
+    if (cave.camp.burning || cave.camp.rolling || cave.camp.cooldown > 0) return;
+    const p = cave.root.position, dx = p.x - x, dz = p.z - z, distance = dx * dx + dz * dz;
+    for (const hazard of fireHazards) {
+      if (!hazard.node.visible) continue;
+      const t = distance ? clamp(((hazard.x - x) * dx + (hazard.z - z) * dz) / distance, 0, 1) : 0;
+      const feet = y + (p.y - y) * t - cave.baseY;
+      if (feet < hazard.y + FIRE_TOP && feet + cave.bodyHeight > hazard.y + FIRE_BOTTOM
+        && (x + dx * t - hazard.x) ** 2 + (z + dz * t - hazard.z) ** 2 < FIRE_CONTACT_RADIUS ** 2) { crew.ignite(cave); break; }
+    }
+  };
+  // Flames are traversable by the visitor, but voluntary NPC steps keep a
+  // margin around them. Clip the sweep to the flame's floor before testing
+  // its footprint, so fires never obstruct another storey or a safe high jump.
+  const npcFireClear = (x, y, z, toX, toY, toZ, height) => {
+    const dx = toX - x, dy = toY - y, dz = toZ - z, length = dx * dx + dz * dz;
+    for (const hazard of fireHazards) {
+      if (!hazard.node.visible) continue;
+      const low = hazard.y + FIRE_BOTTOM - height, high = hazard.y + FIRE_TOP;
+      let enter = 0, exit = 1;
+      if (dy) {
+        const a = (low - y) / dy, b = (high - y) / dy;
+        enter = Math.max(0, Math.min(a, b)); exit = Math.min(1, Math.max(a, b));
+        if (enter >= exit) continue;
+      } else if (y <= low || y >= high) continue;
+      const ox = x - hazard.x, oz = z - hazard.z, before = ox * ox + oz * oz;
+      // A fire can light beneath a walker. Let them move outward, never
+      // deeper into it; a stationary point inside is still an unsafe goal.
+      if (y > low && y < high && before < FIRE_AVOID_RADIUS ** 2 && length > 0
+        && ox * dx + oz * dz >= 0 && (ox + dx) ** 2 + (oz + dz) ** 2 > before) continue;
+      const t = length ? clamp(-(ox * dx + oz * dz) / length, enter, exit) : enter;
+      if ((ox + dx * t) ** 2 + (oz + dz * t) ** 2 < FIRE_AVOID_RADIUS ** 2) return false;
+    }
+    return true;
+  };
   const physicalClearAt = (x, y, z, radius, height, actor = pilot?.player) => island.clearAt(x, y, z, radius, height) && y + height <= Math.min(entranceCeilingAt(x, z, y, radius), bedCeilingAt(x, z, y, radius), propCeilingAt(x, z, y, radius, actor)) + 1e-7 && (!solids || solids.clearAt(x, y, z, radius, height));
   const JETPACK_COLUMN = { caveIndex: 0, floor: 0, ceiling: 0 };
   const jetpackAllowed = (cave) => {
@@ -1699,13 +1848,23 @@
     }
     return ceiling;
   };
-  const ceilingAt = (x, z, y, actor = pilot?.player) => {
+  const ceilingAt = (x, z, y, actor = pilot?.player, passengers = true) => {
     let ceiling = Math.min(island.ceilingAt(x, y, z, PLAYER_RADIUS), entranceCeilingAt(x, z, y, PLAYER_RADIUS), bedCeilingAt(x, z, y, PLAYER_RADIUS), matrixGateCeilingAt(x, z, y), propCeilingAt(x, z, y, PLAYER_RADIUS, actor));
     for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
       const entry = CAMERA_OPENINGS[i], m = entry.mouth, rim = entry.rim;
       const dx = x - m.x, dz = z - m.z, along = dx * entry.sr + dz * entry.cr, across = dx * entry.cr - dz * entry.sr;
       if (y < m.floorY - STEP_MAX || y > m.floorY + rim.ceilingY || along < rim.minZ + PORTAL_Z - PLAYER_RADIUS || along > rim.maxZ + PORTAL_Z + PLAYER_RADIUS || across < rim.minX - PLAYER_RADIUS || across > rim.maxX + PLAYER_RADIUS) continue;
       ceiling = Math.min(ceiling, m.floorY + rim.ceilingY);
+    }
+    if (passengers && actor && crew && (actor.hopV > 0 || y > actor.riding.y - actor.baseY + 1e-7)) for (const rider of crew.cavemen.values()) {
+      if (rider === actor || !passengerOf(rider, actor)) continue;
+      const from = actor.riding, riding = rider.riding;
+      const offset = riding.y - rider.baseY - from.y + actor.baseY;
+      const roof = ceilingAt(x + riding.x - from.x, z + riding.z - from.z, y + offset, rider, false);
+      // Convert each passenger's headroom into a limit for the lower body.
+      // Upward motion cannot push it through a roof; level travel may leave
+      // a passenger behind at a wall that the lower body can pass beneath.
+      ceiling = Math.min(ceiling, roof - offset - rider.bodyHeight - Math.max(0, rider.viewLift) + actor.bodyHeight + Math.max(0, actor.viewLift));
     }
     return ceiling;
   };
@@ -1732,18 +1891,53 @@
     return feet + height <= ceilingAt(toX, toZ, feet, actor) + 1e-7 && physicalClearAt(toX, feet + STEP_MAX, toZ, PLAYER_RADIUS, Math.max(0, height - STEP_MAX), actor) && propSegmentClear(fromX, feet + STEP_MAX, fromZ, toX, feet + STEP_MAX, toZ, PLAYER_RADIUS, Math.max(0, height - STEP_MAX), actor) && matrixGateSegmentClear(fromX, y, fromZ, toX, feet, toZ, PLAYER_RADIUS, height);
   };
   const flyable = (fromX, fromZ, toX, toZ, y = 0, height = 1.5, actor = pilot?.player) => Math.hypot(toX, toZ) <= FLY_BOUND && !crossesSealedCave(fromX, fromZ, toX, toZ, y) && y + height <= ceilingAt(toX, toZ, y, actor) + 1e-7 && physicalClearAt(toX, y, toZ, PLAYER_RADIUS, height, actor) && propSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height, actor) && bedSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height) && matrixGateSegmentClear(fromX, y, fromZ, toX, y, toZ, PLAYER_RADIUS, height);
+  const characterCarryClear = (cave, x, y, z, toX, toY, toZ) => {
+    const height = cave.bodyHeight + Math.max(0, cave.viewLift), feet = y + 1e-7, toFeet = toY + 1e-7;
+    return Math.hypot(toX, toZ) <= FLY_BOUND && !crossesSealedCave(x, z, toX, toZ, Math.min(y, toY))
+      && toY + height <= ceilingAt(toX, toZ, toY, cave) + 1e-7
+      && physicalClearAt(toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7, cave)
+      && island.voxelSegmentClearAt(x, feet, z, toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7)
+      && propSegmentClear(x, feet, z, toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7, cave, true)
+      && bedSegmentClear(x, feet, z, toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7)
+      && matrixGateSegmentClear(x, feet, z, toX, toFeet, toZ, PLAYER_RADIUS, height - 1e-7);
+  };
+  const carryCharacter = (cave, dx, dy, dz) => {
+    if (!standingPassenger(cave) || !cave.riding.support || !uprightCharacter(cave.riding.support)) return;
+    const distance = Math.hypot(dx, dy, dz);
+    if (distance < 1e-9) return;
+    const p = cave.root.position, steps = Math.max(1, Math.ceil(distance / 0.125));
+    dx /= steps; dy /= steps; dz /= steps;
+    for (let n = 0; n < steps; n++) {
+      const feet = p.y - cave.baseY;
+      if (characterCarryClear(cave, p.x, feet, p.z, p.x + dx, feet + dy, p.z + dz)) {
+        p.x += dx; p.y += dy; p.z += dz;
+        continue;
+      }
+      // Preserve contact with the obstacle instead of crossing it or losing
+      // an entire frame of safe movement near a wall or low ceiling.
+      let lo = 0, hi = 1;
+      for (let i = 0; i < 8; i++) {
+        const t = (lo + hi) / 2;
+        if (characterCarryClear(cave, p.x, feet, p.z, p.x + dx * t, feet + dy * t, p.z + dz * t)) lo = t;
+        else hi = t;
+      }
+      p.x += dx * lo; p.y += dy * lo; p.z += dz * lo;
+      break;
+    }
+  };
   const inBananas = (cave, x = cave.root.position.x, z = cave.root.position.z) => bananaCover.intersectsBody(x, cave.root.position.y - cave.baseY, z, cave.bodyHeight);
   const npcPileAt = (x, feet, z, height) => feet <= ALTAR_HEIGHT + STEP_MAX && feet + height > 0 && Math.hypot(x, z) < altar.platformRadius + PLAYER_RADIUS
     || bananaCover.intersectsBody(x, feet, z, height);
   const npcDestinationBlocked = (cave, x, z) => {
     const feet = cave.root.position.y - cave.baseY;
-    return npcPileAt(x, feet, z, cave.bodyHeight) || !walkable(x, z, x, z, feet, cave.bodyHeight, cave);
+    return npcPileAt(x, feet, z, cave.bodyHeight) || !npcFireClear(x, feet, z, x, feet, z, cave.bodyHeight) || !walkable(x, z, x, z, feet, cave.bodyHeight, cave);
   };
   const npcWalkable = (fromX, fromZ, toX, toZ, y, height, actor) => {
     if (!walkable(fromX, fromZ, toX, toZ, y, height, actor)) return false;
     // Sweep to the actual downhill support too. Checking at the previous,
     // higher floor can clear a move whose lowered torso intersects the wall.
     const feet = playerSupportAt(toX, toZ, y, y, actor);
+    if (!npcFireClear(fromX, y, fromZ, toX, feet, toZ, height)) return false;
     // Voluntary walkers go around fruit. A growing pile or a landing may put
     // one inside; keep their way out passable rather than trapping them.
     if (!npcPileAt(fromX, y, fromZ, height)) {
@@ -2067,10 +2261,13 @@
     if (!o.active) return;
     reactProp(o);
   };
-  const WAKE_ACTION = { kind: "wake" };
+  const WAKE_ACTION = { kind: "wake" }, ROLL_ACTION = { kind: "roll" }, STAND_ACTION = { kind: "stand" };
   const nearbyAction = (x, y, z, reach) => {
     const player = pilot.player;
+    if (player && player.camp.burning) return ROLL_ACTION;
+    if (player && player.camp.seat) return STAND_ACTION;
     if (player && crew.sleeping) return WAKE_ACTION;
+    if (player && pilot.moving) return null;
     if (player && player.hop < 0.03 && player.hopV <= 0 && headquarters) {
       const feet = player.root.position.y - player.baseY;
       const floor = bedSupportAt(x, z, feet + 0.04, 0, PLAYER_RADIUS);
@@ -2085,18 +2282,29 @@
       if (gate) return gate;
     }
     if (matrixControl && matrixControlNear(x, y, z, reach)) return matrixControl;
+    if (player && player.hop < 0.03 && player.hopV <= 0 && headquarters) {
+      let nearest = null, distance = Math.min(reach, 1.5) ** 2;
+      for (const seat of headquarters.benches) {
+        const d = (x - seat.x) ** 2 + (z - seat.z) ** 2;
+        if (!seat.sitter && d < distance && Math.abs(y - 1.1 - seat.floor) < 0.7) { nearest = seat; distance = d; }
+      }
+      if (nearest) return nearest;
+    }
     for (let i = 0; i < openMouths.length; i++) {
       const entry = openMouths[i], m = entry.m;
-      if (entry.slot.scene === "race" && actionWithinReach(x, y, z, m.inside.x, m.floorY + 1.1, m.inside.z, reach)) return entry;
+      if (entry.slot.scene === "race" && actionWithinReach(x, y, z, entry.actionX, m.floorY + 1.1, entry.actionZ, RALLY_REACH)) return entry;
     }
     for (let i = 0; i < launchers.length; i++) {
       const launcher = launchers[i];
-      if (actionWithinReach(x, y, z, launcher.x, launcher.y + 1.1, launcher.z, Math.min(reach, LAUNCH_REACH))) return launcher;
+      if (actionWithinReach(x, y, z, launcher.x, launcher.y + 1.1, launcher.z, LAUNCH_REACH)) return launcher;
     }
     return null;
   };
   const useNearbyAction = (action) => {
     if (action === WAKE_ACTION) crew.wakePlayer();
+    else if (action === ROLL_ACTION) crew.dropRoll();
+    else if (action === STAND_ACTION) crew.standPlayer();
+    else if (action.kind === "bench") crew.sitPlayer(action);
     else if (action.sleep) crew.sleepPlayer(action);
     else if (action.kind === "matrix-gate") {
       action.localOpen = action.open = action.raising = true;
@@ -2111,7 +2319,7 @@
     useNearbyAction(action);
     return true;
   };
-  // Only functional controls take priority over a jump or jetpack thrust.
+  // Stationary functional controls take priority over a jump or jetpack thrust.
   const useNear = (x, z, reach, feetY) => {
     const action = nearbyAction(x, feetY + 1.1, z, reach);
     if (!action) return false;
@@ -2323,6 +2531,14 @@
     return true;
   };
   const toggleMatrixControl = () => setMatrixUnlocked(!matrixCave.unlocked);
+  const respawnAtPile = () => {
+    setMatrixUnlocked(false, true);
+    setMatrixInside(false);
+    // Respawn arrives in the ordinary world immediately, without a retreating
+    // wave keeping the pile and the returning character in Matrix mode.
+    MATRIX_WORLD.active = MATRIX_WORLD.direction = MATRIX_WORLD.radius = 0;
+    navigate("pile");
+  };
   const matrixControlNear = (x, y, z, reach = MATRIX_BUTTON_REACH) => !!matrixControl && actionWithinReach(x, y, z, matrixControl.x, matrixCave.mouth.floorY + matrixControl.button.position.y, matrixControl.z, reach);
   const nearbyMatrixGate = (x, y, z, reach) => {
     let nearest = null, distance = reach;
@@ -2391,6 +2607,15 @@
       if (action === WAKE_ACTION) {
         hud.hint(COARSE ? "Tap WAKE UP! to get up" : "Space wakes up · WASD changes sleeping pose");
         hud.setAct("WAKE UP!");
+      } else if (action === ROLL_ACTION) {
+        hud.hint(COARSE ? "Tap DROP & ROLL! to put the fire out" : "Press Space to drop and roll until the fire goes out");
+        hud.setAct("DROP & ROLL!");
+      } else if (action === STAND_ACTION) {
+        hud.hint(COARSE ? "Move or tap STAND UP! to get up" : "Move or press Space to stand up");
+        hud.setAct("STAND UP!");
+      } else if (action.kind === "bench") {
+        hud.hint(COARSE ? "Tap SIT to sit facing the fire" : "Press Space to sit facing the fire");
+        hud.setAct("SIT");
       } else if (action.sleep) {
         hud.hint(COARSE ? "Tap SLEEP to lie down" : "Press Space to sleep");
         hud.setAct("SLEEP");
@@ -3235,6 +3460,7 @@
     updateSleepingSolids();
     pilot.readInput(dt);
     crew.update(dt, elapsed);
+    updateRoomSigns(dt);
     pile.update(dt);
     const player = pilot.player;
     if (jetpackWearer && jetpackWearer !== player) {
@@ -3245,9 +3471,9 @@
     syncJetpackFuel();
     if (player && player.root.position.y - player.baseY < ABYSS_RESPAWN_Y && abyssAt(player.root.position.x, player.root.position.z, player.root.position.y - player.baseY)) {
       loseJetpack(player);
-      navigate("pile");
+      respawnAtPile();
     }
-    else if (!player && pilot.freeFalling && camera.position.y - CLOSE_VIEW.eyeHeight < ABYSS_RESPAWN_Y && abyssAt(camera.position.x, camera.position.z, camera.position.y - CLOSE_VIEW.eyeHeight)) navigate("pile");
+    else if (!player && pilot.freeFalling && camera.position.y - CLOSE_VIEW.eyeHeight < ABYSS_RESPAWN_Y && abyssAt(camera.position.x, camera.position.z, camera.position.y - CLOSE_VIEW.eyeHeight)) respawnAtPile();
     updatePlayerCave(player);
     if (player && player.jet && !jetpackAllowed(player)) {
       syncJetpackFuel();
@@ -3481,13 +3707,16 @@
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
     jetpackState = world.jetpack || (world.jetpack = { owned: false, fuel: 1 });
     jetpackState.fuel = Math.max(0, Math.min(1, Number.isFinite(jetpackState.fuel) ? jetpackState.fuel : 1));
+    // Underground starts carry the requested pack without equipping it or
+    // automatically selecting an Ooga. Ownership survives the trip outside.
+    if (ctx.from === null && preloadedJetpack && !preloadedJetpackWear) jetpackState.owned = true;
     jetpackCarrier = jetpackWearer = lastJetpackCloud = null;
     MATRIX_WORLD.active = MATRIX_WORLD.direction = MATRIX_WORLD.radius = MATRIX_WORLD.time = MATRIX_WORLD.permanentCave = 0;
     MATRIX_WORLD.density = renderer.kind === "canvas2d" ? MATRIX_DENSITY.canvas2d / MATRIX_DENSITY.high : MATRIX_DENSITY[renderer.quality] / MATRIX_DENSITY.high;
     camera = createCamera({ fov: 48, near: 0.5, far: 140 });
     root = createNode();
     solids = BL.solidProps.create();
-    clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, now: new Date() });
+    clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, time: timeParam, now: new Date() });
     phase = null;
     island = terrain.island({ seed: SEED });
     guideSegmentClear.boxGrid = island.sightGrid;
@@ -3558,7 +3787,7 @@
       claim(m.x, m.z, 3.5);
       if (slot.scene) {
         presets[slot.scene] = mouthView(m);
-        openMouths.push({ slot, m });
+        openMouths.push({ slot, m, actionX: m.x + Math.sin(m.ry) * RALLY_KART_Z, actionZ: m.z + Math.cos(m.ry) * RALLY_KART_Z });
       }
     }
     // The roof view the drop launch dollies onto
@@ -3580,10 +3809,28 @@
     mark("props");
     const shared = { root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, overlayVisible: matrixOverlayVisible, zzzVisible: sleepMarksVisible, tickerAt: TICKER_AT, buildSpots: buildSpotsList, walkIn: WALK_IN, clampDrag, viewYaw: PILE_VIEW.yaw, bedrolls, pileScale: PILE_SCALE, pileY: ALTAR_HEIGHT + 0.02, matrixLivingPile: true, onLayout: layoutPile, onShown: () => { meterTimer = 0; }, crateRadius: () => Math.max(4.4, altar.platformRadius + 0.8), groundAt: playerSupportAt, prepareCloudSupport, cloudAt, ceilingAt, wanderSpot, walkable, flyable, glideJetCeiling, useNear, abyssAt, abyssRespawnY: ABYSS_RESPAWN_Y, jetpackAllowed, phase: () => phase };
     fx = shared.fx = fxMod.create(shared);
+    shared.characterSupportAt = characterSupportAt;
+    shared.carryCharacter = carryCharacter;
     shared.npcWalkable = npcWalkable;
+    shared.shoulderObstacleActive = solids.isActive;
+    shared.shoulderObstacle = (cave, fx, fz, reach, out) => {
+      const p = cave.root.position;
+      return solids.shoulderAt(p.x, p.y - cave.baseY + STEP_MAX, p.z, fx, fz, PLAYER_RADIUS, Math.max(0, cave.bodyHeight - STEP_MAX), reach, out, p.y - cave.baseY + 1e-7);
+    };
+    // Once a tall prop causes a shoulder pass, stay beside its lower tiers
+    // instead of mounting one and interrupting the return to the walking line.
+    shared.shoulderPropClear = (cave, x, z) => {
+      const p = cave.root.position, feet = p.y - cave.baseY + 1e-5;
+      return solids.segmentClear(p.x, feet, p.z, x, feet, z, PLAYER_RADIUS, cave.bodyHeight - 1e-5);
+    };
+    shared.onBodyMove = moveCampBody;
+    shared.fireReachable = (x, y, z, toX, toY, toZ) => actionReachable(x, y, z, toX, toY, toZ)
+      && solids.segmentClear(x, y, z, toX, toY, toZ, 0.01, 0.02)
+      && matrixGateSegmentClear(x, y, z, toX, toY, toZ, 0.01, 0.02);
     shared.inBananas = inBananas;
     shared.npcDestinationBlocked = npcDestinationBlocked;
-    shared.npcLandingAllowed = (x, y, z, height) => !npcPileAt(x, y, z, height);
+    shared.npcLandingAllowed = (x, y, z, height) => !npcPileAt(x, y, z, height) && npcFireClear(x, y, z, x, y, z, height);
+    shared.npcHazardClear = npcFireClear;
     shared.onModelChange = refreshObjectGuides;
     cameraCover = BL.cameraCover.create(ctx.overlay);
     headquarters.cameraCover = cameraCover.state;
@@ -3662,7 +3909,7 @@
     meterTimer = 0;
     crew.refreshStates(true);
     let initialCharacter = ctx.from === null && preloadedCharacter ? contributors.roster.find((entry) => entry.name.toLowerCase() === preloadedCharacter) : null;
-    if (ctx.from === null && preloadedJetpack && !params.has("character") && preloadedView !== "underground") initialCharacter = contributors.roster.find((entry) => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.roster[0];
+    if (ctx.from === null && preloadedJetpackWear && !params.has("character")) initialCharacter = contributors.roster.find((entry) => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.roster[0];
     if (initialCharacter) {
       const cave = crew.cavemen.get(initialCharacter.name);
       if (crew.stateOf(cave) !== "working") {
@@ -3674,8 +3921,8 @@
     const initialFirstPerson = ctx.from === null && preloadedFirstPerson;
     if (initialFirstPerson) pilot.enterClose();
     if (preloadedView || initialCharacter || initialFirstPerson) navigate(preloadedView || "pile");
-    if (initialCharacter && preloadedJetpack && preloadedView !== "underground") {
-      grantJetpack(pilot.player, true);
+    if (initialCharacter && preloadedJetpack) {
+      grantJetpack(pilot.player, preloadedJetpackWear);
     }
     // Once a minute, refresh states and trim the pool
     stateTimer = window.setInterval(() => {
@@ -3906,7 +4153,7 @@
           return DAYLIGHT_DEBUG;
         },
         setHour: (h, daylen = NaN, day = clock.dayOfYear) => {
-          clock = daylight.createClock({ hour: h, daylen, day });
+          clock = daylight.createClock({ hour: h, daylen, day, time: timeParam });
         },
         get jetpack() {
           return {
@@ -3956,6 +4203,7 @@
     for (const node of targets) input.remove(node);
     for (const node of placed) removeChild(root, node);
     targets.length = placed.length = claimed.length = scenery.length = sceneryClaims.length = matrixInteriors.length = matrixGates.length = sealedCaves.length = clouds.length = lamps.length = entranceLights.length = fireSeats.length = sleepers.length = labels.length = spots.length = openMouths.length = launchers.length = props.length = 0;
+    fireHazards.length = 0;
     cloudHit = null;
     RENDER_OPTS.lightCount = 0;
     MATRIX_WORLD.active = MATRIX_WORLD.direction = MATRIX_WORLD.radius = MATRIX_WORLD.permanentCave = 0;
@@ -3986,6 +4234,7 @@
     return { targets: count };
   };
   const liveGeometry = (set) => {
+    pile.liveGeometry(set);
     for (const cave of crew.cavemen.values()) set.add(cave.headOpen).add(cave.headClosed);
   };
   const stats = () => {
@@ -3999,6 +4248,7 @@
     root: null, camera: null, input: null, debug: null,
     get inMotion() {
       if (pile.inMotion || fx.inMotion || jetpack || MATRIX_WORLD.active || mirrorGuides.state.doorway) return true;
+      for (const sign of headquarters.roomSigns) if (sign.velocity || sign.node.rotation.x) return true;
       for (let i = 0; i < matrixGates.length; i++) if (matrixCave && (matrixGates[i].raising || matrixCave.unlocked && matrixGates[i].node.position.y !== MATRIX_GATE_HIDDEN_Y)) return true;
       return false;
     }

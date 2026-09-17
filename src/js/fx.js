@@ -48,11 +48,11 @@
     const particles = [];
     const particlePool = [];
     const MAX_PARTICLES = 240;
-    const spawnParticle = (geometry, x, y, z, vx, vy, vz, life, spin = 6) => {
+    const spawnParticle = (geometry, x, y, z, vx, vy, vz, life, spin = 6, gravity = 3.2, floor = 0.03) => {
       if (particles.length >= MAX_PARTICLES) return null;
       let p = particlePool.pop();
       if (!p) {
-        p = { node: createNode({ visible: false, sightHidden: true }), vx: 0, vy: 0, vz: 0, life: 0, spin: 0, smoke: false, maxLife: 0 };
+        p = { node: createNode({ visible: false, sightHidden: true }), vx: 0, vy: 0, vz: 0, life: 0, spin: 0, gravity: 3.2, floor: 0.03, smoke: false, maxLife: 0 };
         addChild(root, p.node);
       }
       p.node.geometry = geometry;
@@ -66,6 +66,8 @@
       p.spin = spin;
       p.smoke = false;
       p.maxLife = life;
+      p.gravity = gravity;
+      p.floor = floor;
       particles.push(p);
       return p;
     };
@@ -93,12 +95,12 @@
           p.node.scale.x = p.node.scale.y = p.node.scale.z = s;
           continue;
         }
-        p.vy -= 3.2 * dt;
+        p.vy -= p.gravity * dt;
         p.node.position.x += p.vx * dt;
         p.node.position.y += p.vy * dt;
         p.node.position.z += p.vz * dt;
-        if (p.node.position.y < 0.03) {
-          p.node.position.y = 0.03;
+        if (p.node.position.y < p.floor) {
+          p.node.position.y = p.floor;
           p.vy *= -0.3;
           p.vx *= 0.7;
           p.vz *= 0.7;

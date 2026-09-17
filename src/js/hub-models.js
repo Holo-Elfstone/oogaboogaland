@@ -170,8 +170,8 @@
       ...[-1, 1].flatMap((side) => [half * 0.5, -half * 0.5].map((y) => box({ w: 0.12, h: half, d: 0.16, color: "#4a3319", offset: { x: side * (width * 0.5 - 0.06), y, z: 0.15 } }))),
       box({ w: width + 0.3, h: 0.08, d: 0.34, color: WOOD_DK, offset: { y: half + 0.18, z: 0.08 } }),
       ...[-1, 1].map((side) => box({ w: 0.06, h: 0.2, d: 0.06, color: "#3a2a18", offset: { x: side * (width * 0.5 - 0.3), y: half + 0.07, z: 0.08 } })),
-      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: 0.2, z: SIGN_FRONT + 0.0175 } }),
-      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: -0.22, z: SIGN_FRONT + 0.0175 } })
+      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: 0.235, z: SIGN_FRONT + 0.0175 } }),
+      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: -0.31, z: SIGN_FRONT + 0.0175 } })
     ];
     let cursor = -textW * 0.5;
     for (const ch of text) {
@@ -356,7 +356,8 @@
   const bedroll = cached(() => merge(box({ w: 1.9, h: 0.09, d: 0.85, color: "#2e2724" }), box({ w: 0.4, h: 0.16, d: 0.6, color: "#40342c", offset: { x: 0.65, y: 0.1 } })));
   const GREENS = ["#3f7a2b", "#4f8f36", "#5fa243", "#74b552"];
   const CANOPIES = [GREENS, ["#2f6b3a", "#3f8248", "#4f9a58", "#66b06a"], ["#5a7d2a", "#6f9436", "#86aa44", "#a2c055"], ["#c47f9d", "#d697b0", "#e8b4c6", "#f2c9d8"]];
-  const TREE_HEIGHT = 3;
+  const TREE_TRUNK_LIFT = 5;
+  const TREE_HEIGHT = 3 + TREE_TRUNK_LIFT * QUARTER;
   // Crown clumps per variant as [cx, cy, cz, rx, ry, rz] in quarter cells
   const CROWNS = [
     [[0, 8.6, 0, 4.6, 3.0, 4.4], [-2.2, 9.6, 1.4, 2.6, 2.4, 2.6], [2.0, 7.4, -1.6, 2.4, 2.0, 2.4]],
@@ -384,7 +385,22 @@
       v.set(-3, 7, -1, 1);
     }
     foliage(v, rand, 2, lo, hi);
-    return voxGeo(v, { unit: QUARTER, palette: ["#6b4a2b", "#4e361f", ...CANOPIES[i]] });
+    // Keep the crown and roots intact while extending the trunk. Branch
+    // stubs rise with the leaves so neither catches a walking Ooga's head.
+    const tall = vox();
+    let canopyFloor = Infinity;
+    for (const [key, color] of v.map) {
+      const [x, y, z] = key.split(",").map(Number), lifted = y ? y + TREE_TRUNK_LIFT : 0;
+      tall.set(x, lifted, z, color);
+      if (color >= 2) canopyFloor = Math.min(canopyFloor, lifted * QUARTER);
+    }
+    tall.fill(-1, 0, 1, TREE_TRUNK_LIFT, -1, 0, bark);
+    const geometry = voxGeo(tall, { unit: QUARTER, palette: ["#6b4a2b", "#4e361f", ...CANOPIES[i]] });
+    let radius = 0;
+    for (let j = 0; j < geometry.verts.length; j += 3) radius = Math.max(radius, Math.hypot(geometry.verts[j], geometry.verts[j + 2]));
+    geometry.treeRadius = radius;
+    geometry.treeCanopyFloor = canopyFloor;
+    return geometry;
   });
   // Bush clumps per variant, small tuft to a wide berry bush
   const CLUMPS = [

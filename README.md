@@ -32,12 +32,16 @@ Fly around the island with **W A S D** (or the arrows), **Q E** to turn, **R F**
 stick moves and the right stick looks. Double-tap a caveman to walk in their boots: the same
 keys or stick walk them, and holding **both mouse buttons** walks them forward. **Space**
 (or the **JUMP!** button) jumps: press once from the ground, then once more for a double
-jump. Release between jumps; both reset after landing. A reachable mirror-room button
-or Ooga Rally/Drop launcher takes priority over jumping. The action button changes to
+jump. Release between jumps; both reset after landing. While walking or airborne,
+Space keeps its jump action. Stop beside a reachable control, bench, or Ooga Rally/Drop
+launcher to use it with Space. The action button changes to
 **PRESS IN**, **PRESS OUT**, **START RALLY**, or **FLY PLANE** while that control is nearby.
-These actions work from every direction without needing to face them. Click or tap
+These actions work from every direction without needing to face them; the car's
+platform and the plane's wings have room around them to activate the launcher. Click or tap
 decorative props to interact with them. Walking into the lit lab cave enters it.
 **Escape** lets go and **0** brings the camera home.
+Landing on another Ooga carries you along with their movement. You can still
+look around, walk across them, or jump off; walls and ceilings remain solid.
 
 The jetpack starts spinning above a cloud beyond the island. Reach that cloud and jump
 into the pack to collect it. Its compact button then appears at the upper left; click it
@@ -65,7 +69,8 @@ pack does not refill it or clear recovery. Entering the underground HQ, basement
 their access ramps takes the pack off without losing it; it cannot be equipped there, except
 inside the basement's central shaft. Fly up through that opening from below the
 island; the pack comes off once you clear its lip onto the basement walking ring. The
-compact button remains available and can equip the pack again after returning above ground.
+compact button remains visible but disabled underground, and can equip the pack again
+after returning above ground.
 
 Wandering Oogas walk around the banana pile and keep off its platform rim.
 You can still walk, jump, or fly through the fruit, with walking and vertical
@@ -77,10 +82,18 @@ takes it before they arrive. The platform and fruit interiors follow the glyph
 wave, switching to black with blurred green code as it reaches them.
 NPC walkers check destinations for obstructions and use a bounded local recovery
 path to back out of dead ends and go around scenery that blocks their route.
+They keep clear of lit firepits when walking, choosing eating spots, and planning
+recovery jumps; an Ooga already too close can still move out of the flames.
 They follow the midpoint curves of connected surface paths, stepping off to pass
 other Oogas or make the final approach to an off-path destination such as a
 fireplace seat. Routes
 adapt when the growing pile changes the paths; player movement stays unrestricted.
+When walkers meet, they turn the contacted shoulder back and sidestep past each
+other while keeping their heads facing ahead, then return to their original lines.
+This also works when overtaking: a moving Ooga bumped from behind turns that
+shoulder forward. Solid scenery uses the same shoulder turn and temporary sidestep.
+Centered bumps use the right shoulder; lighter grazes produce smaller turns and
+sidesteps. Only moving Oogas react, and walls still limit the available space.
 Routes through the lower ramps and room entrances round their corners wherever
 the actual floor, walls and headroom leave enough space.
 If no walking route is available, they can jump onto or over nearby items after
@@ -93,7 +106,7 @@ shows eligible nearby outlines only through the covered part of the image.
 You can fly above and beyond the island, or walk and jump off its edge. Steer through
 an open window to enter HQ or the basement while falling. The windows widen toward
 the outside with smooth stone reveals. Falling into the abyss plays a fall animation,
-then returns your Ooga to the banana pile. A carried pack is lost in that fall and respawns
+then returns your Ooga to the banana pile and turns Matrix mode off. A carried pack is lost in that fall and respawns
 above another distant cloud. First person without a selected Ooga also
 falls naturally and returns to the pile.
 
@@ -150,6 +163,19 @@ one floor mattress in its rear corner, sized for a sleeping Ooga. Its blanket wr
 around the mattress, and the pillow carries the same LifeHash pattern rotated 90°,
 derived from that room's x, y, z coordinates. Sleepy Oogas walk down the ramps to an
 available bed and lie on top of the sheet. RandyMcMillan starts sleepy in the demo.
+The HQ benches and fireplace are solid. Near a free bench seat, **Space** or **SIT**
+sits facing the fire; movement or **STAND UP!** gets up. Touching a lit fireplace's
+flames sets the Ooga on fire. Press **Space** or **DROP & ROLL!** once to roll back and
+forth until the flames go out. Flames slowly climb from the legs while the Ooga delays
+rolling; each burning part heats from red embers toward the fire's bright yellow.
+During the roll, the glow cools smoothly into charred body colors. Touching another Ooga spreads
+the fire. Burning NPCs panic and run at twice their normal walking speed before
+dropping and rolling. Some react quickly; others run long enough for the flames
+to cover their body. NPCs spot burning Oogas from farther away and flee at double
+speed, leaving paths while avoiding obstacles and cliffs. At a safe distance they
+remember the fire's last position and wait until it goes out or moves farther away
+before resuming their routines.
+Afterward, smoke rises and the charred parts fade back to their original colors.
 Beds support walking: stand on an available mattress and press **Space** or **SLEEP**
 to lie down.
 Each bed holds one Ooga. While sleeping, **A/D** face left/right as seen from the foot
@@ -202,16 +228,21 @@ URL flags: `?scene=lab` opens the lab directly, `?scene=race` the rally garage a
 non-negative amount) to preview the pile at that starting level without changing saved state,
 use `&b=500` to choose how many test bananas each press of **B** adds and drops, use
 `&hour=22` to pin the clock at an hour, `&day=172` to choose a day of year, or
-`&daylen=120` to run a whole day in that many seconds. Use `&view=pile`, `&view=lab`,
-`&view=mirror`, or `&view=hq` to preload that island view. Add `&firstperson=1` for an initial
+`&daylen=120` to run a whole day in that many seconds. Use `&time=0000` for midnight
+or `&time=1300` for 1 PM. `time` requires exactly four digits in valid 24-hour HHMM
+format (hours 00–23, minutes 00–59); it stays fixed across scene changes and overrides
+`hour` and `daylen`. Use `&view=pile`, `&view=lab`, `&view=mirror`, `&view=hq`, or
+`&view=bsmt` to preload that island view, including when returning to the hub.
+Add `&firstperson=1` for an initial
 eye-level free camera, or `&character=w-s-bitcoin` to start controlling that contributor.
 Combine them for first-person character control, including a starting location:
 `?debug=1&firstperson=1&character=w-s-bitcoin&view=hq`. Add `&jetpack=1` to equip the
 selected character on startup, or select the first working Ooga when `character=` is
 omitted (the first roster entry if none is working). An explicit unknown handle leaves
-selection untouched. `view=hq` takes precedence: it suppresses the pack and its automatic
-selection while respecting an explicit `character=` or `firstperson=1`. These flags
-apply only on the initial page load. `&latitude=20` optionally changes
+selection untouched. With `view=hq` or `view=bsmt`, the pack stays owned with its icon
+visible but disabled underground. These views skip automatic equipping and selection
+while respecting an explicit `character=` or `firstperson=1`. `character`,
+`firstperson`, and `jetpack` apply only on the initial page load. `&latitude=20` optionally changes
 the debug latitude (bounded to 66 degrees north or south). Use `&loot=1` to exercise the loot feature. Loot ships off: `LOOT_DEFAULT` in `src/js/director.js`
 turns it on for everyone. The pile holds at most ten million bananas; every count is clamped there.
 
@@ -225,7 +256,7 @@ Runs a headless Chrome suite over the DevTools protocol: real drags, clicks, and
 against the page, with a clean console required. Needs Node 22 or newer and Chrome; the
 driver looks for Chrome at the macOS application path, so on Linux or Windows set the
 `CHROME` environment variable to the binary. There are no npm dependencies. A full run
-takes about five minutes.
+takes about nine minutes.
 
 ## Build and deploy
 

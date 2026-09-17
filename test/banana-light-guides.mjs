@@ -11,11 +11,13 @@ export const bananaLightingProbe = () => {
   const camera = BL.scene.createCamera();
   Object.assign(camera.position, { x: 0, y: 1.8, z: 0.3 });
   Object.assign(camera.target, { x: 0, y: 0.6, z: -0.4 });
-  const rows = [];
+  const rows = [], day = B.daylight.dayOfYear;
   let time = B.renderOpts.matrix.time;
   try {
     for (const hour of [12, 18.8, 0, 12]) {
-      B.setHour(hour); BL.scenes.hub.update(0, time);
+      // Pin the date as well: a bright midnight moon can otherwise make the
+      // real calendar's midnight brighter than its late dusk.
+      B.setHour(hour, NaN, 80); BL.scenes.hub.update(0, time);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       cover.prepare(camera, null); cover.draw(camera, null, 0);
       const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data, rgb = [0, 0, 0];
@@ -27,7 +29,7 @@ export const bananaLightingProbe = () => {
       for (let c = 0; c < 3; c++) rgb[c] /= canvas.width * canvas.height;
       rows.push({ hour, rgb, luminance: rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722, filled, hash: hash >>> 0, coverage: cover.state.coverage });
     }
-  } finally { cover.dispose(); B.setHour(12); BL.scenes.hub.update(0, time); }
+  } finally { cover.dispose(); B.setHour(12, NaN, day); BL.scenes.hub.update(0, time); }
   return { backend: B.renderer.kind, pixels: canvas.width * canvas.height, rows };
 };
 

@@ -180,17 +180,23 @@
   };
   const localHour = (date) => date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600 + date.getMilliseconds() / 3600000;
   const localDay = (date) => Math.floor((Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) - Date.UTC(date.getFullYear(), 0, 0)) / 86400000);
-  const createClock = ({ hour, daylen, day, now = new Date() } = {}) => {
+  const parseTime = (time) => {
+    if (typeof time !== "string" || time.length !== 4 || !/^[0-2][0-9][0-5][0-9]$/.test(time)) return NaN;
+    const hour = Number(time.slice(0, 2)), minute = Number(time.slice(2));
+    return hour < 24 ? hour + minute / 60 : NaN;
+  };
+  const createClock = ({ hour, daylen, day, time, now = new Date() } = {}) => {
+    const fixedHour = parseTime(time), fixed = Number.isFinite(fixedHour);
     const pinned = Number.isFinite(hour);
-    const baseHour = wrap(pinned ? hour : localHour(now), 24);
+    const baseHour = fixed ? fixedHour : wrap(pinned ? hour : localHour(now), 24);
     const baseDay = clamp(Number.isFinite(day) ? Math.round(day) : localDay(now), 1, 366);
-    const running = daylen > 0 || !pinned;
+    const running = !fixed && (daylen > 0 || !pinned);
     const rate = daylen > 0 ? 24 / daylen : 1 / 3600;
     const start = performance.now();
     const state = { hour: baseHour, continuousDay: baseDay - 1 + baseHour / 24, dayOfYear: baseDay, read: null };
     state.read = () => {
       const hours = baseHour + (running ? (performance.now() - start) * 0.001 * rate : 0);
-      state.hour = wrap(hours, 24);
+      state.hour = running ? wrap(hours, 24) : baseHour;
       state.continuousDay = baseDay - 1 + hours / 24;
       state.dayOfYear = Math.floor(wrap(state.continuousDay, 366)) + 1;
       return state.hour;
@@ -203,5 +209,5 @@
     const rise = Math.max(0, eyeHeight - 8);
     return rise / Math.hypot(110, rise);
   };
-  BL.daylight = { PHASES, ISLAND_LATITUDE_DEG, AXIAL_TILT_DEG, phaseAt, sample, createClock, hazeDropAt };
+  BL.daylight = { PHASES, ISLAND_LATITUDE_DEG, AXIAL_TILT_DEG, phaseAt, sample, parseTime, createClock, hazeDropAt };
 })();

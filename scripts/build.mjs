@@ -13,14 +13,14 @@ let html = read("index.html");
 const cssTag = /<link rel="stylesheet" href="([^"]+)">/;
 const cssMatch = html.match(cssTag);
 if (!cssMatch) throw new Error("index.html: stylesheet link not found");
-const css = read(cssMatch[1]).trim();
+const css = read(cssMatch[1]).trim().replace(/\r\n/g, "\n");
 html = html.replace(cssTag, `<style>\n${css}\n</style>`);
 
-const scriptTag = /^[ \t]*<script src="([^"]+)"><\/script>\n/gm;
+const scriptTag = /^[ \t]*<script src="([^"]+)"><\/script>\r?\n/gm;
 const sources = [...html.matchAll(scriptTag)].map((m) => m[1]);
 if (!sources.length) throw new Error("index.html: no script tags found");
 // A literal closing tag would end the block early
-const js = sources.map((src) => `// ---- ${src} ----\n${read(src).trim()}`).join("\n\n").replace(/<\/script/gi, "<\\/script");
+const js = sources.map((src) => `// ---- ${src} ----\n${read(src).trim().replace(/\r\n/g, "\n")}`).join("\n\n").replace(/<\/script/gi, "<\\/script");
 let first = true;
 html = html.replace(scriptTag, () => {
   if (!first) return "";

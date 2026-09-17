@@ -9,6 +9,7 @@
   const params = new URLSearchParams(location.search);
   const DEBUG = params.has("debug");
   const COARSE = window.matchMedia("(pointer: coarse)").matches;
+  const timeParam = DEBUG ? params.get("time") : null;
   const hourParam = DEBUG ? parseFloat(params.get("hour")) : NaN;
   const daylenParam = DEBUG ? parseFloat(params.get("daylen")) : NaN;
   const dayParam = DEBUG ? parseFloat(params.get("day")) : NaN;
@@ -743,7 +744,7 @@
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
     camera = createCamera({ fov: 50, near: 0.4, far: 820 });
     root = createNode();
-    clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, now: new Date() });
+    clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, time: timeParam, now: new Date() });
     island = terrain.island({ seed: SEED });
     hud = hudMod.create({ roster: contributors.roster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled });
     hooks = {};
