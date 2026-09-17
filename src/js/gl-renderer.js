@@ -53,6 +53,7 @@ out vec3 vWorld;
 out vec3 vInstanceFacing;
 out float vMatrixSurface;
 flat out float vMatrixCave;
+flat out float vSmokeOpacity;
 void main() {
   mat4 m = mat4(aM0, aM1, aM2, aM3);
   vec4 w = m * vec4(aPos, 1.0);
@@ -69,6 +70,9 @@ void main() {
   vMatrixCave = floor(encoded * 0.5);
   vColor.a = aColor.a < 0.0 ? encoded - vMatrixCave * 2.0 : aColor.a;
   vParams = aParams;
+  // Smoke fades through coverage without a separate transparent draw pass.
+  vSmokeOpacity = aParams.z < 0.0 ? -aParams.z - 1.0 : 1.0;
+  vParams.z = max(0.0, aParams.z);
   vShadow = uLightViewProj * w;
   vWorld = w.xyz;
   vInstanceFacing = normalize(aM2.xyz);
@@ -90,6 +94,7 @@ in vec3 vWorld;
 in vec3 vInstanceFacing;
 in float vMatrixSurface;
 flat in float vMatrixCave;
+flat in float vSmokeOpacity;
 uniform vec3 uLightDir;
 uniform vec3 uSky;
 uniform vec3 uGround;
@@ -307,6 +312,12 @@ float matrixTravel(vec2 point, float caveIndex) {
 }
 void main() {
   if (vWorld.y < uClipMinY || vWorld.y > uClipMaxY) discard;
+  if (vSmokeOpacity < 1.0) {
+    ivec2 pixel = ivec2(gl_FragCoord.xy) & 3;
+    int rank = ((pixel.x & 1) ^ (pixel.y & 1)) * 8 + (pixel.y & 1) * 4
+      + (((pixel.x >> 1) & 1) ^ ((pixel.y >> 1) & 1)) * 2 + ((pixel.y >> 1) & 1);
+    if ((float(rank) + 0.5) / 16.0 >= vSmokeOpacity) discard;
+  }
   vec3 n = normalize(vNormal);
   vec3 base = vColor.rgb;
   float cloud = step(3.5, vParams.z);
@@ -1130,7 +1141,7 @@ void main() {
       // In-frustum nodes stay in front of the culled ones by swapping into the draw region
       const idx = rec.count++;
       rec.nodes[idx] = node;
-      if (hiddenFromCamera(node)) {
+      if (node.smokeOpacity === 0 || hiddenFromCamera(node)) {
         rec.cameraHiddenCount++;
         suppressed++;
       } else if (inFrustum(node)) {
@@ -1177,7 +1188,7 @@ void main() {
         d.set(n.world, o);
         d[o + 16] = n.glow;
         d[o + 17] = n.highlight;
-        d[o + 18] = matrixModeOf(n);
+        d[o + 18] = n.smokeOpacity === undefined ? matrixModeOf(n) : -1 - n.smokeOpacity;
         d[o + 19] = 0;
       }
       gl.bindBuffer(gl.ARRAY_BUFFER, rec.ibo);
