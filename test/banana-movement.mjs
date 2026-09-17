@@ -36,12 +36,14 @@ export const bananaMovementProbe = ({ firstPerson = false, dt = 1 / 60 } = {}) =
     const grounded = state(); key(true, " "); tick(Math.round(0.2 / dt)); key(false, " ");
     const heldJump = state(); key(true, " "); tick(); key(false, " ");
     const freshJump = state(); key(true, " "); tick(); key(false, " ");
-    const limitedJump = state();
+    const thirdJump = state();
     tick(Math.ceil(2 / dt));
     const landed = state(); key(true, " "); tick(); key(false, " ");
-    rows.push({ name: "inside-jump", before: grounded, held: heldJump, fresh: freshJump, limited: limitedJump, landed, renewed: state() });
+    rows.push({ name: "inside-jump", before: grounded, held: heldJump, fresh: freshJump, third: thirdJump, landed, renewed: state() });
     place(outsideX, B.island.surfaceAt(outsideX, 0), 0); key(true, " "); tick(); key(false, " ");
-    rows.push({ name: "outside-jump", ...state() });
+    const outsideJump = state(); key(true, " "); tick(); key(false, " ");
+    const outsideDouble = state(); key(true, " "); tick(); key(false, " ");
+    rows.push({ name: "outside-jump", ...outsideJump, double: outsideDouble, limited: state() });
     place(0, 0.34, 0); B.jetpack.grant(cave, true); cave.jetFuel = 0.6;
     const pack = cave.jet, fuel = cave.jetFuel;
     key(true, " "); tick(Math.round(0.2 / dt)); key(false, " ");
@@ -76,6 +78,20 @@ export const bananaMovementProbe = ({ firstPerson = false, dt = 1 / 60 } = {}) =
       rows.push({ name: "fall", equipped, falls });
       rows.push({ name: "rise", equipped, rises });
     }
+    B.crew.removeJetpack(cave);
+    for (const level of [100000, BL.pile.MAX_BANANAS]) {
+      B.setPileLevel(level);
+      for (const [node] of hidden) node.visible = false;
+      place(0, 0.34, 0);
+      let presses = 0;
+      while (B.headquarters.solids.inBananas(cave) && presses < 512) {
+        key(true, " "); tick(); key(false, " ");
+        tick(Math.max(1, Math.round(0.18 / dt))); presses++;
+      }
+      const escaped = state(), crossed = !B.headquarters.solids.inBananas(cave), before = escaped.jumps;
+      key(true, " "); tick(); key(false, " ");
+      rows.push({ name: "top-escape", level, presses, crossed, escaped, outsidePress: state(), limited: cave.jumps === before });
+    }
     return { firstPerson, mode: B.pilot.mode, dt, radius, top, rows };
   } finally {
     release();
@@ -98,12 +114,18 @@ export const bananaExitProbe = ({ dt = 1 / 60 } = {}) => {
   for (const entry of actors) if (entry !== cave) { hidden.push([entry.root, entry.root.visible]); entry.root.visible = false; }
   for (const prop of B.props) { hidden.push([prop.node, prop.node.visible]); prop.node.visible = false; }
   const outside = B.altar.platformRadius + 2, top = cover.heightAt(0, 0);
+  const fruitBounds = () => {
+    const data = B.spillEffect.node.instanceData;
+    let min = Infinity, max = -Infinity;
+    for (let i = Math.max(0, B.spillEffect.node.instanceCount - 8); i < B.spillEffect.node.instanceCount; i++) { min = Math.min(min, data[i * 20 + 13]); max = Math.max(max, data[i * 20 + 13]); }
+    return { min, max, feet: cave.root.position.y - cave.baseY, bodyHeight: cave.bodyHeight };
+  };
   try {
     place(0, 0.34, 0);
     let start = bursts(), frames = 0;
     B.crew.steer(1, 0);
     while (inside() && frames++ < 600) tick();
-    rows.push({ name: "side", crossed: !inside(), frames, bursts: bursts() - start, active: state.active });
+    rows.push({ name: "side", crossed: !inside(), frames, bursts: bursts() - start, active: state.active, fruit: fruitBounds() });
     start = bursts();
     for (let n = 0; n < 20; n++) tick();
     rows.push({ name: "outside", bursts: bursts() - start });
@@ -111,7 +133,7 @@ export const bananaExitProbe = ({ dt = 1 / 60 } = {}) => {
     start = bursts(); frames = 0;
     const beganInside = inside();
     while (inside() && frames++ < 60) tick();
-    rows.push({ name: "top", beganInside, crossed: !inside(), frames, bursts: bursts() - start, velocity: cave.hopV });
+    rows.push({ name: "top", beganInside, crossed: !inside(), frames, bursts: bursts() - start, velocity: cave.hopV, fruit: fruitBounds() });
     start = bursts(); place(0, 0.34, 0); tick();
     place(outside, B.island.surfaceAt(outside, 0), 0); tick();
     rows.push({ name: "teleport", bursts: bursts() - start });
@@ -235,7 +257,7 @@ export const bananaSlotProbe = () => {
   const B = window.__ooga, S = window.BL.scene, scene = window.BL.scenes.hub;
   B.pilot.release(true); B.setPileLevel(100000);
   const actors = [...B.cavemen.values()], working = actors.filter((c) => c.state === "working"), [walker, player, intruder] = working;
-  const slots = working.map((c) => ({ x: c.slot.x, z: c.slot.z }));
+  const slots = B.crew.fanSlots.map((s) => ({ x: s.x, z: s.z }));
   for (const c of actors) { c.walk = null; c.build = null; c.root.visible = false; c.act.kind = "idle"; c.act.until = 1e12; c.nextBuildAt = 1e12; }
   for (const prop of B.props) prop.node.visible = false;
   const place = (c, p) => { c.root.visible = true; Object.assign(c.root.position, { x: p.x, y: c.baseY + B.island.surfaceAt(p.x, p.z), z: p.z }); c.hop = c.hopV = 0; };
@@ -257,7 +279,15 @@ export const bananaSlotProbe = () => {
   place(intruder, { x: 17, z: 1 }); intruder.act.kind = "idle";
   B.crew.rush();
   const reserved = !!walker.walk && !!intruder.walk && Math.hypot(walker.walk.tx - intruder.walk.tx, walker.walk.tz - intruder.walk.tz) >= 0.68;
-  return { initial, playerRetarget, npcRetarget, bedReturn, reserved, slots: slots.length, expected, second, third };
+  const growth = [];
+  for (const level of [302, 10000, 100000, window.BL.pile.MAX_BANANAS, 302]) {
+    B.setPileLevel(level);
+    const destinations = B.crew.fanSlots;
+    let separation = Infinity;
+    for (let i = 1; i < destinations.length; i++) separation = Math.min(separation, Math.hypot(destinations[i].x - destinations[i - 1].x, destinations[i].z - destinations[i - 1].z));
+    growth.push({ level, count: destinations.length, separation, clear: destinations.every((s) => !B.headquarters.bananaCover.intersectsBody(s.x, 0, s.z, walker.bodyHeight)) });
+  }
+  return { initial, playerRetarget, npcRetarget, bedReturn, reserved, slots: slots.length, expected, second, third, growth };
 };
 
 export const bananaGlyphInteriorProbe = () => {

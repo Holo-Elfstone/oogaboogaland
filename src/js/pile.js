@@ -36,6 +36,7 @@
   const BACKLOG_VISUAL_CAPACITY = Math.max(1, Math.floor((BACKLOG_SECONDS - DROP_DURATION_MAX - FRAME_TIME_MAX) * DROP_THROUGHPUT));
   const MAX_WEBGL_TILES = 65536;
   const MAX_CANVAS_TILES = 512;
+  const DISTANT_SHELL_MIN_TILES = 1000, SHELL_DETAIL_NEAR = 8, SHELL_DETAIL_FAR = 10;
   const footprintFor = (count, scale = 0.45) => scale * (count > DISK_BANANAS ? Math.cbrt(count / DISK_BANANAS) : 1);
   const visualFootprintFor = (count, scale = 0.45) => {
     const mix = Math.min(1, Math.max(0, (count - DISK_BANANAS) / DISK_BANANAS));
@@ -74,6 +75,7 @@
     const core = createNode({ geometry: models.bananaPileCoreGeometry(SCALE * 6, BASE_HEIGHT * 6, coreFaceSize), visible: false });
     const bananaGeometry = models.bananaGeometry();
     const shellGeometry = models.bananaTileGeometry();
+    const distantShellGeometry = models.bananaTileGeometry(true);
     let shellMinZ = Infinity, shellReach = 0;
     for (let i = 0; i < shellGeometry.verts.length; i += 3) {
       shellMinZ = Math.min(shellMinZ, shellGeometry.verts[i + 2]);
@@ -205,7 +207,7 @@
       spillNode.visible = count > 0;
       spillNode.instanceVersion++;
     };
-    const spill = (x, y, z, vx, vy, vz) => {
+    const spill = (x, y, z, vx, vy, vz, height = 0.3) => {
       // Cap inherited speed so a very fast flight does not scatter fruit far
       // beyond the character. Cosmetic random variation needs no new objects.
       const speed = Math.hypot(vx, vy, vz), inherit = speed > 8 ? 4 / speed : 0.5;
@@ -215,7 +217,10 @@
         const slot = spillSlots[i];
         if (slot.life) continue;
         const side = (Math.random() - 0.5) * 0.7, ahead = Math.random() * 0.18;
-        setVec(slot.position, x + dx * ahead - dz * side, y + (Math.random() - 0.5) * 0.3, z + dz * ahead + dx * side);
+        // Stratify the burst so even a small emission includes fruit near
+        // the feet, torso and head wherever those meet the mound.
+        const lift = height * (emitted % 3 + Math.random() * 0.25) / 2.25;
+        setVec(slot.position, x + dx * ahead - dz * side, y + lift, z + dz * ahead + dx * side);
         setVec(slot.velocity, vx * inherit - dz * side * 2 + dx * 0.4, vy * inherit + 1.4 + Math.random() * 0.7, vz * inherit + dx * side * 2 + dz * 0.4);
         setVec(slot.rotation, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
         setVec(slot.spin, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12);
@@ -596,10 +601,26 @@
       syncPile(true);
       return true;
     };
+    const updateDetail = () => {
+      if (shell.instanceCount < DISTANT_SHELL_MIN_TILES) {
+        shell.geometry = shellGeometry;
+        return;
+      }
+      // Measure from the nearest possible surface, not the mound's centre: a
+      // camera beside even the largest pile must retain the original bananas.
+      // The box includes the warped dome and the full reach of its shell fruit.
+      const eye = ctx.camera.position, radius = core.scale.x * 1.05 + shellReach;
+      const dx = Math.max(0, Math.abs(eye.x) - radius), dz = Math.max(0, Math.abs(eye.z) - radius);
+      const dy = Math.max(0, BASE_Y - shellReach - eye.y, eye.y - BASE_Y - core.scale.y - shellReach);
+      const distance = Math.hypot(dx, dy, dz);
+      if (distance > SHELL_DETAIL_FAR) shell.geometry = distantShellGeometry;
+      else if (distance < SHELL_DETAIL_NEAR) shell.geometry = shellGeometry;
+    };
     const update = (dt) => {
       delivery.activeTime += dt;
       const target = Math.floor(world.level);
       if (target !== counted) syncPile();
+      updateDetail();
       pumpDrops(dt);
       updateSpills(dt);
       if (!outstandingValue() && hatchTarget === 1) hatchTarget = 0;
@@ -613,6 +634,10 @@
       for (const slot of dropSlots) removeChild(root, slot.node);
       removeChild(root, core);
       removeChild(root, shell);
+      // Both detail levels cache this visit's instance matrices. End their GPU
+      // lifetime here so another scene's pile cannot reuse a matching version.
+      ctx.renderer.releaseGeometry(shellGeometry);
+      ctx.renderer.releaseGeometry(distantShellGeometry);
       removeChild(root, spillNode);
       spillSlots.length = 0;
       spillState.active = spillNode.instanceCount = 0;
@@ -667,11 +692,12 @@
       world.level = Math.max(0, Math.min(MAX_BANANAS, Number(level) || 0));
       syncPile(true);
     };
+    const liveGeometry = (set) => set.add(shellGeometry).add(distantShellGeometry);
     // Crew slots are assigned immediately after construction. Publish the
     // loaded pile's real footprint before the crew exists or starts walking.
     reflow(Math.max(0, Math.min(MAX_BANANAS, Math.floor(world.level))));
     return {
-      slots: pileSlots, drops: dropSlots, core, shell, syncPile, deliverBananas, pileEdge, eatFromPile, update, dispose, stats, setLevel, delivery: deliveryDebug, spill, spillEffect,
+      slots: pileSlots, drops: dropSlots, core, shell, syncPile, deliverBananas, pileEdge, eatFromPile, update, dispose, stats, setLevel, liveGeometry, delivery: deliveryDebug, spill, spillEffect,
       get shown() {
         return counted;
       },

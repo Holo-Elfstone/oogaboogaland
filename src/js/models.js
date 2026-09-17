@@ -235,7 +235,7 @@
   const banana = () => createNode({ geometry: bananaGeometry() });
   // A centered copy for the pile skin. It has the full depth and dimensions of a
   // carried banana, while its origin lets it sit evenly across the mound surface.
-  const bananaTileGeometry = cached(() => tube({
+  const bananaTileNearGeometry = cached(() => tube({
     rings: 8,
     segments: 5,
     path: (t) => {
@@ -245,6 +245,20 @@
     radius: (t) => 0.085 * Math.pow(Math.sin(Math.PI * t), 0.55) + 0.012,
     colorFn: (t) => t < 0.08 || t > 0.92 ? "#5a3a1a" : t < 0.2 || t > 0.8 ? "#c9b23a" : "#f5c542"
   }));
+  const bananaTileDistantGeometry = cached(() => {
+    const source = bananaTileNearGeometry(), geo = geometry(), rings = [0, 1, 2, 4, 6, 7, 8];
+    // Merge only the middle yellow spans; the tips and cross section stay exact.
+    for (const ring of rings) for (let segment = 0; segment < 5; segment++) {
+      const i = (ring * 5 + segment) * 3;
+      geo.verts.push(source.verts[i], source.verts[i + 1], source.verts[i + 2]);
+    }
+    for (let p = 0; p < rings.length - 1; p++) for (let s = 0; s < 5; s++) {
+      const next = (s + 1) % 5, original = source.faces[rings[p] * 5 + s];
+      face(geo, [p * 5 + s, p * 5 + next, (p + 1) * 5 + next, (p + 1) * 5 + s], original.color, original);
+    }
+    return geo;
+  });
+  const bananaTileGeometry = (distant = false) => distant ? bananaTileDistantGeometry() : bananaTileNearGeometry();
   const bananaPileCoreGeometry = (worldRadius = 0.45, worldHeight = 0.48, faceSize = 0.16) => {
     const geo = geometry();
     const segments = Math.max(24, Math.min(384, Math.ceil(Math.PI * 2 * worldRadius / faceSize)));
@@ -394,8 +408,9 @@
     box({ w: 0.04 * h, h: 0.04 * h, d: 0.025 * h, color: "#e35b2d", emissive: 0.7, offset: { z: 0.34 * h } })
   );
   const energyCanCache = new Map();
-  const energyCanGeometry = (h) => {
-    let geo = energyCanCache.get(h);
+  const energyCanGeometry = (h, gold = false) => {
+    const key = `${h}/${gold}`;
+    let geo = energyCanCache.get(key);
     if (!geo) {
       geo = merge(
         lathe({ profile: [[0.075 * h, -0.18 * h], [0.088 * h, -0.14 * h], [0.088 * h, 0.14 * h], [0.075 * h, 0.18 * h]], segments: 10, color: "#c9ccd2" }),
@@ -406,7 +421,8 @@
         lathe({ profile: [[0.072 * h, 0.18 * h], [0.065 * h, 0.195 * h], [0, 0.195 * h]], segments: 10, color: "#c9ccd2" }),
         box({ w: 0.055 * h, h: 0.008 * h, d: 0.025 * h, color: "#5f6670", offset: { y: 0.202 * h } })
       );
-      energyCanCache.set(h, geo);
+      if (gold) for (const face of geo.faces) face.color = GOLD_CLUB_PALETTE[0];
+      energyCanCache.set(key, geo);
     }
     return geo;
   };
@@ -522,14 +538,14 @@
     const clubV = traits.anunnaki ? staffVoxels(rand) : clubVoxels(rand);
     const clubOrigin = { x: -1 * u, y: -1 * u, z: -1 * u };
     const skins = {
-      club: { default: voxelGeometry(clubV, { unit: u, palette: CLUB_PALETTE, origin: clubOrigin }), gold: voxelGeometry(clubV, { unit: u, palette: GOLD_CLUB_PALETTE, origin: clubOrigin }) },
+      club: { default: traits.energyCan ? energyCanGeometry(h) : voxelGeometry(clubV, { unit: u, palette: CLUB_PALETTE, origin: clubOrigin }), gold: traits.energyCan ? energyCanGeometry(h, true) : voxelGeometry(clubV, { unit: u, palette: GOLD_CLUB_PALETTE, origin: clubOrigin }) },
       gun: { default: gunGeometry(h, GUN_PALETTE), gold: gunGeometry(h, GOLD_GUN_PALETTE) }
     };
     // The staff stands upright in the grip; the club hangs forward
     parts.club = createNode({
       position: { x: 0, y: -0.62 * h, z: 0.08 * h },
       rotation: { x: traits.energyCan ? 0 : traits.anunnaki ? 0.2 : 0.95, y: 0, z: 0 },
-      geometry: traits.energyCan ? energyCanGeometry(h) : skins.club.default
+      geometry: skins.club.default
     });
     addChild(parts.armL, parts.club);
     parts.snack = createNode({

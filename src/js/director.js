@@ -58,6 +58,7 @@
   const CLOCK_NS = "http://www.w3.org/2000/svg";
   const clockSvg = document.createElementNS(CLOCK_NS, "svg");
   const clockPath = document.createElementNS(CLOCK_NS, "path");
+  const clockTime = DEBUG ? window.BL.daylight.parseTime(params.get("time")) : NaN;
   const clockDaylen = DEBUG ? Number(params.get("daylen")) : NaN;
   const clockStartDate = new Date();
   const requestedClockHour = DEBUG && params.has("hour") ? Number(params.get("hour")) : NaN;
@@ -73,7 +74,11 @@
     if (now < clockNextUpdate) return;
     clockNextUpdate = now + 100;
     let hours, minutes;
-    if (clockDaylen > 0) {
+    if (Number.isFinite(clockTime)) {
+      const total = Math.round(clockTime * 60);
+      hours = Math.floor(total / 60);
+      minutes = total % 60;
+    } else if (clockDaylen > 0) {
       const sceneDaylight = active && active.debug && active.debug.daylight;
       const relative = sceneDaylight && Number.isFinite(sceneDaylight.hour) ? sceneDaylight.hour : clockBaseHour + elapsed * 24 / clockDaylen;
       const total = Math.floor(((relative % 24 + 24) % 24) * 60) % 1440;
@@ -103,7 +108,7 @@
     const label = text.trimStart();
     clockPath.setAttribute("d", d);
     worldClock.dateTime = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-    worldClock.setAttribute("aria-label", `${clockDaylen > 0 ? "Ooga Booga time" : "Local time"} ${label}`);
+    worldClock.setAttribute("aria-label", `${Number.isFinite(clockTime) || clockDaylen > 0 ? "Ooga Booga time" : "Local time"} ${label}`);
   };
   const go = (id) => {
     const next = scenes[id];

@@ -5,10 +5,13 @@
   const createNode = (options = {}) => ({
     position: { x: 0, y: 0, z: 0 },
     rotation: { x: 0, y: 0, z: 0 },
+    poseYaw: 0,
     scale: { x: 1, y: 1, z: 1 },
     geometry: null,
     glow: 1,
     highlight: 0,
+    scorch: 0,
+    ember: 0,
     visible: true,
     cameraHidden: false,
     parent: null,
@@ -36,6 +39,15 @@
     // A node carrying a quaternion turns by it instead of its Euler rotation
     if (node.quaternion) mat4.fromTQS(node.local, node.position, node.quaternion, node.scale);
     else mat4.fromTRS(node.local, node.position, node.rotation, node.scale);
+    // A body pose turns both the part and its pivot in the parent's frame,
+    // without changing its authored gait or the character's facing direction.
+    if (node.poseYaw) {
+      const m = node.local, c = Math.cos(node.poseYaw), s = Math.sin(node.poseYaw);
+      for (let i = 0; i < 16; i += 4) {
+        const x = m[i], z = m[i + 2];
+        m[i] = c * x + s * z; m[i + 2] = c * z - s * x;
+      }
+    }
     if (parentWorld) mat4.multiply(node.world, parentWorld, node.local);
     else node.world.set(node.local);
     for (const child of node.children) updateWorld(child, node.world);

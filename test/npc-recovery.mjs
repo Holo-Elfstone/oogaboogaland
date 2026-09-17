@@ -47,7 +47,7 @@ export const npcRecoveryProbe = ({ dt = 1 / 60 } = {}) => {
             const i = nav.path[at], x = nav.x + (i % 21 - 10) * 0.5, z = nav.z + (Math.floor(i / 21) - 10) * 0.5;
             // Obstruct a future waypoint in the open yard; sealing the only
             // exit of the U would make escape physically impossible.
-            if (Math.abs(x) < 1.8 || Math.hypot(x - cave.root.position.x, z - cave.root.position.z) < 2) continue;
+            if (Math.abs(x) < 1.6 && z < 1.8 || Math.hypot(x - cave.root.position.x, z - cave.root.position.z) < 1.3) continue;
             moving.position.x = x; moving.position.z = z;
             moving.visible = true; changed = true; sync(); break;
           }
