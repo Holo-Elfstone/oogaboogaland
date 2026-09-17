@@ -242,15 +242,18 @@
     return merge(...parts);
   });
   const sealedCaveFace = variants((variant) => {
-    const rand = mulberry32(419), parts = [], fronts = new Float32Array(60);
+    const rand = mulberry32(419), stone = vox(), parts = [];
     const mossColors = ["#6f7d3e", "#7b8945", "#65733a"];
-    let frontZ = -Infinity;
+    // Match both depth layers of the rim, with a continuous stone core.
+    // Meshing the joined voxels removes the internal faces between blocks;
+    // the seal cannot develop slits where different block depths once met.
+    const backZ = -0.52, stoneFront = backZ + VOX * 2;
+    let frontZ = stoneFront;
     for (let y = 0; y < 6; y++) for (let x = 0; x < 10; x++) {
-      const depth = 0.38 + rand() * 0.16, color = CLIFF[(x + y * 2 + Math.floor(rand() * 2)) % CLIFF.length], z = (rand() - 0.5) * 0.08;
-      parts.push(box({ w: 0.5, h: 0.5, d: depth, color, offset: { x: -2.25 + x * 0.5, y: 0.25 + y * 0.5, z } }));
-      fronts[y * 10 + x] = z + depth * 0.5;
-      frontZ = Math.max(frontZ, fronts[y * 10 + x]);
+      const color = (x + y * 2 + Math.floor(rand() * 2)) % CLIFF.length;
+      stone.set(x - 5, y, 0, color); stone.set(x - 5, y, 1, color);
     }
+    parts.push(voxGeo(stone, { unit: VOX, palette: CLIFF, origin: { x: 0, y: 0, z: backZ } }));
     // The hill steps wear quarter-voxel grass caps. Continue that same muted,
     // blocky growth across the seal in connected patches rather than flecks.
     for (let y = 0; y < 12; y++) for (let x = 0; x < 20; x++) {
@@ -259,12 +262,13 @@
       const edge = variant === 0 ? x === 0 && y > 4 && y < 9 || x === 19 && y > 3 && y < 9 : variant === 1 ? x === 0 && y > 2 && y < 7 || x === 19 && y > 6 && y < 10 : x === 0 && y > 6 && y < 11 || x === 19 && y > 1 && y < 7;
       const patch = variant === 0 ? y > 3 && y < 7 && (x > 4 && x < 8 || x > 13 && x < 17) && (x + y) % 3 !== 0 : variant === 1 ? y > 4 && y < 8 && (x > 2 && x < 6 || x > 11 && x < 15) && (x + y) % 3 !== 1 : y > 2 && y < 6 && (x > 8 && x < 14) && (x + y) % 4 !== 2;
       if (!top && !upper && !edge && !patch) continue;
-      const stoneFront = fronts[Math.floor(y / 2) * 10 + Math.floor(x / 2)], mossZ = stoneFront + 0.0125;
+      const mossZ = stoneFront + 0.0125;
       parts.push(box({ w: 0.245, h: 0.245, d: 0.025, color: mossColors[(x * 3 + y * 5 + variant) % mossColors.length], offset: { x: -2.375 + x * 0.25, y: 0.125 + y * 0.25, z: mossZ } }));
       frontZ = Math.max(frontZ, mossZ + 0.0125);
     }
     const geo = merge(...parts);
     geo.frontZ = frontZ;
+    geo.sealBounds = { minX: -2.5, maxX: 2.5, minY: 0, maxY: 3, minZ: backZ, maxZ: stoneFront };
     return geo;
   });
   const matrixButtonStand = cached(() => merge(

@@ -7,6 +7,12 @@ export const cloudSupportProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
   const key = (type, value) => window.dispatchEvent(new KeyboardEvent(type, { key: value }));
   const press = (value) => { key("keydown", value); held.add(value); };
   const release = (value) => { key("keyup", value); held.delete(value); };
+  // The pack is now a pickup. Acquire it through the real contact path before
+  // isolating a cloud, so J exercises its owned (initially unworn) state.
+  B.pilot.possess(cave);
+  const pickup = B.jetpack.pickup;
+  B.crew.relocatePlayer({ x: pickup.x, y: pickup.host.node.position.y + pickup.host.centerTop, z: pickup.z }, 0);
+  scene.update(0, time);
   for (const c of clouds) c.node.visible = c === cloud;
   // Derive the highest broad top from render vertices, independently of the
   // platform's cached support rectangles.
@@ -79,7 +85,7 @@ export const cloudSupportProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     step();
     rows.push({ kind: "transient-overlap", initiallyClear: priorTop === -Infinity, acquired, firstTop, firstHeight: first.y, detached: cave.cloudSupport === null, finalHeight: position().y, expectedHeight: 25 - (5 + 9.8 * dt) * dt - (5 + 19.6 * dt) * dt, velocity: cave.hopV, expectedVelocity: -5 - 19.6 * dt });
     place();
-    cave.jetFuel = 0.1; press("j"); step(); release("j");
+    B.jetpack.state.fuel = cave.jetFuel = 0.1; press("j"); step(); release("j");
     const recovering = cave.jetRecovering, fuelStart = cave.jetFuel;
     for (let i = 0; i < Math.ceil(0.6 / dt); i++) step();
     rows.push({ kind: "refill", recovering, unlocked: !cave.jetRecovering, fuel: cave.jetFuel, expected: Math.min(1, fuelStart + Math.ceil(0.6 / dt) * dt / 4) });
@@ -109,7 +115,7 @@ export const cloudSupportProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
       rows.push({ kind: reason, drop: before.y - after.y, expected: 9.8 * dt * dt, velocity: cave.hopV, expectedVelocity: -9.8 * dt, horizontal: Math.hypot(after.x - before.x, after.z - before.z), detached: cave.cloudSupport === null });
     }
     // A one-way cloud must never stop upward thrust from underneath it.
-    place(-3); cave.hopV = 0; cave.jetFuel = 1;
+    place(-3); cave.hopV = 0; B.jetpack.state.fuel = cave.jetFuel = 1;
     press("j"); step(); release("j"); press(" ");
     let highest = -Infinity;
     for (let i = 0; i < Math.ceil(1.8 / dt); i++) { step(); highest = Math.max(highest, position().y); }

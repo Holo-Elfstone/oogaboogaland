@@ -88,6 +88,44 @@
     }
     return geo;
   };
+  // Keep only the carved labels near cave-owned render surfaces. The full
+  // construction grid must not survive through a material-sampling closure.
+  const compactCaveLabels = (labels, geometry, grid, unit, origin) => {
+    const extents = new Int32Array(8 * 6), regions = [];
+    for (let cave = 0; cave < 8; cave++) {
+      const at = cave * 6;
+      extents[at] = grid.sx; extents[at + 1] = grid.sy; extents[at + 2] = grid.sz;
+      extents[at + 3] = extents[at + 4] = extents[at + 5] = -1;
+    }
+    const v = geometry.verts;
+    for (const face of geometry.faces) {
+      const cave = face.matrixCave || 0;
+      if (cave < 1 || cave > 8) continue;
+      const at = (cave - 1) * 6;
+      for (const vertex of face.i) {
+        const n = vertex * 3, x = Math.floor((v[n] - origin.x) / unit), y = Math.floor((v[n + 1] - origin.y) / unit), z = Math.floor((v[n + 2] - origin.z) / unit);
+        extents[at] = Math.min(extents[at], x); extents[at + 1] = Math.min(extents[at + 1], y); extents[at + 2] = Math.min(extents[at + 2], z);
+        extents[at + 3] = Math.max(extents[at + 3], x); extents[at + 4] = Math.max(extents[at + 4], y); extents[at + 5] = Math.max(extents[at + 5], z);
+      }
+    }
+    let bytes = 0;
+    for (let cave = 0; cave < 8; cave++) {
+      const at = cave * 6;
+      if (extents[at + 3] < 0) continue;
+      const x = Math.max(0, extents[at] - 1), y = Math.max(0, extents[at + 1] - 1), z = Math.max(0, extents[at + 2] - 1);
+      const sx = Math.min(grid.sx, extents[at + 3] + 2) - x, sy = Math.min(grid.sy, extents[at + 4] + 2) - y, sz = Math.min(grid.sz, extents[at + 5] + 2) - z;
+      const data = new Uint8Array(sx * sy * sz);
+      for (let dx = 0; dx < sx; dx++) for (let dy = 0; dy < sy; dy++) {
+        const source = ((x + dx) * grid.sy + y + dy) * grid.sz + z, target = (dx * sy + dy) * sz;
+        for (let dz = 0; dz < sz; dz++) {
+          const label = labels[source + dz];
+          if (label > 0 && label <= 8) data[target + dz] = label;
+        }
+      }
+      regions.push({ x, y, z, sx, sy, sz, data }); bytes += data.byteLength;
+    }
+    return { regions, bytes };
+  };
   // Smooth value noise, three octaves, roughly 0..1
   const LATTICE = 64;
   const valueNoise = (rand) => {
@@ -278,7 +316,7 @@
     const grid = makeGrid(SX, SY, SZ);
     // Ownership follows carved empty cells, so merged exterior faces cannot inherit
     // a cave's local Matrix layer merely because they share a bounding box.
-    const matrixCaves = new Uint8Array(grid.data.length);
+    let matrixCaves = new Uint8Array(grid.data.length);
     // Exact carved column ownership, floor and ceiling in quarter-unit cells.
     // Six bits apiece cover -8..7.5; ceiling 63 means open sky.
     const cavities = new Uint16Array(SX * SZ);
@@ -289,6 +327,7 @@
     const basementCollision = new Uint32Array(SX * SZ);
     const basementHeights = new Float32Array((SX + 1) * (SZ + 1));
     const rampCells = new Uint8Array(SX * SZ);
+    const frontageCells = new Uint8Array(SX * SZ);
     const rampCollision = new Uint32Array(SX * SZ);
     const rampHeights = new Float32Array((SX + 1) * (SZ + 1));
     const height = new Float32Array(SX * SZ);
@@ -325,7 +364,13 @@
           const dx = wx - f.x, dz = wz - f.z;
           const along = dx * f.ox + dz * f.oz, across = Math.abs(dz * f.ox - dx * f.oz);
           if (along > -f.e && across < 5) bluff = Math.max(bluff, (1 - smooth((across - 3) / 2)) * (1 - smooth((along - BLUFF_LEN) / 2)));
-          else if (f.lean && along > -APRON && across < 3.5) apron = true;
+          else if (f.lean && along > -APRON && across < 3.5) {
+            apron = true;
+            // The old cave apron and its extended frontage form the same
+            // corridor. Keep that union's identity through greedy meshing.
+            const frontage = headquartersFrames.indexOf(f);
+            if (frontage >= 0) frontageCells[i] = frontage + 1;
+          }
         }
         const theta = Math.atan2(wx, -wz);
         // The rim erodes, except around the mouths
@@ -357,7 +402,8 @@
         }
         // Carry the ground-level frontage across the outer ridge without
         // lowering any column behind the headquarters doorway plane.
-        for (const front of headquartersFronts) {
+        for (let fi = 0; fi < headquartersFronts.length; fi++) {
+          const front = headquartersFronts[fi];
           const dx = wx - front.center.x, dz = wz - front.center.z;
           const across = dx * front.tangent.x + dz * front.tangent.z, depth = dx * -front.tangent.z + dz * front.tangent.x;
           const padding = UNIT / 2 * (Math.abs(front.tangent.x) + Math.abs(front.tangent.z));
@@ -365,6 +411,7 @@
             top = 0;
             surface = grassAt(wx, wz);
             meadow[i] = 1;
+            frontageCells[i] = fi + 1;
             break;
           }
         }
@@ -947,7 +994,7 @@
         }
         const sightOffset = windowSightIndices.length;
         for (const id of planeIds) windowSightIndices.push(id);
-        windowColumns[column].push({ vertices, triangles: { i: new Uint16Array(faces.flatMap((face) => face.i)) }, sightOffset, sightCount: planeIds.length, cuts: cut.cuts, color: PALETTE[cut.color], minX: cut.minX, minY: cut.minY, minZ: cut.minZ, maxX: cut.minX + UNIT, maxY: cut.minY + UNIT, maxZ: cut.minZ + UNIT });
+        windowColumns[column].push({ vertices, triangles: { i: new Uint16Array(faces.flatMap((face) => face.i)) }, sightOffset, sightCount: planeIds.length, cuts: cut.cuts, color: PALETTE[cut.color], matrixCave: cut.matrixCave, minX: cut.minX, minY: cut.minY, minZ: cut.minZ, maxX: cut.minX + UNIT, maxY: cut.minY + UNIT, maxZ: cut.minZ + UNIT });
         windowFragmentCount++;
       }
     }
@@ -1229,6 +1276,17 @@
       out.ceiling = ceiling === 63 ? Infinity : (ceiling - 32) * UNIT;
       return true;
     };
+    // Structural guides use the carved footprint to distinguish a tunnel's
+    // side wall from the vertical risers of its stepped ceiling.
+    const rampColumnAt = (x, z, basement, out) => {
+      const i = column(x, z), id = i < 0 ? 0 : basement ? basementCells[i] : rampCells[i];
+      if (!id) return 0;
+      const cavity = basement ? basementCavities[i] : lowerCavities[i], offset = basement ? 64 : 32;
+      out.floor = (((cavity >> 4) & 63) - offset) * UNIT;
+      out.ceiling = ((cavity >> 10) - offset) * UNIT;
+      return id;
+    };
+    const frontageColumnAt = (x, z) => { const i = column(x, z); return i < 0 ? 0 : frontageCells[i]; };
     const pathColumn = (x, z) => {
       const gx = Math.floor((x - ORIGIN.x) / PATH_UNIT), gz = Math.floor((z - ORIGIN.z) / PATH_UNIT);
       return gx >= 0 && gz >= 0 && gx < PX && gz < PZ ? gx * PZ + gz : -1;
@@ -1399,9 +1457,38 @@
       }
       return false;
     };
+    // Walking centerlines use the same bends as the rendered path mask.
+    // Keep the master curves fixed; navigation clips them to the growing ring.
+    const centerlines = spokes.map((s) => {
+      const points = [];
+      for (let r = MASTER_PATH_CENTER; r <= MEADOW; r += PATH_UNIT) {
+        const t = (r - MASTER_PATH_CENTER) / (MEADOW - MASTER_PATH_CENTER);
+        let bend = Math.sin(t * Math.PI * 2);
+        if (s.id === "c1") bend *= 1 - smooth((t - 0.5) / 0.35);
+        const angle = s.angle + (-s.lean * TRAIL_LEAN + s.wobble * (s.lean ? Math.abs(bend) : bend)) / r;
+        points.push({ x: Math.sin(angle) * r, z: -Math.cos(angle) * r });
+      }
+      return points;
+    });
+    for (const north of [true, false]) {
+      const points = [];
+      for (let r = MEADOW; r <= RADIUS; r += PATH_UNIT) {
+        const x = north ? pass.wobble * Math.sin((r - MEADOW) / (-GATE_Z - MEADOW) * Math.PI * 2) : 0;
+        points.push({ x, z: (north ? -1 : 1) * Math.sqrt(r * r - x * x) });
+      }
+      centerlines.push(points);
+    }
+    for (const front of headquartersFronts) {
+      centerlines.push(front.connector);
+      const points = [];
+      for (let n = -front.halfLength + PATH_HALF; n <= front.halfLength - PATH_HALF; n += PATH_UNIT) points.push({ x: front.center.x + front.tangent.x * n, z: front.center.z + front.tangent.z * n });
+      centerlines.push(points);
+    }
     const path = {
       geometry: PATH_TILE,
       instanceData: pathData,
+      centerlines,
+      get version() { return pathVersion; },
       setRadius: setPathRadius,
       overlaps: overlapsPath,
       apply(node) {
@@ -1437,6 +1524,8 @@
     const windowOffset = geometry.verts.length / 3;
     for (const value of windowGeometry.verts) geometry.verts.push(value);
     for (const face of windowGeometry.faces) geometry.faces.push({ ...face, i: face.i.map((i) => i + windowOffset) });
+    const rockCaves = compactCaveLabels(matrixCaves, geometry, grid, UNIT, ORIGIN);
+    matrixCaves = null;
     // Four half-spaces describe each continuous ramp's triangular footprint
     // and sloping top. Its column supplies the fifth, horizontal bottom plane.
     const rampSight = new Float64Array(rampGeometry.faces.length * 17);
@@ -1454,9 +1543,7 @@
       rampSight[at + 12] = -gradientX / length; rampSight[at + 13] = 1 / length; rampSight[at + 14] = -gradientZ / length; rampSight[at + 15] = (ay - gradientX * ax - gradientZ * az) / length;
       rampSight[at + 16] = Math.max(ay, v[b + 1], v[c + 1]);
     }
-    const voxelMaterialAt = (x, y, z) => {
-      const material = grid.get(Math.floor((x - ORIGIN.x) / UNIT), Math.floor((y - ORIGIN.y) / UNIT), Math.floor((z - ORIGIN.z) / UNIT));
-      if (material) return PALETTE[material];
+    const windowPieceAt = (x, y, z) => {
       const pieces = windowColumns[column(x, z)];
       if (pieces) for (const piece of pieces) {
         if (y < piece.minY || y >= piece.maxY) continue;
@@ -1472,11 +1559,51 @@
           const distance = nx * (x - v[a]) + ny * (y - v[a + 1]) + nz * (z - v[a + 2]);
           if (distance > 0 && distance * distance > 1e-18 * (nx * nx + ny * ny + nz * nz)) { inside = false; break; }
         }
-        if (inside) return piece.color;
+        if (inside) return piece;
       }
       return null;
     };
+    const voxelMaterialAt = (x, y, z) => {
+      const material = grid.get(Math.floor((x - ORIGIN.x) / UNIT), Math.floor((y - ORIGIN.y) / UNIT), Math.floor((z - ORIGIN.z) / UNIT));
+      if (material) return PALETTE[material];
+      const piece = windowPieceAt(x, y, z);
+      return piece ? piece.color : null;
+    };
     const solidAt = (x, y, z) => voxelMaterialAt(x, y, z) !== null;
+    const rockCaveCell = (gx, gy, gz) => {
+      for (let n = 0; n < rockCaves.regions.length; n++) {
+        const region = rockCaves.regions[n], x = gx - region.x, y = gy - region.y, z = gz - region.z;
+        if (x < 0 || y < 0 || z < 0 || x >= region.sx || y >= region.sy || z >= region.sz) continue;
+        const cave = region.data[(x * region.sy + y) * region.sz + z];
+        if (cave) return cave;
+      }
+      return 0;
+    };
+    // Match the nearest actual voxel boundary, not the cave's bounding box.
+    // Unowned exterior air competes too, so the top of a thin cave roof keeps
+    // its radial material while the underside follows the carved cave's wave.
+    const rockCaveAt = (x, y, z) => {
+      const px = (x - ORIGIN.x) / UNIT, py = (y - ORIGIN.y) / UNIT, pz = (z - ORIGIN.z) / UNIT;
+      const gx = Math.floor(px), gy = Math.floor(py), gz = Math.floor(pz);
+      if (gx < 0 || gy < 0 || gz < 0 || gx >= SX || gy >= SY || gz >= SZ) return 0;
+      if (!grid.has(gx, gy, gz)) {
+        // Window cuts leave solid convex pieces in otherwise empty grid cells.
+        // Their ownership is the same one carried by their rendered faces.
+        const piece = windowPieceAt(x, y, z);
+        return piece ? piece.matrixCave : rockCaveCell(gx, gy, gz);
+      }
+      let nearest = Infinity, owner = 0;
+      for (let side = 0; side < 6; side++) {
+        const axis = side >> 1, positive = side & 1, step = positive ? 1 : -1;
+        const nx = gx + (axis === 0 ? step : 0), ny = gy + (axis === 1 ? step : 0), nz = gz + (axis === 2 ? step : 0);
+        if (grid.has(nx, ny, nz)) continue;
+        const fraction = axis === 0 ? px - gx : axis === 1 ? py - gy : pz - gz, distance = positive ? 1 - fraction : fraction;
+        if (distance > nearest) continue;
+        const cave = rockCaveCell(nx, ny, nz);
+        if (distance < nearest || !cave) { nearest = distance; owner = cave; }
+      }
+      return owner;
+    };
     // A section uses the same authored material as the surrounding mesh.
     // Return shared palette RGB arrays; air and points outside the island are null.
     const rockMaterialAt = (x, y, z) => {
@@ -1657,9 +1784,13 @@
       ceilingAt,
       smoothSupportAt,
       cavityAt,
+      rampColumnAt,
+      frontageColumnAt,
       cavityBytes: cavities.byteLength + lowerCavities.byteLength + basementCavities.byteLength,
       solidAt,
       rockMaterialAt,
+      rockCaveAt,
+      rockCaveBytes: rockCaves.bytes,
       sightClearAt,
       sightBoxClearAt,
       sightBoxSolidAt,

@@ -2,7 +2,10 @@
 // character's feet. Point-only support let falls embed the body and trap it.
 export const wallLandingProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
   const B = window.__ooga, scene = window.BL.scenes.hub, island = B.island, c = [...B.cavemen.values()].find((entry) => entry.state === "working" && !entry.jet), o = B.pilot.orbit;
-  const fixtures = [{ x: -26.125, z: 14.125 }, { x: -24.875, z: -4.125 }, { x: -24.875, z: 4.125 }, { x: -24.375, z: 5.875 }], rows = [], failures = [], held = new Set();
+  // Exposed jagged steps in all four island quadrants, with clear fall columns
+  // and walkable exits in every direction. The previous positions were under
+  // newly solid tree canopies; prop landings have their own movement probes.
+  const fixtures = [{ x: -20.5, z: 19.75 }, { x: 21.5, z: -7 }, { x: -3.75, z: -24 }, { x: 13.5, z: 15.75 }], rows = [], failures = [], held = new Set();
   let time = B.renderOpts.matrix.time, checks = 0;
   const key = (type, value) => window.dispatchEvent(new KeyboardEvent(type, { key: value }));
   const press = (value) => { key("keydown", value); held.add(value); };
@@ -16,6 +19,7 @@ export const wallLandingProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
   };
   const position = () => ({ x: c.root.position.x, y: c.root.position.y - c.baseY, z: c.root.position.z });
   B.pilot.possess(c);
+  B.jetpack.grant(c);
   if (mode === "first-person") B.pilot.enterClose();
   try {
     for (const jet of [false, true]) for (let i = 0; i < fixtures.length; i++) {

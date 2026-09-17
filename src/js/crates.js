@@ -43,6 +43,7 @@
       if (i >= 0) crates.splice(i, 1);
       if (crate.slot) crate.slot.taken = false;
       input.remove(crate.body);
+      if (ctx.removeSolid) ctx.removeSolid(crate.node);
       removeChild(root, crate.node);
       if (ctx.onModelChange) ctx.onModelChange();
     };
@@ -97,6 +98,7 @@
       const crate = { node, lid, body: node.children[0], loot, donationId: donation.id, opened: false, phase: fnv1a(donation.id) % 7, slot: spot };
       input.add(crate.body, { kind: "crate", crate, priority: 2 }, { radius: 0.7 });
       crates.push(crate);
+      if (ctx.addSolid) ctx.addSolid(node);
       if (ctx.onModelChange) ctx.onModelChange();
       addTween({
         delay, dur: 0.8, ease: ease.outBounce, update: (k) => {

@@ -39,7 +39,10 @@ These actions work from every direction without needing to face them. Click or t
 decorative props to interact with them. Walking into the lit lab cave enters it.
 **Escape** lets go and **0** brings the camera home.
 
-**J** puts the controlled Ooga's jetpack on or takes it off. With the jetpack equipped,
+The jetpack starts spinning above a cloud beyond the island. Reach that cloud and jump
+into the pack to collect it. Its compact button then appears at the upper left; click it
+or press **J** to put the controlled Ooga's jetpack on or take it off. The button expands
+to show fuel while the pack is worn. With the jetpack equipped,
 tap **Space** on the ground for a weighted hop, half the height of a normal jump,
 or hold it to keep climbing under thrust. Clicking an Ooga still shows a talking
 bubble without making them hop.
@@ -58,20 +61,46 @@ regardless of its remaining fuel.
 Landing with less than 20% fuel puts the jetpack in recovery until fuel recharges above
 20%. During recovery, **Space** and the **JUMP!** button perform the standard double
 jump even with the pack equipped; nearby controls still take priority. Toggling the
-pack does not refill it or clear recovery. Jetpacks are removed on entering the
-underground HQ, basement, or their access ramps and cannot be equipped there, except
+pack does not refill it or clear recovery. Entering the underground HQ, basement, or
+their access ramps takes the pack off without losing it; it cannot be equipped there, except
 inside the basement's central shaft. Fly up through that opening from below the
-island; the pack comes off once you clear its lip onto the basement walking ring.
+island; the pack comes off once you clear its lip onto the basement walking ring. The
+compact button remains available and can equip the pack again after returning above ground.
+
+Wandering Oogas walk around the banana pile and keep off its platform rim.
+You can still walk, jump, or fly through the fruit, with walking and vertical
+movement at half speed. Leaving through its side or top scatters a brief burst
+of bananas that tumble away and disappear. The platform has a stone
+interior that joins the ground and banana interiors without gaps.
+Returning Oogas choose the nearest free eating slot and choose again if someone
+takes it before they arrive. The platform and fruit interiors follow the glyph
+wave, switching to black with blurred green code as it reaches them.
+NPC walkers check destinations for obstructions and use a bounded local recovery
+path to back out of dead ends and go around scenery that blocks their route.
+They follow the midpoint curves of connected surface paths, stepping off to pass
+other Oogas or make the final approach to an off-path destination such as a
+fireplace seat. Routes
+adapt when the growing pile changes the paths; player movement stays unrestricted.
+Routes through the lower ramps and room entrances round their corners wherever
+the actual floor, walls and headroom leave enough space.
+If no walking route is available, they can jump onto or over nearby items after
+checking the flight and landing space. NPC recovery jumps stay outside the banana
+pile and require enough headroom. Banana interior lighting includes exterior shadows at dawn.
+An equipped pack stays on and recharges on the platform.
+The blurred banana interior follows the daylight. In either camera view, it
+shows eligible nearby outlines only through the covered part of the image.
 
 You can fly above and beyond the island, or walk and jump off its edge. Steer through
 an open window to enter HQ or the basement while falling. The windows widen toward
 the outside with smooth stone reveals. Falling into the abyss plays a fall animation,
-then returns your Ooga to the banana pile. First person without a selected Ooga also
+then returns your Ooga to the banana pile. A carried pack is lost in that fall and respawns
+above another distant cloud. First person without a selected Ooga also
 falls naturally and returns to the pile.
 
 Land on the clouds to walk along their voxel tops and recharge your jetpack. A cloud
 carries you as it drifts; walking off, or losing the cloud beneath you, starts a
-natural fall. You can fly upward through clouds from below.
+natural fall. If the unclaimed jetpack's cloud disappears, the pack falls and then
+respawns above another distant cloud. You can fly upward through clouds from below.
 
 Scroll all the way in for first person, keeping your approach direction as the
 Ooga turns to look that way. Walking has the same pace with or without a selected
@@ -95,12 +124,20 @@ openings clip camera-visible portions precisely, preserving the wall around them
 Each wall fades at the distance limit; camera-visible portions do not receive the cue.
 Walls and floors block cues from adjoining rooms
 and other levels. These cues also work when the camera is outside
-rock. Object outlines soften near the distance limit and fade smoothly as sightlines
+rock. Island stone and stone entrance frames activate the hidden-character cues;
+trees, clouds, and other scenery do not activate them on their own. Those objects
+remain eligible to receive outlines when stone blocks the view.
+Object outlines soften near the distance limit and fade smoothly as sightlines
 open or close. Nearby objects keep their eligibility as you turn or zoom the camera,
 and additional characters never displace their cues. All outline cues switch off
 immediately in first person or whenever any part of your Ooga is visible to the
-camera. Small grass shoots receive no outlines. The bananas, mound, and stone base
-share one pile silhouette. A brighter outline locates your completely hidden Ooga.
+camera, except for cues clipped to a rock or banana interior and the exterior ramp
+view through windows. Small grass shoots receive no outlines. The pile's inner shell
+and solid platform have separate wall-style cues, each with a soft fill and continuous border.
+When part of the pile is exposed to the camera, its covered portion keeps its cue;
+only the exposed pixels are removed, without drawing a new border along that cut.
+Individual bananas and decorative base blocks do not participate in that cue's
+visibility checks or outline rendering. A brighter outline locates your completely hidden Ooga.
 
 The island's **PILE**, **LAB**, **MIRROR**, **HQ**, and **BSMT** buttons take your controlled Ooga,
 or just your free camera, to that destination while keeping your current view mode.
@@ -155,7 +192,7 @@ go; **0** puts the camera back, **M** mutes the synthesized engine, wind and can
 **Escape** returns to the board. On a phone the left stick pitches and rolls, the right stick
 turns, and the button jumps, pulls and flares. The best drop is kept in your browser.
 
-Keys: **B** add 100 test bananas, **J** toggle the controlled Ooga's jetpack, **L** legendary
+Keys: **B** add 100 test bananas, **J** toggle a collected jetpack on the controlled Ooga, **L** legendary
 tip, **P** fill the pile, **1** to **9** force a contributor to eating, **Escape** leave a
 cave or let go, **Shift+R** reset the demo.
 

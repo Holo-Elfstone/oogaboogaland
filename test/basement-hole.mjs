@@ -180,6 +180,7 @@ export const basementHoleJetpackProbe = ({ mode = "trailing", dt = 1 / 60 } = {}
     return { x: p.x, y: p.y - cave.baseY, z: p.z, hop: cave.hop, velocity: cave.hopV, equipped: !!cave.jet, fuel: cave.jetFuel, thrust: !!(cave.jet && cave.jet.thrust), selected: B.pilot.player === cave, scene: B.scene, mode: B.pilot.mode, eye: { x: eye.x, y: eye.y, z: eye.z } };
   };
   B.pilot.possess(cave);
+  B.jetpack.grant(cave);
   const start = { x: hole.x, y: hole.bottom - 3, z: hole.z };
   B.pilot.navigate({ position: start, target: start, yaw: -Math.PI / 2, pitch: 0, dist: 3.5 });
   cave.hop = start.y + 120;

@@ -184,7 +184,7 @@ export const roomSleepProbe = ({ dt = 1 / 20 } = {}) => {
   B.refreshStates(true);
   const startMotion = Math.max(...entries.map((c, i) => Math.hypot(c.root.position.x - before[i].x, c.root.position.y - before[i].y, c.root.position.z - before[i].z)));
   const reserved = new Set(entries.map((c) => c.bedroll)), claims = entries.every((c) => beds.includes(c.bedroll) && c.bedroll.sleeper === c);
-  let time = B.renderOpts.matrix.time, checks = 0, maxWalkStep = 0, frame = 0;
+  let time = B.renderOpts.matrix.time, checks = 0, maxWalkStep = 0, maxJumpStep = 0, maxBlocked = 0, frame = 0;
   const previous = new Map(), returnedAt = new Map();
   const fail = (kind, detail) => { if (failures.length < 12) failures.push({ kind, ...detail }); };
   const step = () => {
@@ -192,18 +192,23 @@ export const roomSleepProbe = ({ dt = 1 / 20 } = {}) => {
     for (const c of entries) {
       const p = c.root.position, y = p.y - c.baseY, old = previous.get(c);
       if (c.bedTravel.mode === "walk") {
+        maxBlocked = Math.max(maxBlocked, c.bedTravel.blocked);
         checks++;
         // Analytic ramps intentionally support feet at their center height;
         // their uphill half intersects a flat foot cylinder. Check actual foot
         // contact separately, and the full torso/head volume above that slope.
         if (!B.island.clearAt(p.x, y + 1e-5, p.z, 0, 0.01) || !B.island.clearAt(p.x, y + 0.3, p.z, 0.295, c.bodyHeight - 0.3)) fail("walking body", { name: c.traits.name, x: p.x, y, z: p.z });
         if (old?.mode === "walk") {
-          maxWalkStep = Math.max(maxWalkStep, Math.hypot(p.x - old.x, p.z - old.z));
+          const movement = Math.hypot(p.x - old.x, p.z - old.z);
+          if (c.hop > 0 || old.hop > 0) maxJumpStep = Math.max(maxJumpStep, movement);
+          else maxWalkStep = Math.max(maxWalkStep, movement);
           if (!B.island.voxelSegmentClearAt(old.x, old.y + 0.3, old.z, p.x, y + 0.3, p.z, 0.295, c.bodyHeight - 0.3)) fail("walking sweep", { name: c.traits.name, old, x: p.x, y, z: p.z });
         }
       }
-      if (old?.mode === "walk" && !c.bedTravel.mode && c.state === "working" && !returnedAt.has(c)) returnedAt.set(c, { name: c.traits.name, mode: c.bedTravel.mode, state: c.state, y, distance: Math.hypot(p.x - c.slot.x, p.z - c.slot.z), claimed: !!c.bedroll });
-      previous.set(c, { x: p.x, y, z: p.z, mode: c.bedTravel.mode });
+      // The architectural walk hands over to a live surface route before
+      // reaching the pile. Record completion only after both walks finish.
+      if (!c.bedTravel.mode && !c.walk && c.state === "working" && c.act.kind === "eat" && !returnedAt.has(c)) returnedAt.set(c, { name: c.traits.name, mode: c.bedTravel.mode, state: c.state, y, distance: Math.hypot(p.x - c.slot.x, p.z - c.slot.z), claimed: !!c.bedroll });
+      previous.set(c, { x: p.x, y, z: p.z, mode: c.bedTravel.mode, hop: c.hop });
     }
   };
   for (; frame < Math.ceil(180 / dt) && entries.some((c) => c.bedTravel.mode !== "rest"); frame++) step();
@@ -264,9 +269,10 @@ export const roomSleepProbe = ({ dt = 1 / 20 } = {}) => {
   B.refreshStates(true);
   const wake = { movement: Math.max(...entries.map((c, i) => Math.hypot(c.root.position.x - restPosition[i].x, c.root.position.z - restPosition[i].z))), released: beds.every((bed) => !bed.sleeper && bed.node.geometry === BL.headquartersModels.mattress(bed.room)), returning: entries.every((c) => c.state === "working" && c.bedTravel.mode === "walk" && !c.bedroll) };
   previous.clear();
-  for (let n = 0; n < Math.ceil(180 / dt) && entries.some((c) => c.bedTravel.mode); n++) step();
+  for (let n = 0; n < Math.ceil(180 / dt) && entries.some((c) => c.bedTravel.mode || c.walk); n++) step();
   const returned = entries.map((c) => returnedAt.get(c) || { name: c.traits.name, mode: c.bedTravel.mode, state: c.state, y: c.root.position.y - c.baseY, distance: Math.hypot(c.root.position.x - c.slot.x, c.root.position.z - c.slot.z), claimed: !!c.bedroll });
-  return { initial, startMotion, claims, reserved: reserved.size, sleepSeconds: frame * dt, poses, wake, returned, checks, maxWalkStep, dt, failures };
+  const recoveryWait = 0.8 + Math.ceil(entries[0].avoidance.navigation.path.length / 6) * dt;
+  return { initial, startMotion, claims, reserved: reserved.size, sleepSeconds: frame * dt, poses, wake, returned, checks, maxWalkStep, maxJumpStep, maxBlocked, recoveryWait, dt, failures };
 };
 
 export const roomManualSleepProbe = ({ mode = "trailing", dt = 1 / 60, basement = false } = {}) => {

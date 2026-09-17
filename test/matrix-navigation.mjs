@@ -1,6 +1,6 @@
 // Exercise raw orbit separately from the physical free first-person eye.
 // Every walking sample uses the production pilot, support and swept camera.
-export const matrixNavigationProbe = (prime = () => {}) => {
+export function* matrixNavigationProbe(prime = () => {}) {
   const B = window.__ooga, scene = window.BL.scenes.hub, C = B.matrixCave, W = C.world, R = B.renderer, o = B.pilot.orbit, dt = 1 / 120;
   let elapsed = W.sampleStream(0).time, draws = 0, samples = 0, collisions = 0;
   const failures = [], raw = [], cases = [], sealed = [], eyeHeight = 1.1;
@@ -59,7 +59,9 @@ export const matrixNavigationProbe = (prime = () => {}) => {
     B.pilot.goPreset("pile");
     for (const [x, y, z] of [[0, -8, -3.5], [6, 1.1, -3.5], [0, 12, -3.5]]) raw.push({ id: opening.id, ...rawPose(opening, x, y, z) });
   }
+  yield;
   for (const active of [false, true]) for (const opening of openings) {
+    elapsed = Math.max(elapsed, W.sampleStream(0).time);
     B.pilot.goPreset("pile"); C.viewApproach(); step();
     B.matrixGate.set(active); advance(active ? W.maxRadius : 0);
     const route = [], lateral = [], invalid = [], pitchViews = [];
@@ -74,6 +76,15 @@ export const matrixNavigationProbe = (prime = () => {}) => {
       const q = ramp.samples[12]; insideX = cr * (q.x - opening.mouth.x) - sr * (q.z - opening.mouth.z); insideZ = sr * (q.x - opening.mouth.x) + cr * (q.z - opening.mouth.z);
       route.push(move(opening, insideX, insideZ));
     } else for (const z of [-1.5, -3.5, -5, -3.5]) route.push(move(opening, 0, z));
+    // The Rally centerline crosses its solid kart. Finish the physical step
+    // before checking that stationary pitch changes do not translate the eye.
+    let settled = false;
+    for (let n = 0; n < 240; n++) {
+      const p = B.camera.position, x = p.x, y = p.y, z = p.z;
+      step(); audit(opening);
+      if (!B.pilot.freeFalling && Math.hypot(p.x - x, p.y - y, p.z - z) < 1e-8) { settled = true; break; }
+    }
+    if (!settled) throw new Error(`Camera did not settle inside ${opening.id}`);
     const inside = sample(opening);
     for (const pitch of [-Math.PI / 2 + 0.001, Math.PI / 2 - 0.001, 0]) { o.pitch = o.tPitch = pitch; step(true); pitchViews.push({ pitch, ...audit(opening) }); }
     const ceiling = start(opening, insideX, inside.ceiling - opening.mouth.floorY - 0.05, insideZ);
@@ -91,12 +102,15 @@ export const matrixNavigationProbe = (prime = () => {}) => {
       const before = start(opening, x, y), after = move(opening, x, 0.1); invalid.push({ name, before, after });
     }
     cases.push({ id: opening.id, index: opening.caveIndex, headquarters: !!opening.headquarters, active, route, lateral, invalid, inside, pitchViews, ceiling, wall, records: R.stats.records });
+    // Keep every sample and render, but return to the driver between complete
+    // cases so parallel Canvas runs do not exhaust one protocol command.
+    yield;
   }
   B.matrixGate.set(false);
   for (const opening of allOpenings.filter((opening) => opening.blocked)) { const before = start(opening), after = move(opening, 0, 0.1); sealed.push({ id: opening.id, before, after }); }
   B.pilot.goPreset("pile"); C.viewApproach(); step(); advance(0); step(true);
   return { backend: R.kind, openings: allOpenings.length, occupied: openings.length, raw, sealed, caveBytes: B.island.cavityBytes, cases, draws, samples, collisions, failures, final: { index: B.cameraCave.index, active: W.active, radius: W.radius } };
-};
+}
 
 // Scene routing must depend on the driven Ooga's real doorway crossing, not
 // merely occupying the cave's X/Z footprint or looking down through its roof.
@@ -105,6 +119,14 @@ export const caveRoutingRejections = async () => {
   const wait = () => new Promise((resolve) => { const frame = B.renderedFrames, tick = () => B.scene !== "hub" || B.renderedFrames >= frame + 5 ? resolve() : requestAnimationFrame(tick); requestAnimationFrame(tick); });
   for (const id of ["c11", "c9"]) {
     const m = B.mouths.find((mouth) => mouth.id === id), sr = Math.sin(m.ry), cr = Math.cos(m.ry), cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.walk && !c.build);
+    // The Rally kart now occupies the centre of its inner trigger. Stand in
+    // the trigger's clear aisle rather than teleporting into a solid vehicle.
+    const solids = B.headquarters.solids, side = [0, -1.5, 1.5].find((offset) => {
+      const x = m.inside.x + cr * offset, z = m.inside.z - sr * offset;
+      return solids.walkable(x, z, x, z, m.floorY, cave.bodyHeight, cave) && Math.abs(solids.supportAt(x, z, m.floorY, m.floorY, cave) - m.floorY) < 0.001;
+    });
+    if (side === undefined) throw new Error(`No clear inner trigger for ${id}`);
+    const target = { x: m.inside.x + cr * side, z: m.inside.z - sr * side };
     const place = (x, y, z, overhead = false) => {
       const p = cave.root.position; p.x = x; p.y = cave.baseY + y; p.z = z; cave.hop = cave.hopV = 0;
       const target = { x, y: y + 0.9, z }; o.target = target; o.tx = x; o.ty = target.y; o.tz = z;
@@ -113,15 +135,15 @@ export const caveRoutingRejections = async () => {
     };
     const sample = (name) => {
       const p = cave.root.position, eye = B.camera.position, space = { caveIndex: 0, floor: 0, ceiling: 0 }, cavity = B.island.cavityAt(eye.x, eye.z, space);
-      return { id, name, scene: B.scene, playerIndex: B.cameraCave.playerIndex, actorY: p.y - cave.baseY, ground: B.island.surfaceAt(p.x, p.z), atTrigger: Math.hypot(p.x - m.inside.x, p.z - m.inside.z) < 0.001, cameraY: eye.y, cameraCavity: cavity ? space.caveIndex : 0, ceiling: Number.isFinite(space.ceiling) ? space.ceiling : null };
+      return { id, name, scene: B.scene, playerIndex: B.cameraCave.playerIndex, actorY: p.y - cave.baseY, ground: B.island.surfaceAt(p.x, p.z), atTrigger: Math.hypot(p.x - target.x, p.z - target.z) < 0.001 && Math.hypot(p.x - m.inside.x, p.z - m.inside.z) < 2.2, cameraY: eye.y, cameraCavity: cavity ? space.caveIndex : 0, ceiling: Number.isFinite(space.ceiling) ? space.ceiling : null };
     };
-    B.crew.control(cave); place(m.inside.x, B.island.surfaceAt(m.inside.x, m.inside.z), m.inside.z); await wait();
+    B.crew.control(cave); place(target.x, B.island.surfaceAt(target.x, target.z), target.z); await wait();
     cases.push(sample("actor-on-roof")); if (B.scene !== "hub") return cases;
-    B.crew.release(); await wait(); B.crew.control(cave); place(m.inside.x, m.floorY, m.inside.z); await wait();
+    B.crew.release(); await wait(); B.crew.control(cave); place(target.x, m.floorY, target.z); await wait();
     cases.push(sample("inside-without-crossing")); if (B.scene !== "hub") return cases;
     B.crew.release(); await wait(); B.crew.control(cave);
-    for (const z of [1.2, 0.7, 0.4, -0.5, -1.5]) { place(m.x + sr * z, m.floorY, m.z + cr * z, true); await wait(); if (B.scene !== "hub") return cases; }
-    place(m.inside.x, m.floorY, m.inside.z, true); await wait();
+    for (const z of [1.2, 0.7, 0.4, -0.5, -1.5]) { place(m.x + cr * side + sr * z, m.floorY, m.z - sr * side + cr * z, true); await wait(); if (B.scene !== "hub") return cases; }
+    place(target.x, m.floorY, target.z, true); await wait();
     cases.push(sample("camera-above-admitted-actor")); if (B.scene !== "hub") return cases;
     B.crew.release(); await wait();
   }

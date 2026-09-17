@@ -21,7 +21,10 @@
     let matrixActive = 0, matrixRadius = 0, matrixTime = 0, matrixDensity = 0, matrixOriginX = 0, matrixOriginZ = 0, matrixSurfaces = 0, matrixLivingSurfaces = 0, matrixArea = 0, matrixSamples = 0, matrixSampleStep = 1, matrixCulled = 0;
     let matrixCaves = null, matrixCaveBounds = null, matrixCaveNear = Infinity, matrixPermanentCave = 0, matrixPointX = 0, matrixPointY = 0;
     const MATRIX_MASKS = new Int32Array([630678, 497559, 988959, 495513, 1009263, 288049, 456438, 616809]);
-    const MATRIX_TILE_SIZE = 128, MATRIX_SAMPLE_BUDGET = 524288;
+    // Most terrain receivers occupy only a few samples. A smaller scratch
+    // canvas avoids copying a 64 KB image for each tiny clipped face; the
+    // sampling budget and spacing remain unchanged across tile boundaries.
+    const MATRIX_TILE_SIZE = 32, MATRIX_SAMPLE_BUDGET = 524288;
     const matrixTile = document.createElement("canvas");
     matrixTile.width = matrixTile.height = transparent ? 1 : MATRIX_TILE_SIZE;
     // This scratch surface is overwritten from CPU pixels for every receiver.
@@ -56,7 +59,7 @@
     }
     const acquire = () => {
       if (poolUsed === pool.length) {
-        pool.push({ pts: new Float32Array(24), n: 0, depth: 0, style: "", coreStyle: "", line: false, lineGlow: 0, mirror: false, portal: false, matrix: 0, matrixGlyph: false, matrixWall: 0, matrixNx: 0, matrixNy: 0, matrixNz: 0, matrixPlane: 0, matrixCenterDepth: 0, matrixMinX: 0, matrixMaxX: 0, matrixMinY: 0, matrixMaxY: 0, matrixRed: 0, matrixGreen: 0, matrixBlue: 0, matrixCave: 0, matrixLocal: false, matrixLiving: false, matrixDynamic: false, matrixPartial: false, matrixBacking: false, matrixFaceNx: 0, matrixFaceNy: 0, matrixFaceNz: 0, matrixFacePlane: 0 });
+        pool.push({ pts: new Float32Array(24), n: 0, depth: 0, style: "", coreStyle: "", line: false, lineGlow: 0, mirror: false, portal: false, matrix: 0, matrixGlyph: false, matrixGlyphOpacity: 1, matrixWall: 0, matrixNx: 0, matrixNy: 0, matrixNz: 0, matrixPlane: 0, matrixCenterDepth: 0, matrixMinX: 0, matrixMaxX: 0, matrixMinY: 0, matrixMaxY: 0, matrixRed: 0, matrixGreen: 0, matrixBlue: 0, matrixCave: 0, matrixLocal: false, matrixLiving: false, matrixDynamic: false, matrixPartial: false, matrixBacking: false, matrixFaceNx: 0, matrixFaceNy: 0, matrixFaceNz: 0, matrixFacePlane: 0 });
       }
       return pool[poolUsed++];
     };
@@ -121,17 +124,17 @@
       }
       return out;
     };
-    const clipAbove = (src, count, minimumY, dst) => {
+    const clipHeight = (src, count, height, dst, above = true) => {
       let out = 0;
       for (let i = 0; i < count; i++) {
         const a = i * 3, j = (i + 1) % count, b = j * 3;
-        const aIn = src[a + 1] >= minimumY, bIn = src[b + 1] >= minimumY;
+        const aIn = above ? src[a + 1] >= height : src[a + 1] <= height, bIn = above ? src[b + 1] >= height : src[b + 1] <= height;
         if (aIn) {
           dst[out * 3] = src[a]; dst[out * 3 + 1] = src[a + 1]; dst[out * 3 + 2] = src[a + 2]; out++;
         }
         if (aIn !== bIn) {
-          const amount = (minimumY - src[a + 1]) / (src[b + 1] - src[a + 1]);
-          dst[out * 3] = lerp(src[a], src[b], amount); dst[out * 3 + 1] = minimumY; dst[out * 3 + 2] = lerp(src[a + 2], src[b + 2], amount); out++;
+          const amount = (height - src[a + 1]) / (src[b + 1] - src[a + 1]);
+          dst[out * 3] = lerp(src[a], src[b], amount); dst[out * 3 + 1] = height; dst[out * 3 + 2] = lerp(src[a + 2], src[b + 2], amount); out++;
         }
       }
       return out;
@@ -259,8 +262,12 @@
             let radiusSquared = 0;
             for (let k = 0; k < count; k++) radiusSquared = Math.max(radiusSquared, (V[k][0] - centerX) ** 2 + (V[k][2] - centerZ) ** 2);
             const distance = matrixCloud ? Math.min(matrixTravel(centerX, centerZ, cave), 36) : matrixTravel(centerX, centerZ, cave), margin = Math.sqrt(radiusSquared) * (cave && matrixCaves ? Math.SQRT2 : 1);
-            minimumFront = matrixFront(distance + margin);
-            maximumFront = matrixFront(Math.max(0, distance - margin));
+            // Cap the entire living face's travel interval, not its centre:
+            // distant occupants share the clouds' wave without losing their
+            // partial reveal pixels. Cave paths keep their entrance distance.
+            const livingOutside = matrixLiving && !cave;
+            minimumFront = matrixFront(livingOutside ? Math.min(distance + margin, 36) : distance + margin);
+            maximumFront = matrixFront(livingOutside ? Math.min(Math.max(0, distance - margin), 36) : Math.max(0, distance - margin));
           }
           if ((localMatrixGlyph || revealBacking) && maximumFront <= 0) continue;
           const partial = maximumFront > 0 && minimumFront < 1;
@@ -277,8 +284,15 @@
             minimumY = Math.max(minimumY, lerp(minY, maxY, mirrorReveal));
           }
           if (minimumY > -Infinity) {
-            surfaceCount = clipAbove(MIRROR_CLIP_IN, count, minimumY, MIRROR_CLIP_OUT);
+            surfaceCount = clipHeight(MIRROR_CLIP_IN, count, minimumY, MIRROR_CLIP_OUT);
             surface = MIRROR_CLIP_OUT;
+            if (surfaceCount < 3) continue;
+          }
+          const maximumY = node.geometry.clipMaxY ?? Infinity;
+          if (maximumY < Infinity) {
+            const destination = surface === MIRROR_CLIP_IN ? MIRROR_CLIP_OUT : MIRROR_CLIP_IN;
+            surfaceCount = clipHeight(surface, surfaceCount, maximumY, destination, false);
+            surface = destination;
             if (surfaceCount < 3) continue;
           }
           for (let k = 0; k < surfaceCount; k++) {
@@ -307,6 +321,7 @@
           rec.mirror = mirrorFace;
           rec.portal = portalFace;
           rec.matrixGlyph = localMatrixGlyph;
+          rec.matrixGlyphOpacity = node.geometry.matrixGlyphOpacity ?? 1;
           rec.matrixCave = cave;
           rec.matrixDynamic = dynamicCave;
           rec.matrixLocal = localGlyphSurface;
@@ -487,7 +502,8 @@
       matrixSample[3] = 0;
       const relX = x - matrixOriginX, relZ = z - matrixOriginZ, flow = Math.hypot(relX, relZ);
       const cave = rec.matrixDynamic ? matrixLivingCave(x, y, z) : rec.matrixCave;
-      const front = rec.matrixPartial ? matrixFront(cave && matrixCaves ? matrixTravel(x, z, cave) : flow) : matrixActive;
+      const frontTravel = cave && matrixCaves ? matrixTravel(x, z, cave) : flow;
+      const front = rec.matrixPartial ? matrixFront(rec.matrixLiving && !cave ? Math.min(frontTravel, 36) : frontTravel) : matrixActive;
       if (front <= 0) return;
       const vx = eye.x - x, vy = eye.y - y, vz = eye.z - z, distance = Math.hypot(vx, vy, vz);
       const fog = smooth((distance - fogNear) / (fogFar - fogNear));
@@ -668,7 +684,7 @@
           coverage *= matrixFront(matrixTravel(eye.x + dx * depth, eye.z + dz * depth, rec.matrixCave));
           if (!coverage) continue;
         }
-        ctx.globalAlpha = coverage;
+        ctx.globalAlpha = coverage * rec.matrixGlyphOpacity;
         ctx.fillRect(x, y, step, step);
       }
     };
@@ -794,12 +810,13 @@
         ctx.translate(0, -hazeShift);
       }
       ctx.lineJoin = "round";
-      let glyphBlend = false;
+      let glyphBlend = false, glyphComposite = "";
       for (const rec of active) {
         // Glyphs paint sampled rectangles, never the polygon path. Keep their
         // additive state across consecutive records without changing draw order.
         if (rec.matrixGlyph && !rec.line) {
-          if (!glyphBlend) { ctx.globalCompositeOperation = "lighter"; glyphBlend = true; }
+          const composite = rec.matrixGlyphOpacity < 1 ? "source-over" : "lighter";
+          if (!glyphBlend || glyphComposite !== composite) { ctx.globalCompositeOperation = glyphComposite = composite; glyphBlend = true; }
           drawMatrixGlyph(rec);
           continue;
         }

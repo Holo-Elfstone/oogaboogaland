@@ -7,6 +7,8 @@
   const STATE_LABELS = { working: "EATING", sleeping: "ZZZ", away: "AWAY" };
   const $ = (id) => document.getElementById(id);
   const TIER_RANK = { legendary: 0, epic: 1, rare: 2, common: 3 };
+  const BANANA_COUNT = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+  const MESSAGE_FADE_MS = 300;
   // Headings in the cave-sign lettering: one path of pixels per element, scaled by its CSS height
   const SIGN_NS = "http://www.w3.org/2000/svg";
   // Markup may wrap a sign across lines; the lettering wants one run of words
@@ -73,6 +75,8 @@
       meterFill: $("meter-fill"),
       meterCount: $("meter-count"),
       meterForecast: $("meter-forecast"),
+      worldBananas: $("world-bananas"),
+      worldBananaCount: $("world-banana-count"),
       roster: $("roster"),
       statDonations: $("stat-donations"),
       statSats: $("stat-sats"),
@@ -87,6 +91,7 @@
       jetpackFuel: $("jetpack-fuel"),
       jetpackFuelFill: $("jetpack-fuel-fill"),
       jetpackFuelValue: $("jetpack-fuel-value"),
+      messageStack: $("message-stack"),
       toast: $("toast"),
       tooltip: $("tooltip"),
       hint: $("hint"),
@@ -113,7 +118,7 @@
       target.addEventListener(type, fn, opts);
       listeners.push(() => target.removeEventListener(type, fn, opts));
     };
-    let toastTimer = 0, hintTimer = 0;
+    let toastTimer = 0, toastHideTimer = 0, hintTimer = 0, hintHideTimer = 0;
     const rosterRows = new Map();
     for (const contributor of roster) {
       const li = document.createElement("li");
@@ -137,11 +142,18 @@
       if (ageText != null) row.age.textContent = ageText;
     };
     // Mutate the text nodes so updates make no DOM
-    for (const node of [el.meterCount, el.meterForecast]) if (!node.firstChild) node.append("");
+    for (const node of [el.meterCount, el.meterForecast, el.worldBananaCount]) if (!node.firstChild) node.append("");
+    let shownBananas = -1;
     const setMeter = (level, capacity, forecastText) => {
       el.meterFill.style.width = `${Math.min(100, Math.max(0, level / capacity * 100))}%`;
       el.meterFill.dataset.level = level < capacity * 0.15 ? "low" : level < capacity * 0.4 ? "mid" : "ok";
-      el.meterCount.firstChild.data = String(Math.floor(level));
+      const bananas = Math.floor(level);
+      if (bananas !== shownBananas) {
+        shownBananas = bananas;
+        const count = BANANA_COUNT.format(bananas);
+        el.meterCount.firstChild.data = count;
+        el.worldBananaCount.firstChild.data = count;
+      }
       el.meterForecast.firstChild.data = forecastText;
     };
     const setStats = ({ totalSats, donations }) => {
@@ -151,13 +163,19 @@
     const setAct = (label) => {
       el.act.textContent = label;
     };
-    let jetpackShown = false, jetpackPercent = -1;
-    const setJetpack = (equipped, fuel) => {
-      if (equipped !== jetpackShown) {
-        jetpackShown = equipped;
-        el.jetpack.hidden = !equipped;
+    let jetpackShown = false, jetpackEquipped = false, jetpackPercent = -1;
+    const setJetpack = (owned, equipped, fuel) => {
+      if (owned !== jetpackShown) {
+        jetpackShown = owned;
+        el.jetpack.hidden = !owned;
       }
-      if (!equipped) return;
+      if (equipped !== jetpackEquipped) {
+        jetpackEquipped = equipped;
+        el.jetpack.dataset.equipped = String(equipped);
+        el.jetpack.setAttribute("aria-pressed", String(equipped));
+        el.jetpack.setAttribute("aria-label", equipped ? "Take off jetpack" : "Put on jetpack");
+      }
+      if (!owned) return;
       const percent = Math.ceil(fuel * 100);
       if (percent === jetpackPercent) return;
       jetpackPercent = percent;
@@ -192,11 +210,18 @@
       else actionHandler && actionHandler(b.dataset.action);
     });
     const toast = (text) => {
+      window.clearTimeout(toastTimer);
+      window.clearTimeout(toastHideTimer);
       el.toast.textContent = text;
       el.toast.hidden = false;
+      el.messageStack.append(el.toast);
       el.toast.classList.add("show");
-      window.clearTimeout(toastTimer);
-      toastTimer = window.setTimeout(() => el.toast.classList.remove("show"), 2800);
+      toastTimer = window.setTimeout(() => {
+        el.toast.classList.remove("show");
+        toastHideTimer = window.setTimeout(() => {
+          if (!el.toast.classList.contains("show")) el.toast.hidden = true;
+        }, MESSAGE_FADE_MS);
+      }, 2800);
     };
     let tipText = "", tipW = 0, tipH = 0;
     const tooltip = {
@@ -219,11 +244,18 @@
       }
     };
     const hint = (text, ms = 4200) => {
+      window.clearTimeout(hintTimer);
+      window.clearTimeout(hintHideTimer);
       el.hint.textContent = text;
       el.hint.hidden = false;
+      el.messageStack.append(el.hint);
       el.hint.classList.add("show");
-      window.clearTimeout(hintTimer);
-      hintTimer = window.setTimeout(() => el.hint.classList.remove("show"), ms);
+      hintTimer = window.setTimeout(() => {
+        el.hint.classList.remove("show");
+        hintHideTimer = window.setTimeout(() => {
+          if (!el.hint.classList.contains("show")) el.hint.hidden = true;
+        }, MESSAGE_FADE_MS);
+      }, ms);
     };
     const selectTab = (name) => {
       for (const t of el.tabs) t.setAttribute("aria-selected", String(t.dataset.tab === name));
@@ -246,6 +278,12 @@
     };
     on(el.sheetToggle, "click", () => pull("roster"));
     on(el.sheetBananas, "click", () => pull("bananas"));
+    on(el.worldBananas, "click", () => {
+      window.clearTimeout(introTimer);
+      const showing = el.sheet.dataset.open === "true" && el.tabs.some((t) => t.dataset.tab === "bananas" && t.getAttribute("aria-selected") === "true");
+      if (!showing) selectTab("bananas");
+      el.worldBananas.blur();
+    });
     on(el.sheet, "pointerdown", () => window.clearTimeout(introTimer));
     if (introTimer === 0) introTimer = window.setTimeout(() => {
       el.sheet.dataset.open = "false";
@@ -384,14 +422,18 @@
     // Remove the rows and timers this instance added
     const dispose = () => {
       window.clearTimeout(toastTimer);
+      window.clearTimeout(toastHideTimer);
       window.clearTimeout(hintTimer);
+      window.clearTimeout(hintHideTimer);
       for (const off of listeners) off();
       el.roster.replaceChildren();
       el.inventory.replaceChildren();
       el.toast.classList.remove("show");
+      el.toast.hidden = true;
       el.hint.classList.remove("show");
+      el.hint.hidden = true;
       tooltip.hide();
-      setJetpack(false, 0);
+      setJetpack(false, false, 0);
       closeFeed();
     };
     return { el, openFeed, closeFeed, setRosterRow, setMeter, setStats, setAct, setJetpack, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };

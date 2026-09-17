@@ -113,7 +113,7 @@
     geo.headquartersRamp = true;
     return geo;
   });
-  const roomEntrance = variants((i) => {
+  const buildRoomEntrance = (i, lightLintel) => {
     const rand = BL.math.mulberry32(827 + i * 311), parts = [];
     for (const side of [-1, 1]) for (let row = 0; row < 8; row++) {
       const x = side * (2.25 + (row + i) % 3 * 0.07), y = 0.25 + row * 0.5, depth = 0.52 + rand() * 0.18;
@@ -124,7 +124,9 @@
     }
     for (let col = 0; col < 8; col++) {
       const x = -2.1 + col * 0.6, y = 3.96 + (col + i) % 3 * 0.04, depth = 0.58 + rand() * 0.15;
-      parts.push(box({ w: 0.62, h: 0.52, d: depth, color: STONE[(col + i) % STONE.length], offset: { x, y, z: -0.06 } }));
+      const lintel = box({ w: 0.62, h: 0.52, d: depth, color: lightLintel ? STONE[2] : STONE[(col + i) % STONE.length], offset: { x, y, z: -0.06 } });
+      for (const face of lintel.faces) face.headquartersEntranceLintel = true;
+      parts.push(lintel);
       if ((col + i * 3) % 5 < 2) {
         parts.push(box({ w: 0.245, h: 0.245, d: 0.025, color: MOSS[(col + i) % MOSS.length], offset: { x, y: y + 0.12, z: depth * 0.5 - 0.045 } }));
         if ((col + i) % 2) parts.push(box({ w: 0.245, h: 0.245, d: 0.025, color: MOSS[(col + i + 1) % MOSS.length], offset: { x: x + 0.24, y: y - 0.12, z: depth * 0.5 - 0.045 } }));
@@ -138,6 +140,8 @@
       geometry.collisionBoxes.set(bounds.max, j * 6 + 3);
     }
     return geometry;
-  });
-  BL.headquartersModels = { room, entranceRamp, roomEntrance, mattress, MATTRESS, ROOM_RADIUS };
+  };
+  const roomEntrance = variants((i) => buildRoomEntrance(i, false));
+  const rampEntrance = variants((i) => buildRoomEntrance(i, true));
+  BL.headquartersModels = { room, entranceRamp, roomEntrance, rampEntrance, mattress, MATTRESS, ROOM_RADIUS };
 })();

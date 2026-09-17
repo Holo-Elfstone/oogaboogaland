@@ -32,9 +32,19 @@ export const windowJumpProbe = ({ basement = false, mode = "first-person", dt = 
     previous = [eye.x, eye.y, eye.z];
   };
   let start = null;
-  for (let r = 29.5; r > 24; r -= 0.05) {
-    const x = sx * r - sz * offset, z = sz * r + sx * offset, y = island.surfaceAt(x, z);
-    if (island.onLand(x, z) && island.clearAt(x, y + 1e-5, z, 0.3, cave.bodyHeight)) { start = { x, y, z }; break; }
+  const launchOffsets = room ? [offset] : [0, -0.5, 0.5, -1, 1, -1.5, 1.5, -2, 2, -2.5, 2.5, -3, 3, -3.5, 3.5, -4, 4];
+  const headroom = cave.bodyHeight + window.BL.crew.JUMP_SPEED ** 2 / (2 * window.BL.pilot.WALK.gravity), solids = B.headquarters.solids.props;
+  // The panorama spans a broad cliff. Choose an actual clear launch line,
+  // including the solid trees and old gate above it, rather than teleporting
+  // beneath a canopy and expecting the jump to pass through its lower leaves.
+  for (const across of launchOffsets) {
+    for (let r = 29.5; r > 24; r -= 0.05) {
+      const x = sx * r - sz * across, z = sz * r + sx * across, y = island.surfaceAt(x, z);
+      const outX = sx * 30.8 - sz * across, outZ = sz * 30.8 + sx * across;
+      if (island.onLand(x, z) && island.clearAt(x, y + 1e-5, z, 0.3, cave.bodyHeight)
+        && solids.segmentClear(x, y + 1e-5, z, outX, y + 1e-5, outZ, 0.3, headroom)) { start = { x, y, z }; break; }
+    }
+    if (start) break;
   }
   if (!start) throw new Error("No upper rim launch point above window");
   B.pilot.release(true);
@@ -46,8 +56,11 @@ export const windowJumpProbe = ({ basement = false, mode = "first-person", dt = 
   B.pilot.navigate({ position: start, target: start, yaw: Math.atan2(-sx, -sz), pitch: mode === "first-person" ? 0 : 0.2, dist: 6 });
   for (let i = 0; i < Math.ceil(1 / dt); i++) step(false);
   if (jet) {
+    // Acquiring the pickup supplies a full tank. Set up a low tank after
+    // acquisition, then equip through the normal toggle so recovery is latched.
+    B.jetpack.grant(cave);
     cave.jetFuel = 0.1;
-    B.crew.wearJetpack(cave, globalThis.BL.hubModels.jetpack(), globalThis.BL.hubModels.jetFlame());
+    B.jetpack.toggle();
   }
   const initial = sample("initial"), targetRadius = room ? room.radius : 23;
   let turned = false, entering = false, secondJump = false, leftRock = false, completed = false;
