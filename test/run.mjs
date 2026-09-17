@@ -43,6 +43,7 @@ import { terrainSightProbe } from "./terrain-sight.mjs";
 import { windowOutlineProbe } from "./window-outlines.mjs";
 import { apertureOutlineProbe, rampWallFloorProbe } from "./ramp-wall-outlines.mjs";
 import { objectCrowdingProbe, objectCameraIndependenceProbe, objectProviderStateProbe, objectVisibilityGateProbe, grassOutlineProbe, pileGuideProbe } from "./object-guides.mjs";
+import { jumbotronProbe } from "./jumbotron.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = `file://${join(root, "src", "index.html")}`;
@@ -3088,6 +3089,21 @@ const task = (name, run, opts = {}) => tasks.push({ name, run, ...opts });
 task("room LifeHash", () => withPage("room LifeHash", hubPage(src), async (b) => {
   const r = await b.evaluate(`(${lifehashProbe.toString()})()`);
   record("room LifeHash: exact v2 images match independent reference vectors, including UTF-8 and coordinate domains", r.vectors === 14 && r.referenceMatches === 14 && r.shapeMatches === 14 && r.repeatMatches === 14 && r.unique === 14 && r.failures.length === 0, JSON.stringify(r));
+}));
+for (const backend of ["webgl2", "canvas2d"]) task(`jumbotron ${backend}`, () => withPage(`jumbotron ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
+  const r = await b.evaluate(`(${jumbotronProbe.toString()})()`);
+  record(`jumbotron ${backend}: the board stands on the north rim facing the meadow with the baked stats parsed and guarded`, r.exists && r.placement.onNorthRim && r.placement.aboveGround && r.placement.facesCenter && r.placement.scale > 1 && r.data.contributors > 0 && r.data.schemaGuard, JSON.stringify({ placement: r.placement, data: r.data }));
+  record(`jumbotron ${backend}: view changes rebuild the screen quads and pokes select contributors by handle or display name`, r.initial.view === "totals" && r.initial.screenFaces > 200 && r.initial.cabinetFaces === 84 && r.leaderboard.view === "leaderboard" && r.leaderboard.changed && r.poked.accepted && r.poked.view === "contributor" && r.poked.login === "portlandhodl" && r.alias.accepted && r.alias.login === "ottoz0r" && r.pokeUnknown === false && r.advanced.drew, JSON.stringify({ initial: r.initial, leaderboard: r.leaderboard, poked: r.poked, alias: r.alias, advanced: r.advanced }));
+  // The board stands above the default framing; walk the camera up to it
+  // the way a visitor would before tapping.
+  await b.evaluate(`window.__ooga.pilot.navigate({ position: { x: -7, y: 8.3, z: -27 }, target: { x: -7, y: 8.3, z: -27 }, yaw: -0.25, pitch: 0.05, dist: 14 })`);
+  await b.sleep(2500);
+  const tap = await b.evaluate(`(() => { const B = window.__ooga, j = B.jumbotron, w = j.node.world, c = document.querySelector("canvas"); const p = B.project(w[12], w[13], w[14]); const inView = p && p.x > 0 && p.x < c.clientWidth && p.y > 0 && p.y < c.clientHeight; const hit = inView && B.input.pick(p.x, p.y); return hit && hit.owner.kind === "prop" && hit.owner.prop === "jumbotron" ? { x: p.x, y: p.y, view: JSON.stringify(j.view) } : null; })()`);
+  if (tap) {
+    await b.click(tap.x, tap.y);
+    await b.sleep(300);
+  }
+  record(`jumbotron ${backend}: tapping the board advances the view`, !!tap && (await b.evaluate("JSON.stringify(window.__ooga.jumbotron.view)")) !== tap.view, JSON.stringify(tap));
 }));
 task("room mattresses webgl2", () => roomMattresses("webgl2"));
 task("room mattresses canvas2d", () => roomMattresses("canvas2d"));
