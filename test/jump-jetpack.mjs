@@ -172,10 +172,14 @@ export const jumpActionProbe = ({ mode = "trailing" } = {}) => {
     if (!B.island.clearAt(x, 0.05, z, 0.22, cave.bodyHeight)) continue;
     B.crew.relocatePlayer({ x, y: 0, z }, angle); step();
     if (!!cave.jet !== jet) tap("j");
-    cave.hop = 0.12; cave.hopV = 0; cave.jumps = 2; cave.root.position.y = cave.baseY + cave.hop;
     const before = B.matrixGate.pressed, fuel = cave.jetFuel;
     tap(" ");
-    rows.push({ angle, jet, toggled: B.matrixGate.pressed !== before, jumps: cave.jumps, velocity: cave.hopV, thrust: !!cave.jet && cave.jet.thrust, fuelBefore: fuel, fuelAfter: cave.jetFuel });
+    const row = { angle, jet, toggled: B.matrixGate.pressed !== before, jumps: cave.jumps, velocity: cave.hopV, thrust: !!cave.jet && cave.jet.thrust, fuelBefore: fuel, fuelAfter: cave.jetFuel };
+    cave.hop = 0.12; cave.hopV = 0; cave.jumps = 2; cave.root.position.y = cave.baseY + cave.hop;
+    const airborneBefore = B.matrixGate.pressed, airborneFuel = cave.jetFuel;
+    tap(" ");
+    row.airborne = { toggled: B.matrixGate.pressed !== airborneBefore, jumps: cave.jumps, velocity: cave.hopV, thrust: !!cave.jet && cave.jet.thrust, fuelBefore: airborneFuel, fuelAfter: cave.jetFuel };
+    rows.push(row);
   }
   // Same X/Z above the roof is outside three-dimensional action reach.
   if (cave.jet) tap("j");

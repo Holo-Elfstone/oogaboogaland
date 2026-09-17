@@ -163,17 +163,20 @@
     const setAct = (label) => {
       el.act.textContent = label;
     };
-    let jetpackShown = false, jetpackEquipped = false, jetpackPercent = -1;
-    const setJetpack = (owned, equipped, fuel) => {
+    let jetpackShown = false, jetpackEquipped = false, jetpackBlocked = false, jetpackPercent = -1;
+    const setJetpack = (owned, equipped, fuel, blocked = false) => {
       if (owned !== jetpackShown) {
         jetpackShown = owned;
         el.jetpack.hidden = !owned;
       }
-      if (equipped !== jetpackEquipped) {
+      if (equipped !== jetpackEquipped || blocked !== jetpackBlocked) {
         jetpackEquipped = equipped;
+        jetpackBlocked = blocked;
+        el.jetpack.disabled = blocked;
         el.jetpack.dataset.equipped = String(equipped);
         el.jetpack.setAttribute("aria-pressed", String(equipped));
-        el.jetpack.setAttribute("aria-label", equipped ? "Take off jetpack" : "Put on jetpack");
+        el.jetpack.setAttribute("aria-label", blocked ? "Jetpack unavailable underground" : equipped ? "Take off jetpack" : "Put on jetpack");
+        el.jetpack.title = blocked ? "Jetpack unavailable underground" : "";
       }
       if (!owned) return;
       const percent = Math.ceil(fuel * 100);

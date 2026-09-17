@@ -47,6 +47,8 @@
   };
   const create = () => {
     const entries = [], registered = new Map(), transforms = new WeakMap(), stack = new Int32Array(64), triangle = new Float64Array(9), query = new Float64Array(6);
+    const clipA = new Float64Array(15), clipB = new Float64Array(15);
+    let shoulderPolygons = new Float64Array(0), shoulderAcross = new Float64Array(0), shoulderSeen = new Uint8Array(0), shoulderQueue = new Int32Array(0);
     const stats = { nodes: 0, active: 0, transforms: 0, triangles: 0, queries: 0, triangleTests: 0 };
     let generation = 0;
     // Refresh only registered meshes and their ancestors, once per sync.
@@ -69,12 +71,18 @@
       for (let at = node; at; at = at.parent) if (at === root) return true;
       return false;
     };
-    const add = (root) => {
+    const add = (root, shoulderOnly = false) => {
       const visit = (node) => {
         if (node.geometry && node.geometry.faces.length && !node.instanceData && !registered.has(node)) {
           const geometry = geometryOf(node.geometry);
           if (geometry.nodes.length) {
-            const entry = { node, geometry, world: mat4.create(), inverse: mat4.create(), box: new Float64Array(6), active: false, initialized: false, orientation: 1 };
+            const count = geometry.triangles.length / 3;
+            if (count > shoulderSeen.length) {
+              shoulderPolygons = new Float64Array(count * 15);
+              shoulderAcross = new Float64Array(count * 2);
+              shoulderSeen = new Uint8Array(count); shoulderQueue = new Int32Array(count);
+            }
+            const entry = { node, geometry, world: mat4.create(), inverse: mat4.create(), box: new Float64Array(6), active: false, initialized: false, orientation: 1, shoulderOnly };
             entries.push(entry); registered.set(node, entry);
             stats.triangles += geometry.triangles.length / 3;
           }
@@ -163,7 +171,7 @@
       const limit = y * direction + maxStep;
       for (const entry of entries) {
         const box = entry.box;
-        if (!entry.active || ignore && belongs(entry.node, ignore) || box[0] > x + radius || box[3] < x - radius || box[2] > z + radius || box[5] < z - radius) continue;
+        if (!entry.active || entry.shoulderOnly || ignore && belongs(entry.node, ignore) || box[0] > x + radius || box[3] < x - radius || box[2] > z + radius || box[5] < z - radius) continue;
         const low = direction > 0 ? box[1] : Math.max(box[1], y - maxStep), high = direction > 0 ? Math.min(box[4], y + maxStep) : box[4];
         if (low > high + EPS) continue;
         localQuery(entry, x - radius, low, z - radius, x + radius, high, z + radius);
@@ -215,7 +223,7 @@
       stats.queries++;
       const x0 = Math.min(x, toX) - radius, x1 = Math.max(x, toX) + radius, y0 = Math.min(y, toY), y1 = Math.max(y, toY) + height, z0 = Math.min(z, toZ) - radius, z1 = Math.max(z, toZ) + radius;
       for (const entry of entries) {
-        if (!entry.active || ignore && belongs(entry.node, ignore) || !overlaps(entry.box, x0, y0, z0, x1, y1, z1)) continue;
+        if (!entry.active || entry.shoulderOnly || ignore && belongs(entry.node, ignore) || !overlaps(entry.box, x0, y0, z0, x1, y1, z1)) continue;
         if (inside(entry, x, y + height / 2, z) || inside(entry, toX, toY + height / 2, toZ)) return false;
         localQuery(entry, x0, y0, z0, x1, y1, z1);
         let size = 1; stack[0] = 0;
@@ -232,8 +240,153 @@
       }
       return true;
     };
+    const clipHeight = (from, count, to, height, direction) => {
+      let written = 0, previous = (count - 1) * 3;
+      for (let i = 0; i < count; i++) {
+        const at = i * 3, a = (from[previous + 1] - height) * direction, b = (from[at + 1] - height) * direction;
+        if (a < 0 && b > 0 || a > 0 && b < 0) {
+          const t = a / (a - b), out = written++ * 3;
+          to[out] = from[previous] + (from[at] - from[previous]) * t;
+          to[out + 1] = height;
+          to[out + 2] = from[previous + 2] + (from[at + 2] - from[previous + 2]) * t;
+        }
+        if (b >= 0) {
+          const out = written++ * 3;
+          to[out] = from[at]; to[out + 1] = from[at + 1]; to[out + 2] = from[at + 2];
+        }
+        previous = at;
+      }
+      return written;
+    };
+    // A clipped triangle has at most five vertices. Its horizontal projection
+    // is convex, including the line segments made by vertical mesh faces.
+    const shoulderSeparate = (a, b, dx, dz) => {
+      const data = shoulderPolygons;
+      let lowA = Infinity, highA = -Infinity, lowB = Infinity, highB = -Infinity;
+      for (let i = 0; i < data[a]; i++) {
+        const at = a + 5 + i * 2, value = data[at] * dx + data[at + 1] * dz;
+        lowA = Math.min(lowA, value); highA = Math.max(highA, value);
+      }
+      for (let i = 0; i < data[b]; i++) {
+        const at = b + 5 + i * 2, value = data[at] * dx + data[at + 1] * dz;
+        lowB = Math.min(lowB, value); highB = Math.max(highB, value);
+      }
+      return lowA > highB + EPS || lowB > highA + EPS;
+    };
+    const shoulderTouches = (a, b) => {
+      const data = shoulderPolygons;
+      if (data[a + 1] > data[b + 2] + EPS || data[b + 1] > data[a + 2] + EPS || data[a + 3] > data[b + 4] + EPS || data[b + 3] > data[a + 4] + EPS) return false;
+      for (let shape = 0; shape < 2; shape++) {
+        const start = shape ? b : a, count = data[start];
+        for (let i = 0; i < count; i++) {
+          const at = start + 5 + i * 2, next = start + 5 + (i + 1) % count * 2;
+          const dx = data[next] - data[at], dz = data[next + 1] - data[at + 1];
+          if (shoulderSeparate(a, b, -dz, dx)) return false;
+        }
+      }
+      return true;
+    };
+    const shoulderDistance = (start, radius) => {
+      const data = shoulderPolygons, count = data[start];
+      let first = Infinity, last = -Infinity;
+      for (let i = 0; i < count; i++) {
+        const at = start + 5 + i * 2, next = start + 5 + (i + 1) % count * 2;
+        const along = data[at], across = data[at + 1], da = data[next] - along, dc = data[next + 1] - across;
+        let lo = 0, hi = 1;
+        if (dc) {
+          const a = (-radius - across) / dc, b = (radius - across) / dc;
+          lo = Math.max(0, Math.min(a, b)); hi = Math.min(1, Math.max(a, b));
+        } else if (Math.abs(across) > radius) continue;
+        if (lo > hi) continue;
+        for (let end = 0; end < 2; end++) {
+          const t = end ? hi : lo, c = across + dc * t, reach = Math.sqrt(Math.max(0, radius * radius - c * c)), l = along + da * t;
+          first = Math.min(first, l - reach); last = Math.max(last, l + reach);
+        }
+        if (dc) {
+          const acrossAt = radius * da * Math.sign(dc) / Math.hypot(da, dc);
+          const near = (-acrossAt - across) / dc, far = (acrossAt - across) / dc;
+          if (near > lo && near < hi) first = Math.min(first, along + da * near - Math.sqrt(Math.max(0, radius * radius - acrossAt * acrossAt)));
+          if (far > lo && far < hi) last = Math.max(last, along + da * far + Math.sqrt(Math.max(0, radius * radius - acrossAt * acrossAt)));
+        }
+      }
+      return last >= 0 ? Math.max(0, first) : Infinity;
+    };
+    const shoulderPolygon = (start, vertices, x, z, fx, fz) => {
+      const data = shoulderPolygons;
+      data[start] = vertices;
+      data[start + 1] = data[start + 3] = Infinity; data[start + 2] = data[start + 4] = -Infinity;
+      for (let p = 0; p < vertices; p++) {
+        const dx = clipB[p * 3] - x, dz = clipB[p * 3 + 2] - z, along = dx * fx + dz * fz, across = dx * fz - dz * fx;
+        data[start + 5 + p * 2] = along; data[start + 6 + p * 2] = across;
+        data[start + 1] = Math.min(data[start + 1], along); data[start + 2] = Math.max(data[start + 2], along);
+        data[start + 3] = Math.min(data[start + 3], across); data[start + 4] = Math.max(data[start + 4], across);
+      }
+    };
+    // y/height describe the blocking slice above a walker's climbable step.
+    // Return the first connected surface in its forward/right coordinate frame;
+    // a canopy or a separate arch post must not enlarge the contacted trunk.
+    // bottomY includes its lower tiers only after that blocking contact exists;
+    // contactAcross retains the blocking slice for the shoulder's twist strength.
+    const shoulderAt = (x, y, z, fx, fz, radius, height, reach, out, bottomY = y) => {
+      stats.queries++;
+      out.node = null;
+      if (height <= EPS) return false;
+      const margin = reach + radius, toX = x + fx * reach, toZ = z + fz * reach;
+      const x0 = Math.min(x, toX) - margin, x1 = Math.max(x, toX) + margin, z0 = Math.min(z, toZ) - margin, z1 = Math.max(z, toZ) + margin;
+      let best = reach + EPS;
+      for (const entry of entries) {
+        if (!entry.active || !overlaps(entry.box, x0, bottomY, z0, x1, y + height, z1)) continue;
+        localQuery(entry, x0, bottomY, z0, x1, y + height, z1);
+        let size = 1, count = 0, nearest = -1; stack[0] = 0;
+        while (size) {
+          const node = entry.geometry.nodes[stack[--size]];
+          if (!overlaps(node.box, query[0], query[1], query[2], query[3], query[4], query[5])) continue;
+          if (node.left >= 0) { stack[size++] = node.left; stack[size++] = node.right; continue; }
+          for (let i = node.from; i < node.to; i++) {
+            transformTriangle(entry, entry.geometry.order[i]);
+            const top = Math.max(triangle[1], triangle[4], triangle[7]);
+            if (top <= bottomY + EPS || Math.min(triangle[1], triangle[4], triangle[7]) >= y + height - EPS) continue;
+            const start = count * 15, contact = count * 2;
+            shoulderAcross[contact] = Infinity; shoulderAcross[contact + 1] = -Infinity;
+            let distance = Infinity;
+            if (bottomY < y && top > y + EPS) {
+              const lower = clipHeight(triangle, 3, clipA, y, 1), vertices = clipHeight(clipA, lower, clipB, y + height, -1);
+              shoulderPolygon(start, vertices, x, z, fx, fz);
+              shoulderAcross[contact] = shoulderPolygons[start + 3]; shoulderAcross[contact + 1] = shoulderPolygons[start + 4];
+              distance = shoulderDistance(start, radius);
+            }
+            const lower = clipHeight(triangle, 3, clipA, bottomY, 1), vertices = clipHeight(clipA, lower, clipB, y + height, -1);
+            if (!vertices) continue;
+            shoulderPolygon(start, vertices, x, z, fx, fz);
+            if (bottomY === y) {
+              shoulderAcross[contact] = shoulderPolygons[start + 3]; shoulderAcross[contact + 1] = shoulderPolygons[start + 4];
+              distance = shoulderDistance(start, radius);
+            }
+            if (distance < best) { best = distance; nearest = count; }
+            count++;
+          }
+        }
+        if (nearest < 0) continue;
+        shoulderSeen.fill(0, 0, count); shoulderSeen[nearest] = 1; shoulderQueue[0] = nearest;
+        out.node = entry.node; out.minAlong = out.minAcross = Infinity; out.maxAlong = out.maxAcross = -Infinity;
+        out.minContactAcross = Infinity; out.maxContactAcross = -Infinity;
+        let end = 1;
+        for (let at = 0; at < end; at++) {
+          const start = shoulderQueue[at] * 15, data = shoulderPolygons;
+          out.minAlong = Math.min(out.minAlong, data[start + 1]); out.maxAlong = Math.max(out.maxAlong, data[start + 2]);
+          out.minAcross = Math.min(out.minAcross, data[start + 3]); out.maxAcross = Math.max(out.maxAcross, data[start + 4]);
+          const contact = shoulderQueue[at] * 2;
+          out.minContactAcross = Math.min(out.minContactAcross, shoulderAcross[contact]); out.maxContactAcross = Math.max(out.maxContactAcross, shoulderAcross[contact + 1]);
+          for (let i = 0; i < count; i++) if (!shoulderSeen[i] && shoulderTouches(start, i * 15)) {
+            shoulderSeen[i] = 1; shoulderQueue[end++] = i;
+          }
+        }
+      }
+      return !!out.node;
+    };
     return {
-      add, remove, sync, segmentClear, stats,
+      add, remove, sync, segmentClear, shoulderAt, stats,
+      isActive: (node) => !!registered.get(node)?.active,
       clearAt: (x, y, z, radius, height, ignore = null) => segmentClear(x, y, z, x, y, z, radius, height, ignore),
       supportAt: (x, z, y, maxStep = 0, radius = 0, ignore = null) => surfaceAt(x, z, y, maxStep, radius, ignore, 1),
       ceilingAt: (x, z, y, radius = 0, ignore = null) => surfaceAt(x, z, y, 0, radius, ignore, -1),
