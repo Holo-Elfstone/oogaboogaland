@@ -225,7 +225,7 @@ Runs a headless Chrome suite over the DevTools protocol: real drags, clicks, and
 against the page, with a clean console required. Needs Node 22 or newer and Chrome; the
 driver looks for Chrome at the macOS application path, so on Linux or Windows set the
 `CHROME` environment variable to the binary. There are no npm dependencies. A full run
-takes about five minutes.
+takes about nine minutes.
 
 ## Build and deploy
 
