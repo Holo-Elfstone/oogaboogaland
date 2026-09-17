@@ -117,7 +117,8 @@
     reviews: (counts && counts.reviews || 0) | 0, comments: normalizeComments(counts && counts.comments)
   });
   const normalizeBoard = (b) => Array.isArray(b) ? b.map((e) => ({ login: String(e.login), count: e.count | 0 })) : [];
-  const displayLabel = (c) => c.login.startsWith("email:") ? c.display_name || "anonymous" : c.login;
+  const CONTRIBUTOR_ALIASES = { bc1gui: "ottoz0r" };
+  const displayLabel = (c) => c.login.startsWith("email:") ? "anonymous" : c.login;
 
   const parseStats = (json) => {
     if (typeof json !== "object" || json === null) throw new Error("stats payload is not an object");
@@ -125,7 +126,6 @@
     if (!Array.isArray(json.contributors)) throw new Error("stats contributors is not an array");
     const contributors = json.contributors.map((c) => ({
       login: String(c.login),
-      display_name: c.display_name || null,
       counts: normalizeCounts(c.counts),
       weekly: Array.isArray(c.weekly)
         ? c.weekly.map((w) => ({ week: String(w.week), commits: w.commits | 0, prs: w.prs | 0, reviews: w.reviews | 0, comments: w.comments | 0 })).sort((a, b) => a.week < b.week ? -1 : 1)
@@ -254,7 +254,7 @@
     let y = 16;
     top.forEach((e, i) => {
       const c = model.byLogin.get(e.login);
-      const label = fitText((c ? displayLabel(c) : e.login).toUpperCase(), 66, 1);
+      const label = fitText(displayLabel(c || e).toUpperCase(), 66, 1);
       drawText(ctx, String(i + 1), 4, y, i === 0 ? PALETTE.accent : PALETTE.dim, 1);
       drawText(ctx, label, 14, y, PALETTE.text, 1);
       const barX = 84, barMax = BOARD_W - barX - 30;
@@ -279,9 +279,6 @@
     drawIdenticon(ctx, c.login, 6, 17);
     const name = fitText(displayLabel(c).toUpperCase(), BOARD_W - 50, 1);
     drawText(ctx, name, 44, 20, PALETTE.text, 1);
-    if (c.display_name && !c.login.startsWith("email:")) {
-      drawText(ctx, fitText(c.display_name.toUpperCase(), BOARD_W - 50, 1), 44, 30, PALETTE.dim, 1);
-    }
     const counts = [
       ["CM", c.counts.commits, PALETTE.commits],
       ["PR", c.counts.prs, PALETTE.prs],
@@ -491,17 +488,11 @@
       autoRotate(seconds) {
         rotateEvery = seconds > 0 ? seconds : 0;
       },
-      // Poke an Ooga -> their stats on the big screen. Roster names are
-      // GitHub handles, but a couple are display names; match either.
+      // Poke an Ooga -> their stats on the big screen, using public handles.
       showContributor(name) {
         if (!model) return false;
-        let login = model.byLogin.has(name) ? name : null;
-        if (!login) {
-          const lower = String(name).toLowerCase();
-          const hit = model.contributors.find((c) => (c.display_name || "").toLowerCase() === lower);
-          if (hit) login = hit.login;
-        }
-        if (!login) return false;
+        const login = model.byLogin.has(name) ? name : CONTRIBUTOR_ALIASES[String(name).toLowerCase()];
+        if (!model.byLogin.has(login)) return false;
         view = { name: "contributor", params: { login } };
         dirty = true;
         suspendUntil = lastSwitchAt = -1; // resolved on next update from elapsed

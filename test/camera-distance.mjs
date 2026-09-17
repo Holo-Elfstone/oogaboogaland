@@ -293,7 +293,9 @@ export const cameraMotionResetProbe = () => {
     const camera = BL.scene.createCamera(), root = BL.scene.createNode(), rotation = BL.math.quat.create();
     BL.math.quat.fromEuler(rotation, -Math.PI / 2 + 0.25, 0, 0);
     root.quaternion = rotation; root.position.y = 0.5;
-    const cave = { root, parts: { head: { cameraHidden: false } }, traits: { name: "fixture" }, sleepHead: { x: 0, y: 0.65, z: 0 }, state: "sleeping", bedroll: { sleep: {} }, baseY: 0.3, hop: 0, hopV: 0, leap: { vx: 0, vz: 0 }, jet: null, jetFuel: 1 };
+    const head = BL.scene.createNode({ geometry: BL.models.box({ w: 0.4, h: 0.4, d: 0.4, color: "#ffffff" }) });
+    BL.scene.addChild(root, head);
+    const cave = { root, parts: { head }, camp: { burning: false, seat: null }, traits: { name: "fixture" }, sleepHead: { x: 0, y: 0.65, z: 0 }, state: "sleeping", bedroll: { sleep: {} }, baseY: 0.3, hop: 0, hopV: 0, leap: { vx: 0, vz: 0 }, jet: null, jetFuel: 1 };
     let player = null;
     const crew = { get player() { return player; }, get sleeping() { return !!player; }, control(c) { player = c; return true; }, release() { player = null; }, elevate() {}, look() {}, steer() {}, playerAction() { return true; } };
     const view = { yaw: 0.75, pitch: 0.8, dist: 6, target: { x: 0, y: 0.65, z: 0 } };

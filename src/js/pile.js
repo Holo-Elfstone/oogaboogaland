@@ -29,12 +29,14 @@
   const DROP_DURATION_MIN = 1.05;
   const DROP_DURATION_RANGE = 0.3;
   const DROP_DURATION_MAX = DROP_DURATION_MIN + DROP_DURATION_RANGE;
+  const SPILL_POOL_SIZE = 32, SPILL_BURST = 8, SPILL_GRAVITY = 7, SPILL_FADE_TIME = 0.22;
   const BACKLOG_SECONDS = 10;
   const FRAME_TIME_MAX = 0.1;
   const DROP_THROUGHPUT = Math.min(DROP_RATE, DROP_POOL_SIZE / DROP_DURATION_MAX);
   const BACKLOG_VISUAL_CAPACITY = Math.max(1, Math.floor((BACKLOG_SECONDS - DROP_DURATION_MAX - FRAME_TIME_MAX) * DROP_THROUGHPUT));
   const MAX_WEBGL_TILES = 65536;
   const MAX_CANVAS_TILES = 512;
+  const DISTANT_SHELL_MIN_TILES = 1000, SHELL_DETAIL_NEAR = 8, SHELL_DETAIL_FAR = 10;
   const footprintFor = (count, scale = 0.45) => scale * (count > DISK_BANANAS ? Math.cbrt(count / DISK_BANANAS) : 1);
   const visualFootprintFor = (count, scale = 0.45) => {
     const mix = Math.min(1, Math.max(0, (count - DISK_BANANAS) / DISK_BANANAS));
@@ -73,6 +75,7 @@
     const core = createNode({ geometry: models.bananaPileCoreGeometry(SCALE * 6, BASE_HEIGHT * 6, coreFaceSize), visible: false });
     const bananaGeometry = models.bananaGeometry();
     const shellGeometry = models.bananaTileGeometry();
+    const distantShellGeometry = models.bananaTileGeometry(true);
     let shellMinZ = Infinity, shellReach = 0;
     for (let i = 0; i < shellGeometry.verts.length; i += 3) {
       shellMinZ = Math.min(shellMinZ, shellGeometry.verts[i + 2]);
@@ -177,6 +180,73 @@
       });
       addChild(root, node);
     }
+    // Cosmetic fruit shares the regular banana mesh, but never enters the
+    // logical delivery pool, collision registry or object-outline queries.
+    // A batch needs its own geometry identity: the renderer groups ordinary
+    // bananas by geometry too. Only the immutable mesh arrays are shared.
+    const spillNode = createNode({ geometry: { ...bananaGeometry }, instanceData: new Float32Array(SPILL_POOL_SIZE * 20), instanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true, matrixLiving, sightHidden: true, visible: false });
+    const spillSlots = [];
+    for (let i = 0; i < SPILL_POOL_SIZE; i++) spillSlots.push({ age: 0, life: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, spin: { x: 0, y: 0, z: 0 } });
+    const spillState = { capacity: SPILL_POOL_SIZE, active: 0, bursts: 0, emitted: 0 };
+    const spillEffect = { node: spillNode, state: spillState };
+    const spillScale = { x: BANANA_SCALE, y: BANANA_SCALE, z: BANANA_SCALE }, spillMatrix = mat4.create();
+    addChild(root, spillNode);
+    const writeSpills = () => {
+      let count = 0;
+      for (let i = 0; i < spillSlots.length; i++) {
+        const slot = spillSlots[i];
+        if (!slot.life) continue;
+        const size = BANANA_SCALE * Math.min(1, (slot.life - slot.age) / SPILL_FADE_TIME);
+        setVec(spillScale, size, size, size);
+        mat4.fromTRS(spillMatrix, slot.position, slot.rotation, spillScale);
+        const at = count++ * 20, data = spillNode.instanceData;
+        data.set(spillMatrix, at);
+        data[at + 16] = 1; data[at + 17] = 0; data[at + 18] = matrixLiving ? 2 : 0; data[at + 19] = 0;
+      }
+      spillState.active = spillNode.instanceCount = count;
+      spillNode.visible = count > 0;
+      spillNode.instanceVersion++;
+    };
+    const spill = (x, y, z, vx, vy, vz, height = 0.3) => {
+      // Cap inherited speed so a very fast flight does not scatter fruit far
+      // beyond the character. Cosmetic random variation needs no new objects.
+      const speed = Math.hypot(vx, vy, vz), inherit = speed > 8 ? 4 / speed : 0.5;
+      const horizontal = Math.hypot(vx, vz), dx = horizontal > 0.001 ? vx / horizontal : 1, dz = horizontal > 0.001 ? vz / horizontal : 0;
+      let emitted = 0;
+      for (let i = 0; i < spillSlots.length && emitted < SPILL_BURST; i++) {
+        const slot = spillSlots[i];
+        if (slot.life) continue;
+        const side = (Math.random() - 0.5) * 0.7, ahead = Math.random() * 0.18;
+        // Stratify the burst so even a small emission includes fruit near
+        // the feet, torso and head wherever those meet the mound.
+        const lift = height * (emitted % 3 + Math.random() * 0.25) / 2.25;
+        setVec(slot.position, x + dx * ahead - dz * side, y + lift, z + dz * ahead + dx * side);
+        setVec(slot.velocity, vx * inherit - dz * side * 2 + dx * 0.4, vy * inherit + 1.4 + Math.random() * 0.7, vz * inherit + dx * side * 2 + dz * 0.4);
+        setVec(slot.rotation, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
+        setVec(slot.spin, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12);
+        slot.age = 0; slot.life = 0.85 + Math.random() * 0.3;
+        emitted++;
+      }
+      if (emitted) { spillState.bursts++; spillState.emitted += emitted; writeSpills(); }
+      return emitted;
+    };
+    const updateSpills = (dt) => {
+      if (!spillState.active) return;
+      for (let i = 0; i < spillSlots.length; i++) {
+        const slot = spillSlots[i];
+        if (!slot.life) continue;
+        slot.age += dt;
+        if (slot.age >= slot.life) { slot.life = 0; continue; }
+        const p = slot.position, v = slot.velocity, r = slot.rotation, spin = slot.spin;
+        p.x += v.x * dt; p.y += v.y * dt - SPILL_GRAVITY * dt * dt * 0.5; p.z += v.z * dt;
+        v.y -= SPILL_GRAVITY * dt;
+        r.x += spin.x * dt; r.y += spin.y * dt; r.z += spin.z * dt;
+        // Settle onto the pile platform before shrinking, rather than
+        // leaving a second pile of physical fruit or falling through it.
+        if (p.y < BASE_Y + 0.04) { p.y = BASE_Y + 0.04; setVec(v, 0, 0, 0); slot.age = Math.max(slot.age, slot.life - SPILL_FADE_TIME); }
+      }
+      writeSpills();
+    };
     let shown = 0, counted = 0;
     let footprint = SCALE, layoutCount = -1, shellWanted = 0;
     const delivery = world.delivery || (world.delivery = {
@@ -531,11 +601,28 @@
       syncPile(true);
       return true;
     };
+    const updateDetail = () => {
+      if (shell.instanceCount < DISTANT_SHELL_MIN_TILES) {
+        shell.geometry = shellGeometry;
+        return;
+      }
+      // Measure from the nearest possible surface, not the mound's centre: a
+      // camera beside even the largest pile must retain the original bananas.
+      // The box includes the warped dome and the full reach of its shell fruit.
+      const eye = ctx.camera.position, radius = core.scale.x * 1.05 + shellReach;
+      const dx = Math.max(0, Math.abs(eye.x) - radius), dz = Math.max(0, Math.abs(eye.z) - radius);
+      const dy = Math.max(0, BASE_Y - shellReach - eye.y, eye.y - BASE_Y - core.scale.y - shellReach);
+      const distance = Math.hypot(dx, dy, dz);
+      if (distance > SHELL_DETAIL_FAR) shell.geometry = distantShellGeometry;
+      else if (distance < SHELL_DETAIL_NEAR) shell.geometry = shellGeometry;
+    };
     const update = (dt) => {
       delivery.activeTime += dt;
       const target = Math.floor(world.level);
       if (target !== counted) syncPile();
+      updateDetail();
       pumpDrops(dt);
+      updateSpills(dt);
       if (!outstandingValue() && hatchTarget === 1) hatchTarget = 0;
       hatchOpen = damp(hatchOpen, hatchTarget, 7, dt);
     };
@@ -547,6 +634,15 @@
       for (const slot of dropSlots) removeChild(root, slot.node);
       removeChild(root, core);
       removeChild(root, shell);
+      // Both detail levels cache this visit's instance matrices. End their GPU
+      // lifetime here so another scene's pile cannot reuse a matching version.
+      ctx.renderer.releaseGeometry(shellGeometry);
+      ctx.renderer.releaseGeometry(distantShellGeometry);
+      removeChild(root, spillNode);
+      spillSlots.length = 0;
+      spillState.active = spillNode.instanceCount = 0;
+      spillNode.visible = false;
+      spillNode.instanceData = new Float32Array(20);
       pileSlots.length = 0;
       dropSlots.length = 0;
       shell.instanceData = new Float32Array(20);
@@ -590,14 +686,18 @@
       get lastDrainSeconds() { return delivery.lastDrainSeconds; },
       enqueue: deliverBananas
     };
-    const stats = () => ({ slots: pileSlots.length, shown: counted, rendered: shell.instanceCount, deliveries: delivery.airborneValue, pendingDrops: delivery.pendingValue, dropsStarted: delivery.visualDropsStarted, dropsLanded: delivery.visualDropsLanded, landedBananaValue: delivery.totalLandedValue, dropPool: dropSlots.length, dropRate: DROP_RATE });
+    const stats = () => ({ slots: pileSlots.length, shown: counted, rendered: shell.instanceCount, deliveries: delivery.airborneValue, pendingDrops: delivery.pendingValue, dropsStarted: delivery.visualDropsStarted, dropsLanded: delivery.visualDropsLanded, landedBananaValue: delivery.totalLandedValue, dropPool: dropSlots.length, dropRate: DROP_RATE, spillPool: spillSlots.length, spilling: spillState.active });
     const setLevel = (level) => {
       clearDrops();
       world.level = Math.max(0, Math.min(MAX_BANANAS, Number(level) || 0));
       syncPile(true);
     };
+    const liveGeometry = (set) => set.add(shellGeometry).add(distantShellGeometry);
+    // Crew slots are assigned immediately after construction. Publish the
+    // loaded pile's real footprint before the crew exists or starts walking.
+    reflow(Math.max(0, Math.min(MAX_BANANAS, Math.floor(world.level))));
     return {
-      slots: pileSlots, drops: dropSlots, core, shell, syncPile, deliverBananas, pileEdge, eatFromPile, update, dispose, stats, setLevel, delivery: deliveryDebug,
+      slots: pileSlots, drops: dropSlots, core, shell, syncPile, deliverBananas, pileEdge, eatFromPile, update, dispose, stats, setLevel, liveGeometry, delivery: deliveryDebug, spill, spillEffect,
       get shown() {
         return counted;
       },
@@ -611,7 +711,7 @@
         return hatchOpen;
       },
       get inMotion() {
-        return outstandingValue() > 0;
+        return outstandingValue() > 0 || spillState.active > 0;
       }
     };
   };

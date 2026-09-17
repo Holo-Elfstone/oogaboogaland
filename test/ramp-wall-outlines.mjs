@@ -2,8 +2,8 @@ export const apertureOutlineProbe = () => {
   const BL = window.BL, canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 360;
   Object.defineProperties(canvas, { clientWidth: { value: 640 }, clientHeight: { value: 360 } });
   const ctx = canvas.getContext("2d", { willReadFrequently: true }), cover = BL.cameraCover.create(canvas), camera = BL.scene.createCamera({ near: 0.1 });
-  let clear = true;
-  const aperture = BL.wallApertures.create({ windows: [{ sill: -0.6, height: 1.2, flare: { frusta: [{ angle: 0, start: 2, half: 0.6, inner: false }] } }], island: { sightClearAt: () => clear } });
+  const windows = [{ sill: -0.6, height: 1.2, flare: { frusta: [{ angle: 0, start: 2, half: 0.6, inner: false }] } }];
+  const aperture = BL.wallApertures.create({ windows, island: { geometry: { verts: [], faces: [] } } });
   const surface = { surface: new Float32Array([-4,-3,0, -4,3,0, 4,3,0, -4,-3,0, 4,3,0, 4,-3,0]), surfaceCount: 2, surfaceGroups: new Uint16Array([0,0]), surfaceWholePhases: new Float32Array([1]), surfacePhases: new Float32Array([1]), surfaceHidden: new Uint8Array([1]), surfaceAperture: new Uint8Array([1]), surfaceWholeActive: 1, surfaceActive: 1, apertures: aperture };
   const guides = { structures: [surface], objectsEnabled: true, count: 0, providerCount: 0, lines: new Float32Array(0) }, rows = [], view = BL.math.mat4.create();
   camera.fov = Math.PI / 2;
@@ -24,7 +24,8 @@ export const apertureOutlineProbe = () => {
     }
     rows.push({distance,x,windowSamples,wallSamples,leaked,dropped});
   }
-  clear=false; aperture.update(camera,true);ctx.clearRect(0,0,640,360);cover.draw(camera,null,false,false,()=>false,()=>null,guides);
+  surface.apertures=BL.wallApertures.create({windows,island:{geometry:{verts:[-3,-3,-3,3,-3,-3,3,3,-3,-3,3,-3],faces:[{i:[0,1,2,3]}]}}});
+  surface.apertures.update(camera,true);ctx.clearRect(0,0,640,360);cover.draw(camera,null,false,false,()=>false,()=>null,guides);
   const blocked=ctx.getImageData(320,180,1,1).data[3];
   guides.objectsEnabled=false;ctx.clearRect(0,0,640,360);cover.draw(camera,null,false,false,()=>false,()=>null,guides);
   const disabled=ctx.getImageData(0,0,640,360).data.every((v,n)=>n%4!==3||v===0);

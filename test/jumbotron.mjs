@@ -27,11 +27,21 @@ export const jumbotronProbe = async () => {
     onNorthRim: p.z < -20 && Math.hypot(p.x, p.z) > 22,
     aboveGround: p.y > B.island.surfaceAt(p.x, p.z),
     facesCenter: Math.abs(j.node.rotation.y - Math.atan2(-p.x, -p.z)) < 1e-6,
-    scale: j.node.scale.x
+    scale: j.node.scale.x,
+    solid: !B.headquarters.solids.props.clearAt(p.x, p.y, p.z, 0.1, 0.1)
   };
   const data = (() => {
     try {
-      return { contributors: BL.jumbotron.parseStats(BL.jumbotronData).contributors.length, schemaGuard: false };
+      const parsed = BL.jumbotron.parseStats(BL.jumbotronData);
+      const privateFields = ["display_name", "avatar_url", "first_seen_at", "last_seen_at"];
+      const noPersonalMetadata = BL.jumbotronData.contributors.every((c) => privateFields.every((key) => !(key in c)))
+        && parsed.contributors.every((c) => privateFields.every((key) => !(key in c)));
+      const anonymous = BL.jumbotron.parseStats({ ...BL.jumbotronData,
+        contributors: [{ ...BL.jumbotronData.contributors.find((c) => c.login.startsWith("email:")), display_name: "private-profile-label" }]
+      });
+      const anonymousLabel = anonymous.tickerText.includes("ANONYMOUS:")
+        && !anonymous.tickerText.includes("PRIVATE-PROFILE-LABEL") && !anonymous.tickerText.includes("EMAIL:");
+      return { contributors: parsed.contributors.length, schemaGuard: false, noPersonalMetadata, anonymousLabel };
     } catch {
       return { contributors: 0, schemaGuard: false };
     }
@@ -48,9 +58,10 @@ export const jumbotronProbe = async () => {
   const pokeKnown = j.showContributor("portlandhodl");
   await frames(3);
   const poked = { accepted: pokeKnown, view: j.view.name, login: j.view.params && j.view.params.login };
-  const pokeAlias = j.showContributor("bc1gui"); // roster display name -> stats login
+  const pokeAlias = j.showContributor("bc1gui"); // public roster alias -> stats login
   await frames(3);
-  const alias = { accepted: pokeAlias, login: j.view.params && j.view.params.login };
+  const alias = { accepted: pokeAlias, login: j.view.params && j.view.params.login,
+    caseInsensitive: j.showContributor("BC1GUI") && j.view.params.login === "ottoz0r" };
   const pokeUnknown = j.showContributor("no-such-ooga");
   const before = facesOf(screen);
   j.nextView();

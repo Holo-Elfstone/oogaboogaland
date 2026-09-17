@@ -3,20 +3,20 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const RADIUS = 0.3, HEIGHT = 2, STEP = 0.6, SAMPLE = 0.125;
-  const create = ({ island, beds, walkable = null }) => {
+  const create = ({ island, beds, walkable = null, surfaceRoute = null }) => {
     const H = island.headquarters, points = [], edges = [], bedNodes = new Map(), surface = [];
     const floorAt = (x, y, z) => island.supportAt(x, z, y, STEP, -120, RADIUS);
-    const clear = (x, y, z) => island.clearAt(x, y + STEP, z, RADIUS, HEIGHT - STEP) && island.ceilingAt(x, y, z, RADIUS) >= y + HEIGHT - 1e-7;
-    const segment = (a, b, surfaceOnly = false) => {
-      const count = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / SAMPLE));
+    const clear = (x, y, z, lift = STEP) => island.clearAt(x, y + lift, z, RADIUS, HEIGHT - lift) && island.ceilingAt(x, y, z, RADIUS) >= y + HEIGHT - 1e-7;
+    const segment = (a, b, surfaceOnly = false, lift = STEP) => {
+      const count = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / (lift < STEP ? 0.025 : SAMPLE)));
       let x = a.x, y = a.y, z = a.z;
-      if (!clear(x, y, z)) return false;
+      if (!clear(x, y, z, lift)) return false;
       for (let i = 1; i <= count; i++) {
         const t = i / count, nx = a.x + (b.x - a.x) * t, nz = a.z + (b.z - a.z) * t, guide = a.y + (b.y - a.y) * t;
         const ny = floorAt(nx, surfaceOnly ? island.surfaceAt(nx, nz) : guide, nz);
         // A route follows support, never a drop into another layer or the shaft.
-        if ((surfaceOnly ? ny < -1e-7 : Math.abs(ny - guide) > STEP + 1e-6) || Math.abs(ny - y) > STEP + 1e-6 || !clear(nx, ny, nz)) return false;
-        if (!island.voxelSegmentClearAt(x, y + STEP, z, nx, ny + STEP, nz, RADIUS, HEIGHT - STEP)) return false;
+        if ((surfaceOnly ? ny < -1e-7 : Math.abs(ny - guide) > STEP + 1e-6) || Math.abs(ny - y) > STEP + 1e-6 || !clear(nx, ny, nz, lift)) return false;
+        if (!island.voxelSegmentClearAt(x, y + lift, z, nx, ny + lift, nz, RADIUS, HEIGHT - lift)) return false;
         if (walkable && !walkable(x, z, nx, nz, y, HEIGHT)) return false;
         x = nx; y = ny; z = nz;
       }
@@ -76,11 +76,42 @@
     // Search storage belongs to this visit and is reused for each state change.
     const size = points.length, distance = new Float64Array(size), previous = new Int32Array(size), visited = new Uint8Array(size);
     const candidates = new Int32Array(16), candidateDistance = new Float64Array(16);
+    const rounded = (route) => {
+      const result = [route[0]];
+      for (let i = 1; i < route.length - 1; i++) {
+        const before = route[i - 1], corner = route[i], after = route[i + 1];
+        const ax = corner.x - before.x, az = corner.z - before.z, bx = after.x - corner.x, bz = after.z - corner.z;
+        const incoming = Math.hypot(ax, az), outgoing = Math.hypot(bx, bz);
+        if (incoming < 1e-6 || outgoing < 1e-6 || (ax * bx + az * bz) / (incoming * outgoing) > 0.999) { result.push(corner); continue; }
+        let curve = null, reach = Math.min(0.9, incoming * 0.4, outgoing * 0.4);
+        // Round turns only as far as the real floor, walls and headroom allow.
+        // Construct and validate once when a route is chosen, never per frame.
+        for (let attempt = 0; attempt < 4 && !curve; attempt++, reach *= 0.5) {
+          const a = { x: corner.x - ax * reach / incoming, y: corner.y + (before.y - corner.y) * reach / incoming, z: corner.z - az * reach / incoming };
+          const b = { x: corner.x + bx * reach / outgoing, y: corner.y + (after.y - corner.y) * reach / outgoing, z: corner.z + bz * reach / outgoing };
+          a.y = floorAt(a.x, a.y, a.z); b.y = floorAt(b.x, b.y, b.z);
+          const samples = [a], steps = Math.max(4, Math.ceil(reach * 2 / SAMPLE));
+          let valid = segment(result[result.length - 1], a, false, 0.3);
+          for (let n = 1; valid && n <= steps; n++) {
+            const t = n / steps, u = 1 - t;
+            const x = u * u * a.x + 2 * u * t * corner.x + t * t * b.x, z = u * u * a.z + 2 * u * t * corner.z + t * t * b.z;
+            const guide = u * u * a.y + 2 * u * t * corner.y + t * t * b.y, y = floorAt(x, guide, z), p = { x, y, z };
+            valid = Math.abs(y - guide) <= STEP + 1e-6 && segment(samples[samples.length - 1], p, false, 0.3);
+            samples.push(p);
+          }
+          if (valid && segment(b, after, false, 0.3)) curve = samples;
+        }
+        if (curve) result.push(...curve); else result.push(corner);
+      }
+      result.push(route[route.length - 1]);
+      return result;
+    };
     const attach = (from, onlySurface, out) => {
       candidates.fill(-1); candidateDistance.fill(Infinity);
-      const count = onlySurface ? surface.length : size;
+      const count = size;
       for (let j = 0; j < count; j++) {
-        const id = onlySurface ? surface[j] : j, p = points[id];
+        const id = j, p = points[id];
+        if (onlySurface && p.y < -1e-7) continue;
         if (!onlySurface && Math.abs(p.y - from.y) > STEP + 1e-6) continue;
         const d = Math.hypot(p.x - from.x, p.y - from.y, p.z - from.z);
         if (d >= candidateDistance[15]) continue;
@@ -122,7 +153,33 @@
       for (let i = end; i >= 0; i = previous[i]) result.push(points[i]);
       result.push(from); result.reverse();
       if (target) result.push(target);
-      return result;
+      const simplified = [];
+      for (const p of result) {
+        simplified.push(p);
+        while (simplified.length >= 3) {
+          const n = simplified.length, a = simplified[n - 3], b = simplified[n - 2];
+          // Preserve the authored slope centerline. Only shorten circulation
+          // and room approaches on the same flat floor, away from ramp bends.
+          if (a.y >= -0.05 || Math.abs(a.y - b.y) > 1e-7 || Math.abs(a.y - p.y) > 1e-7 || !segment(a, p, false, 0.3)) break;
+          simplified.splice(n - 2, 1);
+        }
+      }
+      const smooth = rounded(simplified);
+      if (surfaceRoute) {
+        let join = -1;
+        if (toBed) {
+          for (let i = 0; i < smooth.length && smooth[i].y >= -1e-7; i++) join = i;
+        } else {
+          for (let i = smooth.length - 1; i >= 0 && smooth[i].y >= -1e-7; i--) join = i;
+        }
+        if (join >= 0) {
+          const above = toBed ? surfaceRoute(smooth[0], smooth[join]) : surfaceRoute(smooth[join], smooth[smooth.length - 1]);
+          let valid = true;
+          for (let i = 1; valid && i < above.length; i++) valid = segment(above[i - 1], above[i], true, 0.3);
+          if (valid) return toBed ? above.concat(smooth.slice(join + 1)) : smooth.slice(0, join).concat(above);
+        }
+      }
+      return smooth;
     };
     return { route, points, radius: RADIUS, height: HEIGHT, nodeCount: size, edgeCount: edges.reduce((sum, list) => sum + list.length, 0) / 2 };
   };

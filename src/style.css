@@ -211,7 +211,7 @@ select {
 .brand p {
   margin: 2px 0 0;
   color: var(--faint);
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -236,6 +236,48 @@ select {
   width: 100%;
   height: 100%;
   vertical-align: 0;
+}
+
+.world-bananas {
+  position: absolute;
+  top: calc(37px + var(--safe-top));
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateX(-50%);
+  color: var(--paper);
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+
+.world-bananas:hover,
+.world-bananas:focus-visible {
+  color: #ffd84a;
+}
+
+.world-bananas .banana-icon {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  transform: translateY(-1px);
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.5));
+}
+
+.world-banana-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .meter {
@@ -324,7 +366,7 @@ select {
 }
 
 .presets button {
-  min-height: 34px;
+  min-height: 28px;
   padding: 0 12px;
   border: 2px solid var(--wood-edge);
   border-radius: 6px;
@@ -339,7 +381,7 @@ select {
 
 .presets[data-scene="hub"] button {
   min-width: 44px;
-  min-height: 44px;
+  min-height: 34px;
   padding: 0 10px;
   white-space: nowrap;
 }
@@ -368,6 +410,7 @@ select {
   position: absolute;
   top: calc(74px + var(--safe-top));
   right: calc(16px + var(--safe-right));
+  height: 520px;
   max-height: calc(100% - 90px - var(--safe-top) - var(--safe-bottom));
   width: 300px;
   display: flex;
@@ -388,11 +431,11 @@ select {
 /* A wooden pull tab hanging off the panel's edge */
 .sheet-toggle {
   position: absolute;
-  top: 50%;
+  top: 61px;
   left: -41px;
   width: 44px;
   height: 64px;
-  margin-top: -32px;
+  margin-top: 0;
   padding: 0 4px 0 2px;
   border: 3px solid var(--wood-edge);
   border-right: 0;
@@ -401,9 +444,10 @@ select {
   box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
 }
 
-/* The banana tab hangs above the caveman tab */
+/* Anchor the banana pull tab at the top of the panel. */
 .sheet-toggle-bananas {
-  margin-top: -104px;
+  top: -3px;
+  margin-top: 0;
   height: 56px;
 }
 
@@ -484,6 +528,7 @@ select {
 
 .panel {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 14px 16px;
   overscroll-behavior: contain;
@@ -905,6 +950,10 @@ select {
   text-transform: uppercase;
 }
 
+.message-stack {
+  display: contents;
+}
+
 .toast,
 .hint {
   position: absolute;
@@ -926,7 +975,7 @@ select {
 }
 
 .toast {
-  bottom: calc(24px + var(--safe-bottom));
+  bottom: calc(11px + var(--safe-bottom));
   color: #ffd27a;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.5);
 }
@@ -963,21 +1012,47 @@ select {
   text-overflow: ellipsis;
 }
 
-/* The equipped jetpack's fuel stays clear of the panel and flight sticks */
+/* The carried jetpack stays compact until it is worn and reveals its fuel. */
 .jetpack-hud {
   position: absolute;
   top: calc(74px + var(--safe-top));
   left: calc(16px + var(--safe-left));
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0;
+  width: 52px;
+  height: 52px;
   padding: 7px 10px;
   background: var(--tablet);
   border: 2px solid var(--stone-dk);
   border-radius: 9px 7px 10px 8px;
   box-shadow: var(--tablet-shadow);
   color: var(--paper);
-  pointer-events: none;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  pointer-events: auto;
+  transition: width 0.2s ease, background 0.15s ease, transform 0.15s ease;
+}
+
+.jetpack-hud:hover:not(:disabled),
+.jetpack-hud:focus-visible {
+  background: linear-gradient(160deg, #504b47, #45413d 55%, #363330);
+  outline: none;
+}
+
+.jetpack-hud:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.jetpack-hud:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.jetpack-hud[data-equipped="true"] {
+  width: 158px;
+  gap: 8px;
 }
 
 .jetpack-icon {
@@ -989,6 +1064,18 @@ select {
 
 .jetpack-readout {
   width: 88px;
+  flex: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-5px);
+  transition: opacity 0.14s ease 0s, transform 0.18s ease 0s, visibility 0s linear 0.18s;
+}
+
+.jetpack-hud[data-equipped="true"] .jetpack-readout {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(0);
+  transition-delay: 0.06s, 0.06s, 0s;
 }
 
 .jetpack-label {
@@ -1670,20 +1757,6 @@ select {
   }
 }
 
-@media (max-width: 960px) {
-  .brand p {
-    display: none;
-  }
-
-  .topbar:has(.presets[data-scene="hub"]:not([hidden])) .brand h1 {
-    font-size: 16px;
-  }
-
-  .world-clock {
-    font-size: 16px;
-  }
-}
-
 @media (max-width: 720px) {
   .topbar {
     grid-template-columns: auto 1fr;
@@ -1693,16 +1766,29 @@ select {
   }
 
   .brand p {
-    display: none;
+    display: block;
+    font-size: 10.5px;
   }
 
-  .brand h1 {
+  .brand h1,
+  .topbar:has(.presets[data-scene="hub"]:not([hidden])) .brand h1 {
     font-size: 13px;
   }
 
   .world-clock {
     top: calc(10px + var(--safe-top));
+    right: calc(12px + var(--safe-right));
+    left: auto;
+    transform: none;
     font-size: 13px;
+  }
+
+  .world-bananas {
+    top: calc(27px + var(--safe-top));
+    right: calc(12px + var(--safe-right));
+    left: auto;
+    transform: none;
+    font-size: 10.5px;
   }
 
   .meter {
@@ -1727,7 +1813,7 @@ select {
 
   .presets button {
     flex: 1;
-    min-height: 32px;
+    min-height: 28px;
     padding: 0 6px;
     font-size: 10px;
   }
@@ -1745,6 +1831,7 @@ select {
 
   .presets[data-scene="hub"] button {
     flex: 1 0 52px;
+    min-height: 32px;
     padding: 0 6px;
   }
 
@@ -1758,6 +1845,7 @@ select {
     right: 0;
     bottom: 0;
     width: auto;
+    height: 52vh;
     max-height: 52vh;
     border-radius: var(--radius) var(--radius) 0 0;
     border-bottom: 0;
@@ -1779,10 +1867,10 @@ select {
 
   .sheet-toggle {
     top: -39px;
-    left: 50%;
+    left: 72px;
     width: 64px;
     height: 42px;
-    margin: 0 0 0 -32px;
+    margin: 0;
     padding: 2px 18px 0;
     border: 3px solid var(--wood-edge);
     border-bottom: 0;
@@ -1791,7 +1879,8 @@ select {
   }
 
   .sheet-toggle-bananas {
-    margin: 0 0 0 -104px;
+    left: 0;
+    margin: 0;
     height: 42px;
     padding: 4px 18px 0;
   }
@@ -1809,18 +1898,55 @@ select {
     height: 120px;
   }
 
-  .toast {
-    bottom: auto;
-    top: calc(118px + var(--safe-top));
+  .message-stack {
+    position: absolute;
+    z-index: 5;
+    left: calc(12px + var(--safe-left));
+    right: calc(12px + var(--safe-right));
+    top: calc(114px + var(--safe-top));
+    display: flex;
+    width: min(220px, calc(100vw - 24px - var(--safe-left) - var(--safe-right)));
+    flex-direction: column;
+    align-items: stretch;
+    pointer-events: none;
   }
 
-  .hint {
-    top: calc(118px + var(--safe-top));
+  .message-stack>.toast,
+  .message-stack>.hint {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: 100%;
+    max-height: 0;
+    margin-top: 0;
+    padding: 0;
+    transform: translateY(8px);
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    line-height: 1.35;
+    white-space: normal;
+    text-align: left;
+    text-overflow: clip;
+    overflow: hidden;
+    text-shadow: 0 1px 2px #000, 0 0 6px rgba(0, 0, 0, 0.85);
+    transition: opacity 0.3s ease, transform 0.3s ease, max-height 0.3s ease, margin-top 0.3s ease;
   }
 
-  .topbar:has(.presets[data-scene="hub"]:not([hidden]))~.toast,
-  .topbar:has(.presets[data-scene="hub"]:not([hidden]))~.hint {
-    top: calc(98px + var(--safe-top));
+  .topbar:has(.presets[data-scene="hub"]:not([hidden]))~.message-stack {
+    top: calc(94px + var(--safe-top));
+  }
+
+  #jetpack-hud:not([hidden])~.message-stack {
+    top: calc(154px + var(--safe-top));
+  }
+
+  .message-stack>.toast.show,
+  .message-stack>.hint.show {
+    max-height: 7em;
+    margin-top: 4px;
+    transform: translateY(0);
   }
 
   .sheet-foot {
@@ -1834,7 +1960,7 @@ select {
   }
 
   .jetpack-hud {
-    top: calc(144px + var(--safe-top));
+    top: calc(98px + var(--safe-top));
     left: calc(12px + var(--safe-left));
   }
 
@@ -1910,6 +2036,7 @@ select {
     right: 0;
     bottom: 0;
     width: 300px;
+    height: 72vh;
     max-height: 72vh;
     border-radius: var(--radius) 0 0 0;
     border-bottom: 0;
@@ -1922,10 +2049,10 @@ select {
 
   .sheet-toggle {
     top: -39px;
-    left: 50%;
+    left: 72px;
     width: 64px;
     height: 42px;
-    margin: 0 0 0 -32px;
+    margin: 0;
     padding: 2px 18px 0;
     border: 3px solid var(--wood-edge);
     border-bottom: 0;
@@ -1938,7 +2065,8 @@ select {
   }
 
   .sheet-toggle-bananas {
-    margin: 0 0 0 -104px;
+    left: 0;
+    margin: 0;
     height: 42px;
     padding: 4px 18px 0;
   }
@@ -2015,6 +2143,6 @@ select {
 
 @media (max-width: 720px) and (max-height: 500px) and (orientation: landscape) {
   .jetpack-hud {
-    top: calc(100px + var(--safe-top));
+    top: calc(98px + var(--safe-top));
   }
 }

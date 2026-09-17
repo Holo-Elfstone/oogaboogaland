@@ -12,6 +12,7 @@
     return v;
   };
   const CONFETTI = ["#d8892b", "#22c55e", "#6f9fca", "#f3efe4", "#f5c542"].map((c) => models.particleGeometry(c, 0.09, 0.6));
+  const SMOKE_TRAIL = models.particleGeometry("#c9cbce", 0.09, 0.15);
   const SCREEN = { x: 0, y: 0, depth: 0 };
   const drawBubble = (ctx, text, x, y, alpha) => {
     ctx.globalAlpha = alpha;
@@ -47,11 +48,11 @@
     const particles = [];
     const particlePool = [];
     const MAX_PARTICLES = 240;
-    const spawnParticle = (geometry, x, y, z, vx, vy, vz, life, spin = 6) => {
-      if (particles.length >= MAX_PARTICLES) return;
+    const spawnParticle = (geometry, x, y, z, vx, vy, vz, life, spin = 6, gravity = 3.2, floor = 0.03) => {
+      if (particles.length >= MAX_PARTICLES) return null;
       let p = particlePool.pop();
       if (!p) {
-        p = { node: createNode({ visible: false, sightHidden: true }), vx: 0, vy: 0, vz: 0, life: 0, spin: 0 };
+        p = { node: createNode({ visible: false, sightHidden: true }), vx: 0, vy: 0, vz: 0, life: 0, spin: 0, gravity: 3.2, floor: 0.03, smoke: false, maxLife: 0 };
         addChild(root, p.node);
       }
       p.node.geometry = geometry;
@@ -63,7 +64,12 @@
       p.vz = vz;
       p.life = life;
       p.spin = spin;
+      p.smoke = false;
+      p.maxLife = life;
+      p.gravity = gravity;
+      p.floor = floor;
       particles.push(p);
+      return p;
     };
     const stepParticles = (dt) => {
       for (let i = particles.length - 1; i >= 0; i--) {
@@ -75,12 +81,26 @@
           particlePool.push(p);
           continue;
         }
-        p.vy -= 3.2 * dt;
+        if (p.smoke) {
+          // A puff drifts up and out as it spreads, then shrinks away
+          const drag = Math.max(0, 1 - 1.6 * dt);
+          p.vx *= drag;
+          p.vz *= drag;
+          p.vy += 0.3 * dt;
+          p.node.position.x += p.vx * dt;
+          p.node.position.y += p.vy * dt;
+          p.node.position.z += p.vz * dt;
+          p.node.rotation.y += p.spin * dt;
+          const s = (0.5 + 1.3 * (1 - p.life / p.maxLife)) * Math.min(1, p.life / 0.3);
+          p.node.scale.x = p.node.scale.y = p.node.scale.z = s;
+          continue;
+        }
+        p.vy -= p.gravity * dt;
         p.node.position.x += p.vx * dt;
         p.node.position.y += p.vy * dt;
         p.node.position.z += p.vz * dt;
-        if (p.node.position.y < 0.03) {
-          p.node.position.y = 0.03;
+        if (p.node.position.y < p.floor) {
+          p.node.position.y = p.floor;
           p.vy *= -0.3;
           p.vx *= 0.7;
           p.vz *= 0.7;
@@ -96,6 +116,10 @@
         const a = Math.random() * Math.PI * 2, s = speed * (0.4 + Math.random() * 0.6);
         spawnParticle(geos[i % geos.length], x, y, z, Math.cos(a) * s, 1.5 + Math.random() * 2.5, Math.sin(a) * s, 1.4 + Math.random() * 0.8);
       }
+    };
+    const puff = (x, y, z, vx, vy, vz, life) => {
+      const p = spawnParticle(SMOKE_TRAIL, x, y, z, vx, vy, vz, life, 1.2);
+      if (p) p.smoke = true;
     };
     const bubbles = [];
     const zzz = [];
@@ -207,7 +231,7 @@
     };
     const stats = () => ({ particles: particles.length, pool: particlePool.length, bubbles: bubbles.length, zzz: zzz.length });
     return {
-      spawnParticle, burst, say, sayAt, zzzAt, showTicker, drawOverlay, update: stepParticles, trimPool, dispose, stats,
+      spawnParticle, burst, puff, say, sayAt, zzzAt, showTicker, drawOverlay, update: stepParticles, trimPool, dispose, stats,
       get inMotion() {
         return particles.length > 0;
       }

@@ -13,6 +13,7 @@ export const jetpackFallProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     o.yaw = o.tYaw = 0; o.pitch = o.tPitch = 0;
   };
   B.pilot.possess(cave);
+  B.jetpack.grant(cave);
   if (mode === "first-person") B.pilot.enterClose();
   try {
     for (const fuel of [null, 1, 0.4, 0]) for (const direction of directions) {

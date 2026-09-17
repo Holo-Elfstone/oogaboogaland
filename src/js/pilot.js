@@ -2,7 +2,8 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { clamp, damp, quat } = BL.math;
+  const { clamp, damp, mat4, quat } = BL.math;
+  const { boundsOf, updateWorld } = BL.scene;
   const { create: createControls } = BL.controls;
   const BASE_FOV = 48 * Math.PI / 180;
   const MAX_FOV = 64 * Math.PI / 180;
@@ -10,7 +11,7 @@
   const YAW_RATE = 1.7, PITCH_RATE = 1.1;
   // Keep a tiny horizontal component so the vertical view retains its yaw.
   const TRAILING_PITCH = [-Math.PI / 2 + 1e-4, Math.PI / 2 - 1e-4];
-  const CLOSE_RATE = 12, CLOSE_SNAP = 0.001, CLOSE_PINCH_EXIT = 1.08, CLOSE_LOOK_DIST = 4, CLOSE_HEAD_MIX = 0.1;
+  const CLOSE_RATE = 12, CLOSE_SNAP = 0.001, CLOSE_PINCH_EXIT = 1.08, CLOSE_LOOK_DIST = 4;
   const CLOSE_GROUND_RATE = 9, CLOSE_TELEPORT = 0.8;
   const WALK = { speed: 7.75, gravity: 9.8, step: 0.6, ledgeRise: 2.4, ledgeSpeed: 3, ledgeDrag: 1.5 };
   // The camera swings behind while walking forward
@@ -64,6 +65,7 @@
     let releaseMix = 0, closeCameraActive = false;
     let headOrbit = false, exitAngleHold = false, exitBodyX = 0, exitBodyY = 0, exitBodyZ = 0;
     const headOrbitOffset = { x: 0, y: 0, z: 0 };
+    const headInverse = mat4.create(), headPartMatrix = mat4.create(), headEye = new Float64Array(3), headNear = new Float64Array(3), headBounds = new Float64Array(6);
     const entryPosition = { x: 0, y: 0, z: 0 };
     let entryRebase = false, entryOffsetActive = false, freeEntry = false;
     const previousEye = { x: 0, y: 0, z: 0 }, eyeVelocity = { x: 0, y: 0, z: 0 }, dollyVelocity = { x: 0, y: 0, z: 0 };
@@ -111,6 +113,54 @@
       hiddenHead = cave;
       hiddenHeadCameraHidden = cave.parts.head.cameraHidden;
       cave.parts.head.cameraHidden = true;
+    };
+    const includeHeadPart = (node) => {
+      if (!node.visible) return;
+      if (node.geometry) {
+        const b = boundsOf(node.geometry), m = headPartMatrix;
+        mat4.multiply(m, headInverse, node.world);
+        const cx = b.center[0], cy = b.center[1], cz = b.center[2];
+        const hx = (b.max[0] - b.min[0]) * 0.5, hy = (b.max[1] - b.min[1]) * 0.5, hz = (b.max[2] - b.min[2]) * 0.5;
+        for (let axis = 0; axis < 3; axis++) {
+          const center = m[axis] * cx + m[axis + 4] * cy + m[axis + 8] * cz + m[axis + 12];
+          const extent = Math.abs(m[axis]) * hx + Math.abs(m[axis + 4]) * hy + Math.abs(m[axis + 8]) * hz;
+          headBounds[axis] = Math.min(headBounds[axis], center - extent);
+          headBounds[axis + 3] = Math.max(headBounds[axis + 3], center + extent);
+        }
+      }
+      for (const child of node.children) includeHeadPart(child);
+    };
+    const syncHeadVisibility = (cave) => {
+      if (!cave) { restoreHead(); return; }
+      // The near plane can expose interior faces before the eye enters.
+      // Include the whole head subtree so hats and masks cannot flash either.
+      updateWorld(cave.root, cave.root.parent ? cave.root.parent.world : undefined);
+      const head = cave.parts.head;
+      mat4.invert(headInverse, head.world);
+      headBounds[0] = headBounds[1] = headBounds[2] = Infinity;
+      headBounds[3] = headBounds[4] = headBounds[5] = -Infinity;
+      includeHeadPart(head);
+      mat4.transformPoint(headEye, headInverse, camera.position.x, camera.position.y, camera.position.z);
+      if (headEye[0] >= headBounds[0] && headEye[0] <= headBounds[3]
+        && headEye[1] >= headBounds[1] && headEye[1] <= headBounds[4]
+        && headEye[2] >= headBounds[2] && headEye[2] <= headBounds[5]) { hideHead(cave); return; }
+      let fx = camera.target.x - camera.position.x, fy = camera.target.y - camera.position.y, fz = camera.target.z - camera.position.z;
+      const length = Math.hypot(fx, fy, fz);
+      fx /= length; fy /= length; fz /= length;
+      const up = camera.up, ux = up ? up.x : 0, uy = up ? up.y : 1, uz = up ? up.z : 0;
+      let rx = fy * uz - fz * uy, ry = fz * ux - fx * uz, rz = fx * uy - fy * ux;
+      const rightLength = Math.hypot(rx, ry, rz);
+      rx /= rightLength; ry /= rightLength; rz /= rightLength;
+      const vx = ry * fz - rz * fy, vy = rz * fx - rx * fz, vz = rx * fy - ry * fx;
+      const halfH = camera.near * Math.tan(camera.fov * 0.5), halfW = halfH * renderer.size.width / Math.max(1, renderer.size.height);
+      mat4.transformPoint(headNear, headInverse, camera.position.x + fx * camera.near, camera.position.y + fy * camera.near, camera.position.z + fz * camera.near);
+      for (let axis = 0; axis < 3; axis++) {
+        const m = headInverse;
+        const extent = Math.abs(m[axis] * rx + m[axis + 4] * ry + m[axis + 8] * rz) * halfW
+          + Math.abs(m[axis] * vx + m[axis + 4] * vy + m[axis + 8] * vz) * halfH;
+        if (headNear[axis] + extent < headBounds[axis] || headNear[axis] - extent > headBounds[axis + 3]) { restoreHead(); return; }
+      }
+      hideHead(cave);
     };
     const setFreeEye = () => {
       resetFreeFall();
@@ -221,6 +271,7 @@
       headOrbit = exitAngleHold = closeCameraActive = trailingPitchChosen = true;
       releaseMix = 0;
       closeWanted = false;
+      syncHeadVisibility(cave);
       // The new orbit starts at the displayed eye, including an interrupted
       // entry. Begin its outward dolly there without changing that position.
       closeMix = 1;
@@ -234,10 +285,15 @@
     };
     // ---------- possession ----------
     // Relabel the act button for what the press does
+    const syncJetpackHud = () => {
+      const cave = player(), status = ctx.jetpackStatus && ctx.jetpackStatus(cave);
+      if (status) hud.setJetpack(status.owned, status.equipped, status.fuel, status.blocked);
+      else hud.setJetpack(!!(cave && cave.jet), !!(cave && cave.jet), cave ? cave.jetFuel : 0);
+    };
     const showAct = () => {
       const cave = player();
-      if (cave) hud.setAct(crew.sleeping ? "WAKE UP!" : cave.jet && !cave.jetRecovering ? ACT_FLY : ACT_DO);
-      hud.setJetpack(!!(cave && cave.jet), cave ? cave.jetFuel : 0);
+      if (cave) hud.setAct(cave.camp.burning ? "DROP & ROLL!" : cave.camp.seat ? "STAND UP!" : crew.sleeping ? "WAKE UP!" : cave.jet && !cave.jetRecovering ? ACT_FLY : ACT_DO);
+      syncJetpackHud();
     };
     const possess = (cave) => {
       if (!crew.control(cave)) return;
@@ -302,7 +358,7 @@
       closeCave = null;
       crew.release();
       hud.el.act.hidden = true;
-      hud.setJetpack(false, 0);
+      syncJetpackHud();
       if (!quiet) hud.toast(`${cave.traits.name} ${cave.state === "sleeping" ? "keeps sleeping" : "wanders off"}`);
     };
     // Nearby actions consume a press; a ready jetpack leaves Space as throttle.
@@ -394,7 +450,7 @@
         if (cave.jet) crew.thrust(a.up > 0);
         crew.steer(fx0 * a.y + rx * a.x, fz0 * a.y + rz * a.x, close ? closeMix : 0, a.y, a.x);
         if (dragHold > 0) dragHold -= dt;
-        else if (!crew.sleeping && !closeWanted && a.y > 0.05 && !a.yaw) {
+        else if (!crew.sleeping && !closeWanted && a.y > 0.05 && Math.abs(a.x) > 0.05 && !a.yaw) {
           const behind = cave.root.rotation.y + Math.PI;
           orbit.tYaw += Math.atan2(Math.sin(behind - orbit.tYaw), Math.cos(behind - orbit.tYaw)) * Math.min(1, FOLLOW_TURN * dt);
         }
@@ -488,7 +544,7 @@
         }
       } else closeCameraActive = false;
       camera.up = null;
-      hud.setJetpack(!!(cave && cave.jet), cave ? cave.jetFuel : 0);
+      syncJetpackHud();
       if (cave) {
         const p = cave.root.position;
         if (headOrbit) {
@@ -537,8 +593,6 @@
           closeVelocity = 0;
         }
       } else closeMix = closeVelocity = 0;
-      if (cave && closeMix > CLOSE_HEAD_MIX) hideHead(cave);
-      else restoreHead();
       orbit.yaw = directTrailingView ? orbit.tYaw : damp(orbit.yaw, orbit.tYaw, 14, dt);
       orbit.pitch = directTrailingView ? orbit.tPitch : damp(orbit.pitch, orbit.tPitch, 14, dt);
       if (cave && close && !sleeping) crew.look(orbit.yaw + Math.PI, orbit.pitch, closeMix);
@@ -755,6 +809,7 @@
         camera.up = sleepCameraUp;
       }
       if (sleeping && closeWanted && closeMix > 0) crew.look(0, 0, closeMix, cameraRotation);
+      syncHeadVisibility(cave);
       if (cave && close) headAnchor(cave, motionAnchor);
       else {
         const anchor = cave ? cave.root.position : freeTarget;
@@ -834,6 +889,10 @@
     };
     return { orbit, hooks, controls, bind, readInput, update, goPreset, navigate, enterClose, possess, release, action, showAct, dispose, get player() {
       return player();
+    }, get moving() {
+      // A press can arrive between frames, before readInput updates crew steer.
+      const cave = player(), a = controls.read();
+      return !!cave && (Math.hypot(a.x, a.y) > 0.05 || cave.hop > 0 || cave.hopV > 0);
     }, get mode() {
       return closeWanted ? (player() ? "first-person" : "eye-level") : (player() ? "trailing" : "orbit");
     }, get closeMix() {

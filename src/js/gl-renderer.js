@@ -53,11 +53,13 @@ out vec3 vWorld;
 out vec3 vInstanceFacing;
 out float vMatrixSurface;
 flat out float vMatrixCave;
+flat out float vSmokeOpacity;
 void main() {
   mat4 m = mat4(aM0, aM1, aM2, aM3);
   vec4 w = m * vec4(aPos, 1.0);
   vNormal = normalize(mat3(m) * aNormal);
   vColor = aColor;
+  vColor.rgb *= 1.0 - clamp(-aParams.y, 0.0, 1.0) * 0.88;
   // Cave ownership shares the otherwise nonnegative emissive channel. Decode it
   // before lighting so leaving the portal restores the original material exactly.
   float encoded = max(0.0, -aColor.a - 1.0);
@@ -69,6 +71,10 @@ void main() {
   vMatrixCave = floor(encoded * 0.5);
   vColor.a = aColor.a < 0.0 ? encoded - vMatrixCave * 2.0 : aColor.a;
   vParams = aParams;
+  vParams.y = max(0.0, aParams.y);
+  // Smoke fades through coverage without a separate transparent draw pass.
+  vSmokeOpacity = aParams.z < 0.0 ? -aParams.z - 1.0 : 1.0;
+  vParams.z = max(0.0, aParams.z);
   vShadow = uLightViewProj * w;
   vWorld = w.xyz;
   vInstanceFacing = normalize(aM2.xyz);
@@ -90,6 +96,7 @@ in vec3 vWorld;
 in vec3 vInstanceFacing;
 in float vMatrixSurface;
 flat in float vMatrixCave;
+flat in float vSmokeOpacity;
 uniform vec3 uLightDir;
 uniform vec3 uSky;
 uniform vec3 uGround;
@@ -118,6 +125,8 @@ uniform float uMatrixPermanentCave;
 uniform sampler2D uMatrixGlyphTex;
 uniform int uMatrixSamples;
 uniform float uClipMinY;
+uniform float uClipMaxY;
+uniform float uMatrixGlyphOpacity;
 #ifdef MATRIX_SAMPLE_INTERPOLATION
 vec2 matrixSampleOffsets[4];
 #endif
@@ -304,7 +313,13 @@ float matrixTravel(vec2 point, float caveIndex) {
   return length(point + cave.xy * depth - uMatrixOrigin.xz) + depth;
 }
 void main() {
-  if (vWorld.y < uClipMinY) discard;
+  if (vWorld.y < uClipMinY || vWorld.y > uClipMaxY) discard;
+  if (vSmokeOpacity < 1.0) {
+    ivec2 pixel = ivec2(gl_FragCoord.xy) & 3;
+    int rank = ((pixel.x & 1) ^ (pixel.y & 1)) * 8 + (pixel.y & 1) * 4
+      + (((pixel.x >> 1) & 1) ^ ((pixel.y >> 1) & 1)) * 2 + ((pixel.y >> 1) & 1);
+    if ((float(rank) + 0.5) / 16.0 >= vSmokeOpacity) discard;
+  }
   vec3 n = normalize(vNormal);
   vec3 base = vColor.rgb;
   float cloud = step(3.5, vParams.z);
@@ -330,6 +345,9 @@ void main() {
       }
     }
   }
+  // Living occupants retain the cloud-side reveal after flying beyond the
+  // island. Carved cave paths still follow their full entrance travel distance.
+  if (living > 0.0 && caveIndex < 0.5) flow = min(flow, 36.0);
   float localSurface = max(vMatrixSurface, step(1.5, uMatrixGlyph));
   float permanent = step(0.5, uMatrixPermanentCave) * (1.0 - step(0.5, abs(caveIndex - uMatrixPermanentCave)));
   float front = max(permanent, uMatrixParams.x * (1.0 - smoothstep(uMatrixParams.y - 1.5, uMatrixParams.y, flow)));
@@ -345,7 +363,7 @@ void main() {
   float ndl = max(max(dot(n, uLightDir), 0.0), uDiffuseFloor);
   float localGlyph = step(0.5, uMatrixGlyph) * (1.0 - step(1.5, uMatrixGlyph));
   if (localGlyph > 0.0) {
-    float reveal = caveIndex > 0.0 ? front : 1.0;
+    float reveal = (caveIndex > 0.0 ? front : 1.0) * uMatrixGlyphOpacity;
     if (reveal <= 0.0) discard;
     float glow = clamp(vColor.a * vParams.x, 0.0, 1.0);
     float tip = clamp(vParams.z, 0.0, 1.0);
@@ -401,7 +419,13 @@ void main() {
       return;
     }
   }
-  float emissive = clamp(vColor.a * vParams.x, 0.0, 1.0);
+  // Negative instance glow is body heat; ordinary material emission remains
+  // nonnegative. Keep color variation and directional shading in the embers.
+  float ember = clamp(-vParams.x, 0.0, 1.0);
+  float detail = 0.72 + dot(base, vec3(0.2126, 0.7152, 0.0722)) * 0.28;
+  vec3 heat = vec3(1.0, 0.12 + ember * 0.85, 0.01 + ember * ember * ember * 0.74) * detail;
+  base = mix(base, heat, ember * 0.9);
+  float emissive = max(clamp(vColor.a * max(0.0, vParams.x), 0.0, 1.0), ember * 0.9);
   vec3 lightFactor = lightFactorAt(n);
   vec3 lit = base * lightFactor;
   vec3 col = mix(lit, base * 1.15, emissive);
@@ -434,8 +458,9 @@ void main() {
 precision highp float;
 in float vWorldY;
 uniform float uClipMinY;
+uniform float uClipMaxY;
 void main() {
-  if (vWorldY < uClipMinY) discard;
+  if (vWorldY < uClipMinY || vWorldY > uClipMaxY) discard;
 }`;
   const LINE_VS = `#version 300 es
 precision highp float;
@@ -459,6 +484,8 @@ void main() {
   vec4 cb = m * vec4(aB, 1.0);
   vColor = aColor;
   vParams = aParams;
+  vColor.rgb *= 1.0 - clamp(-aParams.y, 0.0, 1.0) * 0.88;
+  vParams.y = max(0.0, aParams.y);
   if (ca.w < 0.05 && cb.w < 0.05) {
     gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
     return;
@@ -483,10 +510,14 @@ in vec4 vParams;
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oBright;
 void main() {
-  float glow = clamp(vColor.a * vParams.x, 0.0, 1.0);
-  vec3 col = mix(vColor.rgb, vec3(1.0), glow * 0.35);
+  float ember = clamp(-vParams.x, 0.0, 1.0);
+  float detail = 0.72 + dot(vColor.rgb, vec3(0.2126, 0.7152, 0.0722)) * 0.28;
+  vec3 heat = vec3(1.0, 0.12 + ember * 0.85, 0.01 + ember * ember * ember * 0.74) * detail;
+  vec3 base = mix(vColor.rgb, heat, ember * 0.9);
+  float glow = max(clamp(vColor.a * max(0.0, vParams.x), 0.0, 1.0), ember * 0.9);
+  vec3 col = mix(base, vec3(1.0), glow * 0.35);
   oColor = vec4(col, 1.0);
-  oBright = vec4(vColor.rgb * glow, 1.0);
+  oBright = vec4(base * glow, 1.0);
 }`;
   const MIRROR_VS = `#version 300 es
 precision highp float;
@@ -684,7 +715,7 @@ void main() {
       gl.attachShader(prog, v);
       gl.attachShader(prog, f);
       gl.linkProgram(prog);
-      return { prog, shaders: [v, f], uniforms, u: {}, clipMinY: NaN };
+      return { prog, shaders: [v, f], uniforms, u: {}, clipMinY: NaN, clipMaxY: NaN };
     };
     const finishProgram = (p) => {
       if (!gl.getProgramParameter(p.prog, gl.LINK_STATUS)) {
@@ -721,8 +752,8 @@ void main() {
       const matrixSampling = gl.getExtension("OES_shader_multisample_interpolation");
       const meshFragment = matrixSampling ? MESH_FS.replace("#version 300 es", "#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION") : MESH_FS;
       res.programs = {
-        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY"]),
-        shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY"]),
+        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uMatrixGlyphOpacity"]),
+        shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY", "uClipMaxY"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth"]),
         sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop"]),
         blur: compile(QUAD_VS, BLUR_FS, ["uTex", "uDir"]),
@@ -810,7 +841,7 @@ void main() {
       destroyMirrorTarget();
       const samples = Math.min(settings.msaa, gl.getParameter(gl.MAX_SAMPLES));
       mirror.tex = createTexture(w, h, gl.RGBA8, gl.LINEAR);
-      mirror.depth = createRenderbuffer(w, h, gl.DEPTH_COMPONENT16, samples);
+      mirror.depth = createRenderbuffer(w, h, gl.DEPTH_COMPONENT24, samples);
       mirror.fb = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, mirror.fb);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, mirror.tex, 0);
@@ -1124,7 +1155,7 @@ void main() {
       // In-frustum nodes stay in front of the culled ones by swapping into the draw region
       const idx = rec.count++;
       rec.nodes[idx] = node;
-      if (hiddenFromCamera(node)) {
+      if (node.smokeOpacity === 0 || hiddenFromCamera(node)) {
         rec.cameraHiddenCount++;
         suppressed++;
       } else if (inFrustum(node)) {
@@ -1169,9 +1200,11 @@ void main() {
         const n = rec.nodes[i];
         const o = i * INSTANCE_FLOATS;
         d.set(n.world, o);
-        d[o + 16] = n.glow;
-        d[o + 17] = n.highlight;
-        d[o + 18] = matrixModeOf(n);
+        // Body heat shares the negative half of the nonnegative glow channel.
+        d[o + 16] = n.ember > 0 ? -n.ember : n.glow;
+        // Scorch shares the negative half of the nonnegative highlight channel.
+        d[o + 17] = n.scorch > 0 ? -n.scorch : n.highlight;
+        d[o + 18] = n.smokeOpacity === undefined ? matrixModeOf(n) : -1 - n.smokeOpacity;
         d[o + 19] = 0;
       }
       gl.bindBuffer(gl.ARRAY_BUFFER, rec.ibo);
@@ -1331,11 +1364,11 @@ void main() {
       width = canvas.clientWidth;
       height = canvas.clientHeight;
       const budget = Math.sqrt(MAX_PIXELS / Math.max(1, width * height));
-      dpr = Math.max(0.75, Math.min(window.devicePixelRatio || 1, settings.dpr, budget));
+      dpr = Math.min(budget, Math.max(0.75, Math.min(window.devicePixelRatio || 1, settings.dpr)));
       size.width = width;
       size.height = height;
-      pw = Math.max(1, Math.round(width * dpr));
-      ph = Math.max(1, Math.round(height * dpr));
+      pw = Math.max(1, Math.floor(width * dpr));
+      ph = Math.max(1, Math.floor(height * dpr));
       canvas.width = pw;
       canvas.height = ph;
       buildFbo();
@@ -1379,18 +1412,31 @@ void main() {
           const stage = rec.geometry.matrixRevealBacking ? 1 : rec.geometry.matrixGlyph ? 2 : 0;
           if (stage !== matrixStage) continue;
           gl.uniform1f(res.programs.mesh.u.uMatrixGlyph, stage === 1 ? 3 : stage === 2 ? 1 : rec.geometry.matrixLocalGlyphSurface ? 2 : 0);
+          if (stage === 2) gl.uniform1f(res.programs.mesh.u.uMatrixGlyphOpacity, rec.geometry.matrixGlyphOpacity ?? 1);
           gl.uniform1f(res.programs.mesh.u.uMatrixCave, rec.geometry.matrixCave || 0);
         }
         if (kind === "mesh") {
-          const program = res.programs[useProgram], minimumY = rec.geometry.clipMinY ?? -1e6;
+          const program = res.programs[useProgram], minimumY = rec.geometry.clipMinY ?? -1e6, maximumY = rec.geometry.clipMaxY ?? 1e6;
           if (minimumY !== program.clipMinY) {
             gl.uniform1f(program.u.uClipMinY, minimumY);
             program.clipMinY = minimumY;
           }
+          if (maximumY !== program.clipMaxY) {
+            gl.uniform1f(program.u.uClipMaxY, maximumY);
+            program.clipMaxY = maximumY;
+          }
         }
         if (kind === "line") gl.uniform1f(res.programs.line.u.uWidth, part.width * dpr);
+        // Surface overlays stay above their backing at distant zooms in both color
+        // passes. Keep the shadow depth and subsequent ordinary meshes unchanged.
+        const offset = kind === "mesh" && useProgram === "mesh" && rec.geometry.depthOffset;
+        if (offset) {
+          gl.enable(gl.POLYGON_OFFSET_FILL);
+          gl.polygonOffset(0, -4);
+        }
         gl.bindVertexArray(part.vao);
         gl.drawArraysInstanced(gl.TRIANGLES, 0, part.count, n);
+        if (offset) gl.disable(gl.POLYGON_OFFSET_FILL);
       }
     };
     // Celestial rays depend only on orientation. Removing translation before

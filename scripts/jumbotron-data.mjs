@@ -21,6 +21,24 @@ if (stats?.meta?.schema_version !== 1) {
   process.exit(1);
 }
 
+// Ship public handles and activity only, never profile names or metadata.
+const counts = ({ commits, prs, reviews, comments }) => ({
+  commits, prs, reviews,
+  comments: { issue: comments.issue, review: comments.review, commit: comments.commit, all: comments.all }
+});
+const snapshot = {
+  meta: { generated_at: stats.meta.generated_at, repo: stats.meta.repo, schema_version: stats.meta.schema_version },
+  totals: { contributors: stats.totals.contributors, ...counts(stats.totals) },
+  leaderboards: Object.fromEntries(["commits", "prs", "reviews", "comments"].map((kind) => [kind,
+    stats.leaderboards[kind].map(({ login, count }) => ({ login, count }))
+  ])),
+  contributors: stats.contributors.map((c) => ({
+    login: c.login,
+    counts: counts(c.counts),
+    weekly: c.weekly.map(({ week, commits, prs, reviews, comments }) => ({ week, commits, prs, reviews, comments }))
+  }))
+};
+
 const out = join(root, "src", "js", "jumbotron-data.js");
 writeFileSync(
   out,
@@ -29,7 +47,7 @@ writeFileSync(
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  BL.jumbotronData = ${JSON.stringify(stats)};
+  BL.jumbotronData = ${JSON.stringify(snapshot)};
 })();
 `,
 );

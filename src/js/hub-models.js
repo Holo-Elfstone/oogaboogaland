@@ -170,8 +170,8 @@
       ...[-1, 1].flatMap((side) => [half * 0.5, -half * 0.5].map((y) => box({ w: 0.12, h: half, d: 0.16, color: "#4a3319", offset: { x: side * (width * 0.5 - 0.06), y, z: 0.15 } }))),
       box({ w: width + 0.3, h: 0.08, d: 0.34, color: WOOD_DK, offset: { y: half + 0.18, z: 0.08 } }),
       ...[-1, 1].map((side) => box({ w: 0.06, h: 0.2, d: 0.06, color: "#3a2a18", offset: { x: side * (width * 0.5 - 0.3), y: half + 0.07, z: 0.08 } })),
-      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: 0.2, z: SIGN_FRONT + 0.0175 } }),
-      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: -0.22, z: SIGN_FRONT + 0.0175 } })
+      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: 0.235, z: SIGN_FRONT + 0.0175 } }),
+      box({ w: width - 0.2, h: 0.025, d: 0.025, color: "#7a5630", offset: { y: -0.31, z: SIGN_FRONT + 0.0175 } })
     ];
     let cursor = -textW * 0.5;
     for (const ch of text) {
@@ -242,15 +242,18 @@
     return merge(...parts);
   });
   const sealedCaveFace = variants((variant) => {
-    const rand = mulberry32(419), parts = [], fronts = new Float32Array(60);
+    const rand = mulberry32(419), stone = vox(), parts = [];
     const mossColors = ["#6f7d3e", "#7b8945", "#65733a"];
-    let frontZ = -Infinity;
+    // Match both depth layers of the rim, with a continuous stone core.
+    // Meshing the joined voxels removes the internal faces between blocks;
+    // the seal cannot develop slits where different block depths once met.
+    const backZ = -0.52, stoneFront = backZ + VOX * 2;
+    let frontZ = stoneFront;
     for (let y = 0; y < 6; y++) for (let x = 0; x < 10; x++) {
-      const depth = 0.38 + rand() * 0.16, color = CLIFF[(x + y * 2 + Math.floor(rand() * 2)) % CLIFF.length], z = (rand() - 0.5) * 0.08;
-      parts.push(box({ w: 0.5, h: 0.5, d: depth, color, offset: { x: -2.25 + x * 0.5, y: 0.25 + y * 0.5, z } }));
-      fronts[y * 10 + x] = z + depth * 0.5;
-      frontZ = Math.max(frontZ, fronts[y * 10 + x]);
+      const color = (x + y * 2 + Math.floor(rand() * 2)) % CLIFF.length;
+      stone.set(x - 5, y, 0, color); stone.set(x - 5, y, 1, color);
     }
+    parts.push(voxGeo(stone, { unit: VOX, palette: CLIFF, origin: { x: 0, y: 0, z: backZ } }));
     // The hill steps wear quarter-voxel grass caps. Continue that same muted,
     // blocky growth across the seal in connected patches rather than flecks.
     for (let y = 0; y < 12; y++) for (let x = 0; x < 20; x++) {
@@ -259,12 +262,13 @@
       const edge = variant === 0 ? x === 0 && y > 4 && y < 9 || x === 19 && y > 3 && y < 9 : variant === 1 ? x === 0 && y > 2 && y < 7 || x === 19 && y > 6 && y < 10 : x === 0 && y > 6 && y < 11 || x === 19 && y > 1 && y < 7;
       const patch = variant === 0 ? y > 3 && y < 7 && (x > 4 && x < 8 || x > 13 && x < 17) && (x + y) % 3 !== 0 : variant === 1 ? y > 4 && y < 8 && (x > 2 && x < 6 || x > 11 && x < 15) && (x + y) % 3 !== 1 : y > 2 && y < 6 && (x > 8 && x < 14) && (x + y) % 4 !== 2;
       if (!top && !upper && !edge && !patch) continue;
-      const stoneFront = fronts[Math.floor(y / 2) * 10 + Math.floor(x / 2)], mossZ = stoneFront + 0.0125;
+      const mossZ = stoneFront + 0.0125;
       parts.push(box({ w: 0.245, h: 0.245, d: 0.025, color: mossColors[(x * 3 + y * 5 + variant) % mossColors.length], offset: { x: -2.375 + x * 0.25, y: 0.125 + y * 0.25, z: mossZ } }));
       frontZ = Math.max(frontZ, mossZ + 0.0125);
     }
     const geo = merge(...parts);
     geo.frontZ = frontZ;
+    geo.sealBounds = { minX: -2.5, maxX: 2.5, minY: 0, maxY: 3, minZ: backZ, maxZ: stoneFront };
     return geo;
   });
   const matrixButtonStand = cached(() => merge(
@@ -352,7 +356,8 @@
   const bedroll = cached(() => merge(box({ w: 1.9, h: 0.09, d: 0.85, color: "#2e2724" }), box({ w: 0.4, h: 0.16, d: 0.6, color: "#40342c", offset: { x: 0.65, y: 0.1 } })));
   const GREENS = ["#3f7a2b", "#4f8f36", "#5fa243", "#74b552"];
   const CANOPIES = [GREENS, ["#2f6b3a", "#3f8248", "#4f9a58", "#66b06a"], ["#5a7d2a", "#6f9436", "#86aa44", "#a2c055"], ["#c47f9d", "#d697b0", "#e8b4c6", "#f2c9d8"]];
-  const TREE_HEIGHT = 3;
+  const TREE_TRUNK_LIFT = 5;
+  const TREE_HEIGHT = 3 + TREE_TRUNK_LIFT * QUARTER;
   // Crown clumps per variant as [cx, cy, cz, rx, ry, rz] in quarter cells
   const CROWNS = [
     [[0, 8.6, 0, 4.6, 3.0, 4.4], [-2.2, 9.6, 1.4, 2.6, 2.4, 2.6], [2.0, 7.4, -1.6, 2.4, 2.0, 2.4]],
@@ -380,7 +385,22 @@
       v.set(-3, 7, -1, 1);
     }
     foliage(v, rand, 2, lo, hi);
-    return voxGeo(v, { unit: QUARTER, palette: ["#6b4a2b", "#4e361f", ...CANOPIES[i]] });
+    // Keep the crown and roots intact while extending the trunk. Branch
+    // stubs rise with the leaves so neither catches a walking Ooga's head.
+    const tall = vox();
+    let canopyFloor = Infinity;
+    for (const [key, color] of v.map) {
+      const [x, y, z] = key.split(",").map(Number), lifted = y ? y + TREE_TRUNK_LIFT : 0;
+      tall.set(x, lifted, z, color);
+      if (color >= 2) canopyFloor = Math.min(canopyFloor, lifted * QUARTER);
+    }
+    tall.fill(-1, 0, 1, TREE_TRUNK_LIFT, -1, 0, bark);
+    const geometry = voxGeo(tall, { unit: QUARTER, palette: ["#6b4a2b", "#4e361f", ...CANOPIES[i]] });
+    let radius = 0;
+    for (let j = 0; j < geometry.verts.length; j += 3) radius = Math.max(radius, Math.hypot(geometry.verts[j], geometry.verts[j + 2]));
+    geometry.treeRadius = radius;
+    geometry.treeCanopyFloor = canopyFloor;
+    return geometry;
   });
   // Bush clumps per variant, small tuft to a wide berry bush
   const CLUMPS = [

@@ -45,8 +45,9 @@
   };
   showQuality();
   const game = gameMod.create({ catalog: models.SWAG });
-  // The banana level, shared by every scene, and the Ooga handed from the hub to a launched scene
-  const world = { level: START_BANANAS, pilot: null };
+  // The banana level, visitor-owned jetpack, and Ooga handed from the hub to a
+  // launched scene persist while scenes exchange their own temporary systems.
+  const world = { level: START_BANANAS, pilot: null, jetpack: { owned: false, fuel: 1 } };
 
   // ---------- scenes ----------
   // One active scene owns its root, camera and systems
@@ -57,6 +58,7 @@
   const CLOCK_NS = "http://www.w3.org/2000/svg";
   const clockSvg = document.createElementNS(CLOCK_NS, "svg");
   const clockPath = document.createElementNS(CLOCK_NS, "path");
+  const clockTime = DEBUG ? window.BL.daylight.parseTime(params.get("time")) : NaN;
   const clockDaylen = DEBUG ? Number(params.get("daylen")) : NaN;
   const clockStartDate = new Date();
   const requestedClockHour = DEBUG && params.has("hour") ? Number(params.get("hour")) : NaN;
@@ -72,7 +74,11 @@
     if (now < clockNextUpdate) return;
     clockNextUpdate = now + 100;
     let hours, minutes;
-    if (clockDaylen > 0) {
+    if (Number.isFinite(clockTime)) {
+      const total = Math.round(clockTime * 60);
+      hours = Math.floor(total / 60);
+      minutes = total % 60;
+    } else if (clockDaylen > 0) {
       const sceneDaylight = active && active.debug && active.debug.daylight;
       const relative = sceneDaylight && Number.isFinite(sceneDaylight.hour) ? sceneDaylight.hour : clockBaseHour + elapsed * 24 / clockDaylen;
       const total = Math.floor(((relative % 24 + 24) % 24) * 60) % 1440;
@@ -102,7 +108,7 @@
     const label = text.trimStart();
     clockPath.setAttribute("d", d);
     worldClock.dateTime = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-    worldClock.setAttribute("aria-label", `${clockDaylen > 0 ? "Ooga Booga time" : "Local time"} ${label}`);
+    worldClock.setAttribute("aria-label", `${Number.isFinite(clockTime) || clockDaylen > 0 ? "Ooga Booga time" : "Local time"} ${label}`);
   };
   const go = (id) => {
     const next = scenes[id];
@@ -291,6 +297,9 @@
       get scene() {
         return active.id;
       },
+      get transitioning() {
+        return transition !== null;
+      },
       get input() {
         return active.input;
       },
@@ -311,7 +320,7 @@
         return world.level;
       }
     };
-    for (const key of ["slots", "drops", "core", "shell", "delivery", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron"]) {
+    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron"]) {
       Object.defineProperty(ooga, key, { get: () => active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;

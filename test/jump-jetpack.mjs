@@ -18,6 +18,7 @@ export const jumpJetpackProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
   }
   if (!flat) throw new Error("No clear flat jumping fixture");
   B.pilot.possess(cave);
+  B.jetpack.grant(cave);
   B.crew.relocatePlayer(flat, 0);
   if (mode === "first-person") B.pilot.enterClose();
   step(Math.ceil(1 / dt));
@@ -129,6 +130,7 @@ export const jetpackRecoveryProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) =>
   const state = () => ({ fuel: cave.jetFuel, locked: cave.jetRecovering, equipped: !!cave.jet, thrust: !!cave.jet && cave.jet.thrust, flame: !!cave.jet && cave.jet.flame.visible, hop: cave.hop, velocity: cave.hopV, jumps: cave.jumps, label: document.getElementById("act").textContent, mode: B.pilot.mode });
   const land = () => { for (let i = 0; cave.hop > 0 && i < Math.ceil(5 / dt); i++) step(); return state(); };
   B.pilot.possess(cave); B.crew.relocatePlayer({ x: 12, y: 0, z: 0 }, 0);
+  B.jetpack.grant(cave);
   if (mode === "first-person") B.pilot.enterClose();
   if (!cave.jet) tap("j");
   step(Math.ceil(1 / dt));
@@ -161,6 +163,7 @@ export const jumpActionProbe = ({ mode = "trailing" } = {}) => {
   const key = (type, value) => window.dispatchEvent(new KeyboardEvent(type, { key: value }));
   const tap = (value) => { key("keydown", value); step(); key("keyup", value); };
   B.pilot.possess(cave);
+  B.jetpack.grant(cave);
   if (mode === "first-person") B.pilot.enterClose();
   window.BL.scene.updateWorld(scene.root);
   const target = { x: button.world[12], y: button.world[13], z: button.world[14] };
@@ -169,10 +172,14 @@ export const jumpActionProbe = ({ mode = "trailing" } = {}) => {
     if (!B.island.clearAt(x, 0.05, z, 0.22, cave.bodyHeight)) continue;
     B.crew.relocatePlayer({ x, y: 0, z }, angle); step();
     if (!!cave.jet !== jet) tap("j");
-    cave.hop = 0.12; cave.hopV = 0; cave.jumps = 2; cave.root.position.y = cave.baseY + cave.hop;
     const before = B.matrixGate.pressed, fuel = cave.jetFuel;
     tap(" ");
-    rows.push({ angle, jet, toggled: B.matrixGate.pressed !== before, jumps: cave.jumps, velocity: cave.hopV, thrust: !!cave.jet && cave.jet.thrust, fuelBefore: fuel, fuelAfter: cave.jetFuel });
+    const row = { angle, jet, toggled: B.matrixGate.pressed !== before, jumps: cave.jumps, velocity: cave.hopV, thrust: !!cave.jet && cave.jet.thrust, fuelBefore: fuel, fuelAfter: cave.jetFuel };
+    cave.hop = 0.12; cave.hopV = 0; cave.jumps = 2; cave.root.position.y = cave.baseY + cave.hop;
+    const airborneBefore = B.matrixGate.pressed, airborneFuel = cave.jetFuel;
+    tap(" ");
+    row.airborne = { toggled: B.matrixGate.pressed !== airborneBefore, jumps: cave.jumps, velocity: cave.hopV, thrust: !!cave.jet && cave.jet.thrust, fuelBefore: airborneFuel, fuelAfter: cave.jetFuel };
+    rows.push(row);
   }
   // Same X/Z above the roof is outside three-dimensional action reach.
   if (cave.jet) tap("j");
@@ -182,10 +189,22 @@ export const jumpActionProbe = ({ mode = "trailing" } = {}) => {
   return { rows, roof, mode: B.pilot.mode, scene: B.scene, backend: B.renderer.kind };
 };
 
-export const jetpackHudProbe = () => {
+export const jetpackHudProbe = async () => {
   const B = window.__ooga, scene = window.BL.scenes.hub, cave = [...B.cavemen.values()].find((c) => c.state === "working");
   let time = B.renderOpts.matrix.time;
   const step = () => scene.update(1 / 60, time += 1 / 60);
+  const settle = () => new Promise((resolve, reject) => {
+    const panel = document.getElementById("jetpack-hud"), start = performance.now();
+    // Start pending CSS transitions before waiting for their real completion;
+    // a timer alone can expire before a busy browser paints the first frame.
+    panel.getBoundingClientRect();
+    const tick = () => {
+      if (!panel.getAnimations({ subtree: true }).some((animation) => animation.playState === "running" || animation.playState === "pending")) resolve();
+      else if (performance.now() - start > 3000) reject(new Error("Jetpack HUD transition did not settle"));
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
   const tap = () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" })); step(); window.dispatchEvent(new KeyboardEvent("keyup", { key: "j" })); };
   const snapshot = () => {
     const panel = document.getElementById("jetpack-hud"), fuel = document.getElementById("jetpack-fuel"), fill = document.getElementById("jetpack-fuel-fill"), box = panel.getBoundingClientRect();
@@ -193,16 +212,16 @@ export const jetpackHudProbe = () => {
       const style = getComputedStyle(element), r = element.getBoundingClientRect();
       return style.display !== "none" && style.visibility !== "hidden" && Math.min(box.right, r.right) > Math.max(box.left, r.left) && Math.min(box.bottom, r.bottom) > Math.max(box.top, r.top);
     };
-    return { hidden: panel.hidden, role: fuel.getAttribute("role"), label: fuel.getAttribute("aria-label"), value: +fuel.getAttribute("aria-valuenow"), min: +fuel.getAttribute("aria-valuemin"), max: +fuel.getAttribute("aria-valuemax"), text: document.getElementById("jetpack-fuel-value").textContent, fill: fill.style.transform, level: panel.dataset.level, left: box.left, right: box.right, top: box.top, bottom: box.bottom, fits: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight, leftSide: box.right < innerWidth / 2, pointerEvents: getComputedStyle(panel).pointerEvents, overlap: [document.querySelector(".brand"), document.querySelector('nav[data-scene="hub"]'), document.getElementById("joy-move"), document.getElementById("act")].some(overlap) };
+    return { hidden: panel.hidden, equipped: panel.dataset.equipped, pressed: panel.getAttribute("aria-pressed"), gauge: getComputedStyle(document.querySelector(".jetpack-readout")).visibility, width: box.width, role: fuel.getAttribute("role"), label: fuel.getAttribute("aria-label"), value: +fuel.getAttribute("aria-valuenow"), min: +fuel.getAttribute("aria-valuemin"), max: +fuel.getAttribute("aria-valuemax"), text: document.getElementById("jetpack-fuel-value").textContent, fill: fill.style.transform, level: panel.dataset.level, left: box.left, right: box.right, top: box.top, bottom: box.bottom, fits: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight, leftSide: box.right < innerWidth / 2, pointerEvents: getComputedStyle(panel).pointerEvents, overlap: [document.querySelector(".brand"), document.querySelector('nav[data-scene="hub"]'), document.getElementById("joy-move"), document.getElementById("act")].some(overlap) };
   };
   const hidden = snapshot();
-  B.pilot.possess(cave); tap();
+  B.pilot.possess(cave); B.jetpack.grant(cave); const carried = snapshot(); tap(); await settle();
   const full = snapshot();
   cave.jetFuel = 0.137; cave.hop = 1; cave.root.position.y += 1; step();
   const low = snapshot();
-  tap(); const removed = snapshot(); tap(); const reequipped = snapshot();
-  B.pilot.release(true); step(); const released = snapshot();
-  return { hidden, full, low, removed, reequipped, released, backend: B.renderer.kind, viewport: [innerWidth, innerHeight] };
+  tap(); await settle(); const removed = snapshot(); tap(); await settle(); const reequipped = snapshot();
+  B.pilot.release(true); step(); await settle(); const released = snapshot();
+  return { hidden, carried, full, low, removed, reequipped, released, backend: B.renderer.kind, viewport: [innerWidth, innerHeight] };
 };
 
 export const jetpackUndergroundProbe = ({ mode = "trailing" } = {}) => {
@@ -227,6 +246,7 @@ export const jetpackUndergroundProbe = ({ mode = "trailing" } = {}) => {
     return i < 600;
   };
   B.pilot.possess(cave);
+  B.jetpack.grant(cave);
   if (mode === "first-person") B.pilot.enterClose();
   try {
     for (const ramp of H.ramps) {
@@ -264,7 +284,29 @@ export const jetpackInputFuelProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) =
   const key = (type, value) => window.dispatchEvent(new KeyboardEvent(type, { key: value }));
   const step = (frames = 1) => { for (let i = 0; i < frames; i++) scene.update(dt, time += dt); };
   const state = () => ({ x: cave.root.position.x, y: cave.root.position.y - cave.baseY, z: cave.root.position.z, fuel: cave.jetFuel, thrust: cave.jet.thrust, flame: cave.jet.flame.visible, particles: B.stats().particles });
+  const groundRunway = () => {
+    const solids = B.headquarters.solids, o = B.pilot.orbit, length = 4.25;
+    for (let radius = 8; radius <= 16; radius += 2) for (let i = 0; i < 64; i++) {
+      const angle = i / 64 * Math.PI * 2, x = Math.sin(angle) * radius, z = Math.cos(angle) * radius;
+      if (!solids.props.segmentClear(x, 0, z, x, 0, z - length, 0.8, cave.bodyHeight)) continue;
+      // Other characters are solid now too. Leave enough room for their
+      // movement during the half-second fuel measurement.
+      let clear = true;
+      for (const other of B.cavemen.values()) {
+        if (other === cave || !other.root.visible) continue;
+        const p = other.root.position, nearZ = Math.max(z - length, Math.min(z, p.z));
+        if (Math.hypot(p.x - x, p.z - nearZ) < 2.25) { clear = false; break; }
+      }
+      for (let d = 0; clear && d <= length; d += 0.125) if (Math.abs(solids.supportAt(x, z - d, 0, 0, cave)) > 1e-7 || !solids.walkable(x, z - d, x, z - d - 0.125, 0, cave.bodyHeight, cave) || solids.inBananas(cave, x, z - d)) clear = false;
+      if (!clear) continue;
+      B.crew.relocatePlayer({ x, y: 0, z }, Math.PI);
+      o.yaw = o.tYaw = 0;
+      return;
+    }
+    throw new Error("No clear grounded jetpack runway");
+  };
   B.pilot.possess(cave);
+  B.jetpack.grant(cave);
   for (const entry of B.cavemen.values()) entry.nextBuildAt = 1e9;
   if (mode === "first-person") B.pilot.enterClose();
   B.crew.relocatePlayer({ x: 12, y: 0, z: 0 }, 0);
@@ -280,6 +322,7 @@ export const jetpackInputFuelProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) =
       // Let prior sparks and the equip burst expire through normal updates;
       // the following half-second count then contains only this input's sparks.
       step(Math.ceil(2.5 / dt));
+      if (!airborne) groundRunway();
       cave.hop = airborne ? 20 : 0; cave.root.position.y += cave.hop; cave.jetFuel = airborne ? 1 : 0.5; cave.jet.puff = 0;
       const before = state();
       for (const value of input) { key("keydown", value); held.add(value); }
@@ -311,7 +354,7 @@ export const abyssRespawnProbe = ({ mode = "trailing", jet = false, dt = 1 / 60 
   };
   const state = () => {
     const p = cave.root.position, eye = B.camera.position;
-    return { x: p.x, y: p.y - cave.baseY, z: p.z, radius: Math.hypot(p.x, p.z), onLand: island.onLand(p.x, p.z), fuel: cave.jetFuel, hop: cave.hop, velocity: cave.hopV, jumps: cave.jumps, eye: { x: eye.x, y: eye.y, z: eye.z }, scene: B.scene, mode: B.pilot.mode, selected: B.pilot.player === cave, equipped: !!cave.jet };
+    return { x: p.x, y: p.y - cave.baseY, z: p.z, radius: Math.hypot(p.x, p.z), onLand: island.onLand(p.x, p.z), fuel: cave.jetFuel, hop: cave.hop, velocity: cave.hopV, jumps: cave.jumps, eye: { x: eye.x, y: eye.y, z: eye.z }, scene: B.scene, mode: B.pilot.mode, selected: B.pilot.player === cave, equipped: !!cave.jet, owned: B.jetpack.owned, pickup: !!B.jetpack.pickup?.host };
   };
   let start = null, heading = 0;
   for (let radius = island.radius - 0.5; radius >= island.radius - 4 && !start; radius -= 0.125) for (let i = 0; i < 128 && !start; i++) {
@@ -333,7 +376,7 @@ export const abyssRespawnProbe = ({ mode = "trailing", jet = false, dt = 1 / 60 
   B.pilot.navigate({ position: start, yaw: heading + Math.PI, pitch: 0, dist: 3.5 });
   if (mode === "first-person") B.pilot.enterClose();
   for (let i = 0; i < Math.ceil(1 / dt); i++) scene.update(dt, time += dt);
-  if (jet) { key("keydown", "j"); scene.update(dt, time += dt); key("keyup", "j"); }
+  if (jet) { B.jetpack.grant(cave); key("keydown", "j"); scene.update(dt, time += dt); key("keyup", "j"); }
   const initial = state(), initialEyeGap = Math.hypot(initial.eye.x - initial.x, initial.eye.y - initial.y - cave.headOffset * 0.95, initial.eye.z - initial.z);
   let preRespawn = null, respawn = null, lastOutside = null;
   try {
@@ -426,6 +469,7 @@ export const jetpackNotchProbe = ({ mode = "first-person", dt = 1 / 60 } = {}) =
   }
   if (!start) throw new Error("No clear exterior underside band");
   B.pilot.possess(cave);
+  B.jetpack.grant(cave);
   B.pilot.navigate({ position: start, target: start, yaw: Math.atan2(start.x, start.z) + Math.PI, pitch: 0, dist: 3.5 });
   cave.hop = start.y + 120; cave.jetFuel = 1;
   if (mode === "first-person") B.pilot.enterClose();

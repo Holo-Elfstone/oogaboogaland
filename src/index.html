@@ -156,6 +156,14 @@
         <p data-scene="lab" hidden>EntropyLab cave</p>
       </div>
       <time class="world-clock" id="world-clock" aria-label="Local time"></time>
+      <button type="button" class="world-bananas" id="world-bananas">
+        <svg class="banana-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
+          <path fill="#211b14" d="M0 0h1v5H0zM2 0h1v2H2zM3 2h1v2H3zM4 4h1v1H4zM1 5h1v2H1zM5 5h1v1H5zM6 6h1v1H6zM2 7h2v1H2zM7 7h1v1H7zM4 8h4v1H4z" />
+          <path fill="#ffd84a" d="M1 2h2v2H1zM1 4h3v1H1zM2 5h3v1H2zM2 6h4v1H2zM4 7h3v1H4z" />
+          <path fill="#789a3b" d="M1 0h1v2H1z" />
+        </svg>
+        <span id="world-banana-count">1000</span><span class="world-banana-label"> bananas in pile</span>
+      </button>
       <nav class="presets" aria-label="Island destinations" data-scene="hub">
         <button type="button" data-preset="pile">PILE</button>
         <button type="button" data-preset="lab">LAB</button>
@@ -186,9 +194,9 @@
       <button type="button" class="sheet-toggle sheet-toggle-bananas" id="sheet-bananas"
         aria-label="Bananas and project metrics">
         <svg class="banana-icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true">
-          <path fill="#5a3a1a" d="M7 0h1v1H7zM0 6h1v1H0z" />
-          <path fill="#f5c542" d="M6 1h1v1H6zM5 2h2v1H5zM4 3h2v1H4zM3 4h2v1H3zM2 5h2v1H2zM1 6h3v1H1zM1 7h2v1H1z" />
-          <path fill="#c9b23a" d="M7 2h1v1H7zM6 3h1v1H6zM5 4h1v1H5zM4 5h1v1H4zM4 6h1v1H4zM3 7h1v1H3z" />
+          <path fill="#211b14" d="M0 0h1v5H0zM2 0h1v2H2zM3 2h1v2H3zM4 4h1v1H4zM1 5h1v2H1zM5 5h1v1H5zM6 6h1v1H6zM2 7h2v1H2zM7 7h1v1H7zM4 8h4v1H4z" />
+          <path fill="#ffd84a" d="M1 2h2v2H1zM1 4h3v1H1zM2 5h3v1H2zM2 6h4v1H2zM4 7h3v1H4z" />
+          <path fill="#789a3b" d="M1 0h1v2H1z" />
         </svg>
       </button>
       <button type="button" class="sheet-toggle" id="sheet-toggle" aria-label="Toggle panel">
@@ -201,9 +209,9 @@
         </svg>
       </button>
       <div class="tabs" role="tablist">
-        <button type="button" role="tab" data-tab="roster" aria-selected="true"><span data-sign>Ooga Boogas</span></button>
         <button type="button" role="tab" data-tab="bananas" aria-selected="false"><span
             data-sign>Bananas</span></button>
+        <button type="button" role="tab" data-tab="roster" aria-selected="true"><span data-sign>Ooga Boogas</span></button>
         <button type="button" role="tab" data-tab="loot" aria-selected="false" id="loot-tab" hidden><span
             data-sign>Loot</span> <span class="tab-count" id="loot-count" hidden></span></button>
       </div>
@@ -247,7 +255,8 @@
       </footer>
     </aside>
 
-    <div class="jetpack-hud" id="jetpack-hud" hidden>
+    <button type="button" class="jetpack-hud" id="jetpack-hud" data-action="jetpack-toggle"
+      data-equipped="false" aria-label="Put on jetpack" aria-pressed="false" hidden>
       <svg class="jetpack-icon" viewBox="0 0 12 14" shape-rendering="crispEdges" aria-hidden="true">
         <path fill="#9aa1a8" d="M1 1h3v1H1zM8 1h3v1H8zM4 3h4v6H4z" />
         <path fill="#c8552f" d="M1 2h3v8H1zM8 2h3v8H8z" />
@@ -263,7 +272,7 @@
           <span class="jetpack-fuel-fill" id="jetpack-fuel-fill"></span>
         </div>
       </div>
-    </div>
+    </button>
     <div class="joysticks">
       <div class="joystick" id="joy-move" aria-hidden="true"><span></span></div>
       <div class="joystick" id="joy-look" aria-hidden="true"><span></span></div>
@@ -401,8 +410,10 @@
       <p class="help">Payments are simulated in this build.<span id="crate-help" hidden> Crates drop at 1K, 5K, 21K and
           100K sats.</span></p>
     </dialog>
-    <output class="toast" id="toast" hidden></output>
-    <div class="hint" id="hint" hidden></div>
+    <div class="message-stack" id="message-stack">
+      <output class="toast" id="toast" hidden></output>
+      <div class="hint" id="hint" hidden></div>
+    </div>
     <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
   </main>
 
@@ -423,6 +434,8 @@
   <script src="js/headquarters-sleep.js"></script>
   <script src="js/hole-guides.js"></script>
   <script src="js/wall-apertures.js"></script>
+  <script src="js/slope-guides.js"></script>
+  <script src="js/cave-guides.js"></script>
   <script src="js/rock-guides.js"></script>
   <script src="js/object-guides.js"></script>
   <script src="js/sight-guides.js"></script>
@@ -437,12 +450,16 @@
   <script src="js/fx.js"></script>
   <script src="js/camera-cover.js"></script>
   <script src="js/crew.js"></script>
+  <script src="js/npc-paths.js"></script>
   <script src="js/pile.js"></script>
   <script src="js/pile-guides.js"></script>
+  <script src="js/banana-cover.js"></script>
+  <script src="js/mirror-guides.js"></script>
   <script src="js/crates.js"></script>
   <script src="js/critters.js"></script>
   <script src="js/race-models.js"></script>
   <script src="js/drop-models.js"></script>
+  <script src="js/solid-props.js"></script>
   <script src="js/scene-hub.js"></script>
   <script src="js/scene-lab.js"></script>
   <script src="js/race-track.js"></script>

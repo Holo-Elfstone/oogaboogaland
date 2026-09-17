@@ -171,7 +171,8 @@
         colors[index] = color[0] * 255; colors[index + 1] = color[1] * 255; colors[index + 2] = color[2] * 255;
       }
     }
-    return { width: 32, height: 32, colors };
+    const hash = Array.from(digest, (v) => v.toString(16).padStart(2, "0")).join("");
+    return { width: 32, height: 32, colors, hash };
   };
   BL.lifehash = { make };
 })();
