@@ -93,6 +93,8 @@ import { terrainSightProbe } from "./terrain-sight.mjs";
 import { windowOutlineProbe } from "./window-outlines.mjs";
 import { apertureOutlineProbe, rampWallFloorProbe } from "./ramp-wall-outlines.mjs";
 import { objectCrowdingProbe, objectCameraIndependenceProbe, objectProviderStateProbe, objectVisibilityGateProbe, grassOutlineProbe, pileGuideProbe } from "./object-guides.mjs";
+import { maskSmokePixelsProbe } from "./mask-smoke.mjs";
+import { drivenSmokeGroundProbe } from "./driven-smoke.mjs";
 import { jetpackStartupSnapshot, basementStartupSnapshot, frozenClockProbe, debugTimeParsingProbe } from "./debug-url.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -2218,6 +2220,77 @@ const hold = async (b, key, ms) => {
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", key });
 };
 
+const drivenSmoke = () => withPage("driven smoke", hubPage(src), async (b) => {
+  // A clear straight runway, staged the way hub drive stages its chords
+  const staged = await b.evaluate(`(() => { const B = window.__ooga, cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.walk && !c.build), S = B.headquarters.solids, o = B.pilot.orbit, speed = window.BL.pilot.WALK.speed; B.pilot.possess(cave); for (let radius = 8; radius <= 18; radius += 2) for (let i = 0; i < 64; i++) { const a = i / 64 * Math.PI * 2, x = Math.sin(a) * radius, z = Math.cos(a) * radius; let px = x, pz = z, clear = true; for (let t = 0; t < 2; t += 0.02) { const nx = px - Math.sin(a) * speed * 0.02, nz = pz - Math.cos(a) * speed * 0.02; if (!B.island.onLand(nx, nz) || Math.abs(S.supportAt(nx, nz, 0, 0, cave)) > 0.001 || !S.walkable(nx, nz, px, pz, 0, cave.bodyHeight, cave) || S.inBananas(cave, nx, nz)) { clear = false; break; } px = nx; pz = nz; } if (!clear) continue; B.crew.relocatePlayer({ x, y: 0, z }, a + Math.PI); o.yaw = o.tYaw = a; B.pilot.update(1); return true; } return false; })()`);
+  const before = await b.evaluate(`(() => { const B = window.__ooga, p = B.crew.player.root.position; return { particles: B.stats().particles, x: p.x, z: p.z }; })()`);
+  await hold(b, "w", 1200);
+  const walking = await b.evaluate(`(() => { const B = window.__ooga, p = B.crew.player.root.position; return { particles: B.stats().particles, moved: +Math.hypot(p.x - ${before.x}, p.z - ${before.z}).toFixed(2) }; })()`);
+  const decayed = await untilPage(b, `B.stats().particles === ${before.particles}`, 8000);
+  record("driven smoke: a walking driven Ooga puffs a smoke trail that fades when he stops", staged && walking.moved > 2 && walking.particles > before.particles && decayed, JSON.stringify({ staged, before: before.particles, ...walking, decayed }));
+});
+
+const maskBreath = (backend, lab = false) => withPage(`mask breath ${lab ? "lab" : "hub"} ${backend}`, (lab ? page : hubPage)(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
+  const r = await b.evaluate(`(() => {
+    const B = window.__ooga, cave = B.cavemen.get("MrHodlX"), crew = B.crew;
+    cave.override = "working"; crew.refreshStates(); crew.control(cave);
+    crew.relocatePlayer({ x: 4, y: 0, z: 4 }, 0);
+    const root = cave.root.parent, smoke = () => cave.breathSmoke.filter((p) => p.life > 0).map((p) => p.node);
+    const expected = new Float32Array(3), rows = [];
+    for (const heading of [0, Math.PI / 2, Math.PI]) {
+      cave.root.rotation.y = heading; cave.breathAt = 0; cave.breathPuffs = 0;
+      cave.breathCount = 0; cave.breathHugeAt = 10;
+      for (const p of cave.breathSmoke) { p.life = 0; p.node.smokeOpacity = 0; }
+      const before = smoke(), p = cave.root.position, x = p.x, z = p.z;
+      crew.steer(rows.length ? 1 : 0, 0); crew.update(0.04, 100 + rows.length);
+      const emitted = smoke().filter((n) => !before.includes(n));
+      const atHoles = emitted.every((n, i) => {
+        const a = (i - 1) / 6 * Math.PI * 2, hx = i ? Math.cos(a) * 0.065 : 0, hy = i ? Math.sin(a) * 0.065 : 0, h = cave.traits.height;
+        window.BL.math.mat4.transformPoint(expected, cave.parts.head.world, hx * h, (0.1 + hy) * h, 0.49 * h);
+        return Math.hypot(n.position.x - expected[0], n.position.y - expected[1], n.position.z - expected[2]) < 0.01;
+      });
+      const first = cave.breathSmoke[0];
+      const m = cave.parts.head.world, forwardLength = Math.hypot(m[8], m[9], m[10]);
+      const straight = cave.breathSmoke.slice(0, 7).every((p) => (p.vx * m[8] + (p.vy - 0.24) * m[9] + p.vz * m[10]) / (Math.hypot(p.vx, p.vy - 0.24, p.vz) * forwardLength) > 0.995);
+      rows.push({ count: emitted.length, atHoles, straight, smaller: emitted.every((n) => n.scale.x >= 0.34 * 0.75 && n.scale.x <= 0.34), mostlyUp: Math.hypot(first.vx, first.vz) < first.vy, moved: Math.hypot(p.x - x, p.z - z), puffs: cave.breathPuffs });
+    }
+    crew.steer(0, 0);
+    cave.breathMerge = 10;
+    for (let i = 0; i < 11; i++) { cave.breathAt = 0; crew.update(0.01, 104 + i); }
+    const normalCount = smoke().length;
+    const gap = cave.breathAt, beforeGap = smoke().length;
+    crew.update(0.1, 106);
+    const silentGap = smoke().length === beforeGap, bounded = cave.breathSmoke.length === 252 && cave.breathSmoke.every((p) => p.node.parent === null) && cave.breathBatch.parent === root && cave.breathBatch.instanceData.length === 252 * 20;
+    for (const p of cave.breathSmoke) { p.life = 0; p.node.smokeOpacity = 0; }
+    cave.breathAt = 0; cave.breathPuffs = 0; cave.breathCount = 0; cave.breathHugeAt = 1;
+    cave.breathMerge = 10;
+    for (let i = 0; i < 36; i++) { cave.breathAt = 0; crew.update(0.04, 110 + i * 0.04); }
+    const last = cave.breathSmoke[245];
+    const huge = { count: smoke().length, smallCubes: cave.breathSmoke.every((p) => p.size >= 0.48 && p.size <= 0.64), remaining: cave.breathPuffs, burst: Math.hypot(last.vx, last.vz) > 0.9 };
+    const puff = cave.breathSmoke[0], node = puff.node, x = node.position.x, y = node.position.y, z = node.position.z, size = node.scale.x, opacity = node.smokeOpacity;
+    cave.breathAt = 40; crew.update(0.25, 113);
+    const floatsAway = node.position.y > y && (node.position.x - x) * puff.vx + (node.position.z - z) * puff.vz > 0;
+    const dissipates = node.scale.x >= size && node.smokeOpacity < opacity && node.smokeOpacity > 0;
+    const volume = () => smoke().reduce((sum, n) => sum + n.scale.x ** 3, 0);
+    const beforeMerge = smoke().length, beforeVolume = volume(), beforeSizes = cave.breathSmoke.map((p) => p.node.scale.x);
+    cave.breathMerge = 0; crew.update(0, 114);
+    const merged = { before: beforeMerge, after: smoke().length, larger: cave.breathSmoke.some((p, i) => p.life > 0 && p.node.scale.x > beforeSizes[i]), volumeKept: Math.abs(volume() - beforeVolume) < beforeVolume * 0.00001 };
+    const sizeLimit = 0.34 * Math.cbrt(12);
+    let capped = true, peak = 0;
+    for (let i = 0; i < 8; i++) {
+      crew.update(0.1, 114 + i * 0.1);
+      for (const p of cave.breathSmoke) if (p.life > 0) { capped = capped && p.node.scale.x <= sizeLimit && p.cubes <= 12; peak = Math.max(peak, p.node.scale.x); }
+    }
+    crew.update(5, 118);
+    const drained = cave.breathSmoke.every((p) => p.life === 0 && p.node.smokeOpacity === 0);
+    return { rows, normalCount, gap, silentGap, bounded, huge, floatsAway, dissipates, merged, capped, peak, drained, backend: B.renderer.kind };
+  })()`);
+  record(`mask breath ${lab ? "lab" : "hub"} ${backend}: 84 varied small cubes per normal exhale leave seven holes straight and mostly rise while idle, walking and turning`, r.backend === backend && r.normalCount === 84 && r.rows.every((row) => row.count === 7 && row.atHoles && row.straight && row.smaller && row.mostlyUp && row.puffs === 11) && r.rows[0].moved === 0 && r.rows.slice(1).every((row) => row.moved > 0), JSON.stringify(r));
+  record(`mask breath ${lab ? "lab" : "hub"} ${backend}: burst clouds merge at most 12 cubes, conserve volume, cap cube volume at 12 times the starting volume and fade in a fixed pool`, r.huge.count === 252 && r.huge.smallCubes && r.huge.remaining === 0 && r.huge.burst && r.floatsAway && r.dissipates && r.merged.after < r.merged.before && r.merged.larger && r.merged.volumeKept && r.capped && r.peak >= 0.34 * Math.cbrt(12) - 0.0001 && r.gap >= 15 && r.gap <= 30 && r.silentGap && r.bounded && r.drained, JSON.stringify({ huge: r.huge, merged: r.merged, capped: r.capped, peak: r.peak, floatsAway: r.floatsAway, dissipates: r.dissipates, bounded: r.bounded, drained: r.drained }));
+  const pixels = await b.evaluate(`(${maskSmokePixelsProbe.toString()})(${JSON.stringify(backend)})`);
+  record(`mask breath ${lab ? "lab" : "hub"} ${backend}: individual and batched smoke fade to nothing without changing mesh size`, pixels.sameSize && !pixels.error && [pixels.rows, pixels.batchRows].every((rows) => rows[0] > rows[1] && rows[1] > 0 && rows[2] === 0), JSON.stringify(pixels));
+});
+
 const hubFlight = () => withPage("hub flight", hubPage(src), async (b) => {
   const cam = () => b.evaluate(`(() => { const c = window.__ooga.camera; return { x: +c.target.x.toFixed(2), y: +c.target.y.toFixed(2), z: +c.target.z.toFixed(2), yaw: +Math.atan2(c.position.x - c.target.x, c.position.z - c.target.z).toFixed(2), py: +c.position.y.toFixed(2) }; })()`);
   const c0 = await cam();
@@ -3845,6 +3918,15 @@ task("soak: GPU residency", soakResidency);
 task("keys", keys);
 task("hub race route", hubRace);
 task("hub drive", hubDrive);
+task("driven smoke", drivenSmoke);
+for (const backend of ["webgl2", "canvas2d"]) task(`driven smoke grounding ${backend}`, () => withPage(`driven smoke grounding ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
+  const r = await b.evaluate(`(${drivenSmokeGroundProbe.toString()})()`);
+  record(`driven smoke grounding ${backend}: only ground travel emits puffs, including the first frame off a ledge`, r.backend === backend && r.rows.length === 5 && r.rows.every((row) => row.ok), JSON.stringify(r));
+}));
+task("mask breath hub webgl2", () => maskBreath("webgl2"));
+task("mask breath hub canvas2d", () => maskBreath("canvas2d"));
+task("mask breath lab webgl2", () => maskBreath("webgl2", true));
+task("mask breath lab canvas2d", () => maskBreath("canvas2d", true));
 task("fan", fan);
 task("race phone", racePhone);
 task("hub drop route", hubDrop);

@@ -59,7 +59,7 @@
     }
     const acquire = () => {
       if (poolUsed === pool.length) {
-        pool.push({ pts: new Float32Array(24), n: 0, depth: 0, style: "", coreStyle: "", line: false, lineGlow: 0, mirror: false, portal: false, matrix: 0, matrixGlyph: false, matrixGlyphOpacity: 1, matrixWall: 0, matrixNx: 0, matrixNy: 0, matrixNz: 0, matrixPlane: 0, matrixCenterDepth: 0, matrixMinX: 0, matrixMaxX: 0, matrixMinY: 0, matrixMaxY: 0, matrixRed: 0, matrixGreen: 0, matrixBlue: 0, matrixCave: 0, matrixLocal: false, matrixLiving: false, matrixDynamic: false, matrixPartial: false, matrixBacking: false, matrixFaceNx: 0, matrixFaceNy: 0, matrixFaceNz: 0, matrixFacePlane: 0 });
+        pool.push({ pts: new Float32Array(24), n: 0, depth: 0, style: "", coreStyle: "", line: false, lineGlow: 0, smokeOpacity: 1, mirror: false, portal: false, matrix: 0, matrixGlyph: false, matrixGlyphOpacity: 1, matrixWall: 0, matrixNx: 0, matrixNy: 0, matrixNz: 0, matrixPlane: 0, matrixCenterDepth: 0, matrixMinX: 0, matrixMaxX: 0, matrixMinY: 0, matrixMaxY: 0, matrixRed: 0, matrixGreen: 0, matrixBlue: 0, matrixCave: 0, matrixLocal: false, matrixLiving: false, matrixDynamic: false, matrixPartial: false, matrixBacking: false, matrixFaceNx: 0, matrixFaceNy: 0, matrixFaceNz: 0, matrixFacePlane: 0 });
       }
       return pool[poolUsed++];
     };
@@ -68,7 +68,7 @@
     const CLIP_OUT = new Float32Array(30);
     const MIRROR_CLIP_IN = new Float32Array(30);
     const MIRROR_CLIP_OUT = new Float32Array(30);
-    const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, scorch: 0, ember: 0, tip: 0, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false, matrixFullCave: 0 };
+    const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, scorch: 0, ember: 0, tip: 0, smokeOpacity: 1, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false, matrixFullCave: 0 };
     const mirrorDebug = {
       active: false, faux: true, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: true, reflectionOnlyCount: 0, planeDistance: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), skipReason: "canvas-faux"
@@ -205,6 +205,7 @@
       return false;
     };
     const shadeNode = (node) => {
+      if (node.smokeOpacity === 0) return;
       const { verts, faces, lines } = node.geometry;
       const w = node.world;
       const f = lastF;
@@ -320,6 +321,7 @@
           rec.n = clipped;
           rec.depth = zsum / clipped - (node.depthBias || 0);
           rec.line = false;
+          rec.smokeOpacity = node.smokeOpacity === undefined ? 1 : node.smokeOpacity;
           rec.mirror = mirrorFace;
           rec.portal = portalFace;
           rec.matrixGlyph = localMatrixGlyph;
@@ -486,7 +488,8 @@
         BATCH_NODE.ember = Math.max(0, -data[offset + 16]);
         BATCH_NODE.highlight = Math.max(0, data[offset + 17]);
         BATCH_NODE.scorch = Math.max(0, -data[offset + 17]);
-        BATCH_NODE.tip = data[offset + 18];
+        BATCH_NODE.tip = Math.max(0, data[offset + 18]);
+        BATCH_NODE.smokeOpacity = data[offset + 18] < 0 ? -1 - data[offset + 18] : 1;
         shadeNode(BATCH_NODE);
       }
     };
@@ -855,11 +858,13 @@
           for (let k = 1; k < rec.n; k++) ctx.lineTo(rec.pts[k * 2], rec.pts[k * 2 + 1]);
           ctx.closePath();
           if (!rec.matrixBacking || !rec.matrixPartial) {
+            ctx.globalAlpha = rec.smokeOpacity;
             ctx.fillStyle = rec.style;
             ctx.fill();
             ctx.strokeStyle = rec.style;
             ctx.lineWidth = 1;
             ctx.stroke();
+            ctx.globalAlpha = 1;
           }
           if (rec.matrix && (matrixDensity > 0 || rec.matrixPartial)) drawMatrix(rec);
           if (rec.mirror) {

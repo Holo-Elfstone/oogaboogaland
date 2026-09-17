@@ -39,6 +39,13 @@
   const JET_ACCEL = 20, JET_RISE = 7, JET_SPEED = 6.4, JET_PUFF = 0.05;
   const JET_SPARKS = [models.particleGeometry("#ffb13b", 0.09, 1), models.particleGeometry("#f3efe4", 0.07, 0.6)];
   const LAND_DUST = [models.particleGeometry("#a3874f", 0.1, 0)];
+  // One smoke puff per this much ground covered by the driven caveman
+  const SMOKE_STEP = 0.55;
+  const MASK_SMOKE = { ...models.particleGeometry("#c9cbce", 0.09, 0.15) };
+  const MASK_PORTS = [[0, 0], ...[0, 1, 2, 3, 4, 5].map((i) => [Math.cos(i / 6 * Math.PI * 2) * 0.065, Math.sin(i / 6 * Math.PI * 2) * 0.065])];
+  const MASK_SMOKE_CAP = MASK_PORTS.length * 36;
+  const MASK_SMOKE_SMALL = 0.34, MASK_SMOKE_MERGE_MAX = 12;
+  const MASK_SMOKE_MAX = MASK_SMOKE_SMALL * Math.cbrt(MASK_SMOKE_MERGE_MAX);
   const BURN_FLAMES = [models.particleGeometry("#ff8a2a", 0.14, 1), models.particleGeometry("#ffc148", 0.12, 1)];
   const BURN_SMOKE = models.particleGeometry("#70685f", 0.18, 0);
   const ROLL_SECONDS = 3, SOOT_SECONDS = 10, EMBER_HEAT_SECONDS = 4;
@@ -214,6 +221,16 @@
         hop: 0,
         hopV: 0,
         jumps: 0,
+        smoke: 0,
+        breathAt: 15 + Math.random() * 15,
+        breathPuffs: 0,
+        breathTotal: 12,
+        breathCount: 0,
+        breathHugeAt: 4 + Math.floor(Math.random() * 3),
+        breathHuge: false,
+        breathMerge: 0,
+        breathSmoke: [],
+        breathBatch: null,
         cheer: 0,
         catchT: 0,
         yawn: 0,
@@ -233,6 +250,16 @@
       });
       cave.root.visible = false;
       addChild(root, cave.root);
+      if (cave.traits.gasMask) {
+        // Reusable puffs keep ordinary and huge exhales from growing the FX pool.
+        // Keep their geometry resident between exhales in both renderers.
+        cave.breathBatch = createNode({ geometry: MASK_SMOKE, sightHidden: true, instanceData: new Float32Array(MASK_SMOKE_CAP * 20), instanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
+        addChild(root, cave.breathBatch);
+        for (let j = 0; j < MASK_SMOKE_CAP; j++) {
+          const node = createNode({ geometry: MASK_SMOKE, sightHidden: true, smokeOpacity: 0, scale: { x: 0, y: 0, z: 0 } });
+          cave.breathSmoke.push({ node, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 0, size: 0, cubes: 1, phase: j * 2.399 });
+        }
+      }
       for (const key of BODY_PARTS) input.add(cave.parts[key], { kind: "caveman", cave, priority: 1 });
       cavemen.set(contributor.name, cave);
     });
@@ -1764,7 +1791,7 @@
     };
     // Move the visitor's caveman
     const runPlayer = (cave, dt, driving = true) => {
-      const p = cave.root.position, leap = cave.leap;
+      const p = cave.root.position, leap = cave.leap, fromX = p.x, fromZ = p.z;
       const wasGround = groundY(cave);
       if (cave.jet) runJet(cave, dt);
       clampPlayerCeiling(cave, wasGround);
@@ -1830,6 +1857,17 @@
       // Keep that exact destination layer if it drifts away next frame.
       if (ctx.cloudAt) cave.cloudSupport = ctx.cloudAt(p.x, p.z, p.y - cave.baseY);
       if (grounded(cave)) {
+        if (len > 0.05 && !cave.traits.gasMask && !flying) {
+          // Heels kick up a smoke trail in proportion to the ground actually covered
+          cave.smoke += Math.hypot(p.x - fromX, p.z - fromZ);
+          if (cave.smoke >= SMOKE_STEP) {
+            cave.smoke -= SMOKE_STEP;
+            const backX = -Math.sin(cave.root.rotation.y), backZ = -Math.cos(cave.root.rotation.y);
+            ctx.fx.puff(p.x + backX * 0.14, p.y - cave.baseY + 0.07, p.z + backZ * 0.14,
+              backX * 0.25 + (Math.random() - 0.5) * 0.3, 0.4 + Math.random() * 0.3, backZ * 0.25 + (Math.random() - 0.5) * 0.3,
+              0.8 + Math.random() * 0.4);
+          }
+        }
         cave.jumps = 0;
       } else cave.jumps = Math.max(1, cave.jumps);
       if (cave.hop === 0 && (leap.vx || leap.vz)) {
@@ -2308,6 +2346,110 @@
         if (pos) drawBubble(ctx2d, b.quote, pos.x, pos.y, Math.min(1, (b.age || 0) / 0.25));
       }
     };
+    const runMaskBreath = (cave, dt) => {
+      if (!cave.traits.gasMask) return;
+      for (const puff of cave.breathSmoke) {
+        if (puff.life <= 0) continue;
+        puff.life = Math.max(0, puff.life - dt);
+        const drag = Math.exp(-1.3 * dt);
+        puff.vx *= drag; puff.vz *= drag; puff.vy = damp(puff.vy, 0.3, 0.9, dt);
+        const node = puff.node;
+        const time = puff.maxLife - puff.life;
+        node.position.x += (puff.vx + Math.sin(time * 3 + puff.phase) * 0.025) * dt;
+        node.position.y += puff.vy * dt;
+        node.position.z += (puff.vz + Math.cos(time * 2.5 + puff.phase) * 0.025) * dt;
+        node.rotation.y += 1.2 * dt;
+        // Smoke keeps spreading as it floats away; fading never pulls it back in.
+        const age = 1 - puff.life / puff.maxLife;
+        const s = Math.min(MASK_SMOKE_MAX, puff.size * (1 + age * 1.8));
+        node.scale.x = node.scale.y = node.scale.z = s;
+        node.smokeOpacity = 0.85 * Math.min(1, puff.life / (puff.maxLife * 0.65));
+      }
+      cave.breathMerge -= dt;
+      if (cave.breathMerge <= 0) {
+        cave.breathMerge = 0.14;
+        // Neighbouring wisps join into larger clouds after clearing the filter.
+        // Scan the fixed pool at a bounded cadence and conserve their cube volume.
+        const smoke = cave.breathSmoke;
+        for (let i = 0; i < smoke.length; i++) {
+          const a = smoke[i];
+          if (a.life <= 0 || a.maxLife - a.life < 0.2) continue;
+          for (let j = i + 1; j < smoke.length; j++) {
+            const b = smoke[j];
+            if (b.life <= 0 || b.maxLife - b.life < 0.2 || a.cubes + b.cubes > MASK_SMOKE_MERGE_MAX) continue;
+            const ap = a.node.position, bp = b.node.position;
+            const dx = bp.x - ap.x, dy = bp.y - ap.y, dz = bp.z - ap.z;
+            const reach = 0.09 * (a.node.scale.x + b.node.scale.x) * 1.35;
+            if (dx * dx + dy * dy + dz * dz > reach * reach) continue;
+            const av = a.node.scale.x ** 3, bv = b.node.scale.x ** 3, size = Math.cbrt(av + bv);
+            if (size > MASK_SMOKE_MAX) continue;
+            const weight = bv / (av + bv);
+            ap.x += dx * weight; ap.y += dy * weight; ap.z += dz * weight;
+            a.vx = lerp(a.vx, b.vx, weight); a.vy = lerp(a.vy, b.vy, weight); a.vz = lerp(a.vz, b.vz, weight);
+            a.life = Math.max(a.life, b.life); a.maxLife = Math.max(a.maxLife, b.maxLife);
+            a.cubes += b.cubes;
+            a.size = size / (1 + (1 - a.life / a.maxLife) * 1.8);
+            setVec(a.node.scale, size, size, size);
+            a.node.smokeOpacity = Math.max(a.node.smokeOpacity, b.node.smokeOpacity);
+            b.life = 0; b.node.smokeOpacity = 0;
+          }
+        }
+      }
+      if (!cave.root.visible || cave.state !== "working") return;
+      cave.breathAt -= dt;
+      if (cave.breathAt > 0) return;
+      if (!cave.breathPuffs) {
+        cave.breathHuge = ++cave.breathCount >= cave.breathHugeAt;
+        if (cave.breathHuge) { cave.breathCount = 0; cave.breathHugeAt = 4 + Math.floor(Math.random() * 3); }
+        cave.breathTotal = cave.breathPuffs = cave.breathHuge ? 36 : 12;
+      }
+      // The filter's front is at (0, 0.1, 0.467) in the scaled mask.
+      // Refresh the head transform after movement and animation, even offscreen.
+      BL.scene.updateWorld(cave.root);
+      const m = cave.parts.head.world, h = cave.traits.height;
+      const forwardLength = Math.hypot(m[8], m[9], m[10]);
+      const first = (cave.breathTotal - cave.breathPuffs) * MASK_PORTS.length;
+      for (let i = 0; i < MASK_PORTS.length; i++) {
+        // Match the centre hole and six surrounding holes in gasMaskGeometry.
+        const port = MASK_PORTS[i];
+        math.mat4.transformPoint(MUZZLE, m, (port[0] + (Math.random() - 0.5) * 0.006) * h, (0.1 + port[1] + (Math.random() - 0.5) * 0.006) * h, (0.49 + Math.random() * 0.004) * h);
+        const k = (cave.breathHuge ? 1.35 : 0.16) * (0.8 + Math.random() * 0.4) / forwardLength;
+        const side = (Math.random() - 0.5) * 0.012;
+        const lift = (Math.random() - 0.5) * 0.012;
+        const puff = cave.breathSmoke[first + i];
+        setVec(puff.node.position, MUZZLE[0], MUZZLE[1], MUZZLE[2]);
+        puff.size = cave.breathHuge ? 0.48 + Math.random() * 0.16 : MASK_SMOKE_SMALL * (0.75 + Math.random() * 0.25);
+        puff.cubes = 1;
+        puff.phase = Math.random() * Math.PI * 2;
+        puff.node.rotation.y = puff.phase;
+        setVec(puff.node.scale, puff.size, puff.size, puff.size);
+        puff.node.smokeOpacity = 0.85;
+        puff.vx = m[8] * k + m[0] * side + m[4] * lift;
+        puff.vy = m[9] * k + m[1] * side + m[5] * lift + 0.24;
+        puff.vz = m[10] * k + m[2] * side + m[6] * lift;
+        puff.life = puff.maxLife = cave.breathHuge ? 4 + Math.random() * 0.6 : 2.6 + Math.random() * 0.6;
+      }
+      cave.breathPuffs--;
+      cave.breathAt = cave.breathPuffs ? (cave.breathHuge ? 0.04 + Math.random() * 0.04 : 0.04 + Math.random() * 0.08) : 15 + Math.random() * 15;
+    };
+    const packMaskSmoke = (cave) => {
+      const batch = cave.breathBatch;
+      if (!batch) return;
+      const data = batch.instanceData;
+      let count = 0;
+      for (const puff of cave.breathSmoke) {
+        if (puff.life <= 0) continue;
+        const node = puff.node, offset = count++ * 20;
+        math.mat4.fromTRS(node.world, node.position, node.rotation, node.scale);
+        data.set(node.world, offset);
+        data[offset + 16] = 1;
+        data[offset + 17] = 0;
+        data[offset + 18] = -1 - node.smokeOpacity;
+        data[offset + 19] = 0;
+      }
+      batch.instanceCount = count;
+      batch.instanceVersion++;
+    };
     // Resolve a standing stack from its bottom up, once per actor, so the
     // passenger receives this frame's movement regardless of roster order.
     const updateMember = (cave, dt) => {
@@ -2333,6 +2475,8 @@
         s.motionX = continuous ? (p.x - x) / dt : 0; s.motionZ = continuous ? (p.z - z) / dt : 0;
       }
       updateCampEffects(cave, dt);
+      runMaskBreath(cave, dt);
+      packMaskSmoke(cave);
       if (wasInBananas && dt > 0 && cave.root.visible && cave.state === "working" && !inBananas(cave) && ctx.pile.spill) {
         const dx = p.x - x, dy = p.y - y, dz = p.z - z;
         // Respawns and scripted arrivals can move during an update too.
@@ -2388,6 +2532,7 @@
         if (cave.camp.seat) cave.camp.seat.sitter = null;
         for (const key of BODY_PARTS) input.remove(cave.parts[key]);
         removeChild(root, cave.root);
+        if (cave.breathBatch) removeChild(root, cave.breathBatch);
       }
       cavemen.clear();
       fanSlots.length = 0;

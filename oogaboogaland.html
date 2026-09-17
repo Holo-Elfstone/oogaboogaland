@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-AEZp3ua0fguitSKvuyJR1fhBe9n4q3g7F0CrLB8ksn4='; style-src 'sha256-bUniAqV9i1OXnHgmaaPJUkFdggoLsv7E79OLnEsrCLk='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-w+tpLNVJ5IuTePmBIfJeY/gtwI3lDMPmPFn8SfQu/d0='; style-src 'sha256-bUniAqV9i1OXnHgmaaPJUkFdggoLsv7E79OLnEsrCLk='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -3584,6 +3584,7 @@ out vec3 vWorld;
 out vec3 vInstanceFacing;
 out float vMatrixSurface;
 flat out float vMatrixCave;
+flat out float vSmokeOpacity;
 void main() {
   mat4 m = mat4(aM0, aM1, aM2, aM3);
   vec4 w = m * vec4(aPos, 1.0);
@@ -3602,6 +3603,9 @@ void main() {
   vColor.a = aColor.a < 0.0 ? encoded - vMatrixCave * 2.0 : aColor.a;
   vParams = aParams;
   vParams.y = max(0.0, aParams.y);
+  // Smoke fades through coverage without a separate transparent draw pass.
+  vSmokeOpacity = aParams.z < 0.0 ? -aParams.z - 1.0 : 1.0;
+  vParams.z = max(0.0, aParams.z);
   vShadow = uLightViewProj * w;
   vWorld = w.xyz;
   vInstanceFacing = normalize(aM2.xyz);
@@ -3623,6 +3627,7 @@ in vec3 vWorld;
 in vec3 vInstanceFacing;
 in float vMatrixSurface;
 flat in float vMatrixCave;
+flat in float vSmokeOpacity;
 uniform vec3 uLightDir;
 uniform vec3 uSky;
 uniform vec3 uGround;
@@ -3840,6 +3845,12 @@ float matrixTravel(vec2 point, float caveIndex) {
 }
 void main() {
   if (vWorld.y < uClipMinY || vWorld.y > uClipMaxY) discard;
+  if (vSmokeOpacity < 1.0) {
+    ivec2 pixel = ivec2(gl_FragCoord.xy) & 3;
+    int rank = ((pixel.x & 1) ^ (pixel.y & 1)) * 8 + (pixel.y & 1) * 4
+      + (((pixel.x >> 1) & 1) ^ ((pixel.y >> 1) & 1)) * 2 + ((pixel.y >> 1) & 1);
+    if ((float(rank) + 0.5) / 16.0 >= vSmokeOpacity) discard;
+  }
   vec3 n = normalize(vNormal);
   vec3 base = vColor.rgb;
   float cloud = step(3.5, vParams.z);
@@ -4675,7 +4686,7 @@ void main() {
       // In-frustum nodes stay in front of the culled ones by swapping into the draw region
       const idx = rec.count++;
       rec.nodes[idx] = node;
-      if (hiddenFromCamera(node)) {
+      if (node.smokeOpacity === 0 || hiddenFromCamera(node)) {
         rec.cameraHiddenCount++;
         suppressed++;
       } else if (inFrustum(node)) {
@@ -4724,7 +4735,7 @@ void main() {
         d[o + 16] = n.ember > 0 ? -n.ember : n.glow;
         // Scorch shares the negative half of the nonnegative highlight channel.
         d[o + 17] = n.scorch > 0 ? -n.scorch : n.highlight;
-        d[o + 18] = matrixModeOf(n);
+        d[o + 18] = n.smokeOpacity === undefined ? matrixModeOf(n) : -1 - n.smokeOpacity;
         d[o + 19] = 0;
       }
       gl.bindBuffer(gl.ARRAY_BUFFER, rec.ibo);
@@ -5427,7 +5438,7 @@ void main() {
     }
     const acquire = () => {
       if (poolUsed === pool.length) {
-        pool.push({ pts: new Float32Array(24), n: 0, depth: 0, style: "", coreStyle: "", line: false, lineGlow: 0, mirror: false, portal: false, matrix: 0, matrixGlyph: false, matrixGlyphOpacity: 1, matrixWall: 0, matrixNx: 0, matrixNy: 0, matrixNz: 0, matrixPlane: 0, matrixCenterDepth: 0, matrixMinX: 0, matrixMaxX: 0, matrixMinY: 0, matrixMaxY: 0, matrixRed: 0, matrixGreen: 0, matrixBlue: 0, matrixCave: 0, matrixLocal: false, matrixLiving: false, matrixDynamic: false, matrixPartial: false, matrixBacking: false, matrixFaceNx: 0, matrixFaceNy: 0, matrixFaceNz: 0, matrixFacePlane: 0 });
+        pool.push({ pts: new Float32Array(24), n: 0, depth: 0, style: "", coreStyle: "", line: false, lineGlow: 0, smokeOpacity: 1, mirror: false, portal: false, matrix: 0, matrixGlyph: false, matrixGlyphOpacity: 1, matrixWall: 0, matrixNx: 0, matrixNy: 0, matrixNz: 0, matrixPlane: 0, matrixCenterDepth: 0, matrixMinX: 0, matrixMaxX: 0, matrixMinY: 0, matrixMaxY: 0, matrixRed: 0, matrixGreen: 0, matrixBlue: 0, matrixCave: 0, matrixLocal: false, matrixLiving: false, matrixDynamic: false, matrixPartial: false, matrixBacking: false, matrixFaceNx: 0, matrixFaceNy: 0, matrixFaceNz: 0, matrixFacePlane: 0 });
       }
       return pool[poolUsed++];
     };
@@ -5436,7 +5447,7 @@ void main() {
     const CLIP_OUT = new Float32Array(30);
     const MIRROR_CLIP_IN = new Float32Array(30);
     const MIRROR_CLIP_OUT = new Float32Array(30);
-    const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, scorch: 0, ember: 0, tip: 0, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false, matrixFullCave: 0 };
+    const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, scorch: 0, ember: 0, tip: 0, smokeOpacity: 1, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false, matrixFullCave: 0 };
     const mirrorDebug = {
       active: false, faux: true, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: true, reflectionOnlyCount: 0, planeDistance: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), skipReason: "canvas-faux"
@@ -5573,6 +5584,7 @@ void main() {
       return false;
     };
     const shadeNode = (node) => {
+      if (node.smokeOpacity === 0) return;
       const { verts, faces, lines } = node.geometry;
       const w = node.world;
       const f = lastF;
@@ -5688,6 +5700,7 @@ void main() {
           rec.n = clipped;
           rec.depth = zsum / clipped - (node.depthBias || 0);
           rec.line = false;
+          rec.smokeOpacity = node.smokeOpacity === undefined ? 1 : node.smokeOpacity;
           rec.mirror = mirrorFace;
           rec.portal = portalFace;
           rec.matrixGlyph = localMatrixGlyph;
@@ -5854,7 +5867,8 @@ void main() {
         BATCH_NODE.ember = Math.max(0, -data[offset + 16]);
         BATCH_NODE.highlight = Math.max(0, data[offset + 17]);
         BATCH_NODE.scorch = Math.max(0, -data[offset + 17]);
-        BATCH_NODE.tip = data[offset + 18];
+        BATCH_NODE.tip = Math.max(0, data[offset + 18]);
+        BATCH_NODE.smokeOpacity = data[offset + 18] < 0 ? -1 - data[offset + 18] : 1;
         shadeNode(BATCH_NODE);
       }
     };
@@ -6223,11 +6237,13 @@ void main() {
           for (let k = 1; k < rec.n; k++) ctx.lineTo(rec.pts[k * 2], rec.pts[k * 2 + 1]);
           ctx.closePath();
           if (!rec.matrixBacking || !rec.matrixPartial) {
+            ctx.globalAlpha = rec.smokeOpacity;
             ctx.fillStyle = rec.style;
             ctx.fill();
             ctx.strokeStyle = rec.style;
             ctx.lineWidth = 1;
             ctx.stroke();
+            ctx.globalAlpha = 1;
           }
           if (rec.matrix && (matrixDensity > 0 || rec.matrixPartial)) drawMatrix(rec);
           if (rec.mirror) {
@@ -15542,6 +15558,7 @@ void main() {
     return v;
   };
   const CONFETTI = ["#d8892b", "#22c55e", "#6f9fca", "#f3efe4", "#f5c542"].map((c) => models.particleGeometry(c, 0.09, 0.6));
+  const SMOKE_TRAIL = models.particleGeometry("#c9cbce", 0.09, 0.15);
   const SCREEN = { x: 0, y: 0, depth: 0 };
   const drawBubble = (ctx, text, x, y, alpha) => {
     ctx.globalAlpha = alpha;
@@ -15578,10 +15595,10 @@ void main() {
     const particlePool = [];
     const MAX_PARTICLES = 240;
     const spawnParticle = (geometry, x, y, z, vx, vy, vz, life, spin = 6, gravity = 3.2, floor = 0.03) => {
-      if (particles.length >= MAX_PARTICLES) return;
+      if (particles.length >= MAX_PARTICLES) return null;
       let p = particlePool.pop();
       if (!p) {
-        p = { node: createNode({ visible: false, sightHidden: true }), vx: 0, vy: 0, vz: 0, life: 0, spin: 0, gravity: 3.2, floor: 0.03 };
+        p = { node: createNode({ visible: false, sightHidden: true }), vx: 0, vy: 0, vz: 0, life: 0, spin: 0, gravity: 3.2, floor: 0.03, smoke: false, maxLife: 0 };
         addChild(root, p.node);
       }
       p.node.geometry = geometry;
@@ -15593,9 +15610,12 @@ void main() {
       p.vz = vz;
       p.life = life;
       p.spin = spin;
+      p.smoke = false;
+      p.maxLife = life;
       p.gravity = gravity;
       p.floor = floor;
       particles.push(p);
+      return p;
     };
     const stepParticles = (dt) => {
       for (let i = particles.length - 1; i >= 0; i--) {
@@ -15605,6 +15625,20 @@ void main() {
           p.node.visible = false;
           particles.splice(i, 1);
           particlePool.push(p);
+          continue;
+        }
+        if (p.smoke) {
+          // A puff drifts up and out as it spreads, then shrinks away
+          const drag = Math.max(0, 1 - 1.6 * dt);
+          p.vx *= drag;
+          p.vz *= drag;
+          p.vy += 0.3 * dt;
+          p.node.position.x += p.vx * dt;
+          p.node.position.y += p.vy * dt;
+          p.node.position.z += p.vz * dt;
+          p.node.rotation.y += p.spin * dt;
+          const s = (0.5 + 1.3 * (1 - p.life / p.maxLife)) * Math.min(1, p.life / 0.3);
+          p.node.scale.x = p.node.scale.y = p.node.scale.z = s;
           continue;
         }
         p.vy -= p.gravity * dt;
@@ -15628,6 +15662,10 @@ void main() {
         const a = Math.random() * Math.PI * 2, s = speed * (0.4 + Math.random() * 0.6);
         spawnParticle(geos[i % geos.length], x, y, z, Math.cos(a) * s, 1.5 + Math.random() * 2.5, Math.sin(a) * s, 1.4 + Math.random() * 0.8);
       }
+    };
+    const puff = (x, y, z, vx, vy, vz, life) => {
+      const p = spawnParticle(SMOKE_TRAIL, x, y, z, vx, vy, vz, life, 1.2);
+      if (p) p.smoke = true;
     };
     const bubbles = [];
     const zzz = [];
@@ -15739,7 +15777,7 @@ void main() {
     };
     const stats = () => ({ particles: particles.length, pool: particlePool.length, bubbles: bubbles.length, zzz: zzz.length });
     return {
-      spawnParticle, burst, say, sayAt, zzzAt, showTicker, drawOverlay, update: stepParticles, trimPool, dispose, stats,
+      spawnParticle, burst, puff, say, sayAt, zzzAt, showTicker, drawOverlay, update: stepParticles, trimPool, dispose, stats,
       get inMotion() {
         return particles.length > 0;
       }
@@ -16558,6 +16596,13 @@ void main() {
   const JET_ACCEL = 20, JET_RISE = 7, JET_SPEED = 6.4, JET_PUFF = 0.05;
   const JET_SPARKS = [models.particleGeometry("#ffb13b", 0.09, 1), models.particleGeometry("#f3efe4", 0.07, 0.6)];
   const LAND_DUST = [models.particleGeometry("#a3874f", 0.1, 0)];
+  // One smoke puff per this much ground covered by the driven caveman
+  const SMOKE_STEP = 0.55;
+  const MASK_SMOKE = { ...models.particleGeometry("#c9cbce", 0.09, 0.15) };
+  const MASK_PORTS = [[0, 0], ...[0, 1, 2, 3, 4, 5].map((i) => [Math.cos(i / 6 * Math.PI * 2) * 0.065, Math.sin(i / 6 * Math.PI * 2) * 0.065])];
+  const MASK_SMOKE_CAP = MASK_PORTS.length * 36;
+  const MASK_SMOKE_SMALL = 0.34, MASK_SMOKE_MERGE_MAX = 12;
+  const MASK_SMOKE_MAX = MASK_SMOKE_SMALL * Math.cbrt(MASK_SMOKE_MERGE_MAX);
   const BURN_FLAMES = [models.particleGeometry("#ff8a2a", 0.14, 1), models.particleGeometry("#ffc148", 0.12, 1)];
   const BURN_SMOKE = models.particleGeometry("#70685f", 0.18, 0);
   const ROLL_SECONDS = 3, SOOT_SECONDS = 10, EMBER_HEAT_SECONDS = 4;
@@ -16733,6 +16778,16 @@ void main() {
         hop: 0,
         hopV: 0,
         jumps: 0,
+        smoke: 0,
+        breathAt: 15 + Math.random() * 15,
+        breathPuffs: 0,
+        breathTotal: 12,
+        breathCount: 0,
+        breathHugeAt: 4 + Math.floor(Math.random() * 3),
+        breathHuge: false,
+        breathMerge: 0,
+        breathSmoke: [],
+        breathBatch: null,
         cheer: 0,
         catchT: 0,
         yawn: 0,
@@ -16752,6 +16807,16 @@ void main() {
       });
       cave.root.visible = false;
       addChild(root, cave.root);
+      if (cave.traits.gasMask) {
+        // Reusable puffs keep ordinary and huge exhales from growing the FX pool.
+        // Keep their geometry resident between exhales in both renderers.
+        cave.breathBatch = createNode({ geometry: MASK_SMOKE, sightHidden: true, instanceData: new Float32Array(MASK_SMOKE_CAP * 20), instanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
+        addChild(root, cave.breathBatch);
+        for (let j = 0; j < MASK_SMOKE_CAP; j++) {
+          const node = createNode({ geometry: MASK_SMOKE, sightHidden: true, smokeOpacity: 0, scale: { x: 0, y: 0, z: 0 } });
+          cave.breathSmoke.push({ node, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 0, size: 0, cubes: 1, phase: j * 2.399 });
+        }
+      }
       for (const key of BODY_PARTS) input.add(cave.parts[key], { kind: "caveman", cave, priority: 1 });
       cavemen.set(contributor.name, cave);
     });
@@ -18283,7 +18348,7 @@ void main() {
     };
     // Move the visitor's caveman
     const runPlayer = (cave, dt, driving = true) => {
-      const p = cave.root.position, leap = cave.leap;
+      const p = cave.root.position, leap = cave.leap, fromX = p.x, fromZ = p.z;
       const wasGround = groundY(cave);
       if (cave.jet) runJet(cave, dt);
       clampPlayerCeiling(cave, wasGround);
@@ -18349,6 +18414,17 @@ void main() {
       // Keep that exact destination layer if it drifts away next frame.
       if (ctx.cloudAt) cave.cloudSupport = ctx.cloudAt(p.x, p.z, p.y - cave.baseY);
       if (grounded(cave)) {
+        if (len > 0.05 && !cave.traits.gasMask && !flying) {
+          // Heels kick up a smoke trail in proportion to the ground actually covered
+          cave.smoke += Math.hypot(p.x - fromX, p.z - fromZ);
+          if (cave.smoke >= SMOKE_STEP) {
+            cave.smoke -= SMOKE_STEP;
+            const backX = -Math.sin(cave.root.rotation.y), backZ = -Math.cos(cave.root.rotation.y);
+            ctx.fx.puff(p.x + backX * 0.14, p.y - cave.baseY + 0.07, p.z + backZ * 0.14,
+              backX * 0.25 + (Math.random() - 0.5) * 0.3, 0.4 + Math.random() * 0.3, backZ * 0.25 + (Math.random() - 0.5) * 0.3,
+              0.8 + Math.random() * 0.4);
+          }
+        }
         cave.jumps = 0;
       } else cave.jumps = Math.max(1, cave.jumps);
       if (cave.hop === 0 && (leap.vx || leap.vz)) {
@@ -18827,6 +18903,110 @@ void main() {
         if (pos) drawBubble(ctx2d, b.quote, pos.x, pos.y, Math.min(1, (b.age || 0) / 0.25));
       }
     };
+    const runMaskBreath = (cave, dt) => {
+      if (!cave.traits.gasMask) return;
+      for (const puff of cave.breathSmoke) {
+        if (puff.life <= 0) continue;
+        puff.life = Math.max(0, puff.life - dt);
+        const drag = Math.exp(-1.3 * dt);
+        puff.vx *= drag; puff.vz *= drag; puff.vy = damp(puff.vy, 0.3, 0.9, dt);
+        const node = puff.node;
+        const time = puff.maxLife - puff.life;
+        node.position.x += (puff.vx + Math.sin(time * 3 + puff.phase) * 0.025) * dt;
+        node.position.y += puff.vy * dt;
+        node.position.z += (puff.vz + Math.cos(time * 2.5 + puff.phase) * 0.025) * dt;
+        node.rotation.y += 1.2 * dt;
+        // Smoke keeps spreading as it floats away; fading never pulls it back in.
+        const age = 1 - puff.life / puff.maxLife;
+        const s = Math.min(MASK_SMOKE_MAX, puff.size * (1 + age * 1.8));
+        node.scale.x = node.scale.y = node.scale.z = s;
+        node.smokeOpacity = 0.85 * Math.min(1, puff.life / (puff.maxLife * 0.65));
+      }
+      cave.breathMerge -= dt;
+      if (cave.breathMerge <= 0) {
+        cave.breathMerge = 0.14;
+        // Neighbouring wisps join into larger clouds after clearing the filter.
+        // Scan the fixed pool at a bounded cadence and conserve their cube volume.
+        const smoke = cave.breathSmoke;
+        for (let i = 0; i < smoke.length; i++) {
+          const a = smoke[i];
+          if (a.life <= 0 || a.maxLife - a.life < 0.2) continue;
+          for (let j = i + 1; j < smoke.length; j++) {
+            const b = smoke[j];
+            if (b.life <= 0 || b.maxLife - b.life < 0.2 || a.cubes + b.cubes > MASK_SMOKE_MERGE_MAX) continue;
+            const ap = a.node.position, bp = b.node.position;
+            const dx = bp.x - ap.x, dy = bp.y - ap.y, dz = bp.z - ap.z;
+            const reach = 0.09 * (a.node.scale.x + b.node.scale.x) * 1.35;
+            if (dx * dx + dy * dy + dz * dz > reach * reach) continue;
+            const av = a.node.scale.x ** 3, bv = b.node.scale.x ** 3, size = Math.cbrt(av + bv);
+            if (size > MASK_SMOKE_MAX) continue;
+            const weight = bv / (av + bv);
+            ap.x += dx * weight; ap.y += dy * weight; ap.z += dz * weight;
+            a.vx = lerp(a.vx, b.vx, weight); a.vy = lerp(a.vy, b.vy, weight); a.vz = lerp(a.vz, b.vz, weight);
+            a.life = Math.max(a.life, b.life); a.maxLife = Math.max(a.maxLife, b.maxLife);
+            a.cubes += b.cubes;
+            a.size = size / (1 + (1 - a.life / a.maxLife) * 1.8);
+            setVec(a.node.scale, size, size, size);
+            a.node.smokeOpacity = Math.max(a.node.smokeOpacity, b.node.smokeOpacity);
+            b.life = 0; b.node.smokeOpacity = 0;
+          }
+        }
+      }
+      if (!cave.root.visible || cave.state !== "working") return;
+      cave.breathAt -= dt;
+      if (cave.breathAt > 0) return;
+      if (!cave.breathPuffs) {
+        cave.breathHuge = ++cave.breathCount >= cave.breathHugeAt;
+        if (cave.breathHuge) { cave.breathCount = 0; cave.breathHugeAt = 4 + Math.floor(Math.random() * 3); }
+        cave.breathTotal = cave.breathPuffs = cave.breathHuge ? 36 : 12;
+      }
+      // The filter's front is at (0, 0.1, 0.467) in the scaled mask.
+      // Refresh the head transform after movement and animation, even offscreen.
+      BL.scene.updateWorld(cave.root);
+      const m = cave.parts.head.world, h = cave.traits.height;
+      const forwardLength = Math.hypot(m[8], m[9], m[10]);
+      const first = (cave.breathTotal - cave.breathPuffs) * MASK_PORTS.length;
+      for (let i = 0; i < MASK_PORTS.length; i++) {
+        // Match the centre hole and six surrounding holes in gasMaskGeometry.
+        const port = MASK_PORTS[i];
+        math.mat4.transformPoint(MUZZLE, m, (port[0] + (Math.random() - 0.5) * 0.006) * h, (0.1 + port[1] + (Math.random() - 0.5) * 0.006) * h, (0.49 + Math.random() * 0.004) * h);
+        const k = (cave.breathHuge ? 1.35 : 0.16) * (0.8 + Math.random() * 0.4) / forwardLength;
+        const side = (Math.random() - 0.5) * 0.012;
+        const lift = (Math.random() - 0.5) * 0.012;
+        const puff = cave.breathSmoke[first + i];
+        setVec(puff.node.position, MUZZLE[0], MUZZLE[1], MUZZLE[2]);
+        puff.size = cave.breathHuge ? 0.48 + Math.random() * 0.16 : MASK_SMOKE_SMALL * (0.75 + Math.random() * 0.25);
+        puff.cubes = 1;
+        puff.phase = Math.random() * Math.PI * 2;
+        puff.node.rotation.y = puff.phase;
+        setVec(puff.node.scale, puff.size, puff.size, puff.size);
+        puff.node.smokeOpacity = 0.85;
+        puff.vx = m[8] * k + m[0] * side + m[4] * lift;
+        puff.vy = m[9] * k + m[1] * side + m[5] * lift + 0.24;
+        puff.vz = m[10] * k + m[2] * side + m[6] * lift;
+        puff.life = puff.maxLife = cave.breathHuge ? 4 + Math.random() * 0.6 : 2.6 + Math.random() * 0.6;
+      }
+      cave.breathPuffs--;
+      cave.breathAt = cave.breathPuffs ? (cave.breathHuge ? 0.04 + Math.random() * 0.04 : 0.04 + Math.random() * 0.08) : 15 + Math.random() * 15;
+    };
+    const packMaskSmoke = (cave) => {
+      const batch = cave.breathBatch;
+      if (!batch) return;
+      const data = batch.instanceData;
+      let count = 0;
+      for (const puff of cave.breathSmoke) {
+        if (puff.life <= 0) continue;
+        const node = puff.node, offset = count++ * 20;
+        math.mat4.fromTRS(node.world, node.position, node.rotation, node.scale);
+        data.set(node.world, offset);
+        data[offset + 16] = 1;
+        data[offset + 17] = 0;
+        data[offset + 18] = -1 - node.smokeOpacity;
+        data[offset + 19] = 0;
+      }
+      batch.instanceCount = count;
+      batch.instanceVersion++;
+    };
     // Resolve a standing stack from its bottom up, once per actor, so the
     // passenger receives this frame's movement regardless of roster order.
     const updateMember = (cave, dt) => {
@@ -18852,6 +19032,8 @@ void main() {
         s.motionX = continuous ? (p.x - x) / dt : 0; s.motionZ = continuous ? (p.z - z) / dt : 0;
       }
       updateCampEffects(cave, dt);
+      runMaskBreath(cave, dt);
+      packMaskSmoke(cave);
       if (wasInBananas && dt > 0 && cave.root.visible && cave.state === "working" && !inBananas(cave) && ctx.pile.spill) {
         const dx = p.x - x, dy = p.y - y, dz = p.z - z;
         // Respawns and scripted arrivals can move during an update too.
@@ -18907,6 +19089,7 @@ void main() {
         if (cave.camp.seat) cave.camp.seat.sitter = null;
         for (const key of BODY_PARTS) input.remove(cave.parts[key]);
         removeChild(root, cave.root);
+        if (cave.breathBatch) removeChild(root, cave.breathBatch);
       }
       cavemen.clear();
       fanSlots.length = 0;
