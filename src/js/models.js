@@ -979,11 +979,15 @@
       box({ w: 0.96, h: 0.08, d: 0.96, color: "#4c3a20", offset: { y: 0.72 } }),
       box({ w: 0.9, h: 0.08, d: 0.1, color: "#4c3a20", offset: { y: 0.35, z: 0.41 } })
     )),
-    cached(() => merge(
-      box({ w: 0.12, h: 1.1, d: 0.12, color: "#35383b", offset: { y: 0.55 } }),
-      box({ w: 0.5, h: 0.5, d: 0.06, color: "#3f4245", offset: { y: 1.2, z: 0.1 } }),
-      box({ w: 0.08, h: 0.08, d: 0.06, color: "#d8892b", emissive: 1, offset: { y: 1.2, z: 0.16 } })
-    ))
+    cached(() => {
+      const geometry = merge(
+        box({ w: 0.12, h: 1.1, d: 0.12, color: "#35383b", offset: { y: 0.55 } }),
+        box({ w: 0.5, h: 0.5, d: 0.06, color: "#3f4245", offset: { y: 1.2, z: 0.1 } }),
+        box({ w: 0.08, h: 0.08, d: 0.06, color: "#d8892b", emissive: 1, offset: { y: 1.2, z: 0.16 } })
+      );
+      geometry.sightHidden = true;
+      return geometry;
+    })
   ];
   const TIER_COLORS = { common: "#9aa0a6", rare: "#6f9fca", epic: "#b16fd6", legendary: "#d8892b" };
   const crateCache = new Map();

@@ -97,8 +97,8 @@ export const objectCameraIndependenceProbe = () => {
       Object.assign(camera.target, { x: 0, y: 0, z: -36 }); sample(0.5);
       Object.assign(camera.target, { x: 0, y: 0, z: 0 }); const settledReturn = sample();
       Object.assign(camera.target, { x: 0, y: 0, z: -36 }); sample();
-      open = false; objects.result.occlusionVersion++; const blocked = sample(0.3);
-      open = true; objects.result.occlusionVersion++; const reopened = sample(0.3);
+      open = false; objects.result.occlusionVersion++; objects.result.perceptionVersion++; const blocked = sample(0.3);
+      open = true; objects.result.occlusionVersion++; objects.result.perceptionVersion++; const reopened = sample(0.3);
       owner.visible = false; const removed = sample();
       const cleared = !removed.present && state.owners.every((node) => node !== owner) && state.retainedOwners.every((node) => node !== owner);
       rows.push({ name: fixture.name, samples: samples.length, witness: clear(0, 0, -6, ...fixture.witness), recognized: samples.every((s) => s.present && s.recognized), distanceStable: samples.every((s) => s.distance === samples[0].distance), nearVersionStable: samples.every((s) => s.nearVersion === samples[0].nearVersion), rotationStable, control, partial, away, held, returned, settled, settledReturn, blocked, reopened, cleared });
@@ -193,31 +193,33 @@ export const objectVisibilityGateProbe = () => {
 };
 
 export const grassOutlineProbe = () => {
-  const B = window.__ooga, BL = window.BL, S = BL.scene, scene = BL.scenes.hub, geometry = BL.hubModels.grass(), grass = [];
-  S.traverseVisible(scene.root, (node) => { if (node.geometry === geometry) grass.push(node); });
-  if (!grass.length) throw new Error("No actual meadow grass fixture");
+  const B = window.__ooga, BL = window.BL, S = BL.scene, scene = BL.scenes.hub, geometry = BL.hubModels.grass(), flowerGeometry = BL.hubModels.flowerTuft(), bushGeometry = new Set([BL.hubModels.bush(0), BL.hubModels.bush(1), BL.hubModels.bush(2)]), grass = [], flowers = [], bushes = [];
+  S.traverseVisible(scene.root, (node) => { if (node.geometry === geometry) grass.push(node); else if (node.geometry === flowerGeometry) flowers.push(node); else if (bushGeometry.has(node.geometry)) bushes.push(node); });
+  const labSign = B.labels.find((label) => label.text === "EntropyLab")?.node, buildSignGeometry = BL.models.buildableGeos[2](), buildSign = S.createNode({ geometry: buildSignGeometry, sightHidden: !!buildSignGeometry.sightHidden });
+  if (!grass.length || !flowers.length || !bushes.length || !labSign) throw new Error("Missing outlined-scenery exclusion fixtures");
   const p = grass[0].position, actor = { root: { position: { x: p.x, y: p.y + 0.2, z: p.z } } };
   const control = S.createNode({ geometry: BL.models.box({ w: 0.6, h: 0.6, d: 0.6, color: "#ffffff" }), position: { x: p.x + 1, y: p.y + 0.4, z: p.z } });
   S.addChild(scene.root, control); S.updateWorld(scene.root);
-  const objects = BL.objectGuides.create({ roots: [...grass, control], crew: { cavemen: new Map() } }), camera = S.createCamera({ fov: 90, near: 0.1, far: 100 });
-  const empty = { count: 0, lines: new Float32Array(0) }, members = new Set(grass), rows = [];
+  const objects = BL.objectGuides.create({ roots: [...grass, ...flowers, ...bushes, labSign, buildSign, control], crew: { cavemen: new Map() } }), camera = S.createCamera({ fov: 90, near: 0.1, far: 100 });
+  const empty = { count: 0, lines: new Float32Array(0) }, members = new Set(grass), flowerMembers = new Set(flowers), rows = [];
   const clear = (ax, ay, az, bx, by, bz) => !((az < p.z - 2 && bz > p.z - 2) || (az > p.z - 2 && bz < p.z - 2));
   const filter = BL.sightGuides.create({ segmentClear: clear, objectClear: objects.cameraClear, actorClear: objects.clear, ownerBoundary: objects.ownerBoundaryAt, ownerPerceived: objects.perceived, ownerConcealed: objects.concealed, ownerClear: objects.ownerClear, ownerDistance: objects.distance, ownerInView: objects.inView, getProvider: objects.getProvider });
   try {
     for (const x of [-1, 0, 1]) {
       Object.assign(camera.position, { x: p.x + x, y: p.y + 1, z: p.z - 6 }); Object.assign(camera.target, { x: p.x, y: p.y + 0.2, z: p.z });
       const source = objects.collect(actor, p.x, p.y + 0.2, p.z, camera, 1.6), state = filter.update(actor, empty, source, camera, 1.6, 0.3);
-      let controlLines = 0, grassLines = 0;
-      for (let n = 0; n < state.count; n++) { const owner = source.owners[state.sources[n]]; if (owner === control) controlLines++; if (members.has(owner)) grassLines++; }
+      let controlLines = 0, grassLines = 0, flowerLines = 0;
+      for (let n = 0; n < state.count; n++) { const owner = source.owners[state.sources[n]]; if (owner === control) controlLines++; if (members.has(owner)) grassLines++; if (flowerMembers.has(owner)) flowerLines++; }
       const production = B.headquarters.objectGuides.collect(actor, p.x, p.y + 0.2, p.z, camera, 1.6);
-      rows.push({ registered: objects.stats.registered, nearby: source.nearCount, controlLines, grassLines, grassSources: source.owners.slice(0, source.count).some((owner) => members.has(owner)), grassNearby: source.nearOwners.slice(0, source.nearCount).some((owner) => members.has(owner)), productionSources: production.owners.slice(0, production.count).some((owner) => members.has(owner)), productionNearby: production.nearOwners.slice(0, production.nearCount).some((owner) => members.has(owner)) });
+      rows.push({ registered: objects.stats.registered, nearby: source.nearCount, controlLines, grassLines, flowerLines, grassSources: source.owners.slice(0, source.count).some((owner) => members.has(owner)), flowerSources: source.owners.slice(0, source.count).some((owner) => flowerMembers.has(owner)), grassNearby: source.nearOwners.slice(0, source.nearCount).some((owner) => members.has(owner)), flowerNearby: source.nearOwners.slice(0, source.nearCount).some((owner) => flowerMembers.has(owner)), productionSources: production.owners.slice(0, production.count).some((owner) => members.has(owner) || flowerMembers.has(owner)), productionNearby: production.nearOwners.slice(0, production.nearCount).some((owner) => members.has(owner) || flowerMembers.has(owner)) });
     }
-    return { grass: grass.length, rendered: grass.every((node) => node.visible && node.geometry === geometry && node.geometry.faces.length > 0), excluded: grass.every((node) => node.sightHidden), rows };
+    return { grass: grass.length, flowers: flowers.length, bushes: bushes.length, labSign: !!labSign, buildSign: buildSignGeometry.sightHidden === true, rendered: grass.every((node) => node.visible && node.geometry === geometry && node.geometry.faces.length > 0) && flowers.every((node) => node.visible && node.geometry === flowerGeometry && node.geometry.faces.length > 0) && bushes.every((node) => node.visible && node.geometry.faces.length > 0) && labSign.visible && buildSignGeometry.faces.length > 0, excluded: [...grass, ...flowers, ...bushes, labSign, buildSign].every((node) => node.sightHidden), rows };
   } finally { filter.dispose(); objects.dispose(); S.removeChild(scene.root, control); }
 };
 
 export const pileGuideProbe = () => {
-  const B = window.__ooga, BL = window.BL, S = BL.scene, H = B.headquarters, provider = H.pileGuides, objects = H.objectGuides;
+  const B = window.__ooga, BL = window.BL, S = BL.scene, H = B.headquarters, objects = H.objectGuides;
+  let provider = H.pileGuides;
   const canvas = document.createElement("canvas"), mask = document.createElement("canvas"), width = 256, height = 192;
   canvas.width = mask.width = width; canvas.height = mask.height = height;
   const ctx = canvas.getContext("2d", { willReadFrequently: true }), maskCtx = mask.getContext("2d", { willReadFrequently: true });
@@ -225,11 +227,13 @@ export const pileGuideProbe = () => {
   const actor = { root: { position: { x: 0, y: 1, z: 0 } } }, oldLevel = B.level, rows = [], failures = [];
   const originalNodes = objects.stats.registered, originalCapacity = objects.result.capacity, bytes = provider.state.buffers;
   const draw = () => {
-    ctx.clearRect(0, 0, width, height); provider.draw(camera, ctx, 1, width, height);
+    // This probe checks the complete shell geometry independently of camera
+    // clipping, as used beneath the separate near-plane material cap.
+    ctx.clearRect(0, 0, width, height); provider.draw(camera, ctx, 1, width, height, 0, { rockOnly: true });
     return ctx.getImageData(0, 0, width, height).data;
   };
-  // Independent projected face union: no provider bounds, triangle classifier,
-  // certainty grid, contour candidates or simplified pile shape is consulted.
+  // Independently rasterize the requested inner mound and continuous slab.
+  // Fruit, slots and decorative perimeter stones never enter this reference.
   const paint = (node, matrix = node.world, offset = 0) => {
     const g = node.geometry, vertices = new Float64Array(g.verts.length / 3 * 2);
     for (let n = 0; n < g.verts.length; n += 3) {
@@ -239,51 +243,92 @@ export const pileGuideProbe = () => {
       if (depth <= camera.near) throw new Error("Pile mask fixture crosses its near plane");
       vertices[n / 3 * 2] = width / 2 + vx * focal / depth; vertices[n / 3 * 2 + 1] = height / 2 - vy * focal / depth;
     }
+    // Union whole polygons before rasterizing. Filling individual faces leaves
+    // antialias seams in the reference, especially on the nearly flat first fruit.
+    maskCtx.beginPath();
     for (const face of g.faces) {
-      maskCtx.beginPath();
-      for (let n = 0; n < face.i.length; n++) { const i = face.i[n] * 2; if (n) maskCtx.lineTo(vertices[i], vertices[i + 1]); else maskCtx.moveTo(vertices[i], vertices[i + 1]); }
-      maskCtx.closePath(); maskCtx.fill();
+      const a = face.i[0] * 2;
+      let area = 0;
+      for (let n = 0; n < face.i.length; n++) {
+        const b = face.i[n] * 2, c = face.i[(n + 1) % face.i.length] * 2;
+        area += vertices[b] * vertices[c + 1] - vertices[c] * vertices[b + 1];
+      }
+      const reverse = area < 0;
+      maskCtx.moveTo(vertices[a], vertices[a + 1]);
+      for (let n = 1; n < face.i.length; n++) { const i = face.i[reverse ? face.i.length - n : n] * 2; maskCtx.lineTo(vertices[i], vertices[i + 1]); }
+      maskCtx.lineTo(vertices[a], vertices[a + 1]);
     }
+    maskCtx.fill(); maskCtx.stroke();
   };
   const reference = () => {
-    maskCtx.clearRect(0, 0, width, height); maskCtx.fillStyle = "#ffffff";
+    maskCtx.clearRect(0, 0, width, height); maskCtx.fillStyle = maskCtx.strokeStyle = "#ffffff"; maskCtx.lineWidth = 0.6; maskCtx.lineJoin = "round";
     BL.math.mat4.lookAt(view, camera.position, camera.target, up);
-    for (const node of [B.altar.slab, B.core, ...B.slots.filter((slot) => !slot.moving).map((slot) => slot.node)]) if (node.visible) paint(node);
-    for (const node of [B.shell, ...B.altar.rings]) if (node.visible) for (let n = 0; n < node.instanceCount; n++) paint(node, node.instanceData, n * 20);
+    for (const node of [provider === H.pileGuides ? B.core : B.altar.slab]) if (node.visible) paint(node);
     return maskCtx.getImageData(0, 0, width, height).data;
   };
   try {
-    for (const level of [0, 1, 302, 303, 1000, BL.pile.MAX_BANANAS]) {
+    for (const cue of [H.platformGuides, H.pileGuides]) for (const level of [0, 1, 302, 303, 1000, BL.pile.MAX_BANANAS]) {
+      provider = cue;
+      if (provider === H.pileGuides && !level) continue;
+      const expectedBuffers = provider.state.buffers;
       B.setPileLevel(level); S.updateWorld(BL.scenes.hub.root); const active = provider.active();
-      const span = Math.max(3, B.altar.platformRadius), top = B.core.visible ? B.core.position.y + S.boundsOf(B.core.geometry).max[1] * B.core.scale.y + 0.2 : 1;
+      const span = Math.max(0.3, B.altar.outerRingInnerRadius), top = provider === H.pileGuides && B.core.visible ? B.core.position.y + S.boundsOf(B.core.geometry).max[1] * B.core.scale.y : B.altar.height;
+      // Fit the actual mound/slab, including the tiny empty platform. A
+      // distant minimum-radius view leaves no interior pixels to validate.
       Object.assign(camera.position, { x: span * 1.65, y: top + span * 0.85, z: span * 2.6 }); Object.assign(camera.target, { x: 0, y: top * 0.35, z: 0 });
       Object.assign(actor.root.position, { x: span + 1, y: 1, z: 0 });
       const source = objects.collect(actor, actor.root.position.x, 1, 0, camera, width / height), nearby = source.nearOwners.slice(0, source.nearCount);
       const pixels = draw(), updates = provider.state.updates, repeat = draw();
       let changed = 0, outline = 0, maximumAlpha = 0, fingerprint = 2166136261;
       for (let n = 3; n < pixels.length; n += 4) { if (pixels[n]) outline++; maximumAlpha = Math.max(maximumAlpha, pixels[n]); if (pixels[n] !== repeat[n]) changed++; fingerprint = Math.imul(fingerprint ^ pixels[n], 16777619); }
-      let referencePixels = null, interior = 0, seams = 0, distant = 0;
-      if (level !== BL.pile.MAX_BANANAS || B.renderer.kind === "canvas2d") {
+      let referencePixels = 0, interior = 0, seams = 0, distant = 0, interiorMin = 255, interiorMax = 0;
+      {
         const actual = reference(); referencePixels = 0;
-        for (let y = 3; y < height - 3; y++) for (let x = 3; x < width - 3; x++) {
+        // The wall-style rim expands 2.25px diagonally; allow its stroke
+        // and antialiasing fringe, without accepting detached pixels.
+        for (let y = 4; y < height - 4; y++) for (let x = 4; x < width - 4; x++) {
           const at = (y * width + x) * 4 + 3; if (actual[at] > 250) referencePixels++;
           let filled = true, near = false;
-          for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const alpha = actual[((y + dy) * width + x + dx) * 4 + 3]; filled = filled && alpha > 250; near = near || alpha > 0; }
-          if (filled) { interior++; if (pixels[at]) seams++; }
+          for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const alpha = actual[((y + dy) * width + x + dx) * 4 + 3]; filled = filled && alpha > 250; near = near || alpha > 0; }
+          if (filled) { interior++; if (!pixels[at]) seams++; interiorMin = Math.min(interiorMin, pixels[at]); interiorMax = Math.max(interiorMax, pixels[at]); }
           if (pixels[at] && !near) distant++;
         }
       }
-      const expectedInstances = [B.shell, ...B.altar.rings].reduce((sum, node) => sum + (node.visible ? node.instanceCount : 0), 0);
+      const expectedInstances = 0;
       const own = new Set(provider.roots), singleOwner = nearby.filter((node) => own.has(node)).length === 1 && nearby.includes(provider.owner) && !source.owners.slice(0, source.count).some((node) => own.has(node));
-      rows.push({ level, active, singleOwner, provider: objects.getProvider(provider.owner) === provider, instances: provider.state.instances, expectedInstances, shell: B.shell.instanceCount, considered: provider.state.considered, contained: provider.state.contained, outside: provider.state.outside, buffers: provider.state.buffers, registered: objects.stats.registered, capacity: source.capacity, outline, maximumAlpha, fingerprint, cached: provider.state.updates === updates && changed === 0, referencePixels, interior, seams, distant });
+      rows.push({ level, kind: provider === H.pileGuides ? "fruit" : "platform", expectedBuffers, active, singleOwner, distinct: provider.owner !== (provider === H.pileGuides ? H.platformGuides.owner : H.pileGuides.owner), provider: objects.getProvider(provider.owner) === provider, instances: provider.state.instances, expectedInstances, shell: B.shell.instanceCount, considered: provider.state.considered, contained: provider.state.contained, outside: provider.state.outside, buffers: provider.state.buffers, registered: objects.stats.registered, capacity: source.capacity, outline, maximumAlpha, fingerprint, cached: provider.state.updates === updates && changed === 0, referencePixels, interior, interiorMin, interiorMax, seams, distant });
       if ((!active || !singleOwner || seams || distant) && failures.length < 10) failures.push({ level, active, singleOwner, seams, distant });
     }
-    // Delivery bananas are flying objects, not part of the resting pile union.
+    // Cosmetic fruit can disappear, move, or receive an instance upload without
+    // changing the mound outline, proximity or camera visibility.
+    const fruit = [B.shell, ...B.slots.map((slot) => slot.node), ...B.altar.rings];
+    const savedFruit = fruit.map((node) => [node, node.visible, node.position.x, node.instanceVersion]);
+    const shellBefore = draw(), versionBefore = provider.version, updatesBefore = provider.state.updates;
+    const clear = () => true;
+    const distanceBefore = objects.distance(provider.owner, actor.root.position.x, 1, 0);
+    const perceivedBefore = objects.perceived(provider.owner, actor, actor.root.position.x, 1, 0, clear), concealedBefore = objects.concealed(provider.owner, actor, clear);
+    for (const node of fruit) { node.visible = !node.visible; node.position.x += 20; if (node.instanceVersion !== undefined) node.instanceVersion++; }
+    S.updateWorld(BL.scenes.hub.root); provider.active();
+    objects.collect(actor, actor.root.position.x, 1, 0, camera, width / height);
+    const shellAfter = draw(); let fruitChanged = 0;
+    for (let n = 0; n < shellBefore.length; n++) if (shellBefore[n] !== shellAfter[n]) fruitChanged++;
+    const fruitStable = !fruitChanged && provider.version === versionBefore && provider.state.updates === updatesBefore
+      && objects.distance(provider.owner, actor.root.position.x, 1, 0) === distanceBefore
+      && objects.perceived(provider.owner, actor, actor.root.position.x, 1, 0, clear) === perceivedBefore
+      && objects.concealed(provider.owner, actor, clear) === concealedBefore;
+    for (const [node, visible, x, version] of savedFruit) {
+      node.visible = visible; node.position.x = x;
+      if (version === undefined) delete node.instanceVersion; else node.instanceVersion = version;
+    }
+    S.updateWorld(BL.scenes.hub.root); provider.active();
+    // Delivery bananas are flying objects, not part of the inner mound.
     const drop = B.drops[0], saved = { visible: drop.node.visible, position: { ...drop.node.position } }, before = draw();
     drop.node.visible = true; Object.assign(drop.node.position, { x: 0, y: camera.target.y + 10, z: 0 }); S.updateWorld(BL.scenes.hub.root); provider.active();
     const after = draw(); let dropChanged = 0;
     for (let n = 0; n < before.length; n++) if (before[n] !== after[n]) dropChanged++;
     drop.node.visible = saved.visible; Object.assign(drop.node.position, saved.position);
-    return { rows, originalNodes, originalCapacity, bytes, dropChanged, failures };
+    B.setPileLevel(0); S.updateWorld(BL.scenes.hub.root);
+    const empty = { fruit: H.pileGuides.active(), platform: H.platformGuides.active() };
+    return { rows, empty, originalNodes, originalCapacity, bytes, fruitStable, fruitChanged, dropChanged, failures };
   } finally { B.setPileLevel(oldLevel); S.updateWorld(BL.scenes.hub.root); provider.active(); }
 };

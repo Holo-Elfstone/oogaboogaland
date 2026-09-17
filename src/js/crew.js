@@ -30,6 +30,7 @@
   const { WALK } = BL.pilot;
   const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = WALK.speed;
   const PLAYER_STEP = 0.125;
+  const NAV_WIDTH = 21, NAV_SIZE = NAV_WIDTH * NAV_WIDTH, NAV_HALF = 10, NAV_CELL = 0.5, NAV_CENTER = NAV_HALF * NAV_WIDTH + NAV_HALF;
   const JUMP_SPEED = 4.8, JET_FUEL_SECONDS = 8, JET_MOVE_SECONDS = JET_FUEL_SECONDS * 2, JET_REFILL_SECONDS = 4, JET_LAUNCH_FUEL = 0.2;
   // Fuel limits range and altitude; releasing thrust uses ordinary gravity.
   const JET_ACCEL = 20, JET_RISE = 7, JET_SPEED = 6.4, JET_PUFF = 0.05;
@@ -172,6 +173,9 @@
     // Ground under a point, given how high the caveman already is
     const groundAt = ctx.groundAt || (() => 0);
     const walkable = ctx.walkable || (() => true);
+    const npcWalkable = ctx.npcWalkable || walkable;
+    const inBananas = ctx.inBananas || (() => false);
+    const npcDestinationBlocked = ctx.npcDestinationBlocked || inBananas;
     // Where a flying caveman may go
     const flyable = ctx.flyable || walkable;
     const cavemen = new Map();
@@ -194,6 +198,11 @@
         zzzTimer: 0,
         build: null,
         walk: null,
+        pathing: ctx.npcPaths ? ctx.npcPaths.createState() : null,
+        avoidance: { active: false, side: i & 1 ? 1 : -1, stalled: 0, best: Infinity, tx: NaN, tz: NaN,
+          navigation: { mode: 0, x: 0, z: 0, count: 0, index: 0, searches: 0, expansions: 0,
+            jumpCandidate: 0, jumps: 0, jumpX: 0, jumpZ: 0, clearance: 0, double: false, boosted: false, moving: false,
+            costs: new Float32Array(NAV_SIZE), parents: new Int16Array(NAV_SIZE), heights: new Float32Array(NAV_SIZE), closed: new Uint8Array(NAV_SIZE), path: new Int16Array(NAV_SIZE) } },
         hop: 0,
         hopV: 0,
         jumps: 0,
@@ -221,7 +230,8 @@
     const stateOf = (cave) => cave.override || contributors.stateFor(cave.contributor);
     const groundY = (cave) => {
       const p = cave.root.position;
-      return cave.baseY + groundAt(p.x, p.z, p.y - cave.baseY);
+      const feet = p.y - cave.baseY;
+      return cave.baseY + groundAt(p.x, p.z, feet, feet, cave);
     };
     const grounded = (cave) => cave.bedTravel.mode === "rest" || cave.hop === 0 && cave.hopV <= 0 && Math.abs(cave.root.position.y - groundY(cave)) < 1e-6;
     const atPile = (cave) => cave.act.kind === "eat" || cave.act.kind === "rush";
@@ -296,6 +306,11 @@
     const steer = { x: 0, z: 0, view: 0, forward: 0, strafe: 0 };
     const startBedRoute = (cave, bed, toBed) => {
       const travel = cave.bedTravel;
+      cave.avoidance.tx = NaN;
+      if (!toBed) {
+        const slot = closestSlot(cave);
+        if (slot) cave.slot = slot;
+      }
       const ground = groundY(cave), airborne = cave.hop > 0 || cave.hopV > 0 || cave.root.position.y - ground > 0.1;
       travel.route = airborne ? null : ctx.bedRoute(cave, bed, toBed);
       if (airborne) cave.hop = Math.max(cave.hop, cave.root.position.y - ground);
@@ -311,7 +326,7 @@
     };
     const standFromBed = (cave) => {
       const travel = cave.bedTravel, lying = travel.mode === "rest" || travel.mode === "lie";
-      if (lying) cave.root.position.y = cave.baseY + (cave.bedroll.y === undefined ? groundAt(cave.root.position.x, cave.root.position.z) : cave.bedroll.y);
+      if (lying) cave.root.position.y = cave.baseY + (cave.bedroll.y === undefined ? groundAt(cave.root.position.x, cave.root.position.z, Infinity, Infinity, cave) : cave.bedroll.y);
       resetPose(cave);
       if (lying) {
         cave.hop = cave.hopV = cave.jumps = 0;
@@ -332,7 +347,7 @@
       cave.state = "sleeping";
       cave.parts.head.geometry = cave.headOpen;
       r.visible = true;
-      if (!visible) setVec(r.position, walkIn.x, cave.baseY + groundAt(walkIn.x, walkIn.z), walkIn.z);
+      if (!visible) setVec(r.position, walkIn.x, cave.baseY + groundAt(walkIn.x, walkIn.z, Infinity, Infinity, cave), walkIn.z);
       if (claimBedroll(cave)) startBedRoute(cave, cave.bedroll, true);
       else { cave.bedTravel.mode = "waiting"; cave.bedTravel.toBed = true; cave.bedTravel.retry = 1; }
       refreshRosterRow(cave);
@@ -396,13 +411,16 @@
       releaseBedroll(cave);
       cave.parts.head.geometry = cave.headOpen;
       cave.walk = { tx: cave.slot.x, tz: cave.slot.z, speed: 2, phase: 0, heading: Math.atan2(cave.slot.x - from.x, cave.slot.z - from.z), to: "slot" };
+      cave.avoidance.tx = NaN;
       resetPose(cave);
       releaseBuild(cave);
       cave.act.kind = "eat";
       const r = cave.root;
       r.visible = true;
-      Object.assign(r.position, { x: from.x, y: cave.baseY + groundAt(from.x, from.z), z: from.z });
+      Object.assign(r.position, { x: from.x, y: cave.baseY + groundAt(from.x, from.z, Infinity, Infinity, cave), z: from.z });
       r.rotation.y = cave.walk.heading;
+      walkToSlot(cave, true);
+      cave.walk.speed = 2;
       if (fresh) popNode(r);
       refreshRosterRow(cave);
     };
@@ -410,19 +428,43 @@
     const FAN_CENTER = Math.atan2(Math.cos(viewYaw), Math.sin(viewYaw)) + Math.PI;
     const wantedFanRadius = () => Math.max(ctx.pile.footprintEdge, ctx.pile.pileEdge()) + FAN_STANDOFF;
     let fanRadius = wantedFanRadius();
+    const fanSlots = [];
     const assignFanSlots = (entries, isWorking) => {
       const farSide = FAN_CENTER;
       const eaters = entries.filter(isWorking);
+      fanSlots.length = 0;
       // Neighbours stand FAN_ARC apart at any radius, closer only when the fan would wrap
       const angleStep = Math.min(clamp(FAN_ARC / fanRadius, 0.5, 1.1), FAN_SPREAD / Math.max(1, eaters.length - 1));
       // Nobody stands between the camera and the pile
       eaters.forEach((cave, i) => {
         const angle = farSide + (i - (eaters.length - 1) / 2) * angleStep;
         cave.slot = { x: Math.cos(angle) * fanRadius, z: Math.sin(angle) * fanRadius };
+        fanSlots.push(cave.slot);
       });
     };
+    const slotAvailable = (cave, slot) => {
+      const floor = groundAt(slot.x, slot.z, 0, 0, cave);
+      for (const other of cavemen.values()) {
+        if (other === cave || !other.root.visible) continue;
+        const p = other.root.position, feet = p.y - other.baseY;
+        if (feet < floor + cave.bodyHeight && feet + other.bodyHeight > floor && Math.hypot(p.x - slot.x, p.z - slot.z) < 0.68) return false;
+        // Reserve approaching eaters' destinations as well as checking their
+        // bodies. A player can still take that place before they arrive.
+        if (other !== player && other.walk?.to === "slot" && Math.hypot(other.walk.tx - slot.x, other.walk.tz - slot.z) < 0.68) return false;
+      }
+      return true;
+    };
+    const closestSlot = (cave) => {
+      let closest = null, distance = Infinity;
+      const p = cave.root.position;
+      for (const slot of fanSlots) {
+        const d = Math.hypot(slot.x - p.x, slot.z - p.z);
+        if (d < distance && slotAvailable(cave, slot)) { closest = slot; distance = d; }
+      }
+      return closest;
+    };
     const standAtSlot = (cave) => {
-      setVec(cave.root.position, cave.slot.x, cave.baseY + groundAt(cave.slot.x, cave.slot.z), cave.slot.z);
+      setVec(cave.root.position, cave.slot.x, cave.baseY + groundAt(cave.slot.x, cave.slot.z, Infinity, Infinity, cave), cave.slot.z);
       cave.root.rotation.y = Math.atan2(-cave.slot.x, -cave.slot.z);
     };
     let elapsed = 0;
@@ -437,6 +479,8 @@
       if (cave.state !== "working" || cave.build) return;
       if (cave.bedTravel.mode) return;
       if (!force && !atPile(cave)) return;
+      const slot = closestSlot(cave);
+      if (slot) cave.slot = slot;
       if (cave.walk) {
         cave.walk.tx = cave.slot.x;
         cave.walk.tz = cave.slot.z;
@@ -447,6 +491,7 @@
       const { x, z } = cave.root.position;
       if (Math.hypot(cave.slot.x - x, cave.slot.z - z) < 0.15) return;
       cave.walk = { tx: cave.slot.x, tz: cave.slot.z, speed: force ? RUSH_SPEED : 1.6, phase: 0, heading: cave.root.rotation.y, to: "slot" };
+      cave.avoidance.tx = NaN;
       cave.parts.snack.visible = false;
       cave.parts.head.rotation.x = 0;
       cave.parts.head.rotation.y = 0;
@@ -485,10 +530,11 @@
     // Send a caveman off to a spot
     const startWander = (cave) => {
       const spot = cave.act.spot;
-      wanderSpot(spot);
+      wanderSpot(spot, cave);
       cave.act.kind = "wander";
       cave.act.trips++;
       cave.walk = { tx: spot.x, tz: spot.z, speed: WANDER_SPEED + Math.random() * 0.5, phase: 0, heading: cave.root.rotation.y, to: "spot" };
+      cave.avoidance.tx = NaN;
       cave.parts.snack.visible = false;
       cave.parts.head.rotation.x = 0;
       cave.parts.head.rotation.y = 0;
@@ -543,7 +589,7 @@
     const dismantling = [];
     const spawnEquipment = (spot) => {
       const geometry = models.buildableGeos[Math.floor(Math.random() * models.buildableGeos.length)]();
-      const node = createNode({ position: { x: spot.x, y: groundAt(spot.x, spot.z), z: spot.z }, rotation: { x: 0, y: spot.ry, z: 0 }, geometry });
+      const node = createNode({ position: { x: spot.x, y: groundAt(spot.x, spot.z), z: spot.z }, rotation: { x: 0, y: spot.ry, z: 0 }, geometry, sightHidden: !!geometry.sightHidden });
       addChild(root, node);
       builtEquipment.push({ node, spot });
       popNode(node);
@@ -777,12 +823,140 @@
       fitSleepPose(cave, pose);
       travel.roll = 0;
     };
+    // Walkers use the same swept body as the visitor. Hold one detour side
+    // until the direct route clears, instead of alternating at every corner.
+    const walkerClear = (cave, x, z) => {
+      const p = cave.root.position, feet = p.y - cave.baseY;
+      return npcWalkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave) && groundAt(x, z, feet, feet, cave) >= feet - STEP - 1e-7;
+    };
+    const recoverWalker = (cave, tx, tz, dt) => {
+      const a = cave.avoidance, nav = a.navigation, p = cave.root.position, distance = Math.hypot(tx - p.x, tz - p.z);
+      if (tx !== a.tx || tz !== a.tz) { a.tx = tx; a.tz = tz; a.best = distance; a.stalled = 0; nav.mode = 0; }
+      if (distance < a.best - 0.1) { a.best = distance; a.stalled = 0; }
+      else a.stalled += dt;
+      if (!nav.mode && a.stalled > 0.75 && distance > 0.15) {
+        // A small, fixed local search can back out of a cul-de-sac. Spread
+        // its work over frames; ordinary unobstructed walking never searches.
+        nav.mode = 1; nav.x = p.x; nav.z = p.z; nav.count = nav.index = 0; nav.searches++;
+        nav.costs.fill(Infinity); nav.parents.fill(-1); nav.closed.fill(0);
+        nav.costs[NAV_CENTER] = 0; nav.heights[NAV_CENTER] = p.y - cave.baseY;
+      }
+    };
+    const searchWalker = (cave, tx, tz) => {
+      const nav = cave.avoidance.navigation;
+      for (let budget = 0; budget < 6; budget++) {
+        let current = -1, best = Infinity;
+        for (let i = 0; i < NAV_SIZE; i++) if (!nav.closed[i] && nav.costs[i] < Infinity) {
+          const x = nav.x + (i % NAV_WIDTH - NAV_HALF) * NAV_CELL, z = nav.z + (Math.floor(i / NAV_WIDTH) - NAV_HALF) * NAV_CELL;
+          const score = nav.costs[i] + Math.hypot(tx - x, tz - z);
+          if (score < best) { current = i; best = score; }
+        }
+        if (current < 0) { nav.mode = 3; nav.jumpCandidate = 0; return; }
+        nav.closed[current] = 1; nav.expansions++;
+        const col = current % NAV_WIDTH, row = Math.floor(current / NAV_WIDTH);
+        const x = nav.x + (col - NAV_HALF) * NAV_CELL, z = nav.z + (row - NAV_HALF) * NAV_CELL, y = nav.heights[current];
+        const remaining = Math.hypot(tx - x, tz - z);
+        const destination = remaining < 0.75 && npcWalkable(x, z, tx, tz, y, cave.bodyHeight, cave)
+          && groundAt(tx, tz, y, y, cave) >= y - STEP - 1e-7;
+        const exit = (col === 0 || row === 0 || col === NAV_WIDTH - 1 || row === NAV_WIDTH - 1)
+          && remaining < Math.hypot(tx - nav.x, tz - nav.z) - 0.5;
+        if (destination || exit) {
+          for (let i = current; i !== NAV_CENTER && i >= 0; i = nav.parents[i]) nav.path[nav.count++] = i;
+          nav.index = nav.count - 1; nav.mode = 2;
+          return;
+        }
+        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+          if ((!dx && !dz) || col + dx < 0 || col + dx >= NAV_WIDTH || row + dz < 0 || row + dz >= NAV_WIDTH) continue;
+          const next = current + dz * NAV_WIDTH + dx, cost = nav.costs[current] + Math.hypot(dx, dz) * NAV_CELL;
+          if (nav.closed[next] || cost >= nav.costs[next]) continue;
+          const nx = x + dx * NAV_CELL, nz = z + dz * NAV_CELL;
+          if (!npcWalkable(x, z, nx, nz, y, cave.bodyHeight, cave)) continue;
+          const height = groundAt(nx, nz, y, y, cave);
+          if (height < y - STEP - 1e-7 || height > y + STEP + 1e-7) continue;
+          nav.costs[next] = cost; nav.parents[next] = current; nav.heights[next] = height;
+        }
+      }
+    };
+    const jumpWalker = (cave, tx, tz) => {
+      const nav = cave.avoidance.navigation, p = cave.root.position, feet = p.y - cave.baseY;
+      if (inBananas(cave) || nav.jumpCandidate >= 8) { nav.mode = 0; cave.avoidance.stalled = -1; return; }
+      const candidate = nav.jumpCandidate++, turn = candidate ? Math.ceil(candidate / 2) * (candidate & 1 ? 1 : -1) * Math.PI / 4 : 0;
+      const angle = Math.atan2(tx - p.x, tz - p.z) + turn, endX = p.x + Math.sin(angle) * 1.1, endZ = p.z + Math.cos(angle) * 1.1;
+      const landing = groundAt(endX, endZ, feet + 2.1, feet + 2.1, cave), clearance = Math.max(feet, landing) + 0.08;
+      if (landing < feet - 3 || landing > feet + 2.1 || !flyable(endX, endZ, endX, endZ, landing + 1e-5, cave.bodyHeight, cave)
+        || ctx.npcLandingAllowed && !ctx.npcLandingAllowed(endX, landing, endZ, cave.bodyHeight)) return;
+      const double = landing > feet + 0.85;
+      let x = p.x, z = p.z, y = feet, velocity = JUMP_SPEED, boosted = false, moving = false;
+      // Check one candidate per frame against swept bodies and actual support.
+      // A lift before lateral travel lets a wedged NPC jump onto its obstacle.
+      for (let i = 0; i < 120; i++) {
+        velocity -= WALK.gravity * 0.025;
+        if (double && !boosted && velocity <= 0) { velocity = JUMP_SPEED; boosted = true; }
+        const nextY = y + velocity * 0.025;
+        if (nextY >= clearance) moving = true;
+        const remaining = Math.hypot(endX - x, endZ - z), step = moving ? Math.min(0.075, remaining) : 0;
+        const nx = remaining ? x + (endX - x) * step / remaining : x, nz = remaining ? z + (endZ - z) * step / remaining : z;
+        if (moving && velocity < 0 && nextY <= landing && Math.hypot(endX - nx, endZ - nz) < 0.6) {
+          if (!flyable(nx, nz, nx, nz, landing + 1e-5, cave.bodyHeight, cave)) return;
+          nav.mode = 4; nav.jumpX = endX; nav.jumpZ = endZ; nav.clearance = clearance; nav.double = double;
+          nav.boosted = nav.moving = false; nav.jumps++; cave.hopV = JUMP_SPEED;
+          cave.leap.vx = cave.leap.vz = 0;
+          return;
+        }
+        if (nextY < feet - 3 || !flyable(x, z, nx, nz, Math.min(y, nextY) + 1e-5, cave.bodyHeight, cave)
+          || !flyable(nx, nz, nx, nz, nextY + 1e-5, cave.bodyHeight, cave)) return;
+        x = nx; z = nz; y = nextY;
+      }
+    };
+    const walkToward = (cave, tx, tz, distance) => {
+      const nav = cave.avoidance.navigation;
+      if (nav.mode === 1) { searchWalker(cave, tx, tz); return 0; }
+      if (nav.mode === 3) { jumpWalker(cave, tx, tz); return 0; }
+      if (nav.mode === 4) return 0;
+      if (nav.mode === 2) {
+        while (nav.index >= 0) {
+          const i = nav.path[nav.index], x = nav.x + (i % NAV_WIDTH - NAV_HALF) * NAV_CELL, z = nav.z + (Math.floor(i / NAV_WIDTH) - NAV_HALF) * NAV_CELL;
+          if (Math.hypot(x - cave.root.position.x, z - cave.root.position.z) < 1e-6) { nav.index--; continue; }
+          tx = x; tz = z; break;
+        }
+        if (nav.index < 0) { nav.mode = 0; cave.avoidance.stalled = 0; cave.avoidance.best = Infinity; cave.avoidance.active = false; }
+      }
+      const p = cave.root.position, dx = tx - p.x, dz = tz - p.z, remaining = Math.hypot(dx, dz);
+      if (remaining < 1e-7) return 0;
+      const step = Math.min(distance, PLAYER_STEP, remaining), heading = Math.atan2(dx, dz), avoidance = cave.avoidance;
+      let angle = heading;
+      const ahead = nav.mode === 2 ? step : avoidance.active ? Math.min(0.9, remaining) : step;
+      if (walkerClear(cave, p.x + Math.sin(heading) * step, p.z + Math.cos(heading) * step)
+        && (ahead === step || walkerClear(cave, p.x + Math.sin(heading) * ahead, p.z + Math.cos(heading) * ahead))) avoidance.active = false;
+      else {
+        if (nav.mode === 2) { nav.mode = 0; avoidance.stalled = 0.8; return 0; }
+        let clear = false;
+        // Fixed capacity, no path allocation: each candidate is checked for
+        // both the actual step and a short body-width look-ahead.
+        for (let side = 0; side < 2 && !clear; side++) {
+          const sign = side ? -avoidance.side : avoidance.side;
+          for (let turn = 1; turn <= 4; turn++) {
+            angle = heading + sign * turn * Math.PI / 6;
+            const look = Math.max(step, 0.35), sx = Math.sin(angle), sz = Math.cos(angle);
+            if (!walkerClear(cave, p.x + sx * look, p.z + sz * look) || !walkerClear(cave, p.x + sx * step, p.z + sz * step)) continue;
+            avoidance.side = sign;
+            avoidance.active = clear = true;
+            break;
+          }
+        }
+        if (!clear) { if (avoidance.stalled >= 0) avoidance.stalled = Math.max(0.8, avoidance.stalled); return 0; }
+      }
+      p.x += Math.sin(angle) * step; p.z += Math.cos(angle) * step;
+      p.y = groundY(cave);
+      cave.root.rotation.y += Math.atan2(Math.sin(angle - cave.root.rotation.y), Math.cos(angle - cave.root.rotation.y)) * 0.35;
+      return step;
+    };
     const runBed = (cave, dt) => {
       const travel = cave.bedTravel, p = cave.root.position;
       if (travel.mode === "landing") {
         runPlayer(cave, dt, false);
-        if (ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY) && p.y - cave.baseY < ctx.abyssRespawnY) {
-          setVec(p, walkIn.x, cave.baseY + groundAt(walkIn.x, walkIn.z), walkIn.z);
+        if (ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY, cave) && p.y - cave.baseY < ctx.abyssRespawnY) {
+          setVec(p, walkIn.x, cave.baseY + groundAt(walkIn.x, walkIn.z, Infinity, Infinity, cave), walkIn.z);
           cave.hop = cave.hopV = 0;
         }
         if (grounded(cave)) startBedRoute(cave, travel.toBed ? cave.bedroll : travel.bed, travel.toBed);
@@ -798,18 +972,31 @@
         return;
       }
       if (travel.mode === "walk") {
-        let remaining = dt * 2;
+        if (cave.hop > 0 || cave.hopV > 0) { runPlayer(cave, dt, false); return; }
+        // The architectural route ends at the meadow. Select its final
+        // eating place live, so a newly occupied slot cannot block a return.
+        if (!travel.toBed && travel.index >= travel.route.length - 1) {
+          travel.mode = ""; travel.route = null; travel.bed = null;
+          cave.act.kind = "eat"; walkToSlot(cave, true);
+          return;
+        }
+        let remaining = dt * 2 * (inBananas(cave) ? 0.5 : 1), recoveryChecked = false;
         while (remaining > 1e-8 && travel.index < travel.route.length) {
           const target = travel.route[travel.index], dx = target.x - p.x, dz = target.z - p.z, distance = Math.hypot(dx, dz);
           if (distance < 1e-6) { travel.index++; continue; }
-          const step = Math.min(remaining, PLAYER_STEP, distance), x = p.x + dx / distance * step, z = p.z + dz / distance * step;
-          if (!walkable(p.x, p.z, x, z, p.y - cave.baseY, cave.bodyHeight)) { travel.blocked += dt; break; }
-          p.x = x; p.z = z; p.y = groundY(cave);
-          const heading = Math.atan2(dx, dz);
-          cave.root.rotation.y += Math.atan2(Math.sin(heading - cave.root.rotation.y), Math.cos(heading - cave.root.rotation.y)) * Math.min(1, dt * 8);
+          // Scenery may cover an intermediate architectural waypoint. Aim
+          // around that prop toward the next one; never insist on occupying
+          // an impossible point inside its trunk, barrel or another walker.
+          if (distance < 3 && travel.index + 1 < travel.route.length && !npcWalkable(target.x, target.z, target.x, target.z, target.y, cave.bodyHeight, cave)) { travel.index++; continue; }
+          if (!recoveryChecked) { recoverWalker(cave, target.x, target.z, dt); recoveryChecked = true; }
+          const step = walkToward(cave, target.x, target.z, remaining);
+          if (!step) { travel.blocked += dt; break; }
+          // This is the current obstruction duration, like avoidance.stalled.
+          // Clear it when progress resumes after yielding to another Ooga.
+          travel.blocked = 0;
           travel.phase += step * 4.5;
           remaining -= step;
-          if (step === distance) travel.index++;
+          if (Math.hypot(target.x - p.x, target.z - p.z) < 1e-6) travel.index++;
         }
         if (travel.index === travel.route.length) {
           standPose(cave);
@@ -885,30 +1072,41 @@
       parts.armL.rotation.x = parts.armR.rotation.x = -1.1;
     };
     const runWalk = (cave, dt) => {
-      const w = cave.walk;
-      const dx = w.tx - cave.root.position.x, dz = w.tz - cave.root.position.z;
-      const dist = Math.hypot(dx, dz);
-      const step = w.speed * dt;
-      if (step >= dist) {
+      // Donations can cover a destination after it was chosen. Choose a new
+      // clear spot instead of circling a point now buried inside the mound.
+      if (cave.walk.to === "spot" && npcDestinationBlocked(cave, cave.walk.tx, cave.walk.tz)) startWander(cave);
+      const w = cave.walk, p = cave.root.position;
+      if (w.to === "slot" && !slotAvailable(cave, cave.slot)) {
+        const slot = closestSlot(cave);
+        if (!slot) { standPose(cave); return; }
+        cave.slot = slot; w.tx = slot.x; w.tz = slot.z;
+        cave.avoidance.active = false;
+      }
+      if (ctx.npcPaths && (!cave.avoidance.navigation.mode || cave.pathing.tx !== w.tx || cave.pathing.tz !== w.tz)) ctx.npcPaths.target(cave, w.tx, w.tz);
+      recoverWalker(cave, ctx.npcPaths ? cave.pathing.targetX : w.tx, ctx.npcPaths ? cave.pathing.targetZ : w.tz, dt);
+      let remaining = w.speed * dt * (inBananas(cave) ? 0.5 : 1), moved = 0;
+      while (remaining > 1e-8 && Math.hypot(w.tx - p.x, w.tz - p.z) > 1e-6) {
+        if (ctx.npcPaths && (!cave.avoidance.navigation.mode || cave.pathing.tx !== w.tx || cave.pathing.tz !== w.tz)) ctx.npcPaths.target(cave, w.tx, w.tz);
+        const step = walkToward(cave, ctx.npcPaths ? cave.pathing.targetX : w.tx, ctx.npcPaths ? cave.pathing.targetZ : w.tz, remaining);
+        if (!step) break;
+        moved += step; remaining -= step;
+      }
+      if (Math.hypot(w.tx - p.x, w.tz - p.z) < 1e-6) {
         if (w.to === "spot") {
-          cave.root.position.x = w.tx;
-          cave.root.position.z = w.tz;
-          cave.root.position.y = groundY(cave);
           arriveAtSpot(cave);
         } else {
-          standAtSlot(cave);
+          cave.root.rotation.y = Math.atan2(-p.x, -p.z);
           if (cave !== player) startMeal(cave);
         }
         standPose(cave);
         cave.walk = null;
         return;
       }
-      cave.root.position.x += dx / dist * step;
-      cave.root.position.z += dz / dist * step;
-      w.heading = damp(w.heading, Math.atan2(dx, dz), 8, dt);
-      cave.root.rotation.y = w.heading;
-      w.phase += dt * 9;
+      w.heading = cave.root.rotation.y;
+      w.phase += moved * 5;
       walkPose(cave, w.phase);
+      // The gait belongs to the limbs; its physical feet stay on the support.
+      p.y = groundY(cave);
     };
     const quoteFor = () => {
       const table = ctx.phase ? PHASE_QUOTES[ctx.phase()] : IDLE_QUOTES;
@@ -939,7 +1137,7 @@
         parts.armL.rotation.x = -2.6 + wave;
         parts.armR.rotation.x = -2.6 - wave;
         parts.head.rotation.x = -0.15;
-        if (cave.hop === 0 && cave.hopV <= 0) cave.hopV = 2.2;
+        if (cave.hop === 0 && cave.hopV <= 0 && !inBananas(cave)) cave.hopV = 2.2;
         return;
       }
       if (cave.catchT > 0) {
@@ -998,27 +1196,28 @@
       const y = cave.root.position.y - cave.baseY;
       const height = cave.bodyHeight + Math.max(0, cave.viewLift);
       return flying || cave.hop > 0
-        ? flyable(fromX, fromZ, toX, toZ, y, height) && groundAt(toX, toZ, y) <= y
-        : walkable(fromX, fromZ, toX, toZ, y, height);
+        ? flyable(fromX, fromZ, toX, toZ, y, height, cave) && groundAt(toX, toZ, y, y, cave) <= y
+        : walkable(fromX, fromZ, toX, toZ, y, height, cave);
     };
     const movePlayer = (cave, flying, dx, dz) => {
       const p = cave.root.position, steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / PLAYER_STEP));
       dx /= steps;
       dz /= steps;
       for (let i = 0; i < steps; i++) {
-        if (canStep(cave, flying, p.x, p.z, p.x + dx, p.z + dz)) {
-          p.x += dx;
-          p.z += dz;
+        const speed = inBananas(cave) ? 0.5 : 1, sx = dx * speed, sz = dz * speed;
+        if (canStep(cave, flying, p.x, p.z, p.x + sx, p.z + sz)) {
+          p.x += sx;
+          p.z += sz;
         } else {
-          if (dx && canStep(cave, flying, p.x, p.z, p.x + dx, p.z)) p.x += dx;
-          if (dz && canStep(cave, flying, p.x, p.z, p.x, p.z + dz)) p.z += dz;
+          if (sx && canStep(cave, flying, p.x, p.z, p.x + sx, p.z)) p.x += sx;
+          if (sz && canStep(cave, flying, p.x, p.z, p.x, p.z + sz)) p.z += sz;
         }
         if (!flying && cave.hop === 0) p.y = groundY(cave);
       }
     };
     const clampPlayerCeiling = (cave, ground, feet = cave.root.position.y - cave.baseY) => {
       if (!ctx.ceilingAt) return;
-      const p = cave.root.position, ceiling = ctx.ceilingAt(p.x, p.z, feet);
+      const p = cave.root.position, ceiling = ctx.ceilingAt(p.x, p.z, feet, cave);
       const height = cave.bodyHeight + Math.max(0, cave.viewLift);
       const limit = Math.max(0, ceiling - (ground - cave.baseY) - height);
       // Held thrust stays in contact instead of integrating a small gravity
@@ -1043,7 +1242,8 @@
         const dx = steer.x / len * k, dz = steer.z / len * k;
         movePlayer(cave, flying, dx, dz);
         const heading = Math.atan2(steer.x, steer.z);
-        cave.root.rotation.y += Math.atan2(Math.sin(heading - cave.root.rotation.y), Math.cos(heading - cave.root.rotation.y)) * Math.min(1, 12 * dt) * (1 - steer.view);
+        if (Math.abs(steer.forward) > 0.05 && Math.abs(steer.strafe) <= 0.05) cave.root.rotation.y = heading;
+        else cave.root.rotation.y += Math.atan2(Math.sin(heading - cave.root.rotation.y), Math.cos(heading - cave.root.rotation.y)) * Math.min(1, 12 * dt) * (1 - steer.view);
         cave.act.phase += dt * 10 * (steer.view > 0 && steer.forward < -0.05 ? -1 : 1);
         const positionY = p.y;
         walkPose(cave, cave.act.phase);
@@ -1064,7 +1264,7 @@
         flyPose(cave);
       }
       if (flying) flyPose(cave);
-      else if (cave.hop > 0 && ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY)) {
+      else if (cave.hop > 0 && ctx.abyssAt && ctx.abyssAt(p.x, p.z, p.y - cave.baseY, cave)) {
         // Arms rise and legs trail during the visible fall beneath the island.
         flyPose(cave);
         cave.parts.armL.rotation.x = cave.parts.armR.rotation.x = -2.1;
@@ -1078,7 +1278,7 @@
         const drop = wasGround - groundY(cave);
         if (drop > STEP) {
           cave.hop += drop;
-          if (!cave.cloudSupport) {
+          if (!cave.cloudSupport && !inBananas(cave)) {
             cave.hopV = Math.max(cave.hopV, WALK.ledgeRise);
             leap.vx = Math.sin(cave.root.rotation.y) * WALK.ledgeSpeed;
             leap.vz = Math.cos(cave.root.rotation.y) * WALK.ledgeSpeed;
@@ -1117,14 +1317,37 @@
       clearHeadLook(cave);
       const parts = cave.parts;
       if (ctx.prepareCloudSupport && (!cave.bedTravel.mode || cave.bedTravel.mode === "landing" || cave.bedTravel.mode === "waiting")) ctx.prepareCloudSupport(cave);
+      if (cave.root.visible && (cave.state === "working" || cave.bedTravel.mode === "landing" || cave.bedTravel.mode === "waiting" || cave.bedTravel.mode === "walk")) {
+        // Hop is relative to the support, but the body lives at a world height.
+        // Rebase before gravity when a moving character or prop comes or goes.
+        const floor = groundY(cave), p = cave.root.position;
+        cave.hop = Math.max(0, p.y - floor);
+        if (p.y < floor) p.y = floor;
+      }
       cave.highlight = damp(cave.highlight, cave.highlightTarget, 12, dt);
       for (const key of BODY_PARTS) parts[key].highlight = cave.highlight;
       if (cave.hopV > 0 || cave.hop > 0) {
         cave.hopV -= WALK.gravity * dt;
-        cave.hop = Math.max(0, cave.hop + cave.hopV * dt);
+        // Fruit slows travel in either vertical direction without changing
+        // ballistic momentum; leaving restores ordinary movement immediately.
+        const verticalScale = inBananas(cave) ? 0.5 : 1;
+        cave.hop = Math.max(0, cave.hop + cave.hopV * dt * verticalScale);
         if (cave.hop === 0 && cave.hopV < 0) {
           cave.hopV = 0;
           if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
+        }
+      }
+      const recovery = cave.avoidance.navigation;
+      if (recovery.mode === 4 && cave !== player) {
+        if (cave.hop === 0 && cave.hopV <= 0) {
+          recovery.mode = 0; cave.avoidance.stalled = 0; cave.avoidance.best = Infinity;
+          cave.leap.vx = cave.leap.vz = 0; cave.root.position.y = groundY(cave);
+        } else {
+          if (recovery.double && !recovery.boosted && cave.hopV <= 0 && !inBananas(cave)) { recovery.boosted = true; cave.hopV = JUMP_SPEED; }
+          if (groundY(cave) - cave.baseY + cave.hop >= recovery.clearance) recovery.moving = true;
+          const dx = recovery.jumpX - cave.root.position.x, dz = recovery.jumpZ - cave.root.position.z, distance = Math.hypot(dx, dz);
+          const speed = recovery.moving && !inBananas(cave) ? Math.min(3, distance / dt) : 0;
+          cave.leap.vx = distance ? dx / distance * speed : 0; cave.leap.vz = distance ? dz / distance * speed : 0;
         }
       }
       if (cave.cheer > 0) cave.cheer -= dt;
@@ -1150,7 +1373,7 @@
         runPlayer(cave, dt);
         return;
       }
-      if (ctx.abyssAt && ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY)) {
+      if (ctx.abyssAt && ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave)) {
         // Releasing possession must not strand an Ooga beneath the world.
         cave.root.position.y = groundY(cave) + cave.hop;
         flyPose(cave);
@@ -1163,6 +1386,7 @@
         }
         return;
       }
+      if (cave.hop > 0 || cave.hopV > 0) { runPlayer(cave, dt, false); return; }
       if (cave.walk) {
         runWalk(cave, dt);
         return;
@@ -1186,7 +1410,7 @@
         parts.armR.rotation.x = -2.6 - wave;
         parts.head.rotation.x = -0.15;
         parts.snack.visible = false;
-        if (cave.hop === 0 && cave.hopV <= 0) cave.hopV = 2.2;
+        if (cave.hop === 0 && cave.hopV <= 0 && !inBananas(cave)) cave.hopV = 2.2;
         return;
       }
       if (cave.catchT > 0) {
@@ -1304,7 +1528,7 @@
       }
       if (cave.state === "sleeping") {
         if (ctx.bedRoute) standFromBed(cave);
-        else { resetPose(cave); cave.root.position.y = cave.baseY + groundAt(cave.root.position.x, cave.root.position.z); }
+        else { resetPose(cave); cave.root.position.y = cave.baseY + groundAt(cave.root.position.x, cave.root.position.z, Infinity, Infinity, cave); }
         releaseBedroll(cave);
         cave.override = cave.state = "working";
         cave.parts.head.geometry = cave.headOpen;
@@ -1313,6 +1537,7 @@
       }
       player = cave;
       releaseBuild(cave);
+      cave.avoidance.navigation.mode = 0; cave.avoidance.tx = NaN;
       cave.walk = null;
       cave.bedTravel.mode = "";
       cave.bedTravel.route = null;
@@ -1323,7 +1548,7 @@
       cave.parts.head.rotation.x = 0;
       cave.parts.head.rotation.y = 0;
       standPose(cave);
-      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY)) cave.root.position.y = groundY(cave);
+      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave)) cave.root.position.y = groundY(cave) + cave.hop;
       if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL && grounded(cave)) cave.jetRecovering = true;
       return true;
     };
@@ -1348,12 +1573,12 @@
         cave.jet.flame.visible = false;
       }
       standPose(cave);
-      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY)) cave.root.position.y = groundY(cave) + cave.hop;
+      if (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave)) cave.root.position.y = groundY(cave) + cave.hop;
       cave.act.kind = "idle";
       cave.act.until = elapsed + 1.5;
       cave.act.said = true;
       cave.act.trips = 0;
-      if (ctx.bedRoute && cave.root.position.y - cave.baseY < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY))) startBedRoute(cave, null, false);
+      if (ctx.bedRoute && cave.root.position.y - cave.baseY < -0.5 && (!ctx.abyssAt || !ctx.abyssAt(cave.root.position.x, cave.root.position.z, cave.root.position.y - cave.baseY, cave))) startBedRoute(cave, null, false);
     };
     const steerPlayer = (x, z, view = 0, forward = 0, strafe = 0) => {
       steer.x = x;
@@ -1426,7 +1651,7 @@
       // within the same full-footprint ceiling used by walking and jumping.
       if (lift > 0 && ctx.ceilingAt) {
         const p = cave.root.position, feet = p.y - cave.baseY;
-        lift = Math.min(lift, Math.max(0, ctx.ceilingAt(p.x, p.z, feet) - feet - cave.bodyHeight));
+        lift = Math.min(lift, Math.max(0, ctx.ceilingAt(p.x, p.z, feet, cave) - feet - cave.bodyHeight));
       }
       const delta = lift - cave.viewLift;
       if (!delta) return;
@@ -1527,7 +1752,20 @@
     const update = (dt, now) => {
       elapsed = now;
       for (const cave of cavemen.values()) {
+        const p = cave.root.position, x = p.x, y = p.y, z = p.z;
+        // Test both endpoints against the same current heap. A resize or a
+        // relocation between frames must not masquerade as an exit.
+        const wasInBananas = cave.root.visible && cave.state === "working" && inBananas(cave);
         updateCaveman(cave, dt);
+        if (wasInBananas && dt > 0 && cave.root.visible && cave.state === "working" && !inBananas(cave) && ctx.pile.spill) {
+          const dx = p.x - x, dy = p.y - y, dz = p.z - z;
+          // Respawns and scripted arrivals can move during an update too.
+          // Only continuous character movement should carry fruit with it.
+          if (Math.hypot(dx, dz) <= (JET_SPEED + WALK.ledgeSpeed) * dt + 1e-5 && Math.abs(dy) <= Math.abs(cave.hopV) * dt + STEP + 1e-5
+            && Math.abs(dx) + Math.abs(dy) + Math.abs(dz) > 1e-7) {
+            ctx.pile.spill(p.x, p.y - cave.baseY + cave.bodyHeight * 0.5, p.z, dx / dt, dy / dt, dz / dt);
+          }
+        }
         if (grounded(cave)) {
           if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
           if (cave.jetFuel < 1 && (!cave.jet || !cave.jet.spending)) cave.jetFuel = Math.min(1, cave.jetFuel + dt / JET_REFILL_SECONDS);
@@ -1543,6 +1781,7 @@
         removeChild(root, cave.root);
       }
       cavemen.clear();
+      fanSlots.length = 0;
       for (const node of bulletPool) removeChild(root, node);
       bulletPool.length = 0;
       removeChild(root, flash);

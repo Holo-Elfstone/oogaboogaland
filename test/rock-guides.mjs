@@ -24,7 +24,7 @@ export const rockGuidesProbe = () => {
   const directions = [];
   for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) if (x || y || z) directions.push([x * 0.025, y * 0.025, z * 0.025]);
   for (const context of guides.contexts) {
-    finite = finite && context.lines instanceof Float32Array && context.lines.length === context.count * 6 && context.lines.every(Number.isFinite) && (context.kind === "hole" ? context.count === 0 : context.count > 0 && context.count <= 96);
+    finite = finite && context.lines instanceof Float32Array && context.lines.length === context.count * 6 && context.lines.every(Number.isFinite) && (["hole", "surface", "front", "cave", "sealed"].includes(context.kind) ? context.count === 0 && context.surfaceCount > 0 : context.count > 0 && context.count <= 96);
     for (let n = 0; n < context.lines.length; n += 6) for (const t of [0.2, 0.5, 0.8]) {
       const v = context.lines, x = v[n] + (v[n + 3] - v[n]) * t, y = v[n + 1] + (v[n + 4] - v[n + 1]) * t, z = v[n + 2] + (v[n + 5] - v[n + 2]) * t;
       let air = false, rock = false;
@@ -85,7 +85,7 @@ export const rockGuidesProbe = () => {
     for (let group = 0; group < item.surfaceGroupCount; group++) {
       const wallIndex = item.surfaceWallGroups[group], wall = item.walls[wallIndex];
       if (!wall.perceived) continue;
-      const station = item.surfaceStations[group], edge = Math.min(station - first[wallIndex], last[wallIndex] - station), section = item.kind === "hole" ? 1 : Math.max(0, Math.min(1, (edge + 0.3) / 0.6));
+      const station = item.surfaceStations[group], edge = Math.min(station - first[wallIndex], last[wallIndex] - station), section = item.kind === "hole" || item.kind === "surface" || item.kind === "front" ? 1 : Math.max(0, Math.min(1, (edge + 0.3) / 0.6));
       wholeWalls.sectionError = Math.max(wholeWalls.sectionError, Math.abs(item.surfaceSections[group] - section * section * (3 - 2 * section)));
       if (!section && item.surfaceTargets[group] > 0) wholeWalls.hiddenEndTargets++;
     }
@@ -203,6 +203,113 @@ export const rockGuidesProbe = () => {
   wholeWalls.reset = guides.contexts.every((item) => item.surfaceActive === 0 && item.surfacePhases.every((phase) => phase === 0) && item.surfaceWholePhases.every((phase) => phase === 0) && item.walls.every((entry) => entry.phase === 0));
   cover.dispose(); guides.dispose();
   return { backend: B.renderer.kind, rows, stats, finite, points, sky, views, wholeWalls, holeGuide, failures, disposed: guides.stats.contexts === 0 && guides.stats.lines === 0 && guides.contexts.length === 0 };
+};
+
+export const surfaceRockGuideProbe = () => {
+  const B = window.__ooga, BL = window.BL, island = B.island, guides = B.headquarters.rockGuides;
+  const contexts = guides.contexts.filter((context) => context.kind === "surface"), failures = [];
+  const kinds = new Map();
+  let triangles = 0, groups = 0, verticalFaces = 0, treadFaces = 0, invalidFaces = 0, windowFaces = 0, interiorFaces = 0, mixedContexts = 0, candidate = null;
+  for (const context of contexts) {
+    const groupKinds = new Uint8Array(context.surfaceGroupCount); kinds.set(context, groupKinds);
+    triangles += context.surfaceCount; groups += context.surfaceGroupCount;
+    for (let at = 0; at < context.surface.length; at += 9) {
+      const v = context.surface, ax = v[at + 3] - v[at], ay = v[at + 4] - v[at + 1], az = v[at + 5] - v[at + 2], bx = v[at + 6] - v[at], by = v[at + 7] - v[at + 1], bz = v[at + 8] - v[at + 2];
+      const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx, length = Math.hypot(nx, ny, nz);
+      const group = context.surfaceGroups[at / 9];
+      if (Math.abs(ny) <= length * 0.1) { verticalFaces++; groupKinds[group] |= 1; }
+      else if (ny > length * 0.9) { treadFaces++; groupKinds[group] |= 2; }
+      else invalidFaces++;
+      const cx = (v[at] + v[at + 3] + v[at + 6]) / 3, cy = (v[at + 1] + v[at + 4] + v[at + 7]) / 3, cz = (v[at + 2] + v[at + 5] + v[at + 8]) / 3;
+      // Actual outdoor exposure wins over an approximate ramp bounding band:
+      // a real cliff beside the mouth must remain visible from the ramp.
+      if (length > 1e-9 && Number.isFinite(island.ceilingAt(cx + nx / length * 0.025, cy + ny / length * 0.025, cz + nz / length * 0.025))) interiorFaces++;
+      for (const window of island.headquarters.windows) for (const frustum of window.flare.frusta) if (frustum.planes.every((plane) => plane[0] * cx + plane[1] * cy + plane[2] * cz <= plane[3] + 1e-4)) windowFaces++;
+    }
+    if (groupKinds.some((kind) => kind & 1) && groupKinds.some((kind) => kind & 2)) mixedContexts++;
+    if (candidate) continue;
+    for (let group = 0; group < context.surfaceGroupCount && !candidate; group++) {
+      if (!(groupKinds[group] & 1)) continue;
+      const at = group * 3, centers = context.surfaceCenters, samples = context.surfaceSamples;
+      const dx = samples[at] - centers[at], dz = samples[at + 2] - centers[at + 2], normal = Math.hypot(dx, dz);
+      if (normal < 0.01) continue;
+      const nx = dx / normal, nz = dz / normal;
+      for (const retreat of [0.5, 1, 2, 3, 4]) {
+        const x = centers[at] - nx * retreat, z = centers[at + 2] - nz * retreat, floor = island.surfaceAt(x, z), eye = floor + 1.1;
+        if (!island.onLand(x, z) || floor < centers[at + 1] - 0.1 || Math.hypot(x - centers[at], eye - centers[at + 1], z - centers[at + 2]) >= 11.5 || !island.clearAt(x, eye, z, 0.1, 0.2)) continue;
+        if (!island.sightClearAt(x, eye, z, samples[at], samples[at + 1], samples[at + 2])) continue;
+        let adjacentTread = false;
+        for (let other = 0; other < context.surfaceGroupCount && !adjacentTread; other++) if (groupKinds[other] & 2) {
+          const o = other * 3;
+          adjacentTread = Math.hypot(centers[o] - centers[at], centers[o + 1] - centers[at + 1], centers[o + 2] - centers[at + 2]) < 4;
+        }
+        if (!adjacentTread) continue;
+        candidate = { context, group, x, z, floor, eye, cx: centers[at], cy: centers[at + 1], cz: centers[at + 2], sx: samples[at], sy: samples[at + 1], sz: samples[at + 2], nx, nz };
+        break;
+      }
+    }
+  }
+  if (!candidate) return { contexts: contexts.length, triangles, groups, verticalFaces, treadFaces, invalidFaces, windowFaces, interiorFaces, mixedContexts, candidate: false, failures: ["no main-level stepped-cliff fixture"] };
+  const actor = { baseY: 0, root: { position: { x: candidate.x, y: candidate.floor, z: candidate.z } } }, camera = BL.scene.createCamera({ fov: Math.PI / 2, near: 0.1, far: 100 });
+  Object.assign(camera.position, { x: candidate.cx - candidate.nx * 0.3, y: candidate.cy, z: candidate.cz - candidate.nz * 0.3 });
+  Object.assign(camera.target, { x: candidate.sx + candidate.nx * 0.2, y: candidate.sy, z: candidate.sz + candidate.nz * 0.2 });
+  guides.resetSurface(); guides.updateSurfaces(candidate.x, candidate.eye, candidate.z, camera, 0.3, actor, null, 1);
+  const context = candidate.context, group = candidate.group, wall = context.walls[context.surfaceWallGroups[group]];
+  const hidden = { perceived: wall.perceived, wallTarget: wall.target, wallPhase: wall.phase, target: context.surfaceTargets[group], phase: context.surfacePhases[group], cameraHidden: !!context.surfaceHidden[group], active: context.surfaceActive };
+  const groupKinds = kinds.get(context), direct = new Float32Array(context.surfaceGroupCount);
+  let closest = Infinity, witness = false;
+  for (let other = 0; other < context.surfaceGroupCount; other++) {
+    const at = other * 3, centers = context.surfaceCenters, samples = context.surfaceSamples, distance = Math.hypot(centers[at] - candidate.x, centers[at + 1] - candidate.floor, centers[at + 2] - candidate.z);
+    const clear = distance <= 12 && island.sightClearAt(candidate.x, candidate.eye, candidate.z, samples[at], samples[at + 1], samples[at + 2]);
+    closest = Math.min(closest, distance); witness ||= clear; direct[other] = clear ? 1 : 0;
+  }
+  const expected = witness ? Math.max(0, Math.min(1, (12 - closest) / 1.5)) : 0;
+  let bottom = Infinity, top = -Infinity;
+  const perception = { visible: 0, outlined: 0, farSideOutlined: 0, errors: 0, risers: 0, treads: 0, synced: 0, verticalStacks: 0 };
+  for (let other = 0; other < context.surfaceGroupCount; other++) {
+    const at = other * 3;
+    if (direct[other] > 0) perception.visible++;
+    if (context.surfaceWholePhases[other] > 0) { perception.outlined++; if (groupKinds[other] & 1) perception.risers++; if (groupKinds[other] & 2) perception.treads++; }
+    if (!direct[other] && expected > 0) perception.synced++;
+    perception.errors = Math.max(perception.errors, Math.abs(context.surfacePerceived[other] - expected));
+    if (groupKinds[other] & 1) { bottom = Math.min(bottom, context.surfaceCenters[at + 1]); top = Math.max(top, context.surfaceCenters[at + 1]); }
+  }
+  if (perception.risers > 1 && top - bottom > 0.5) perception.verticalStacks++;
+  // Every other hillside needs its own actor-visible witness. In particular,
+  // the complete near side cannot propagate eligibility across a crest.
+  for (const side of contexts) {
+    let seen = false;
+    for (let g = 0; g < side.surfaceGroupCount && !seen; g++) {
+      const at = g * 3, c = side.surfaceCenters, p = side.surfaceSamples;
+      seen = Math.hypot(c[at] - candidate.x, c[at + 1] - candidate.floor, c[at + 2] - candidate.z) <= 12 && island.sightClearAt(candidate.x, candidate.eye, candidate.z, p[at], p[at + 1], p[at + 2]);
+    }
+    if (!seen && side.surfaceWholeActive) perception.farSideOutlined++;
+  }
+  const canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 360;
+  Object.defineProperties(canvas, { clientWidth: { value: 640 }, clientHeight: { value: 360 } });
+  const ctx = canvas.getContext("2d", { willReadFrequently: true }), cover = BL.cameraCover.create(canvas), layer = { structures: guides.contexts, count: 0, lines: new Float32Array(0), objectsEnabled: true, providerCount: 0 };
+  cover.draw(camera, null, false, false, island.solidAt, island.rockMaterialAt, layer, 0.3);
+  const pixels = ctx.getImageData(0, 0, 640, 360).data;
+  let outlinePixels = 0;
+  for (let n = 3; n < pixels.length; n += 4) if (pixels[n]) outlinePixels++;
+  Object.assign(camera.position, { x: candidate.x, y: candidate.eye, z: candidate.z });
+  Object.assign(camera.target, { x: candidate.sx, y: candidate.sy, z: candidate.sz });
+  const fdx = camera.target.x - camera.position.x, fdy = camera.target.y - camera.position.y, fdz = camera.target.z - camera.position.z, fl = Math.hypot(fdx, fdy, fdz), dx = candidate.sx - camera.position.x, dy = candidate.sy - camera.position.y, dz = candidate.sz - camera.position.z, depth = (dx * fdx + dy * fdy + dz * fdz) / fl, start = camera.near / depth;
+  const directClear = island.sightClearAt(camera.position.x + dx * start, camera.position.y + dy * start, camera.position.z + dz * start, candidate.sx, candidate.sy, candidate.sz);
+  guides.updateSurfaces(candidate.x, candidate.eye, candidate.z, camera, 0.3, actor, null, 2);
+  let cameraVisible = 0, cameraVisibleOutlined = 0;
+  for (let other = 0; other < context.surfaceGroupCount; other++) {
+    const at = other * 3, sx = context.surfaceSamples[at], sy = context.surfaceSamples[at + 1], sz = context.surfaceSamples[at + 2], x = sx - camera.position.x, y = sy - camera.position.y, z = sz - camera.position.z, d = (x * fdx + y * fdy + z * fdz) / fl;
+    if (d <= camera.near || !island.sightClearAt(camera.position.x + x * camera.near / d, camera.position.y + y * camera.near / d, camera.position.z + z * camera.near / d, sx, sy, sz)) continue;
+    cameraVisible++;
+    if (context.surfaceTargets[other] > 0) cameraVisibleOutlined++;
+  }
+  const visible = { cameraHidden: !!context.surfaceHidden[group], target: context.surfaceTargets[group], phase: context.surfacePhases[group], directClear, depth, start, cameraVisible, cameraVisibleOutlined };
+  actor.root.position.x += 200; actor.root.position.z += 200;
+  guides.updateSurfaces(actor.root.position.x, candidate.eye, actor.root.position.z, camera, 0.3, actor, null, 3);
+  const cleared = contexts.every((item) => item.surfaceActive === 0 && item.surfaceWholeActive === 0);
+  guides.resetSurface(); cover.dispose();
+  return { contexts: contexts.length, triangles, groups, verticalFaces, treadFaces, invalidFaces, windowFaces, interiorFaces, mixedContexts, candidate: true, hidden, perception, visible, outlinePixels, structureFaces: cover.state.structureFaces, cleared, failures };
 };
 
 // Analytic blockers distinguish camera-hidden edge intervals from surfaces
@@ -485,7 +592,7 @@ export const objectFadeProbe = () => {
         if (samples && (n + 1) % Math.round(0.05 / dt) === 0) samples.push({ ...snapshot, pixels: pixelAlpha() });
       }
     };
-    const invalidate = () => { objects.result.occlusionVersion++; };
+    const invalidate = () => { objects.result.occlusionVersion++; objects.result.perceptionVersion++; };
     const initial = step(0), fadeIn = [{ ...initial, pixels: pixelAlpha() }], beforeQueries = queries, beforeUpdates = state.updates;
     run(0.3, fadeIn); const cached = queries === beforeQueries && state.updates === beforeUpdates;
     full = [...state.lines.slice(0, state.count * 6)];

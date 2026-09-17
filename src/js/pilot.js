@@ -234,10 +234,15 @@
     };
     // ---------- possession ----------
     // Relabel the act button for what the press does
+    const syncJetpackHud = () => {
+      const cave = player(), status = ctx.jetpackStatus && ctx.jetpackStatus(cave);
+      if (status) hud.setJetpack(status.owned, status.equipped, status.fuel);
+      else hud.setJetpack(!!(cave && cave.jet), !!(cave && cave.jet), cave ? cave.jetFuel : 0);
+    };
     const showAct = () => {
       const cave = player();
       if (cave) hud.setAct(crew.sleeping ? "WAKE UP!" : cave.jet && !cave.jetRecovering ? ACT_FLY : ACT_DO);
-      hud.setJetpack(!!(cave && cave.jet), cave ? cave.jetFuel : 0);
+      syncJetpackHud();
     };
     const possess = (cave) => {
       if (!crew.control(cave)) return;
@@ -302,7 +307,7 @@
       closeCave = null;
       crew.release();
       hud.el.act.hidden = true;
-      hud.setJetpack(false, 0);
+      syncJetpackHud();
       if (!quiet) hud.toast(`${cave.traits.name} ${cave.state === "sleeping" ? "keeps sleeping" : "wanders off"}`);
     };
     // Nearby actions consume a press; a ready jetpack leaves Space as throttle.
@@ -394,7 +399,7 @@
         if (cave.jet) crew.thrust(a.up > 0);
         crew.steer(fx0 * a.y + rx * a.x, fz0 * a.y + rz * a.x, close ? closeMix : 0, a.y, a.x);
         if (dragHold > 0) dragHold -= dt;
-        else if (!crew.sleeping && !closeWanted && a.y > 0.05 && !a.yaw) {
+        else if (!crew.sleeping && !closeWanted && a.y > 0.05 && Math.abs(a.x) > 0.05 && !a.yaw) {
           const behind = cave.root.rotation.y + Math.PI;
           orbit.tYaw += Math.atan2(Math.sin(behind - orbit.tYaw), Math.cos(behind - orbit.tYaw)) * Math.min(1, FOLLOW_TURN * dt);
         }
@@ -488,7 +493,7 @@
         }
       } else closeCameraActive = false;
       camera.up = null;
-      hud.setJetpack(!!(cave && cave.jet), cave ? cave.jetFuel : 0);
+      syncJetpackHud();
       if (cave) {
         const p = cave.root.position;
         if (headOrbit) {

@@ -179,6 +179,23 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
     }
     return true;
   };
+  const leaveCave = () => {
+    if (!seek("center", point(-2.5))) return false;
+    if (driven && id === B.mirrorCave.mouth.id) {
+      // These roof/wall checks leave after the wave has closed the entrance.
+      // Release only this gate so the normal exit still reverses the wave.
+      if (!seek("gate release", point(-0.5))) return false;
+      const gate = B.matrixGate.gates.find((entry) => entry.caveIndex === opening.caveIndex);
+      if (gate.node.visible && !gate.open) {
+        const p = cave.root.position;
+        if (!B.matrixGate.openNear(p.x, p.y - cave.baseY + 1.1, p.z)) throw new Error("Could not reach the interior glyph-gate release");
+        let frames = 0;
+        while (gate.node.position.y < B.matrixGate.hiddenHeight && frames++ < Math.ceil(2 / dt)) step();
+        if (gate.node.position.y !== B.matrixGate.hiddenHeight) throw new Error("The interior glyph gate did not finish opening");
+      }
+    }
+    return seek("outside", point(2.5));
+  };
   const aroundBasementHole = (name, destination) => {
     const p = position(), radius = H.basement.room.radius - 1, from = Math.atan2(p.x, -p.z), to = Math.atan2(destination.x, -destination.z);
     const angle = Math.atan2(Math.sin(to - from), Math.cos(to - from)), count = Math.max(1, Math.ceil(Math.abs(angle) / 0.15)), arc = [];
@@ -243,6 +260,9 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
         // clear roof station outside its reach before testing held thrust.
         if (!seek("roof takeoff", point(-3.2, -1.6))) throw new Error("Could not reach clear ceiling takeoff station");
         const entered = snapshot();
+        // The flight test starts with a collected pack; J only toggles owned
+        // equipment now that the world pickup lives on a distant cloud.
+        B.jetpack.grant(cave);
         tickFor(dt, ["j"]);
         const takeoffAction = document.getElementById("act").textContent;
         tickFor(2, [" "]);
@@ -270,7 +290,7 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
         while ((cave.hop > 0 || cave.hopV > 0) && landingFrames++ < Math.ceil(3 / dt)) step();
         const landed = { ...snapshot(), hop: cave.hop, velocity: cave.hopV, thrust: cave.jet.thrust };
         ceilingContact = { entered, entryAction, takeoffAction, equipped: !!cave.jet, hover, pitched, side, diagonal, heldAtRoof, landed, peakFeet, plateauFrames, meshSamples, sideways: Math.hypot(side.x - hover.x, side.z - hover.z), diagonalTravel: Math.hypot(diagonal.x - side.x, diagonal.z - side.z), landingSeconds: landingFrames * dt };
-        completed = seek("center", point(-2.5)) && seek("outside", point(2.5));
+        completed = leaveCave();
       } else if (completed) {
         const before = snapshot();
         // Press into the jagged side wall with a forward component. Tangential
@@ -285,7 +305,7 @@ export const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120
         const retreat = snapshot();
         collision = { before, contact, pinned, travel: Math.hypot(contact.x - before.x, contact.z - before.z) };
         reversal = { firstReverse, retreat, firstDistance: Math.hypot(firstReverse.x - pinned.x, firstReverse.z - pinned.z), firstDot: (firstReverse.x - pinned.x) * reverseX + (firstReverse.z - pinned.z) * reverseZ, distance: Math.hypot(retreat.x - pinned.x, retreat.z - pinned.z) };
-        completed = seek("center", point(-2.5)) && seek("outside", point(2.5));
+        completed = leaveCave();
       }
     }
     tickFor(0.5, []);

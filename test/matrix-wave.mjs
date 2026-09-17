@@ -32,7 +32,25 @@ export const matrixWaveProbe = (prime = () => {}) => {
   prime();
   let elapsed = W.sampleStream(0).time;
   const buffers = C.caves.flatMap((c) => c.nodes.map((n) => n.instanceData));
-  const step = (draw = false) => { elapsed += dt; scene.update(dt, elapsed); if (draw) R.render(scene.root, camera, B.renderOpts); };
+  const G = B.matrixGate, gateY = new Float64Array(G.gates.length);
+  const gateMotion = { samples: 0, maxStep: 0, starts: [], failures: [] }, gateStarted = new Set();
+  const gateSpeed = 3.2;
+  const step = (draw = false) => {
+    for (let i = 0; i < G.gates.length; i++) gateY[i] = G.gates[i].node.position.y;
+    elapsed += dt; scene.update(dt, elapsed);
+    for (let i = 0; i < G.gates.length; i++) {
+      const gate = G.gates[i], target = W.active && W.radius >= gate.distance ? G.visibleHeight : G.hiddenHeight;
+      const before = gateY[i], after = gate.node.position.y;
+      const expected = before < target ? Math.min(target, before + gateSpeed * dt) : Math.max(target, before - gateSpeed * dt);
+      gateMotion.samples++; gateMotion.maxStep = Math.max(gateMotion.maxStep, Math.abs(after - before));
+      if (Math.abs(after - expected) > 1e-8 && gateMotion.failures.length < 12) gateMotion.failures.push({ cave: gate.caveIndex, radius: W.radius, before, after, expected });
+      if (after < before && !gateStarted.has(gate.caveIndex)) {
+        gateStarted.add(gate.caveIndex);
+        gateMotion.starts.push({ cave: gate.caveIndex, distance: gate.distance, radius: W.radius, step: before - after });
+      }
+    }
+    if (draw) R.render(scene.root, camera, B.renderOpts);
+  };
   const snapshot = () => ({ radius: W.radius, direction: W.direction, active: W.active, inside: C.inside, portal: B.mirror.portal, reveal: B.mirror.reveal, nodePortal: B.mirrorCave.node.mirrorPortal, nodeReveal: B.mirrorCave.node.mirrorReveal, surfaceDrawn: B.mirror.surfaceDrawn, gates: { hidden: B.matrixGate.hiddenHeight, visible: B.matrixGate.visibleHeight, items: B.matrixGate.gates.map((g) => ({ cave: g.caveIndex, distance: g.distance, y: g.node.position.y })) }, entranceZ: (B.camera.position.x - B.mirrorCave.mouth.x) * Math.sin(B.mirrorCave.mouth.ry) + (B.camera.position.z - B.mirrorCave.mouth.z) * Math.cos(B.mirrorCave.mouth.ry), time: elapsed, records: R.stats.records, resources: R.stats.mirrorResources, shadowPasses: R.stats.shadowPassCount,
     camera: [camera.position.x, camera.position.y, camera.position.z, camera.target.x, camera.target.y, camera.target.z, camera.fov, camera.near, camera.far],
     caves: C.caves.map((c) => { let farthest = 0; for (const node of c.nodes) for (let i = 0; i < node.instanceCount; i++) { const o = i * 20; farthest = Math.max(farthest, W.travelDistance(node.instanceData[o + 12], node.instanceData[o + 14], c.caveIndex)); } return { id: c.id, index: c.caveIndex, minimum: c.minimumTravelDistance, farthest, updates: c.updates, revealed: c.revealedGlyphCount, count: c.nodes.reduce((n, node) => n + node.instanceCount, 0), drawn: c.nodes.reduce((n, node) => n + node.drawInstanceCount, 0), versions: c.nodes.map((n) => n.instanceVersion) }; }) });
@@ -117,8 +135,10 @@ export const matrixWaveProbe = (prime = () => {}) => {
   step(true); const mirrorContinuing = snapshot();
   advance(C.mirrorDistance + C.mirrorHeight); step(true); const mirrorGone = snapshot();
   advance(W.maxRadius); const expanded = snapshot();
-  for (let i = 0; i < 2; i++) step();
-  const gatesRaised = snapshot(); C.viewApproach(); step();
+  // The front starts each gate descending; allow the full one-second stroke
+  // before testing closure, rather than expecting an instantaneous appearance.
+  for (let i = 0; i < Math.ceil((G.hiddenHeight - G.visibleHeight) / (gateSpeed * dt)) + 1; i++) step();
+  const gatesClosed = snapshot(); C.viewApproach(); step();
   const retracting = measure("retracting");
   advance(20); step(true); const cavesRestored = snapshot();
   const reflection = gl ? drawMirror() : null;
@@ -135,7 +155,7 @@ export const matrixWaveProbe = (prime = () => {}) => {
     }
     R.setQuality("high"); C.viewApproach(); advance(0); step(true);
   }
-  return { backend: R.kind, quality: R.quality, speed: W.speed, retreatSpeed: W.retreatSpeed, frontWidth: W.frontWidth, maxRadius: W.maxRadius, mirrorDistance: C.mirrorDistance, mirrorHeight: C.mirrorHeight, descriptors: Array.from(W.caves), start, entryCrossing, entered, beforeExit, exit, reverse, reentry, resumed, mirrorWaiting, mirrorStarted, mirrorContinuing, mirrorGone, gatesRaised, expanded, paths, cavesRestored, restored,
+  return { backend: R.kind, quality: R.quality, speed: W.speed, retreatSpeed: W.retreatSpeed, frontWidth: W.frontWidth, maxRadius: W.maxRadius, mirrorDistance: C.mirrorDistance, mirrorHeight: C.mirrorHeight, descriptors: Array.from(W.caves), start, entryCrossing, entered, beforeExit, exit, reverse, reentry, resumed, mirrorWaiting, mirrorStarted, mirrorContinuing, mirrorGone, gatesClosed, gateMotion, gateSpeed, dt, expanded, paths, cavesRestored, restored,
     partialCrossing, partialMirror, partialReentryCrossing, partialReentryMirror, beforeFullExit, fullCrossing, fullMirror, fullExit, fullReentryCrossing, fullReentryMirror, fullReentry, reflection, cadence,
     measurements: [inactive, expanding, retracting, idle], buffersStable: buffers.every((buffer, i) => buffer === fullBuffers[i] && buffer === current[i]), bytes: buffers.reduce((sum, b) => sum + b.byteLength, 0), bufferCount: buffers.length };
 };

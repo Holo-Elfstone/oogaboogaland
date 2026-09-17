@@ -45,8 +45,9 @@
   };
   showQuality();
   const game = gameMod.create({ catalog: models.SWAG });
-  // The banana level, shared by every scene, and the Ooga handed from the hub to a launched scene
-  const world = { level: START_BANANAS, pilot: null };
+  // The banana level, visitor-owned jetpack, and Ooga handed from the hub to a
+  // launched scene persist while scenes exchange their own temporary systems.
+  const world = { level: START_BANANAS, pilot: null, jetpack: { owned: false, fuel: 1 } };
 
   // ---------- scenes ----------
   // One active scene owns its root, camera and systems
@@ -291,6 +292,9 @@
       get scene() {
         return active.id;
       },
+      get transitioning() {
+        return transition !== null;
+      },
       get input() {
         return active.input;
       },
@@ -311,7 +315,7 @@
         return world.level;
       }
     };
-    for (const key of ["slots", "drops", "core", "shell", "delivery", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course"]) {
+    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course"]) {
       Object.defineProperty(ooga, key, { get: () => active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;

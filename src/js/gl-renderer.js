@@ -118,6 +118,8 @@ uniform float uMatrixPermanentCave;
 uniform sampler2D uMatrixGlyphTex;
 uniform int uMatrixSamples;
 uniform float uClipMinY;
+uniform float uClipMaxY;
+uniform float uMatrixGlyphOpacity;
 #ifdef MATRIX_SAMPLE_INTERPOLATION
 vec2 matrixSampleOffsets[4];
 #endif
@@ -304,7 +306,7 @@ float matrixTravel(vec2 point, float caveIndex) {
   return length(point + cave.xy * depth - uMatrixOrigin.xz) + depth;
 }
 void main() {
-  if (vWorld.y < uClipMinY) discard;
+  if (vWorld.y < uClipMinY || vWorld.y > uClipMaxY) discard;
   vec3 n = normalize(vNormal);
   vec3 base = vColor.rgb;
   float cloud = step(3.5, vParams.z);
@@ -330,6 +332,9 @@ void main() {
       }
     }
   }
+  // Living occupants retain the cloud-side reveal after flying beyond the
+  // island. Carved cave paths still follow their full entrance travel distance.
+  if (living > 0.0 && caveIndex < 0.5) flow = min(flow, 36.0);
   float localSurface = max(vMatrixSurface, step(1.5, uMatrixGlyph));
   float permanent = step(0.5, uMatrixPermanentCave) * (1.0 - step(0.5, abs(caveIndex - uMatrixPermanentCave)));
   float front = max(permanent, uMatrixParams.x * (1.0 - smoothstep(uMatrixParams.y - 1.5, uMatrixParams.y, flow)));
@@ -345,7 +350,7 @@ void main() {
   float ndl = max(max(dot(n, uLightDir), 0.0), uDiffuseFloor);
   float localGlyph = step(0.5, uMatrixGlyph) * (1.0 - step(1.5, uMatrixGlyph));
   if (localGlyph > 0.0) {
-    float reveal = caveIndex > 0.0 ? front : 1.0;
+    float reveal = (caveIndex > 0.0 ? front : 1.0) * uMatrixGlyphOpacity;
     if (reveal <= 0.0) discard;
     float glow = clamp(vColor.a * vParams.x, 0.0, 1.0);
     float tip = clamp(vParams.z, 0.0, 1.0);
@@ -434,8 +439,9 @@ void main() {
 precision highp float;
 in float vWorldY;
 uniform float uClipMinY;
+uniform float uClipMaxY;
 void main() {
-  if (vWorldY < uClipMinY) discard;
+  if (vWorldY < uClipMinY || vWorldY > uClipMaxY) discard;
 }`;
   const LINE_VS = `#version 300 es
 precision highp float;
@@ -684,7 +690,7 @@ void main() {
       gl.attachShader(prog, v);
       gl.attachShader(prog, f);
       gl.linkProgram(prog);
-      return { prog, shaders: [v, f], uniforms, u: {}, clipMinY: NaN };
+      return { prog, shaders: [v, f], uniforms, u: {}, clipMinY: NaN, clipMaxY: NaN };
     };
     const finishProgram = (p) => {
       if (!gl.getProgramParameter(p.prog, gl.LINK_STATUS)) {
@@ -721,8 +727,8 @@ void main() {
       const matrixSampling = gl.getExtension("OES_shader_multisample_interpolation");
       const meshFragment = matrixSampling ? MESH_FS.replace("#version 300 es", "#version 300 es\n#extension GL_OES_shader_multisample_interpolation : require\n#define MATRIX_SAMPLE_INTERPOLATION") : MESH_FS;
       res.programs = {
-        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY"]),
-        shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY"]),
+        mesh: compile(MESH_VS, meshFragment, ["uViewProj", "uLightViewProj", "uEye", "uLightDir", "uSky", "uGround", "uSun", "uDirectStrength", "uAmbientFloor", "uDiffuseFloor", "uShadowStrength", "uShadowFloor", "uShadowBias", "uShadow", "uShadowTexel", "uLights", "uLightCount", "uFog", "uFogRange", "uMatrixParams", "uMatrixOrigin", "uMatrixGlyph", "uMatrixCave", "uMatrixCaves", "uMatrixCaveBounds", "uMatrixCaveNear", "uMatrixPermanentCave", "uMatrixGlyphTex", "uMatrixSamples", "uClipMinY", "uClipMaxY", "uMatrixGlyphOpacity"]),
+        shadow: compile(SHADOW_VS, SHADOW_FS, ["uLightViewProj", "uClipMinY", "uClipMaxY"]),
         line: compile(LINE_VS, LINE_FS, ["uViewProj", "uViewport", "uWidth"]),
         sky: compile(QUAD_VS, SKY_FS, ["uInvViewProj", "uHorizon", "uZenith", "uSun", "uSunDir", "uMoonDir", "uStarMatrix", "uStars", "uTime", "uHazeDrop"]),
         blur: compile(QUAD_VS, BLUR_FS, ["uTex", "uDir"]),
@@ -1379,13 +1385,18 @@ void main() {
           const stage = rec.geometry.matrixRevealBacking ? 1 : rec.geometry.matrixGlyph ? 2 : 0;
           if (stage !== matrixStage) continue;
           gl.uniform1f(res.programs.mesh.u.uMatrixGlyph, stage === 1 ? 3 : stage === 2 ? 1 : rec.geometry.matrixLocalGlyphSurface ? 2 : 0);
+          if (stage === 2) gl.uniform1f(res.programs.mesh.u.uMatrixGlyphOpacity, rec.geometry.matrixGlyphOpacity ?? 1);
           gl.uniform1f(res.programs.mesh.u.uMatrixCave, rec.geometry.matrixCave || 0);
         }
         if (kind === "mesh") {
-          const program = res.programs[useProgram], minimumY = rec.geometry.clipMinY ?? -1e6;
+          const program = res.programs[useProgram], minimumY = rec.geometry.clipMinY ?? -1e6, maximumY = rec.geometry.clipMaxY ?? 1e6;
           if (minimumY !== program.clipMinY) {
             gl.uniform1f(program.u.uClipMinY, minimumY);
             program.clipMinY = minimumY;
+          }
+          if (maximumY !== program.clipMaxY) {
+            gl.uniform1f(program.u.uClipMaxY, maximumY);
+            program.clipMaxY = maximumY;
           }
         }
         if (kind === "line") gl.uniform1f(res.programs.line.u.uWidth, part.width * dpr);

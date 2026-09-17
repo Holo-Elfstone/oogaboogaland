@@ -184,19 +184,20 @@ export const navigationButtonsProbe = ({ mode = "orbit", level = 300 } = {}) => 
 };
 
 export const navigationButtonLayoutProbe = () => {
-  const nav = document.querySelector('nav[data-scene="hub"]'), brand = document.querySelector(".brand"), clock = document.getElementById("world-clock"), labels = [];
+  const nav = document.querySelector('nav[data-scene="hub"]'), brand = document.querySelector(".brand"), clock = document.getElementById("world-clock"), bananas = document.querySelector(".world-bananas"), labels = [];
   const buttons = [...nav.querySelectorAll("button")].map((button) => {
     const r = button.getBoundingClientRect(), hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
     const label = button.textContent.trim();
     labels.push(getComputedStyle(button).textTransform === "uppercase" ? label.toUpperCase() : label);
     return { id: button.dataset.preset, x: r.x, y: r.y, width: r.width, height: r.height, hittable: hit === button || button.contains(hit), visible: !button.hidden && getComputedStyle(button).visibility === "visible" };
   });
-  const bounds = nav.getBoundingClientRect(), title = brand.getBoundingClientRect(), clockBounds = clock.getBoundingClientRect();
+  const bounds = nav.getBoundingClientRect(), title = brand.getBoundingClientRect(), clockBounds = clock.getBoundingClientRect(), bananaBounds = bananas.getBoundingClientRect();
   const intersects = (a, b) => Math.min(a.right, b.right) > Math.max(a.left, b.left) + 0.1 && Math.min(a.bottom, b.bottom) > Math.max(a.top, b.top) + 0.1;
   let overlap = false;
   for (let i = 0; i < buttons.length; i++) for (let j = 0; j < i; j++) {
     const a = buttons[i], b = buttons[j];
     if (Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) + 0.1 && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y) + 0.1) overlap = true;
   }
-  return { buttons, labels, overlap, singleRow: buttons.every((button) => Math.abs(button.y - buttons[0].y) < 0.1), scrollable: nav.scrollWidth > nav.clientWidth, scrollLeft: nav.scrollLeft, scrollMax: nav.scrollWidth - nav.clientWidth, brandClear: bounds.top >= title.bottom - 0.1 || bounds.left >= title.right - 0.1, clockCentered: Math.abs(clockBounds.left + clockBounds.width / 2 - innerWidth / 2) < 0.1, clockClear: !intersects(clockBounds, title) && !intersects(clockBounds, bounds), clock: clockBounds.toJSON(), resetCount: document.querySelectorAll('[data-action="reset-view"]').length, viewport: innerWidth, documentWidth: document.documentElement.scrollWidth };
+  const titleStyle = getComputedStyle(brand.querySelector("h1")), subtitle = brand.querySelector("p:not([hidden])"), bananaStyle = getComputedStyle(bananas);
+  return { buttons, labels, overlap, singleRow: buttons.every((button) => Math.abs(button.y - buttons[0].y) < 0.1), scrollable: nav.scrollWidth > nav.clientWidth, scrollLeft: nav.scrollLeft, scrollMax: nav.scrollWidth - nav.clientWidth, brandClear: bounds.top >= title.bottom - 0.1 || bounds.left >= title.right - 0.1, clockCentered: Math.abs(clockBounds.left + clockBounds.width / 2 - innerWidth / 2) < 0.1, clockClear: !intersects(clockBounds, title) && !intersects(clockBounds, bounds), bananaClear: !intersects(bananaBounds, title) && !intersects(bananaBounds, bounds), bananaBelowClock: bananaBounds.top >= clockBounds.bottom, bananaCount: document.getElementById("world-banana-count").textContent, bananaLevel: Math.floor(window.__ooga.level), titleSize: parseFloat(titleStyle.fontSize), clockSize: parseFloat(getComputedStyle(clock).fontSize), subtitleVisible: !!subtitle && getComputedStyle(subtitle).display !== "none", subtitleSize: subtitle ? parseFloat(getComputedStyle(subtitle).fontSize) : 0, bananaSize: parseFloat(bananaStyle.fontSize), clock: clockBounds.toJSON(), bananas: bananaBounds.toJSON(), resetCount: document.querySelectorAll('[data-action="reset-view"]').length, viewport: innerWidth, documentWidth: document.documentElement.scrollWidth };
 };

@@ -29,6 +29,7 @@
   const DROP_DURATION_MIN = 1.05;
   const DROP_DURATION_RANGE = 0.3;
   const DROP_DURATION_MAX = DROP_DURATION_MIN + DROP_DURATION_RANGE;
+  const SPILL_POOL_SIZE = 32, SPILL_BURST = 8, SPILL_GRAVITY = 7, SPILL_FADE_TIME = 0.22;
   const BACKLOG_SECONDS = 10;
   const FRAME_TIME_MAX = 0.1;
   const DROP_THROUGHPUT = Math.min(DROP_RATE, DROP_POOL_SIZE / DROP_DURATION_MAX);
@@ -177,6 +178,70 @@
       });
       addChild(root, node);
     }
+    // Cosmetic fruit shares the regular banana mesh, but never enters the
+    // logical delivery pool, collision registry or object-outline queries.
+    // A batch needs its own geometry identity: the renderer groups ordinary
+    // bananas by geometry too. Only the immutable mesh arrays are shared.
+    const spillNode = createNode({ geometry: { ...bananaGeometry }, instanceData: new Float32Array(SPILL_POOL_SIZE * 20), instanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true, matrixLiving, sightHidden: true, visible: false });
+    const spillSlots = [];
+    for (let i = 0; i < SPILL_POOL_SIZE; i++) spillSlots.push({ age: 0, life: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, spin: { x: 0, y: 0, z: 0 } });
+    const spillState = { capacity: SPILL_POOL_SIZE, active: 0, bursts: 0, emitted: 0 };
+    const spillEffect = { node: spillNode, state: spillState };
+    const spillScale = { x: BANANA_SCALE, y: BANANA_SCALE, z: BANANA_SCALE }, spillMatrix = mat4.create();
+    addChild(root, spillNode);
+    const writeSpills = () => {
+      let count = 0;
+      for (let i = 0; i < spillSlots.length; i++) {
+        const slot = spillSlots[i];
+        if (!slot.life) continue;
+        const size = BANANA_SCALE * Math.min(1, (slot.life - slot.age) / SPILL_FADE_TIME);
+        setVec(spillScale, size, size, size);
+        mat4.fromTRS(spillMatrix, slot.position, slot.rotation, spillScale);
+        const at = count++ * 20, data = spillNode.instanceData;
+        data.set(spillMatrix, at);
+        data[at + 16] = 1; data[at + 17] = 0; data[at + 18] = matrixLiving ? 2 : 0; data[at + 19] = 0;
+      }
+      spillState.active = spillNode.instanceCount = count;
+      spillNode.visible = count > 0;
+      spillNode.instanceVersion++;
+    };
+    const spill = (x, y, z, vx, vy, vz) => {
+      // Cap inherited speed so a very fast flight does not scatter fruit far
+      // beyond the character. Cosmetic random variation needs no new objects.
+      const speed = Math.hypot(vx, vy, vz), inherit = speed > 8 ? 4 / speed : 0.5;
+      const horizontal = Math.hypot(vx, vz), dx = horizontal > 0.001 ? vx / horizontal : 1, dz = horizontal > 0.001 ? vz / horizontal : 0;
+      let emitted = 0;
+      for (let i = 0; i < spillSlots.length && emitted < SPILL_BURST; i++) {
+        const slot = spillSlots[i];
+        if (slot.life) continue;
+        const side = (Math.random() - 0.5) * 0.7, ahead = Math.random() * 0.18;
+        setVec(slot.position, x + dx * ahead - dz * side, y + (Math.random() - 0.5) * 0.3, z + dz * ahead + dx * side);
+        setVec(slot.velocity, vx * inherit - dz * side * 2 + dx * 0.4, vy * inherit + 1.4 + Math.random() * 0.7, vz * inherit + dx * side * 2 + dz * 0.4);
+        setVec(slot.rotation, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2, Math.random() * Math.PI * 2);
+        setVec(slot.spin, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12);
+        slot.age = 0; slot.life = 0.85 + Math.random() * 0.3;
+        emitted++;
+      }
+      if (emitted) { spillState.bursts++; spillState.emitted += emitted; writeSpills(); }
+      return emitted;
+    };
+    const updateSpills = (dt) => {
+      if (!spillState.active) return;
+      for (let i = 0; i < spillSlots.length; i++) {
+        const slot = spillSlots[i];
+        if (!slot.life) continue;
+        slot.age += dt;
+        if (slot.age >= slot.life) { slot.life = 0; continue; }
+        const p = slot.position, v = slot.velocity, r = slot.rotation, spin = slot.spin;
+        p.x += v.x * dt; p.y += v.y * dt - SPILL_GRAVITY * dt * dt * 0.5; p.z += v.z * dt;
+        v.y -= SPILL_GRAVITY * dt;
+        r.x += spin.x * dt; r.y += spin.y * dt; r.z += spin.z * dt;
+        // Settle onto the pile platform before shrinking, rather than
+        // leaving a second pile of physical fruit or falling through it.
+        if (p.y < BASE_Y + 0.04) { p.y = BASE_Y + 0.04; setVec(v, 0, 0, 0); slot.age = Math.max(slot.age, slot.life - SPILL_FADE_TIME); }
+      }
+      writeSpills();
+    };
     let shown = 0, counted = 0;
     let footprint = SCALE, layoutCount = -1, shellWanted = 0;
     const delivery = world.delivery || (world.delivery = {
@@ -536,6 +601,7 @@
       const target = Math.floor(world.level);
       if (target !== counted) syncPile();
       pumpDrops(dt);
+      updateSpills(dt);
       if (!outstandingValue() && hatchTarget === 1) hatchTarget = 0;
       hatchOpen = damp(hatchOpen, hatchTarget, 7, dt);
     };
@@ -547,6 +613,11 @@
       for (const slot of dropSlots) removeChild(root, slot.node);
       removeChild(root, core);
       removeChild(root, shell);
+      removeChild(root, spillNode);
+      spillSlots.length = 0;
+      spillState.active = spillNode.instanceCount = 0;
+      spillNode.visible = false;
+      spillNode.instanceData = new Float32Array(20);
       pileSlots.length = 0;
       dropSlots.length = 0;
       shell.instanceData = new Float32Array(20);
@@ -590,14 +661,17 @@
       get lastDrainSeconds() { return delivery.lastDrainSeconds; },
       enqueue: deliverBananas
     };
-    const stats = () => ({ slots: pileSlots.length, shown: counted, rendered: shell.instanceCount, deliveries: delivery.airborneValue, pendingDrops: delivery.pendingValue, dropsStarted: delivery.visualDropsStarted, dropsLanded: delivery.visualDropsLanded, landedBananaValue: delivery.totalLandedValue, dropPool: dropSlots.length, dropRate: DROP_RATE });
+    const stats = () => ({ slots: pileSlots.length, shown: counted, rendered: shell.instanceCount, deliveries: delivery.airborneValue, pendingDrops: delivery.pendingValue, dropsStarted: delivery.visualDropsStarted, dropsLanded: delivery.visualDropsLanded, landedBananaValue: delivery.totalLandedValue, dropPool: dropSlots.length, dropRate: DROP_RATE, spillPool: spillSlots.length, spilling: spillState.active });
     const setLevel = (level) => {
       clearDrops();
       world.level = Math.max(0, Math.min(MAX_BANANAS, Number(level) || 0));
       syncPile(true);
     };
+    // Crew slots are assigned immediately after construction. Publish the
+    // loaded pile's real footprint before the crew exists or starts walking.
+    reflow(Math.max(0, Math.min(MAX_BANANAS, Math.floor(world.level))));
     return {
-      slots: pileSlots, drops: dropSlots, core, shell, syncPile, deliverBananas, pileEdge, eatFromPile, update, dispose, stats, setLevel, delivery: deliveryDebug,
+      slots: pileSlots, drops: dropSlots, core, shell, syncPile, deliverBananas, pileEdge, eatFromPile, update, dispose, stats, setLevel, delivery: deliveryDebug, spill, spillEffect,
       get shown() {
         return counted;
       },
@@ -611,7 +685,7 @@
         return hatchOpen;
       },
       get inMotion() {
-        return outstandingValue() > 0;
+        return outstandingValue() > 0 || spillState.active > 0;
       }
     };
   };

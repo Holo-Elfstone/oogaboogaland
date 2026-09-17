@@ -115,7 +115,7 @@ export const cameraPartialCoverProbe = () => {
   for (let n = 0; n <= 32; n++) {
     const height = H.floor + 0.06 - n * 0.005, pitch = Math.asin((height - H.floor - 0.9) / 4);
     B.pilot.hooks.onOrbit(0, (pitch - B.pilot.orbit.tPitch) / 0.0035); tick();
-    const pixels = draw(), state = { ...B.headquarters.cameraCover }, eye = B.camera.position;
+    const pixels = draw(), state = { ...B.headquarters.cameraCover, objectsEnabled: B.headquarters.sightGuides.objectsEnabled, rockOnly: B.headquarters.sightGuides.rockOnly === true }, eye = B.camera.position;
     let opaque = 0; for (let i = 3; i < pixels.length; i += 4) if (pixels[i] === 255) opaque++;
     const fraction = opaque / (pixels.length / 4);
     rows.push({ height, fraction, ...state });
@@ -136,6 +136,155 @@ export const cameraPartialCoverProbe = () => {
   return { rows, comparisons, failures, screenshotCoverage: B.headquarters.cameraCover.rockCoverage, backend: B.renderer.kind };
 };
 
+// A visible selected actor normally suppresses all cues. Once the near plane
+// touches stone, its hidden rim should appear immediately inside that exact
+// partial-rock section without leaking into the clear half of the view.
+export const cameraPartialCueProbe = () => {
+  const BL = window.BL, canvas = document.createElement("canvas"); canvas.width = 320; canvas.height = 200;
+  Object.defineProperties(canvas, { clientWidth: { value: 320 }, clientHeight: { value: 200 } });
+  const ctx = canvas.getContext("2d", { willReadFrequently: true }), cover = BL.cameraCover.create(canvas), camera = BL.scene.createCamera({ near: 0.2 });
+  camera.fov = Math.PI / 2;
+  Object.assign(camera.position, { x: 0, y: 0, z: -4 }); Object.assign(camera.target, { x: 0, y: 0, z: 0 });
+  const actor = BL.scene.createNode({ geometry: BL.models.box({ w: 1.4, h: 2.4, d: 0.5, color: "#ffffff" }) });
+  BL.scene.updateWorld(actor);
+  const guides = { objectsEnabled: true, rockOnly: true, count: 0, providerCount: 0, structures: null,
+    lines: new Float32Array([-1, -1, 0, 1, -1, 0, 1, -1, 0, 1, 1, 0, 1, 1, 0, -1, 1, 0, -1, 1, 0, -1, -1, 0]),
+    kinds: new Uint8Array([1, 1, 1, 1]), alphas: new Float32Array([1, 1, 1, 1]) };
+  const solidAt = (x, y) => y > 0, materialAt = () => [105, 94, 82];
+  const draw = (node) => {
+    ctx.clearRect(0, 0, 320, 200);
+    cover.draw(camera, node, true, !!node, solidAt, materialAt, guides, 0);
+    return ctx.getImageData(0, 0, 320, 200).data;
+  };
+  const baseline = draw(null);
+  guides.count = 4; const objectPixels = draw(null), objectState = { ...cover.state }; guides.count = 0;
+  const pixels = draw(actor), state = { ...cover.state };
+  let coveredChanges = 0, clearChanges = 0, clearAlpha = 0, objectCoveredChanges = 0, objectClearChanges = 0;
+  for (let y = 0; y < 200; y++) for (let x = 0; x < 320; x++) {
+    const i = (y * 320 + x) * 4;
+    let changed = false, objectChanged = false;
+    for (let c = 0; c < 4; c++) {
+      if (pixels[i + c] !== baseline[i + c]) changed = true;
+      if (objectPixels[i + c] !== baseline[i + c]) objectChanged = true;
+    }
+    if (y < 96 && changed) coveredChanges++;
+    if (y < 96 && objectChanged) objectCoveredChanges++;
+    if (y > 104) {
+      if (changed) clearChanges++;
+      if (objectChanged) objectClearChanges++;
+      if (pixels[i + 3]) clearAlpha++;
+    }
+  }
+  cover.dispose();
+  return { ...state, coveredChanges, clearChanges, clearAlpha, objectOutlined: objectState.guideLines === 4, objectCoveredChanges, objectClearChanges };
+};
+
+// Exercise eligibility before raster clipping: every prop has a visible top
+// and a bottom covered by the near-plane rock cut. A handcrafted line fixture
+// cannot catch an entire owner being rejected because its top remains visible.
+export const cameraPartialEligibilityProbe = () => {
+  const BL = window.BL, S = BL.scene, canvas = document.createElement("canvas"), width = 640, height = 360;
+  canvas.width = width; canvas.height = height;
+  Object.defineProperties(canvas, { clientWidth: { value: width }, clientHeight: { value: height } });
+  const ctx = canvas.getContext("2d", { willReadFrequently: true }), cover = BL.cameraCover.create(canvas), root = S.createNode();
+  const actor = { root: S.createNode({ position: { x: 0, y: 2, z: 3 } }) }, props = [], labels = ["tree", "box", "tall prop", "blocked prop", "distant prop"];
+  S.addChild(root, actor.root);
+  for (const [x, z] of [[-2.5, 0], [0, 0], [2.5, 0], [5, 0], [0, 20]]) {
+    const node = S.createNode({ geometry: BL.models.box({ w: 0.7, h: 2.4, d: 0.5, color: "#ffffff" }), position: { x, y: 0, z } });
+    S.addChild(root, node); props.push(node);
+  }
+  S.addChild(props[0], S.createNode({ geometry: BL.models.box({ w: 1.5, h: 1, d: 0.9, color: "#ffffff" }), position: { x: 0, y: 1, z: 0 } }));
+  const providerOwner = S.createNode({ position: { x: -5, y: 0, z: 0 } }); S.addChild(root, providerOwner);
+  let providerDraws = 0;
+  const provider = { owner: providerOwner, roots: [providerOwner], active: () => true, distance: () => 6, inView: () => true,
+    cameraVisibility: () => 1, clear: () => true, boxClear: () => true,
+    perceived: (cave, x, y, z, terrainClear, objectClear) => terrainClear(x, y, z, -5, 0, 0) && objectClear(x, y, z, -5, 0, 0, cave, providerOwner),
+    draw: (camera, target, alpha) => {
+      providerDraws++; target.save(); target.strokeStyle = "#ffffff"; target.globalAlpha = alpha;
+      target.strokeRect(width / 2 + 5 * height / 14 - 12, height / 2 - 28, 24, 56); target.restore();
+    } };
+  const objects = BL.objectGuides.create({ roots: [...props, providerOwner], crew: { cavemen: new Map() }, providers: [provider] });
+  const camera = S.createCamera({ fov: 90, near: 0.2, far: 100 });
+  Object.assign(camera.position, { x: 0, y: 0, z: -7 }); Object.assign(camera.target, { x: 0, y: 0, z: 0 });
+  const clear = (ax, ay, az, bx, by, bz) => {
+    if ((ax < 4 && bx > 4) || (bx < 4 && ax > 4)) return false;
+    if (Math.min(az, bz) >= -6.5) return true;
+    const dz = bz - az, t = dz ? Math.max(0, Math.min(1, (-6.5 - az) / dz)) : 0;
+    return Math.min(az < -6.5 ? ay : by, ay + (by - ay) * t) >= 0;
+  };
+  const filter = BL.sightGuides.create({ segmentClear: clear, objectClear: objects.cameraClear, actorClear: objects.perceptionClear,
+    ownerBoundary: objects.ownerBoundaryAt, ownerPerceived: objects.perceived, ownerConcealed: objects.concealed, ownerClear: objects.ownerClear,
+    ownerDistance: objects.distance, ownerInView: objects.inView, getProvider: objects.getProvider });
+  const solidAt = (x, y, z) => z < -6.5 && y < 0, materialAt = () => [105, 94, 82], rows = [];
+  const draw = (guides) => {
+    ctx.clearRect(0, 0, width, height); cover.draw(camera, null, true, false, solidAt, materialAt, guides, 0);
+    return ctx.getImageData(0, 0, width, height).data;
+  };
+  const baseline = draw(null);
+  S.updateWorld(root);
+  const source = objects.collect(actor, 0, 2, 3, camera, width / height);
+  const sample = (rockOnly) => {
+    const state = filter.update(actor, null, source, camera, width / height, 0.3, true, rockOnly), perOwner = props.map((owner, i) => {
+      const slot = state.owners.indexOf(owner); let lines = 0;
+      for (let n = 0; n < state.count; n++) if (source.owners[state.sources[n]] === owner) lines++;
+      return { name: labels[i], lines, perceived: slot >= 0 && !!(state.ownerStates[slot] & 1), alpha: slot >= 0 ? state.ownerAlphas[slot] : 0 };
+    });
+    const before = providerDraws, pixels = draw(state), covered = [0, 0, 0, 0]; let clearChanges = 0;
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const at = (y * width + x) * 4;
+      let changed = false; for (let c = 0; c < 4; c++) if (pixels[at + c] !== baseline[at + c]) changed = true;
+      if (!changed) continue;
+      if (y < height / 2 - 4) clearChanges++;
+      if (y > height / 2 + 4) for (let item = 0; item < covered.length; item++) {
+        const cx = width / 2 - (item < 3 ? props[item].position.x : -5) * height / 14;
+        if (Math.abs(x - cx) < 28) covered[item]++;
+      }
+    }
+    rows.push({ rockOnly, actualRockOnly: state.rockOnly === true, perOwner, covered, clearChanges, providerDraws: providerDraws - before, providerCount: state.providerCount, partialRock: cover.state.partialRock, updates: state.updates, count: state.count });
+  };
+  try { sample(false); sample(true); sample(false); sample(true); }
+  finally { filter.dispose(); objects.dispose(); cover.dispose(); }
+  return { rows };
+};
+
+// A wall patch seen in clear air, or through a window, can still extend into
+// the near-plane cap. Neither visibility shortcut may erase its rock portion.
+export const cameraPartialWallEligibilityProbe = () => {
+  const BL = window.BL, width = 640, height = 360, canvas = document.createElement("canvas");
+  canvas.width = width; canvas.height = height;
+  Object.defineProperties(canvas, { clientWidth: { value: width }, clientHeight: { value: height } });
+  const ctx = canvas.getContext("2d", { willReadFrequently: true }), cover = BL.cameraCover.create(canvas), camera = BL.scene.createCamera({ fov: 90, near: 0.2 });
+  Object.assign(camera.position, { x: 0, y: 0, z: -6 }); Object.assign(camera.target, { x: 0, y: 0, z: 0 });
+  const surface = { surface: new Float32Array([-3, -1, 0, -3, 1, 0, -0.5, 1, 0, -3, -1, 0, -0.5, 1, 0, -0.5, -1, 0,
+    0.5, -1, 0, 0.5, 1, 0, 3, 1, 0, 0.5, -1, 0, 3, 1, 0, 3, -1, 0]),
+    surfaceCount: 4, surfaceGroups: new Uint16Array([0, 0, 1, 1]), surfaceWholePhases: new Float32Array([1, 1]),
+    surfacePhases: new Float32Array([0, 1]), surfaceHidden: new Uint8Array([0, 1]), surfaceAperture: new Uint8Array([0, 1]),
+    surfaceWholeActive: 2, surfaceActive: 1, surfaceVersion: 1,
+    apertures: { count: 1, clip: (index, triangles, at) => ({ points: triangles.subarray(at, at + 9), count: 3 }), blockers: () => {} } };
+  const guides = { structures: [surface], objectsEnabled: true, rockOnly: false, count: 0, structureCount: 0, providerCount: 0, lines: new Float32Array(0) };
+  const solidAt = (x, y) => y < 0, materialAt = () => [105, 94, 82], rows = [];
+  const draw = (state) => {
+    ctx.clearRect(0, 0, width, height); cover.draw(camera, null, true, false, solidAt, materialAt, state, 0);
+    return ctx.getImageData(0, 0, width, height).data;
+  };
+  const baseline = draw(null);
+  try {
+    for (const rockOnly of [false, true, false, true]) {
+      guides.rockOnly = rockOnly;
+      const pixels = draw(guides), covered = [0, 0]; let clearChanges = 0;
+      for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+        const at = (y * width + x) * 4;
+        let changed = false; for (let c = 0; c < 4; c++) if (pixels[at + c] !== baseline[at + c]) changed = true;
+        if (!changed) continue;
+        if (y < height / 2 - 4) clearChanges++;
+        if (y > height / 2 + 4) covered[x < width / 2 ? 1 : 0]++;
+      }
+      rows.push({ rockOnly, covered, clearChanges, updates: cover.state.structureUpdates, faces: cover.state.structureFaces });
+    }
+  } finally { cover.dispose(); }
+  return { rows };
+};
+
 // Sweep both directions across two voxel walls and an exterior corner. The
 // hidden spans cross many rendered panels, but visibility and the selected
 // silhouette belong to the complete authored wall rather than any one panel.
@@ -151,7 +300,7 @@ export const wallPanOutlineProbe = () => {
     Object.assign(camera.position, { x: room.x + Math.sin(angle) * distance, y: room.floor + lift, z: room.z + Math.cos(angle) * distance });
     Object.assign(camera.target, { x: cave.root.position.x, y: cave.root.position.y + 0.6, z: cave.root.position.z });
     BL.scene.updateWorld(scene.root); B.renderer.render(scene.root, camera, B.renderOpts); scene.overlay(1 / 60);
-    return { step, enabled: H.sightGuides.objectsEnabled, cues: H.sightGuides.count, outlined: H.cameraCover.outlined, faces: H.cameraCover.faces, lines: H.cameraCover.guideLines, structureFaces: H.cameraCover.structureFaces, structureFilled: H.cameraCover.structureFilled, activeWalls: H.rockGuides.contexts.reduce((count, context) => count + context.walls.filter((wall) => wall.phase > 0).length, 0), solidEye: island.solidAt(camera.position.x, camera.position.y, camera.position.z) };
+    return { step, enabled: H.sightGuides.objectsEnabled, rockOnly: H.sightGuides.rockOnly === true, cues: H.sightGuides.count, outlined: H.cameraCover.outlined, faces: H.cameraCover.faces, lines: H.cameraCover.guideLines, structureFaces: H.cameraCover.structureFaces, structureFilled: H.cameraCover.structureFilled, activeWalls: H.rockGuides.contexts.reduce((count, context) => count + context.walls.filter((wall) => wall.phase > 0).length, 0), solidEye: island.solidAt(camera.position.x, camera.position.y, camera.position.z), insideRock: H.cameraCover.insideRock, partialRock: H.cameraCover.partialRock };
   };
   const paths = [
     { name: "room wall", distance: 3.5, lift: 1.1, start: 55, end: 65, visible: 54 },

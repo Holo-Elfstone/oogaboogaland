@@ -10,8 +10,8 @@
     let ownerPhases = new Float64Array(0), ownerAlphas = new Float32Array(0), ownerTargets = new Float32Array(0), ownerDistances = new Float64Array(0), ownerSeen = new Uint8Array(0);
     const observer = new Float64Array(22), previous = new Float64Array(22), view = BL.math.mat4.create(), worldUp = { x: 0, y: 1, z: 0 }, eye = { x: 0, y: 0, z: 0 };
     previous.fill(NaN);
-    const output = { lines, kinds, sources, alphas, owners, ownerProviders, ownerStates, ownerAlphas, ownerTargets, ownerDistances, ownerViews, retainedOwners, retainedCount: 0, ownerCount: 0, providerCount: 0, objectsEnabled: true, capacity: 0, ownerCapacity: 0, structureSourceCount: 0, bufferGrowths: 0, fading: 0, fadeSeconds: FADE_SECONDS, fadeStart: FADE_START, count: 0, kind: "perception", index: -1, basement: false, structureCount: 0, objectCount: 0, rays: 0, actorRays: 0, updates: 0, observer, radius: RADIUS, observerPixels: OBSERVER_PIXELS, edgeStep: EDGE_STEP };
-    let actor = null, lastActor = null, lastStructure = null, lastObjects = -1, lastOcclusion = -1, lastNear = -1, lastEnabled = true, lo = 0, hi = 1;
+    const output = { lines, kinds, sources, alphas, owners, ownerProviders, ownerStates, ownerAlphas, ownerTargets, ownerDistances, ownerViews, retainedOwners, retainedCount: 0, ownerCount: 0, providerCount: 0, objectsEnabled: true, rockOnly: false, capacity: 0, ownerCapacity: 0, structureSourceCount: 0, bufferGrowths: 0, fading: 0, fadeSeconds: FADE_SECONDS, fadeStart: FADE_START, count: 0, kind: "perception", index: -1, basement: false, structureCount: 0, objectCount: 0, rays: 0, actorRays: 0, updates: 0, observer, radius: RADIUS, observerPixels: OBSERVER_PIXELS, edgeStep: EDGE_STEP };
+    let actor = null, lastActor = null, lastStructure = null, lastObjects = -1, lastOcclusion = -1, lastNear = -1, lastEnabled = true, lastRockOnly = false, lo = 0, hi = 1;
     let ox = 0, oy = 0, oz = 0, tanX = 1, tanY = 1;
     const grow = (array, length) => { const next = new array.constructor(length); next.set(array); return next; };
     const reserveLines = (wanted) => {
@@ -73,9 +73,9 @@
       // make its unobstructed exterior count as hidden from the camera.
       return blocked && (!targetOwner || !ownerClear || ownerClear(targetOwner, ax, ay, az, x, y, z));
     };
-    const eligible = (x, y, z, targetOwner, edgeX, edgeY, edgeZ, object) => object
-      ? !ownerBoundary || ownerBoundary(targetOwner, x, y, z, edgeX, edgeY, edgeZ)
-      : actorSees(x, y, z, null) && cameraHides(x, y, z, null);
+    const eligible = (x, y, z, targetOwner, edgeX, edgeY, edgeZ, object) => {
+      return object ? !ownerBoundary || ownerBoundary(targetOwner, x, y, z, edgeX, edgeY, edgeZ) : actorSees(x, y, z, null) && cameraHides(x, y, z, null);
+    };
     const clearOwners = () => {
       owners.fill(null); ownerProviders.fill(null); retainedOwners.fill(null); ownerPhases.fill(0); ownerAlphas.fill(0); ownerTargets.fill(0); ownerStates.fill(0); ownerViews.fill(0);
       output.ownerCount = output.retainedCount = output.providerCount = output.fading = 0;
@@ -116,7 +116,13 @@
           ownerStates[slot] = ownerPerceived && ownerPerceived(owner, actor, eye.x, eye.y, eye.z, segmentClear) ? 1 : 0;
           // Remember an offscreen object's hidden state and fade phase. On
           // return only its camera occlusion is re-evaluated, not recognition.
-          if (!ownerViews[slot]) ownerStates[slot] |= oldHidden;
+          // The rock cap hides pixels even when the rest of an owner is in
+          // clear view. Keep its contour here; the cap clips those pixels at
+          // draw time instead of dropping the whole split object.
+          // Shell providers clip their covered pixels themselves. Seeing a
+          // part of the mound must not discard its still-hidden remainder.
+          if (output.rockOnly || ownerProviders[slot]?.partialOcclusion) ownerStates[slot] |= 2;
+          else if (!ownerViews[slot]) ownerStates[slot] |= oldHidden;
           else if ((!ownerPerceived || ownerStates[slot] & 1 || ownerPhases[slot] > 0) && ownerConcealed && ownerConcealed(owner, actor, segmentClear)) ownerStates[slot] |= 2;
           if (registry) ownerDistances[slot] = source.nearDistances[n];
           else if (ownerDistance) ownerDistances[slot] = ownerDistance(owner, observer[0], observer[1], observer[2]);
@@ -238,9 +244,10 @@
         if (run >= 0) append(ax, ay, az, dx, dy, dz, run, t0, kind, n / 6);
       }
     };
-    const update = (cave, structure, objects, camera, aspect, dt = 0, objectsEnabled = true) => {
+    const update = (cave, structure, objects, camera, aspect, dt = 0, objectsEnabled = true, rockOnly = false) => {
       actor = cave;
       output.objectsEnabled = objectsEnabled;
+      output.rockOnly = rockOnly;
       if (!actor) { output.count = output.structureCount = output.objectCount = 0; clearOwners(); lastActor = null; return output; }
       reserve(objects, structure);
       if (actor !== lastActor) clearOwners();
@@ -256,10 +263,10 @@
       observer[12] = tanX = Math.tan(camera.fov / 2) * aspect; observer[13] = tanY = Math.tan(camera.fov / 2);
       observer[14] = ox; observer[15] = oy; observer[16] = oz; observer[17] = camera.near; observer[18] = camera.far;
       observer[19] = eye.x; observer[20] = eye.y; observer[21] = eye.z;
-      let changed = cave !== lastActor || structure !== lastStructure || objects.version !== lastObjects || objects.occlusionVersion !== lastOcclusion || objects.nearVersion !== lastNear || objectsEnabled !== lastEnabled;
+      let changed = cave !== lastActor || structure !== lastStructure || objects.version !== lastObjects || objects.occlusionVersion !== lastOcclusion || objects.nearVersion !== lastNear || objectsEnabled !== lastEnabled || rockOnly !== lastRockOnly;
       for (let i = 0; i < observer.length && !changed; i++) if (Math.abs(observer[i] - previous[i]) > 1e-5 || !Number.isFinite(previous[i])) changed = true;
       if (!changed) { if (objectsEnabled && output.fading) advanceFades(dt); return output; }
-      previous.set(observer); lastActor = cave; lastStructure = structure; lastObjects = objects.version; lastOcclusion = objects.occlusionVersion; lastNear = objects.nearVersion; lastEnabled = objectsEnabled;
+      previous.set(observer); lastActor = cave; lastStructure = structure; lastObjects = objects.version; lastOcclusion = objects.occlusionVersion; lastNear = objects.nearVersion; lastEnabled = objectsEnabled; lastRockOnly = rockOnly;
       output.count = output.structureCount = output.objectCount = output.rays = output.actorRays = 0;
       output.index = structure ? structure.index : -1; output.basement = !!(structure && structure.basement);
       if (objectsEnabled) { perceiveObjects(objects); advanceFades(dt); }
