@@ -2163,6 +2163,16 @@ const hold = async (b, key, ms) => {
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", key });
 };
 
+const drivenSmoke = () => withPage("driven smoke", hubPage(src), async (b) => {
+  // A clear straight runway, staged the way hub drive stages its chords
+  const staged = await b.evaluate(`(() => { const B = window.__ooga, cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.walk && !c.build), S = B.headquarters.solids, o = B.pilot.orbit, speed = window.BL.pilot.WALK.speed; B.pilot.possess(cave); for (let radius = 8; radius <= 18; radius += 2) for (let i = 0; i < 64; i++) { const a = i / 64 * Math.PI * 2, x = Math.sin(a) * radius, z = Math.cos(a) * radius; let px = x, pz = z, clear = true; for (let t = 0; t < 2; t += 0.02) { const nx = px - Math.sin(a) * speed * 0.02, nz = pz - Math.cos(a) * speed * 0.02; if (!B.island.onLand(nx, nz) || Math.abs(S.supportAt(nx, nz, 0, 0, cave)) > 0.001 || !S.walkable(nx, nz, px, pz, 0, cave.bodyHeight, cave) || S.inBananas(cave, nx, nz)) { clear = false; break; } px = nx; pz = nz; } if (!clear) continue; B.crew.relocatePlayer({ x, y: 0, z }, a + Math.PI); o.yaw = o.tYaw = a; B.pilot.update(1); return true; } return false; })()`);
+  const before = await b.evaluate(`(() => { const B = window.__ooga, p = B.crew.player.root.position; return { particles: B.stats().particles, x: p.x, z: p.z }; })()`);
+  await hold(b, "w", 1200);
+  const walking = await b.evaluate(`(() => { const B = window.__ooga, p = B.crew.player.root.position; return { particles: B.stats().particles, moved: +Math.hypot(p.x - ${before.x}, p.z - ${before.z}).toFixed(2) }; })()`);
+  const decayed = await untilPage(b, `B.stats().particles === ${before.particles}`, 8000);
+  record("driven smoke: a walking driven Ooga puffs a smoke trail that fades when he stops", staged && walking.moved > 2 && walking.particles > before.particles && decayed, JSON.stringify({ staged, before: before.particles, ...walking, decayed }));
+});
+
 const hubFlight = () => withPage("hub flight", hubPage(src), async (b) => {
   const cam = () => b.evaluate(`(() => { const c = window.__ooga.camera; return { x: +c.target.x.toFixed(2), y: +c.target.y.toFixed(2), z: +c.target.z.toFixed(2), yaw: +Math.atan2(c.position.x - c.target.x, c.position.z - c.target.z).toFixed(2), py: +c.position.y.toFixed(2) }; })()`);
   const c0 = await cam();
@@ -3602,6 +3612,7 @@ task("soak: GPU residency", soakResidency);
 task("keys", keys);
 task("hub race route", hubRace);
 task("hub drive", hubDrive);
+task("driven smoke", drivenSmoke);
 task("fan", fan);
 task("race phone", racePhone);
 task("hub drop route", hubDrop);

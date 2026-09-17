@@ -36,6 +36,8 @@
   const JET_ACCEL = 20, JET_RISE = 7, JET_SPEED = 6.4, JET_PUFF = 0.05;
   const JET_SPARKS = [models.particleGeometry("#ffb13b", 0.09, 1), models.particleGeometry("#f3efe4", 0.07, 0.6)];
   const LAND_DUST = [models.particleGeometry("#a3874f", 0.1, 0)];
+  // One smoke puff per this much ground covered by the driven caveman
+  const SMOKE_STEP = 0.55;
   // A drop deeper than a step, mirroring the hub's STEP_MAX
   const STEP = WALK.step;
   const YAWN_DUR = 2.4;
@@ -206,6 +208,7 @@
         hop: 0,
         hopV: 0,
         jumps: 0,
+        smoke: 0,
         cheer: 0,
         catchT: 0,
         yawn: 0,
@@ -1240,7 +1243,19 @@
       if (len > 0.05) {
         const k = Math.min(1, len) * (flying ? JET_SPEED : PLAYER_SPEED) * dt;
         const dx = steer.x / len * k, dz = steer.z / len * k;
+        const fromX = p.x, fromZ = p.z;
         movePlayer(cave, flying, dx, dz);
+        if (!flying && cave.hop === 0 && cave.hopV <= 0) {
+          // Heels kick up a smoke trail in proportion to the ground actually covered
+          cave.smoke += Math.hypot(p.x - fromX, p.z - fromZ);
+          if (cave.smoke >= SMOKE_STEP) {
+            cave.smoke -= SMOKE_STEP;
+            const backX = -Math.sin(cave.root.rotation.y), backZ = -Math.cos(cave.root.rotation.y);
+            ctx.fx.puff(p.x + backX * 0.14, p.y - cave.baseY + 0.07, p.z + backZ * 0.14,
+              backX * 0.25 + (Math.random() - 0.5) * 0.3, 0.4 + Math.random() * 0.3, backZ * 0.25 + (Math.random() - 0.5) * 0.3,
+              0.8 + Math.random() * 0.4);
+          }
+        }
         const heading = Math.atan2(steer.x, steer.z);
         if (Math.abs(steer.forward) > 0.05 && Math.abs(steer.strafe) <= 0.05) cave.root.rotation.y = heading;
         else cave.root.rotation.y += Math.atan2(Math.sin(heading - cave.root.rotation.y), Math.cos(heading - cave.root.rotation.y)) * Math.min(1, 12 * dt) * (1 - steer.view);
