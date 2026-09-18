@@ -116,9 +116,9 @@
   const ALTAR_HEIGHT = 0.34, ALTAR_BLOCK_WIDTH = 0.2, ALTAR_BLOCK_ARC = 0.3, ALTAR_RING_GAP = 0.02, ALTAR_MAX_BLOCKS = 512;
   // Ripen time and odds for a dropped banana
   const RIPEN = 25, TREE_CHANCE = 0.5, BUSH_CHANCE = 0.25;
-  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · solid", crate: "Crate · locked", barrel: "Barrel · empty", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", windsock: "Windsock · a fair wind", gate: null };
+  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · solid", crate: "Crate · locked", barrel: "Barrel · empty", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", windsock: "Windsock · a fair wind", jumbotron: "Jumbotron · EntropyLab on the big screen · tap for the next board", gate: null };
   const MATRIX_LIVING_PROPS = new Set(["tree"]);
-  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit"]);
+  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "jumbotron"]);
   const BUSH_WORDS = ["Something rustles.", "A beetle. Ooga leaves it.", "Just a bush."];
   const LEAF = models.particleGeometry("#4a8530", 0.12, 0);
   const PETALS = ["#e04a3a", "#f2c94c", "#f3efe4"].map((c) => models.particleGeometry(c, 0.09, 0));
@@ -141,7 +141,7 @@
   };
 
   // One visit's state, made in enter and dropped in leave
-  let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, jetpack, jetpackState, jetpackCarrier, jetpackWearer, lastJetpackCloud, mirrorCave, matrixCave, matrixControl, gateRain, fire, headquarters;
+  let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, jetpack, jetpackState, jetpackCarrier, jetpackWearer, lastJetpackCloud, mirrorCave, matrixCave, matrixControl, gateRain, fire, headquarters, jumbotron;
   const JETPACK_HUD_STATE = { owned: false, equipped: false, fuel: 1, blocked: false };
   let enteringTween = null;
   let stateTimer = 0, hintTimer = 0, meterTimer = 0, now = 0, hour = 12;
@@ -2204,6 +2204,9 @@
         fx.burst(x, 0.6, z, 6, [CHIP], 1.4);
         hud.toast("Solid rock. Ow.");
         break;
+      case "jumbotron":
+        if (jumbotron) jumbotron.nextView();
+        break;
       case "crate":
         if (!wobble(o.node, 0.12)) return;
         fx.burst(x, 0.9, z, 5, [DUST], 1);
@@ -2362,6 +2365,8 @@
     switch (o.kind) {
       case "caveman":
         crew.pokeCave(o.cave);
+        // Poked Oogas get their stats on the big screen.
+        if (jumbotron) jumbotron.showContributor(o.cave.traits.name);
         break;
       case "crate":
         crates.openCrate(o.crate);
@@ -3425,6 +3430,7 @@
     daylight.sample(hour, RENDER_OPTS, clock.dayOfYear, islandLatitude, clock.continuousDay);
     RENDER_OPTS.time = elapsed;
     updateLamps(dt, elapsed, phase !== null);
+    if (jumbotron) jumbotron.update(elapsed, renderer);
     const next = daylight.phaseAt(hour);
     if (next !== phase) setPhase(next);
     DAYLIGHT_DEBUG.hour = hour;
@@ -3800,6 +3806,23 @@
     buildRim();
     const firePos = buildFire();
     fire = lamps[lamps.length - 1];
+    // The jumbotron: a stadium stats board standing on the rim crest just
+    // west of the gate, turned to face the meadow center.
+    {
+      const jx = -7, jz = -27, jScale = 2.6;
+      const jry = Math.atan2(-jx, -jz);
+      claim(jx, jz, 3.4);
+      const legDrop = 0.6 + 0.6 + 0.06; // cabinet half + leg + foot, in local units
+      jumbotron = BL.jumbotron.create({
+        data: BL.jumbotronData,
+        position: { x: jx, y: island.surfaceAt(jx, jz) + legDrop * jScale, z: jz },
+        ry: jry,
+        scale: jScale
+      });
+      addChild(root, jumbotron.node);
+      placed.push(jumbotron.node);
+      addProp("jumbotron", jumbotron.node, jx, jz, 3.4);
+    }
     scatter();
     reflowScenery();
     buildSpots();
@@ -3965,7 +3988,7 @@
         get shown() {
           return pile.shown;
         },
-        island, mouths: island.mouths, labels, launchers, camera, crew, controls: pilot.controls, props, altar, path: island.path.debug, headquarters,
+        island, mouths: island.mouths, labels, launchers, camera, crew, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron,
         scenery: {
           get candidateCount() { return scenery.length; },
           get visibleCount() { return sceneryVisible; },
@@ -4200,6 +4223,10 @@
     platformGuides.dispose();
     mirrorGuides.dispose();
     pilot.dispose();
+    if (jumbotron) {
+      jumbotron.dispose(renderer);
+      jumbotron = null;
+    }
     for (const node of targets) input.remove(node);
     for (const node of placed) removeChild(root, node);
     targets.length = placed.length = claimed.length = scenery.length = sceneryClaims.length = matrixInteriors.length = matrixGates.length = sealedCaves.length = clouds.length = lamps.length = entranceLights.length = fireSeats.length = sleepers.length = labels.length = spots.length = openMouths.length = launchers.length = props.length = 0;
