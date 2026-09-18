@@ -14886,7 +14886,7 @@ const mirrorCanvas = () => withPage("mirror canvas fallback", hubPage(src, "canv
   const canvasLights = await b.evaluate(`(() => { const B = window.__ooga; return { count: B.entranceLights.length, registered: B.entranceLights.every((l) => l.registered), lit: B.entranceLights.every((l) => l.lit && l.factor > 0.9), pointLights: B.renderOpts.lightCount, lighting: { registered: B.lighting.registeredLampCount, active: B.lighting.activeFullLightCount, approximated: B.lighting.approximatedLightCount, capacity: B.lighting.configuredLightCapacity, ids: B.lighting.approximatedIds.slice(0, B.lighting.approximatedCount), tier: B.lighting.tier } }; })()`);
   record("entrance lights: Canvas fallback draws all emissive fixtures without point-light resources", canvasLights.count === 9 && canvasLights.registered && canvasLights.lit && canvasLights.pointLights === 0 && canvasLights.lighting.registered === 10 && canvasLights.lighting.active === 0 && canvasLights.lighting.approximated === 10 && canvasLights.lighting.capacity === 0 && canvasLights.lighting.ids.length === 10 && canvasLights.lighting.tier === "canvas2d", JSON.stringify(canvasLights));
   record("dynamic path: Canvas fallback renders the same immutable million-banana network", r.path.active && r.path.inner === 7.25 && r.path.outer === 8.75 && r.path.count > 0 && r.path.count <= r.path.capacity && r.path.masterMaskBuildCount === 1 && r.path.masterMaskHash === pathMasterHash, JSON.stringify(r.path));
-  record("dynamic scenery: Canvas fallback starts large with the same deterministic registry", r.scenery.candidateCount === 367 && r.scenery.visibleCount > 0 && r.scenery.signature === scenerySignature, JSON.stringify({ candidateCount: r.scenery.candidateCount, visibleCount: r.scenery.visibleCount, radiusCulledCount: r.scenery.radiusCulledCount, pathCulledCount: r.scenery.pathCulledCount }));
+  record("dynamic scenery: Canvas fallback starts large with the same deterministic registry", r.scenery.candidateCount === 360 && r.scenery.visibleCount > 0 && r.scenery.signature === scenerySignature, JSON.stringify({ candidateCount: r.scenery.candidateCount, visibleCount: r.scenery.visibleCount, radiusCulledCount: r.scenery.radiusCulledCount, pathCulledCount: r.scenery.pathCulledCount }));
   await b.evaluate(`window.__ooga.matrixCave.viewApproach()`);
   await matrixSettled(b, false);
   const canvasExterior = await b.evaluate(`(${matrixSurfaceSnapshot.toString()})()`);
@@ -17336,7 +17336,7 @@ const hubDrop = () => withPage("hub drop route", hubPage(src), async (b) => {
   await b.click(roof.x, roof.y);
   await untilPage(b, 'B.scene === "drop" && !B.transitioning', 15000);
   const entered = await b.evaluate(`({ scene: window.__ooga.scene, phase: window.__ooga.drop.phase, board: !document.getElementById("drop-board").hidden })`);
-  record("hub drop route: the plane parks on the rally cave roof with its sign on pegs beside it, tooltips, and tapping it enters the board", roof.launchers === 1 && roof.onRoof && roof.overRoom && roof.kind === "prop" && roof.prop === "plane" && roof.wheels === 9 && roof.planes === 1 && roof.sign && roof.sign.onRoof && roof.sign.nearPlane && roof.sign.text && roof.sign.tip === "sign" && roof.clear === 0 && roof.scenery === 367 && tip === "Ooga Drop · tap to fly" && entered.scene === "drop" && entered.phase === "board" && entered.board, JSON.stringify({ ...roof, tip, ...entered }));
+  record("hub drop route: the plane parks on the rally cave roof with its sign on pegs beside it, tooltips, and tapping it enters the board", roof.launchers === 2 && roof.onRoof && roof.overRoom && roof.kind === "prop" && roof.prop === "plane" && roof.wheels === 9 && roof.planes === 1 && roof.sign && roof.sign.onRoof && roof.sign.nearPlane && roof.sign.text && roof.sign.tip === "sign" && roof.clear === 0 && roof.scenery === 360 && tip === "Ooga Drop · tap to fly" && entered.scene === "drop" && entered.phase === "board" && entered.board, JSON.stringify({ ...roof, tip, ...entered }));
   await b.key("Escape");
   await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
   const back = await b.evaluate(`(() => { const B = window.__ooga; const c = B.camera; return { scene: B.scene, toPile: +Math.hypot(c.target.x, c.target.z).toFixed(2), dropHidden: document.getElementById("drop").hidden }; })()`);
@@ -17399,6 +17399,174 @@ const soakDropDonations = () => withPage("soak: donations (drop)", dropPage(src)
   record("soak: donations (drop): node and target counts back to base", a.allNodes - a.pool === s.allNodes - s.pool && a.targets === s.targets, `allNodes ${s.allNodes} -> ${a.allNodes} (pool ${a.pool}), targets ${s.targets} -> ${a.targets}, dom ${s.dom} -> ${a.dom}, listeners ${before.listeners} -> ${after.listeners}`);
   record("soak: donations (drop): GPU records bounded", a.gl.records - s.gl.records <= 20, `${s.gl.records} -> ${a.gl.records}`);
   record("soak: donations (drop): heap after GC within 15%", within(before, after, 0.15), heapDetail(before, after));
+});
+
+// ---------- Ooga Orbit ----------
+const orbitPage = (base, query) => `${base}?debug=1&nosim=1&scene=orbit${clock(query)}`;
+// The stack as the list shows it, read bottom up, against the scene's own
+const orbitOrder = `(() => { const rows = [...document.querySelectorAll("#orbit-stack li[data-index]")].reverse(); return { stack: window.__ooga.orbit.stack.join(), hud: rows.map((li) => li.dataset.id).join(), indices: rows.every((li, i) => +li.dataset.index === i), slots: window.__ooga.orbit.slots()?.ys.length }; })()`;
+const orbitInOrder = (o) => o.stack === o.hud && o.indices && o.slots === o.stack.split(",").length + 1;
+const orbitCenterOf = (b, selector) => b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
+// The flight log: the rows' points (a count times its worth, or the number after the last dot) against the total over them
+const orbitLog = `(() => { const O = window.__ooga.orbit, rows = [...document.querySelectorAll("#orbit-score li")].map((li) => [li.children[0].textContent, li.children[1].textContent]); const points = rows.filter(([label]) => label !== "Time").reduce((sum, [, value]) => { const times = value.match(/(\\d+) × (\\d+)$/), last = value.match(/· (?:space )?(\\d+)$/); return sum + (times ? times[1] * times[2] : last ? +last[1] : 0); }, 0); return { phase: O.phase, shown: !document.getElementById("orbit-results").hidden, rows, points, final: +document.getElementById("orbit-final-score").textContent, best: document.getElementById("orbit-final-best").textContent, medal: document.getElementById("orbit-final-medal").hidden ? null : document.getElementById("orbit-final-medal").textContent, summary: document.getElementById("orbit-summary").textContent, result: O.result, exit: document.querySelector('#orbit-results [data-action="leave"]').textContent }; })()`;
+// A reloaded page is ready once the scene has drawn; short polls, since one long wait sent while the old document is
+// still unloading never gets its reply
+const orbitBooted = async (b) => {
+  for (let i = 0; i < 200 && !await b.evaluate(`(() => { try { return !!(window.__ooga.orbit && window.__ooga.renderedFrames > 0); } catch { return false; } })()`); i++) await b.sleep(100);
+};
+// Straight to the top over the pad, the rest of the rocket dropped
+const orbitHeld = `(() => { const O = window.__ooga.orbit; O.toOrbit(); O.simulate(5); O.dropRest(); })()`;
+
+const orbitBuilder = () => withPage("orbit builder", orbitPage(src), async (b) => {
+  const open = await b.evaluate(`(() => { const B = window.__ooga, O = B.orbit, P = window.BL.rocketParts; return { scene: B.scene, phase: O.phase, tabs: document.querySelectorAll("#orbit-tabs button").length, kinds: P.KINDS.length, tiles: document.querySelectorAll("#orbit-parts .orbit-tile").length, parts: P.PARTS.length, pressed: [...document.querySelectorAll("#orbit-presets .orbit-preset")].map((c) => c.getAttribute("aria-pressed")).join(), onPad: O.stack.join() === P.PRESETS[0].stack.join(), launch: !document.getElementById("orbit-launch").disabled, build: !document.getElementById("orbit-build").hidden, strip: document.getElementById("orbit-strip").hidden, results: document.getElementById("orbit-results").hidden }; })()`);
+  const order0 = await b.evaluate(orbitOrder);
+  record("orbit builder: the scene opens on the builder with every part as a tile under its kind tabs and Ooga One on the pad, highlighted, listed in order and ready", open.scene === "orbit" && open.phase === "build" && open.tabs === open.kinds && open.tiles === open.parts && open.pressed === "true,false,false" && open.onPad && open.launch && open.build && open.strip && open.results && orbitInOrder(order0), JSON.stringify({ open, order0 }));
+  const tapped = await b.evaluate(`(() => { const O = window.__ooga.orbit, $ = (s) => document.querySelector(s), launch = () => !$("#orbit-launch").disabled; $("#orbit-clear").click(); const empty = { stack: O.stack.length, launch: launch(), pressed: document.querySelectorAll('#orbit-presets [aria-pressed="true"]').length, row: !!$("#orbit-stack .orbit-empty") }; for (const id of ["pot", "barrel", "leafshield", "gourdpod"]) $('.orbit-tile[data-id="' + id + '"]').click(); const built = { stack: O.stack.join(), launch: launch() }; $('#orbit-stack [data-op="up"][data-index="1"]').click(); const swapped = { stack: O.stack.join(), launch: launch(), problems: $("#orbit-problems").textContent }; $('#orbit-stack [data-op="down"][data-index="2"]').click(); const back = O.stack.join(); $('#orbit-stack [data-op="remove"][data-index="1"]').click(); const removed = O.stack.join(); $("#orbit-presets .orbit-preset:nth-child(3)").click(); return { empty, built, swapped, back, removed, hopper: O.stack.join() === window.BL.rocketParts.PRESETS[2].stack.join(), pressed: [...document.querySelectorAll("#orbit-presets .orbit-preset")].map((c) => c.getAttribute("aria-pressed")).join() }; })()`);
+  const order1 = await b.evaluate(orbitOrder);
+  record("orbit builder: clearing empties the pad, tapped tiles stack up in order, the row arrows swap parts (a shield off the pod stops the launch), the cross removes one and a ready rocket card loads and lights up", tapped.empty.stack === 0 && !tapped.empty.launch && tapped.empty.pressed === 0 && tapped.empty.row && tapped.built.stack === "pot,barrel,leafshield,gourdpod" && tapped.built.launch && tapped.swapped.stack === "pot,leafshield,barrel,gourdpod" && !tapped.swapped.launch && tapped.swapped.problems.includes("heat shield") && tapped.back === "pot,barrel,leafshield,gourdpod" && tapped.removed === "pot,leafshield,gourdpod" && tapped.hopper && tapped.pressed === "false,false,true" && orbitInOrder(order1), JSON.stringify({ tapped, order1 }));
+  // Drags: a tile into the list, a tile onto the rocket itself, a row off both to take it away
+  const kind = await b.evaluate(`window.BL.rocketParts.KINDS.indexOf("tank") + 1`);
+  await b.evaluate(`document.querySelector("#orbit-tabs button:nth-child(${kind})").click()`);
+  await b.drag(await orbitCenterOf(b, '.orbit-tile[data-id="coconut"]'), await orbitCenterOf(b, '#orbit-stack li[data-index="2"]'));
+  await b.sleep(100);
+  const listed = await b.evaluate(orbitOrder);
+  await untilPage(b, "B.orbit.slots() !== null");
+  const slots = await b.evaluate(`window.__ooga.orbit.slots()`);
+  await b.drag(await orbitCenterOf(b, '.orbit-tile[data-id="nut"]'), { x: slots.x, y: slots.ys[1] });
+  await b.sleep(100);
+  const onRocket = await b.evaluate(orbitOrder);
+  const offTo = await b.evaluate(`(() => { const r = document.getElementById("orbit-rocket").getBoundingClientRect(); return { x: r.left - 40, y: window.innerHeight - 30 }; })()`);
+  await b.drag(await orbitCenterOf(b, '#orbit-stack li[data-id="coconut"]'), offTo);
+  await b.sleep(100);
+  const dropped = await b.evaluate(orbitOrder);
+  const count = (o, id) => o.stack.split(",").filter((x) => x === id).length;
+  record("orbit builder: dragging a tile into the list or onto the rocket inserts it there and dragging a row off takes it away, the list and the 3D rocket in the same order every time", count(listed, "coconut") === 1 && listed.stack.split(",").length === 6 && orbitInOrder(listed) && onRocket.stack.split(",")[1] === "nut" && onRocket.stack.split(",").length === 7 && orbitInOrder(onRocket) && count(dropped, "coconut") === 0 && dropped.stack.split(",").length === 6 && orbitInOrder(dropped), JSON.stringify({ listed, slots, onRocket, dropped }));
+});
+
+const orbitFlow = () => withPage("orbit flow", orbitPage(src), async (b) => {
+  await b.key(" ");
+  const counting = await b.evaluate(`(() => { const O = window.__ooga.orbit; return { phase: O.phase, strip: !document.getElementById("orbit-strip").hidden, build: document.getElementById("orbit-build").hidden, saved: JSON.parse(localStorage.getItem("oogaboogaland.v1")).orbit.build.join() === O.stack.join() }; })()`);
+  // Real frames have run the count since the key, so the timed part starts over in one tick: the count, the spool
+  // into the gold and the release read the same on any machine
+  const lifted = await b.evaluate(`(() => { const O = window.__ooga.orbit; O.toBuild(); O.launch(); O.simulate(3.05); const ignite = O.phase; O.simulate(1.85); const gauge = O.gauge; O.releaseClamps(); O.simulate(3); const s = window.__ooga.flight.state; return { ignite, gauge, phase: O.phase, alt: s.alt, burning: s.burning, score: O.score }; })()`);
+  const spent = await b.evaluate(`(() => { const O = window.__ooga.orbit, s = window.__ooga.flight.state; for (let t = 0; t < 120 && s.fuel[s.stage] > 0; t += 0.25) O.simulate(0.25); O.simulate(0.3); return { stage: s.stage, burning: s.burning, center: document.getElementById("orbit-center").textContent }; })()`);
+  await b.key(" ");
+  const staged = await b.evaluate(`(() => { const O = window.__ooga.orbit, s = window.__ooga.flight.state, stage = s.stage; O.simulate(1); return { stage, burning: s.burning, debris: window.__ooga.stats().debris }; })()`);
+  record("orbit flow: Space launches and saves the build, the clamps let go in the gold on the gauge, and Space drops a spent stage and lights the next", counting.phase === "count" && counting.strip && counting.build && counting.saved && lifted.ignite === "ignite" && lifted.gauge > 0.66 && lifted.gauge < 0.78 && lifted.phase === "ascent" && lifted.alt > 5 && lifted.burning && lifted.score === 200 && !spent.burning && spent.stage === 0 && staged.stage === 1 && staged.burning && staged.debris === 1, JSON.stringify({ counting, lifted, spent, staged }));
+  // Hands off the autopilot climbs; each spent stage is dropped as Space would
+  const top = await b.evaluate(`(() => { const O = window.__ooga.orbit, F = window.__ooga.flight, s = F.state; for (let t = 0; t < 400 && O.phase === "ascent"; t += 0.25) { if (s.fuel[s.stage] <= 0 && F.stages[s.stage + 1] && F.stages[s.stage + 1].engine) O.act(); O.simulate(0.25); } const phase = O.phase; O.simulate(5); return { phase, maxAlt: s.maxAlt, score: O.score, mode: s.mode, walk: !document.getElementById("orbit-eva").hidden }; })()`);
+  await b.key(" ");
+  const free = await b.evaluate(`(() => { const O = window.__ooga.orbit; O.simulate(0.2); return { pod: window.__ooga.flight.isPod(), mode: window.__ooga.flight.state.mode, walk: !document.getElementById("orbit-eva").hidden }; })()`);
+  record("orbit flow: the autopilot climbs to low orbit, which holds the rocket over the pad, and Space cuts the pod free for the spacewalk", top.phase === "orbit" && top.maxAlt >= 500 && top.score >= 200 + 2 * 100 + 1000 && top.mode !== "free" && free.pod && free.mode === "free" && free.walk, JSON.stringify({ top, free }));
+  await b.key(" ");
+  const walk = await b.evaluate(`(() => { const O = window.__ooga.orbit, E = O.eva, phase = O.phase; E.e = 7; E.u = 3.5; E.f = 3.5; E.ve = E.vu = E.vf = 0; O.simulate(0.2); const near = E.near; O.act(); const measuring = E.measuring > 0; O.simulate(3); const measured = E.measured, reeling = E.reeling; for (let t = 0; t < 40 && O.phase === "eva"; t += 0.25) O.simulate(0.25); return { phase, near, measuring, measured, reeling, after: O.phase, back: E.back, score: O.score }; })()`);
+  record("orbit flow: Space steps outside, at the rock Space measures it, the tether reels the Ooga home and it climbs back in with the mission done (the stage dropped in orbit counting too)", walk.phase === "eva" && walk.near === "rock" && walk.measuring && walk.measured && walk.reeling && walk.after === "orbit" && walk.back && walk.score === top.score + 100 + 700, JSON.stringify(walk));
+  // The stage dropped at the top falls under the pod; it is gone before the pod is let go
+  const cleared = await b.evaluate(`(() => { const O = window.__ooga.orbit; let t = 0; for (; t < 40 && window.__ooga.stats().debris > 0; t += 0.25) O.simulate(0.25); return { debris: window.__ooga.stats().debris, t }; })()`);
+  await b.key(" ");
+  const falling = await b.evaluate(`(() => { const O = window.__ooga.orbit, F = window.__ooga.flight, s = F.state, phase = O.phase; for (let t = 0; t < 200 && !F.chuteReady(); t += 0.1) O.simulate(0.1); return { phase, ready: F.chuteReady(), alt: s.alt, peakHeat: s.peakHeat }; })()`);
+  await b.key(" ");
+  const chute = await b.evaluate(`window.__ooga.flight.state.chute`);
+  await b.evaluate(`(() => { const O = window.__ooga.orbit; for (let t = 0; t < 200 && O.phase !== "results"; t += 0.25) O.simulate(0.25); })()`);
+  await b.sleep(200);
+  const log = await b.evaluate(orbitLog);
+  const stored = await b.evaluate(`JSON.parse(localStorage.getItem("oogaboogaland.v1")).orbit.best`);
+  record("orbit flow: Space lets go, the pod falls shield first, Space opens the chute once it is ready and it lands softly", cleared.debris === 0 && cleared.t <= 30 && falling.phase === "descent" && falling.ready && falling.alt < 135 && falling.peakHeat < 1 && chute === "open" && log.result && !log.result.failure && log.result.orbit, JSON.stringify({ cleared, falling, chute, result: log.result }));
+  record("orbit flow: the flight log shows the total big with its medal and new best, the rows add up to it, and the best is saved", log.phase === "results" && log.shown && log.final === log.result.score && log.points === log.final && log.best === "NEW BEST" && log.medal === log.result.medal?.toUpperCase() && log.rows.some(([label]) => label === "Spacewalk") && !log.rows.some(([label]) => label === "Score") && stored && stored.score === log.final && log.exit === "Exit Game", JSON.stringify({ log, stored }));
+  await b.evaluate(`document.querySelector('#orbit-results [data-action="orbit-again"]').click()`);
+  await b.sleep(200);
+  const again = await b.evaluate(`(() => { const O = window.__ooga.orbit; return { phase: O.phase, score: O.score, results: document.getElementById("orbit-results").hidden, debris: window.__ooga.stats().debris }; })()`);
+  record("orbit flow: Fly again counts down the same rocket from a clean pad", again.phase === "count" && again.score === 0 && again.results && again.debris === 0, JSON.stringify(again));
+  // A far-land best and a junk-laced build survive a reload; a malformed best does not
+  await b.evaluate(`(() => { const saved = JSON.parse(localStorage.getItem("oogaboogaland.v1")); saved.orbit.best = { score: 900, orbit: true, landing: "land" }; saved.orbit.build = ["pot", "zzz", 4, "leafshield", "gourdpod"]; localStorage.setItem("oogaboogaland.v1", JSON.stringify(saved)); })()`);
+  await b.open(orbitPage(src));
+  await orbitBooted(b);
+  const kept = await b.evaluate(`(() => { const B = window.__ooga; return { best: B.game.state.orbit.best, stack: B.orbit.stack.join(), medal: document.getElementById("orbit-medal").hidden }; })()`);
+  await b.evaluate(`(() => { const saved = JSON.parse(localStorage.getItem("oogaboogaland.v1")); saved.orbit.best = { score: "x", orbit: true, landing: "pad" }; localStorage.setItem("oogaboogaland.v1", JSON.stringify(saved)); })()`);
+  await b.open(orbitPage(src));
+  await orbitBooted(b);
+  const dropped = await b.evaluate(`window.__ooga.game.state.orbit.best`);
+  record("orbit flow: a far-land best and the known parts of a stored build survive a reload, a malformed best is dropped", kept.best && kept.best.landing === "land" && kept.best.score === 900 && kept.stack === "pot,leafshield,gourdpod" && dropped === null, JSON.stringify({ kept, dropped }));
+  await b.evaluate(`document.querySelector('[data-scene="orbit"] [data-action="orbit-launch"]').click()`);
+  await b.evaluate(`(() => { const O = window.__ooga.orbit; O.simulate(3.05 + 2.8); O.simulate(3.2); })()`);
+  await b.evaluate(`document.querySelector('#orbit-results [data-action="leave"]').click()`);
+  await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
+  const left = await b.evaluate(`({ scene: window.__ooga.scene, hidden: document.getElementById("orbit").hidden })`);
+  record("orbit flow: Exit Game on the flight log returns to the island with the Orbit HUD hidden", left.scene === "hub" && left.hidden, JSON.stringify(left));
+});
+
+const orbitFailures = () => withPage("orbit failures", orbitPage(src), async (b) => {
+  // Every way down that is not a landing ends on the flight log with its call and its one-line fix
+  const ends = await b.evaluate(`(() => { const B = window.__ooga, O = B.orbit, run = (fn) => { fn(); for (let t = 0; t < 400 && O.phase !== "results"; t += 0.25) O.simulate(0.25); const r = O.result, landing = [...document.querySelectorAll("#orbit-score li")].find((li) => li.children[0].textContent === "Landing"); return { failure: r && r.failure, shown: !document.getElementById("orbit-results").hidden, final: +document.getElementById("orbit-final-score").textContent, score: r && r.score, landing: landing && landing.children[1].textContent, summary: document.getElementById("orbit-summary").textContent }; }; const fresh = (stack) => { O.toBuild(); if (stack) O.setStack(stack); O.launch(); O.simulate(3.05); }; const out = {}; out.pop = run(() => fresh()); out.heavy = run(() => { fresh(["pot", "bigbarrel", "bigbarrel", "bigbarrel", "bigbarrel", "vine", "leafshield", "stickpod"]); O.simulate(1.85); O.releaseClamps(); }); O.toBuild(); O.setStack(window.BL.rocketParts.PRESETS[0].stack); out.smash = run(() => { (${orbitHeld}); O.simulate(12); O.eva.back = true; O.letGo(); }); O.toBuild(); out.splat = run(() => { (${orbitHeld}); O.simulate(31); O.eva.back = true; O.letGo(); }); return out; })()`);
+  const f = (e, why, call) => e.failure === why && e.shown && e.final === e.score && e.landing === call && e.summary.length > 20;
+  record("orbit failures: waiting out the gauge pops the engines, a rocket too heavy to climb sticks, and a pod without its chute crashes by the pad, each on the flight log", f(ends.pop, "overpressure", "pop") && f(ends.heavy, "stuck", "too heavy") && f(ends.splat, "crash", "crash"), JSON.stringify(ends));
+  record("orbit failures: a pod let go onto the stage it just dropped smashes into it, while one let go after the stage has fallen away does not", f(ends.smash, "debris", "smashed") && ends.smash.summary.includes("dropped stage") && ends.splat.failure !== "debris", JSON.stringify({ smash: ends.smash, later: ends.splat }));
+});
+
+const hubOrbit = () => withPage("hub orbit route", hubPage(src), async (b) => {
+  await b.evaluate(`window.__ooga.pilot.goPreset("orbit")`);
+  await b.sleep(1200);
+  const site = await b.evaluate(`(() => { const B = window.__ooga, M = window.BL.rocketModels, spot = M.siteSpot(B.island, {}), l = B.launchers.find((l) => l.scene === "orbit"), p = B.project(l.x, l.y + 6, l.z), hit = B.input.pick(p.x, p.y); return { launchers: B.launchers.length, at: Math.hypot(l.x - spot.x, l.z - spot.z) < 1e-6, kinds: ["launchpad", "tower", "bridge", "orbitsign"].map((k) => B.props.filter((o) => o.prop === k).length).join(), rocket: B.props.filter((o) => o.prop === "rocket").length, x: Math.round(p.x), y: Math.round(p.y), prop: hit && hit.owner.prop, clear: B.props.filter((o) => o.scenery && o.active && Math.hypot(o.x - spot.x, o.z - spot.z) < M.SITE.isletR + o.footprint).length }; })()`);
+  await b.mouse("mouseMoved", site.x, site.y, { button: "none" });
+  await b.sleep(300);
+  const tip = await b.evaluate(`document.getElementById("tooltip").textContent`);
+  await b.click(site.x, site.y);
+  await untilPage(b, 'B.scene === "orbit" && !B.transitioning', 15000);
+  const entered = await b.evaluate(`({ scene: window.__ooga.scene, phase: window.__ooga.orbit.phase, build: !document.getElementById("orbit-build").hidden })`);
+  record("hub orbit route: the islet carries the pad, rocket, tower, bridge and sign clear of scenery, tooltips, and tapping the rocket opens the builder", site.launchers === 2 && site.at && site.kinds === "1,1,1,1" && site.rocket >= 5 && site.clear === 0 && site.prop === "rocket" && tip === "Ooga Orbit · tap to fly" && entered.scene === "orbit" && entered.phase === "build" && entered.build, JSON.stringify({ ...site, tip, ...entered }));
+  await b.key("Escape");
+  await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
+  // From the meadow over the bridge onto the islet, W held
+  await b.evaluate(`(() => { const B = window.__ooga, spot = window.BL.rocketModels.siteSpot(B.island, {}), cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.walk && !c.build && c.traits.name !== "portlandhodl"), z = spot.bridgeZ - 2; B.crew.control(cave); B.crew.relocatePlayer({ x: spot.x, y: B.island.surfaceAt(spot.x, z), z }, 0); B.pilot.orbit.tYaw = B.pilot.orbit.yaw = Math.PI; })()`);
+  await b.sleep(300);
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", text: "w" });
+  const walked = await b.evaluate(`new Promise((resolve) => { const B = window.__ooga, spot = window.BL.rocketModels.siteSpot(B.island, {}), t0 = performance.now(); let low = Infinity; const tick = () => { const p = B.crew.player && B.crew.player.root.position, onBridge = p && p.z > spot.bridgeZ + 1 && p.z < spot.z - window.BL.rocketModels.SITE.isletR; if (onBridge) low = Math.min(low, p.y); const distance = p ? Math.hypot(p.x - spot.x, p.z - spot.z) : Infinity; if (B.scene !== "hub" || distance < 6 || performance.now() - t0 > 15000) resolve({ scene: B.scene, distance, y: p && p.y, ground: spot.y, low, sag: window.BL.rocketModels.SITE.sag, ms: Math.round(performance.now() - t0) }); else requestAnimationFrame(tick); }; tick(); })`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "w" });
+  record("hub orbit route: an Ooga walks from the meadow over the bridge onto the islet without dropping through", walked.scene === "hub" && walked.distance < 6 && walked.y > walked.ground - 0.1 && walked.low > walked.ground - walked.sag - 0.1, JSON.stringify(walked));
+});
+
+const soakOrbit = () => withPage("soak: orbit cycles", hubPage(src), async (b) => {
+  const { rendered, settled, snapshot, travel, heapDetail, within } = await soak(b);
+  await settled();
+  await rendered(2);
+  const s0 = await snapshot();
+  for (let i = 0; i < 6; i++) {
+    for (const id of ["orbit", "hub"]) {
+      const t = await travel(id);
+      if (t.stuck) throw new Error(`round trip ${i + 1}: the transition to the ${id} did not settle: ${JSON.stringify(t.stuck)}`);
+    }
+  }
+  const s6 = await snapshot();
+  const same = (key) => s0.stats[key] === s6.stats[key];
+  record("soak: orbit cycles: node, target, tween and DOM counts identical after six hub/orbit round trips", s6.stats.tweens === 0 && same("allNodes") && same("targets") && same("tweens") && same("dom"), `${JSON.stringify(s0.stats)} -> ${JSON.stringify(s6.stats)}`);
+  record("soak: orbit cycles: GPU records stable", Math.abs(s6.stats.gl.records - s0.stats.gl.records) <= 3, `${s0.stats.gl.records} -> ${s6.stats.gl.records}`);
+  record("soak: orbit cycles: live DOM nodes and event listeners identical", s6.nodes === s0.nodes && s6.listeners === s0.listeners, `nodes ${s0.nodes} -> ${s6.nodes}, listeners ${s0.listeners} -> ${s6.listeners}`);
+  record("soak: orbit cycles: heap after GC within 10%", within(s0, s6, 0.1), heapDetail(s0, s6));
+  record("soak: orbit cycles: no error thrown", !b.logs.some((l) => l.startsWith("[exception]")), b.logs.join(" | ").slice(0, 200));
+});
+
+// Sixty tips in fifteen seconds while the rocket climbs, then back to the builder
+const soakOrbitDonations = () => withPage("soak: donations (orbit)", orbitPage(src), async (b) => {
+  const { until, rendered, settled, snapshot, heapDetail, within } = await soak(b);
+  await settled();
+  await rendered(2);
+  const before = await snapshot();
+  await b.evaluate(`(() => { const O = window.__ooga.orbit; O.launch(); O.simulate(3.05 + 1.85); O.releaseClamps(); })()`);
+  const level0 = await b.evaluate("window.__ooga.level");
+  for (let i = 0; i < 60; i++) {
+    await b.evaluate(`window.__ooga.demoTip(${i % 4 === 3 ? 120000 : 1200})`);
+    await b.evaluate("window.__ooga.advance(0.25)");
+  }
+  const mid = await b.evaluate(`(() => { const B = window.__ooga; return { level: B.level, phase: B.orbit.phase, donations: B.game.state.donations, alt: B.flight.state.alt }; })()`);
+  await b.evaluate(`window.__ooga.orbit.toBuild()`);
+  const quiet = await until("B.stats().particles === 0", 15000) && await settled(15000);
+  await b.evaluate("(() => { const B = window.__ooga; B.trimPool(); B.housekeep(); })()");
+  const after = await snapshot();
+  const a = after.stats, s = before.stats;
+  record("soak: donations (orbit): tips credit the shared banana level mid-climb and the pools drain", quiet && mid.phase === "ascent" && mid.alt > 20 && mid.level > level0 + 150 && mid.donations === 60 && a.particles === 0 && a.tweens === 0 && a.pool <= 32 && a.debris === 0, JSON.stringify({ level0, mid, particles: a.particles, pool: a.pool, tweens: a.tweens, debris: a.debris }));
+  record("soak: donations (orbit): node and target counts back to base", a.allNodes - a.pool === s.allNodes - s.pool && a.targets === s.targets, `allNodes ${s.allNodes} -> ${a.allNodes} (pool ${a.pool}), targets ${s.targets} -> ${a.targets}, dom ${s.dom} -> ${a.dom}, listeners ${before.listeners} -> ${after.listeners}`);
+  record("soak: donations (orbit): GPU records bounded", a.gl.records - s.gl.records <= 20, `${s.gl.records} -> ${a.gl.records}`);
+  record("soak: donations (orbit): heap after GC within 15%", within(before, after, 0.15), heapDetail(before, after));
 });
 
 const soakRace = () => withPage("soak: race cycles", hubPage(src), async (b) => {
@@ -18073,7 +18241,7 @@ const cameraObjectRegistry = (backend) => [`camera object registry ${backend}`, 
   record(`camera object registry ${backend}: any selected actor surface in view suppresses all structural and object cues`, gate.rows.length === 7 && gate.rows.every((row) => row.perceived && row.concealed) && gate.rows[0].fullyVisible && gate.rows[0].visibleActorSamples === 81 && gate.rows[0].hiddenActorSamples === 0 && gate.rows.filter((row) => ["fully visible actor", "partially visible actor", "two millimetre slit", "uncertified occlusion", "first person gate"].includes(row.name)).every((row) => !row.enabled && row.count === 0 && row.objects === 0 && row.structures === 0 && row.providers === 0) && gate.rows.filter((row) => ["hidden actor", "reopened"].includes(row.name)).every((row) => !row.anyVisible && row.enabled && row.objects > 0 && row.structures > 0) && gate.rows[1].anyVisible && !gate.rows[1].fullyVisible && gate.rows[1].visibleActorSamples > 0 && gate.rows[1].hiddenActorSamples > 0 && gate.rows[2].sliverWitness && gate.rows[2].anyVisible && gate.rows[2].visibleActorSamples === 0 && gate.rows[3].visibleActorSamples === 0, JSON.stringify(gate));
   record(`camera object registry ${backend}: an oblique underfloor view certifies solid cover across the near plane but preserves a two-millimetre visible slot`, gate.underfloor.length === 2 && gate.underfloor.every((row) => row.minimumDepth < row.near && row.maximumDepth > row.near) && !gate.underfloor[0].slot && !gate.underfloor[0].anyVisible && !gate.underfloor[0].witnessClear && gate.underfloor[0].enabled && gate.underfloor[0].structures > 0 && gate.underfloor[1].slot && gate.underfloor[1].anyVisible && gate.underfloor[1].witnessClear && !gate.underfloor[1].enabled && gate.underfloor[1].count === 0 && gate.underfloor[1].structures === 0 && gate.underfloor[1].objects === 0 && gate.underfloor[1].providers === 0, JSON.stringify(gate.underfloor));
   const grass = await b.evaluate(`(${grassOutlineProbe.toString()})()`);
-  record(`camera object registry ${backend}: grass, flowers, bushes and Lab signs remain rendered but never enter nearby owners or outlines`, grass.grass === 98 && grass.flowers === 38 && grass.bushes === 73 && grass.labSign && grass.buildSign && grass.rendered && grass.excluded && grass.rows.length === 3 && grass.rows.every((row) => row.registered === 1 && row.nearby === 1 && row.controlLines > 0 && row.grassLines === 0 && row.flowerLines === 0 && !row.grassSources && !row.flowerSources && !row.grassNearby && !row.flowerNearby && !row.productionSources && !row.productionNearby), JSON.stringify(grass));
+  record(`camera object registry ${backend}: grass, flowers, bushes and Lab signs remain rendered but never enter nearby owners or outlines`, grass.grass === 88 && grass.flowers === 40 && grass.bushes === 67 && grass.labSign && grass.buildSign && grass.rendered && grass.excluded && grass.rows.length === 3 && grass.rows.every((row) => row.registered === 1 && row.nearby === 1 && row.controlLines > 0 && row.grassLines === 0 && row.flowerLines === 0 && !row.grassSources && !row.flowerSources && !row.grassNearby && !row.flowerNearby && !row.productionSources && !row.productionNearby), JSON.stringify(grass));
   const provider = await b.evaluate(`(${objectProviderStateProbe.toString()})()`);
   record(`camera object registry ${backend}: a grouped object's provider keeps ownership and opacity without individual contour candidates`, provider.initial.count === 0 && provider.initial.same && provider.initial.alpha === 0 && provider.visible.providers === 1 && provider.visible.alpha === 1 && provider.visible.same && provider.away.providers === 0 && provider.away.alpha === 1 && provider.returned.providers === 1 && provider.returned.alpha === 1 && provider.clear.providers === 0 && provider.clear.recognized && provider.clear.alpha === 0 && !provider.blocked.recognized && provider.blocked.alpha === 0 && provider.restored.providers === 1 && provider.removed.owners === 0 && provider.removed.providers === 0 && provider.gated.providers === 0 && provider.gated.same && provider.removedWhileGated.owners === 0 && provider.removedWhileGated.providers === 0 && !provider.removedWhileGated.same && provider.disposed, JSON.stringify(provider));
 }];
@@ -18264,6 +18432,8 @@ task("matrix character activation", matrixCharacterActivation);
 task("matrix first-person boundary webgl2", () => matrixFirstPersonBoundary("webgl2"));
 task("matrix first-person boundary canvas2d", () => matrixFirstPersonBoundary("canvas2d"));
 task("soak: drop cycles", soakDrop);
+task("soak: orbit cycles", soakOrbit);
+task("soak: donations (orbit)", soakOrbitDonations);
 task("hub crew", hubCrew);
 task("drop board", dropBoard);
 task("drop controls", dropControls);
@@ -18296,6 +18466,10 @@ task("race canvas", raceCanvas);
 task("matrix rain canvas2d", () => matrixRain("canvas2d"));
 task("hub props", hubProps);
 task("drop flow", dropFlow);
+task("orbit builder", orbitBuilder);
+task("orbit flow", orbitFlow);
+task("orbit failures", orbitFailures);
+task("hub orbit route", hubOrbit);
 task("phone", phone);
 task("race items", raceItems);
 task("sheet intro", sheetIntro);
@@ -18525,6 +18699,55 @@ const unitChecks = async () => {
   {
     const r = outlinePerformanceProbe();
     for (const backend of backends) record(`outline visibility cache ${backend}: whole-wall witnesses remain correct as blockers change without retracing fixed-camera terrain`, r.rows.length === 3 && r.failures.length === 0, JSON.stringify(r));
+  }
+  {
+    // Ooga Orbit's rules and flight model, straight from rocket-parts.js and rocket.js at the fixed step
+    const P = BL.rocketParts, K = BL.rocket, { quat } = BL.math, DT = 1 / 120, IN = { throttle: 0, lean: 0, pitch: 0, roll: 0, yaw: 0 };
+    const climb = (stack) => {
+      const f = K.create({ stack, groundAt: () => -Infinity }), s = f.state;
+      f.reset(0, 2.3, 46);
+      f.ignite();
+      let seps = 0;
+      for (let t = 0; t < 300 && !s.failure && s.alt <= K.ORBIT_ALT; t += DT) {
+        f.substep(DT, IN);
+        if (s.flameout) {
+          s.flameout = false;
+          if (f.separate()) seps++, f.ignite();
+        }
+      }
+      return { alt: Math.round(s.alt), failure: s.failure, seps };
+    };
+    // Held over the pad at the top, pod alone, thrown down shield first (or flipped), chute as soon as it is ready
+    const home = (stack, { flip = false, chute = true } = {}) => {
+      const f = K.create({ stack, groundAt: () => -Infinity }), s = f.state;
+      f.reset(0, 2.3, 46);
+      s.mode = "ascent";
+      f.hold(0, K.CY + K.R + K.ORBIT_ALT, 0);
+      f.homeward();
+      f.stand();
+      if (flip) quat.multiply(s.q, s.q, quat.fromAxisAngle(quat.create(), 1, 0, 0, Math.PI));
+      s.v.y = -12;
+      for (let t = 0; t < 400 && !s.failure && s.mode !== "down"; t += DT) {
+        f.substep(DT, IN);
+        if (chute && f.chuteReady()) f.deploy();
+      }
+      return { pod: f.isPod(), failure: s.failure, landing: s.landing, peakHeat: +s.peakHeat.toFixed(3), chute: s.chute };
+    };
+    const presets = P.PRESETS.map((p) => ({ name: p.name, ok: P.check(p.stack).ok, warnings: P.check(p.stack).warnings.length, stages: P.stagesOf(p.stack).length, dv: +P.stats(p.stack).dv.toFixed(1), ...climb(p.stack) }));
+    record("orbit parts: every ready rocket passes the builder, has the speed for low orbit and climbs straight to it, dropping its stages", presets.length === 3 && presets.every((p) => p.ok && p.dv >= P.TOP_DV && p.alt >= K.ORBIT_ALT && !p.failure && p.seps === Math.max(0, p.stages - 2)) && presets[0].stages === 4 && presets[1].stages === 4 && presets[0].warnings === 0 && presets[1].warnings === 0 && presets[2].warnings === 1, JSON.stringify(presets));
+    const rules = {
+      noEngine: P.check(["barrel", "stickpod"]).ok,
+      noPod: P.check(["pot", "barrel"]).ok,
+      loneShield: P.check(["pot", "mudshield", "barrel", "stickpod"]).ok,
+      floatingEngine: P.check(["pot", "barrel", "tusk", "stickpod"]).ok,
+      twoPods: P.check(["pot", "stickpod", "gourdpod"]).ok,
+      noShield: P.check(["pot", "vine", "stickpod"]).warnings,
+      sanitized: P.sanitize(["pot", "nope", 7, "barrel", ...Array(30).fill("nut")]),
+      notList: P.sanitize("pot")
+    };
+    record("orbit parts: the builder refuses a rocket without an engine at the bottom or a pod on top, a stray shield or engine, two pods, and sanitises stored stacks", !rules.noEngine && !rules.noPod && !rules.loneShield && !rules.floatingEngine && !rules.twoPods && rules.noShield.some((w) => w.includes("heat shield")) && rules.sanitized.length === P.MAX_PARTS && rules.sanitized[0] === "pot" && rules.sanitized[1] === "barrel" && rules.notList === null, JSON.stringify(rules));
+    const ooga = P.PRESETS[0].stack, shield = home(ooga), flipped = home(ooga, { flip: true }), bare = home(ooga, { chute: false });
+    record("orbit flight: from low orbit the pod comes home alone, shield first runs cooler than flipped, the chute lands it soft and no chute breaks it on the sea", shield.pod && !shield.failure && shield.landing === "soft" && shield.chute === "open" && shield.peakHeat > 0 && flipped.peakHeat > shield.peakHeat * 1.5 && bare.failure === "splat", JSON.stringify({ shield, flipped, bare }));
   }
 };
 

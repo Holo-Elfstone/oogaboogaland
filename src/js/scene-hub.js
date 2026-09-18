@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod } = BL;
+  const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, rocketModels, rocketParts, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod } = BL;
   const { clamp, lerp, ease, fnv1a, mulberry32 } = math;
   const { createNode, addChild, removeChild, createCamera, addTween, stepTweens, tweenCount, traverseVisible } = BL.scene;
   const { EAT_RATE, JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS } = crewMod;
@@ -146,9 +146,9 @@
   const ALTAR_HEIGHT = 0.34, ALTAR_BLOCK_WIDTH = 0.2, ALTAR_BLOCK_ARC = 0.3, ALTAR_RING_GAP = 0.02, ALTAR_MAX_BLOCKS = 512;
   // Ripen time and odds for a dropped banana
   const RIPEN = 25, TREE_CHANCE = 0.5, BUSH_CHANCE = 0.25;
-  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · solid", crate: "Crate · locked", barrel: "Barrel · empty", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", windsock: "Windsock · a fair wind", jumbotron: "Jumbotron · EntropyLab on the big screen · tap for the next board", gate: null };
+  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · solid", crate: "Crate · locked", barrel: "Barrel · empty", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", launchpad: "Ooga Orbit · tap to build a rocket", rocket: "Ooga Orbit · tap to fly", tower: "Launch tower · Ooga NASA", orbitsign: "Ooga Orbit · the pad past the bridge", bridge: "Rope bridge · to the launch pad", windsock: "Windsock · a fair wind", jumbotron: "Jumbotron · EntropyLab on the big screen · tap for the next board", gate: null };
   const MATRIX_LIVING_PROPS = new Set(["tree"]);
-  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "jumbotron"]);
+  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "jumbotron", "launchpad", "rocket", "tower", "bridge", "orbitsign"]);
   const BUSH_WORDS = ["Something rustles.", "A beetle. Ooga leaves it.", "Just a bush."];
   const LEAF = models.particleGeometry("#4a8530", 0.12, 0);
   const PETALS = ["#e04a3a", "#f2c94c", "#f3efe4"].map((c) => models.particleGeometry(c, 0.09, 0));
@@ -1258,6 +1258,31 @@
     const sources = [hearth];
     return { node: room, entrances, mattresses, roomSigns, benches, fireHazards, lights, sources, hearth, firepit, rooms: island.headquarters.rooms, windows: island.headquarters.windows, ramps: island.headquarters.ramps, openFloor: island.headquarters.room, basement, sleepMarksVisible };
   };
+  // Ooga Orbit's islet off the south rim: the rope bridge out to it, the pad with the last rocket flown standing on
+  // it, the tower and the sign; all of it is solid, so an Ooga walks over the bridge and onto the pad
+  const buildLaunchSite = () => {
+    const { SITE } = rocketModels;
+    const spot = rocketModels.siteSpot(island, {});
+    const site = rocketModels.site(spot);
+    addChild(root, site.node);
+    placed.push(site.node);
+    solids.add(site.islet);
+    addProp("launchpad", site.pad, spot.x, spot.z, SITE.padR);
+    addProp("tower", site.tower, spot.x + SITE.towerX, spot.z, 1.4);
+    addProp("bridge", site.bridge, spot.x, spot.bridgeZ + SITE.span / 2, SITE.width);
+    addProp("orbitsign", site.sign, spot.x + site.sign.position.x, spot.z + site.sign.position.z, 1);
+    const saved = game.state.orbit.build;
+    const rocket = rocketModels.assemble(saved && rocketParts.check(saved).ok ? saved : rocketParts.PRESETS[0].stack);
+    Object.assign(rocket.node.position, { x: spot.x, y: spot.padY, z: spot.z });
+    addChild(root, rocket.node);
+    placed.push(rocket.node);
+    for (const part of rocket.parts) addProp("rocket", part.node, spot.x, spot.z, part.part.r + 0.3);
+    claim(spot.x, spot.z, SITE.isletR + 1);
+    // Keep the walk from the meadow to the bridge head clear of scenery
+    for (let z = spot.bridgeZ; z > spot.bridgeZ - 7; z -= 1.5) claim(spot.x, z, 2.4);
+    launchers.push({ x: spot.x, y: spot.padY, z: spot.z, scene: "orbit" });
+    presets.orbit = { yaw: -0.64, pitch: 0.3, dist: 22 + rocket.height, target: { x: spot.x, y: spot.padY + rocket.height * 0.45, z: spot.z } };
+  };
   // Dock over the drop and ladder on the bluff
   const buildRim = () => {
     const d = polar(DOCK_DEG, CLIFF_OUTER);
@@ -2312,6 +2337,15 @@
       case "sign":
         enterLaunch();
         break;
+      case "launchpad":
+      case "rocket":
+      case "tower":
+      case "orbitsign":
+        enterLaunch("orbit");
+        break;
+      case "bridge":
+        hud.toast("The planks sway. Ooga NASA built it.");
+        break;
       case "windsock":
         hud.toast("A fair wind for a drop.");
         break;
@@ -2373,7 +2407,7 @@
       hud.toast("The glyph gate rises.");
     } else if (action === matrixControl) toggleMatrixControl();
     else if (action.slot) enterCave(action.slot);
-    else enterLaunch();
+    else enterLaunch(action.scene);
   };
   const freeAction = () => {
     const action = nearbyAction(camera.position.x, camera.position.y, camera.position.z, MATRIX_BUTTON_REACH);
@@ -2412,11 +2446,11 @@
     });
   };
   const enterCave = (slot) => enterScene(presets[slot.scene], slot.scene);
-  // The Ooga at the wheel flies the plane
-  const enterLaunch = () => {
+  // The Ooga at the wheel flies the plane, or rides the rocket
+  const enterLaunch = (id = "drop") => {
     if (entering) return;
     world.pilot = pilot.player ? pilot.player.traits.name : null;
-    enterScene(presets.drop, "drop");
+    enterScene(presets[id], id);
   };
   const onTap = (hit) => {
     if (!hit) return;
@@ -2693,8 +2727,8 @@
         hud.hint(COARSE ? `Tap the glyph control to ${label}` : `Press Space or tap the control to ${label}`);
         if (player) hud.setAct(matrixControl.pressed ? "PRESS OUT" : "PRESS IN");
       } else {
-        const label = action.slot ? "START RALLY" : "FLY PLANE";
-        hud.hint(COARSE ? `Tap ${label} to play` : `Press Space to ${action.slot ? "start Ooga Rally" : "fly Ooga Drop"}`);
+        const label = action.slot ? "START RALLY" : action.scene === "orbit" ? "BUILD ROCKET" : "FLY PLANE";
+        hud.hint(COARSE ? `Tap ${label} to play` : `Press Space to ${action.slot ? "start Ooga Rally" : action.scene === "orbit" ? "build for Ooga Orbit" : "fly Ooga Drop"}`);
         if (player) hud.setAct(label);
       }
     } else if (hadPlayerPrompt || player) pilot.showAct();
@@ -3839,6 +3873,7 @@
       return { x, z, ry: Math.atan2(-x, -z) };
     });
     buildRim();
+    buildLaunchSite();
     const firePos = buildFire();
     fire = lamps[lamps.length - 1];
     // The jumbotron: a stadium stats board standing on the rim crest just

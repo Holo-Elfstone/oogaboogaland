@@ -146,7 +146,7 @@
           <use href="#foliage" />
         </g>
       </svg>
-      <div class="curtain-label"><span class="curtain-spinner"></span><b><span data-sign>Ooga Booga Land</span></b><span>growing the island…</span></div>
+      <div class="curtain-label"><span class="curtain-spinner"></span><b><span data-sign>Ooga Booga Land</span></b><span id="curtain-saying">growing the island…</span></div>
     </div>
 
     <header class="topbar">
@@ -186,6 +186,11 @@
       <nav class="presets" aria-label="Drop" data-scene="drop" hidden>
         <button type="button" data-action="drop-board" id="drop-board-btn">Board</button>
         <button type="button" data-action="mute" id="drop-mute" aria-label="Mute sound" aria-pressed="false">Sound</button>
+        <button type="button" class="leave" data-action="leave">Back<span> to the island</span></button>
+      </nav>
+      <nav class="presets" aria-label="Orbit" data-scene="orbit" hidden>
+        <button type="button" data-action="orbit-build" id="orbit-build-btn">Build</button>
+        <button type="button" data-action="mute" id="orbit-mute" aria-label="Mute sound" aria-pressed="false">Sound</button>
         <button type="button" class="leave" data-action="leave">Back<span> to the island</span></button>
       </nav>
     </header>
@@ -334,6 +339,7 @@
           <button type="button" data-action="race-next" id="race-next" hidden>Next track</button>
           <button type="button" data-action="race-again">Race again</button>
           <button type="button" data-action="garage">Garage</button>
+          <button type="button" data-action="leave">Exit Game</button>
         </div>
       </section>
       <section class="race-pause" id="race-pause" hidden aria-label="Paused">
@@ -342,7 +348,7 @@
           <button type="button" data-action="race-resume">Resume</button>
           <button type="button" data-action="race-again">Restart</button>
           <button type="button" data-action="garage">Garage</button>
-          <button type="button" data-action="leave">Leave cave</button>
+          <button type="button" data-action="leave">Exit Game</button>
         </div>
       </section>
     </div>
@@ -388,7 +394,91 @@
         <div class="actions">
           <button type="button" data-action="drop-again">Again</button>
           <button type="button" data-action="drop-board">Board</button>
-          <button type="button" data-action="leave">Back to the island</button>
+          <button type="button" data-action="leave">Exit Game</button>
+        </div>
+      </section>
+    </div>
+    <div class="race orbit" id="orbit" data-scene="orbit" hidden>
+      <section class="garage orbit-panel orbit-build" id="orbit-build" aria-label="Rocket parts">
+        <div class="orbit-head">
+          <h2><span data-sign>Ooga Orbit</span> <span class="garage-medal garage-cup" id="orbit-medal" hidden></span></h2>
+          <p class="help">Stack from the engine up, pod on top. Reach low orbit, spacewalk to the space rock, drop home.</p>
+        </div>
+        <nav class="orbit-tabs" id="orbit-tabs" aria-label="Part kinds"></nav>
+        <div class="orbit-parts" id="orbit-parts"></div>
+        <p class="orbit-keys" id="orbit-help">Tap a part to add it</p>
+      </section>
+      <section class="garage orbit-panel orbit-rocket" id="orbit-rocket" aria-label="Your rocket">
+        <div class="orbit-rocket-head">
+          <h3>Your rocket <small id="orbit-bill"></small></h3>
+          <button type="button" class="orbit-pilot" id="orbit-pilot">Pilot <b id="orbit-pilot-name"></b></button>
+        </div>
+        <div class="orbit-ready-rockets">
+          <h4>Ready rockets <button type="button" class="orbit-clear" id="orbit-clear">clear the pad</button></h4>
+          <div class="orbit-presets" id="orbit-presets"></div>
+        </div>
+        <div class="orbit-ready">
+          <div class="orbit-ready-row"><span>Speed to spend</span><b id="orbit-dv">0</b>
+            <span class="orbit-track"><span class="orbit-track-fill" id="orbit-dv-fill"></span><span class="orbit-track-mark"></span></span>
+          </div>
+          <div class="orbit-ready-row"><span>Lift-off push</span><b id="orbit-twr">0</b>
+            <span class="orbit-track orbit-track-twr"><span class="orbit-track-fill" id="orbit-twr-fill"></span><span class="orbit-track-mark"></span></span>
+          </div>
+        </div>
+        <ul class="orbit-facts" id="orbit-stats"></ul>
+        <ol class="orbit-stack" id="orbit-stack"></ol>
+        <ul class="orbit-problems" id="orbit-problems"></ul>
+        <button type="button" class="feed-open race-go orbit-launch" data-action="orbit-launch" id="orbit-launch"><span
+            data-sign>Launch!</span></button>
+      </section>
+      <div class="race-strip" id="orbit-strip" hidden>
+        <section class="orbit-card-panel orbit-mission-card" aria-label="Mission">
+          <h3>Mission</h3>
+          <ol class="orbit-mission" id="orbit-mission"></ol>
+          <button type="button" class="orbit-eva" data-action="orbit-eva" id="orbit-eva" hidden>Spacewalk <small>Space or V</small></button>
+        </section>
+        <section class="orbit-card-panel orbit-flight" aria-label="Flight">
+          <div class="orbit-flight-head">
+            <div class="orbit-big"><span>Height</span><b id="orbit-alt">0</b><small>to low orbit at 500</small></div>
+            <div class="orbit-small"><span>Speed</span><b id="orbit-speed">0</b></div>
+            <div class="orbit-small"><span>Stage</span><b id="orbit-stage">1</b><small id="orbit-stages">/1</small></div>
+          </div>
+          <div class="orbit-flight-body">
+            <div class="orbit-meters">
+              <div class="orbit-meter"><span>Fuel</span><span class="race-boost"><span class="race-boost-fill orbit-fill" id="orbit-fuel"></span></span></div>
+              <div class="orbit-meter"><span>Push</span><span class="race-boost"><span class="race-boost-fill orbit-fill" id="orbit-push"></span></span></div>
+              <div class="orbit-meter"><span>Heat</span><span class="race-boost"><span class="race-boost-fill orbit-fill orbit-hot" id="orbit-heat"></span></span></div>
+              <div class="orbit-meter"><span>Shield</span><span class="race-boost"><span class="race-boost-fill orbit-fill" id="orbit-shield"></span></span></div>
+              <div class="orbit-meter"><span>Stress</span><span class="race-boost"><span class="race-boost-fill orbit-fill orbit-hot" id="orbit-stress"></span></span></div>
+            </div>
+            <div class="orbit-altimeter" aria-hidden="true">
+              <span class="orbit-alt-mark orbit-alt-top">Orbit</span>
+              <span class="orbit-alt-mark orbit-alt-air">Air</span>
+              <span class="orbit-alt-mark orbit-alt-pad">Pad</span>
+              <span class="orbit-alt-fill" id="orbit-alt-fill"></span>
+              <span class="orbit-alt-now" id="orbit-alt-now"></span>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div class="race-center" id="orbit-center" hidden>3</div>
+      <div class="race-notice" id="orbit-notice" hidden>&nbsp;</div>
+      <div class="orbit-gauge" id="orbit-gauge" hidden>
+        <span class="orbit-gauge-green"></span><span class="orbit-gauge-gold"></span><span class="orbit-needle" id="orbit-needle"></span>
+      </div>
+      <section class="race-results" id="orbit-results" hidden aria-label="Flight log">
+        <h2><span data-sign>Flight Log</span></h2>
+        <div class="orbit-final" id="orbit-final">
+          <span class="orbit-final-label">Score</span>
+          <b id="orbit-final-score">0</b>
+          <span class="orbit-final-tags"><span class="garage-medal" id="orbit-final-medal" hidden></span><span class="orbit-final-best" id="orbit-final-best"></span></span>
+        </div>
+        <ol class="race-podium drop-rows" id="orbit-score"></ol>
+        <p class="help" id="orbit-summary"></p>
+        <div class="actions">
+          <button type="button" data-action="orbit-again">Fly again</button>
+          <button type="button" data-action="orbit-build">Build</button>
+          <button type="button" data-action="leave">Exit Game</button>
         </div>
       </section>
     </div>
@@ -445,6 +535,7 @@
   <script src="js/interact.js"></script>
   <script src="js/controls.js"></script>
   <script src="js/pilot.js"></script>
+  <script src="js/rocket-parts.js"></script>
   <script src="js/game.js"></script>
   <script src="js/hud.js"></script>
   <script src="js/fx.js"></script>
@@ -459,6 +550,8 @@
   <script src="js/critters.js"></script>
   <script src="js/race-models.js"></script>
   <script src="js/drop-models.js"></script>
+  <script src="js/rocket.js"></script>
+  <script src="js/rocket-models.js"></script>
   <script src="js/solid-props.js"></script>
   <script src="js/scene-hub.js"></script>
   <script src="js/scene-lab.js"></script>
@@ -472,6 +565,9 @@
   <script src="js/drop-hud.js"></script>
   <script src="js/drop-audio.js"></script>
   <script src="js/scene-drop.js"></script>
+  <script src="js/rocket-hud.js"></script>
+  <script src="js/rocket-audio.js"></script>
+  <script src="js/scene-orbit.js"></script>
   <script src="js/director.js"></script>
 </body>
 

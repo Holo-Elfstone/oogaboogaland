@@ -153,14 +153,23 @@ select {
 }
 
 .curtain-label b {
-  font-size: 22px;
+  font-size: 24px;
   line-height: 1;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55);
 }
 
-.curtain-label span:last-child {
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+/* The saying sits on its own stone strip so it reads against the planks */
+#curtain-saying {
+  padding: 5px 11px;
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  background: var(--tablet);
+  box-shadow: var(--tablet-shadow);
+  color: var(--paper);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
 }
 
 .curtain-spinner {
@@ -1725,6 +1734,1017 @@ select {
   font-weight: 600;
 }
 
+/* ---------- Ooga Orbit ---------- */
+/* The flight log's total, big over the rows */
+.orbit-final {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  margin: 10px 0 0;
+  padding: 10px 12px 12px;
+  background: var(--tablet);
+  border: 2px solid var(--stone-dk);
+  border-radius: 10px 8px 11px 9px;
+  box-shadow: var(--tablet-shadow);
+}
+
+.orbit-final-label {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.orbit-final b {
+  font-size: 44px;
+  line-height: 1;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+}
+
+.orbit-final.is-best b {
+  color: #f5c542;
+}
+
+.orbit-final.is-shown b {
+  animation: orbit-final-pop 0.5s cubic-bezier(0.2, 1.6, 0.4, 1);
+}
+
+.orbit-final-tags {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 18px;
+}
+
+.orbit-final-tags .garage-medal {
+  font-size: 11px;
+}
+
+.orbit-final-best {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+}
+
+.orbit-final.is-best .orbit-final-best {
+  color: #f5c542;
+  font-weight: 700;
+}
+
+@keyframes orbit-final-pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+}
+
+/* The builder: parts down the left, the rocket's list and numbers down the right, the pad between them */
+.orbit-panel {
+  top: calc(74px + var(--safe-top));
+  bottom: calc(16px + var(--safe-bottom));
+  transform: none;
+  width: min(340px, calc(50vw - 24px));
+  max-height: none;
+  padding: 12px 14px 14px;
+}
+
+.orbit-build {
+  left: calc(12px + var(--safe-left));
+}
+
+.orbit-rocket {
+  left: auto;
+  right: calc(70px + var(--safe-right));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.orbit-head h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.5);
+}
+
+.orbit-head .help {
+  margin: 6px 0 0;
+}
+
+/* Part kinds as plank tabs; the one showing is a golden card */
+.orbit-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.orbit-tab {
+  flex: 1 1 auto;
+  padding: 5px 8px;
+  border: 2px solid var(--wood-edge);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--paper);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.orbit-tab[aria-pressed="true"] {
+  background: linear-gradient(#f0b05a, var(--accent));
+  color: var(--ink);
+  box-shadow: 0 2px 0 var(--nail);
+}
+
+.orbit-parts {
+  flex: 1;
+  min-height: 0;
+  margin-top: 8px;
+  padding: 8px;
+  overflow: auto;
+  background: var(--tablet);
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  box-shadow: var(--tablet-shadow);
+}
+
+/* Part tiles: the rendered part over its name, its key number and a banana price */
+.orbit-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.orbit-tile {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  padding: 6px 6px 8px;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.1), rgba(0, 0, 0, 0.25) 70%);
+  color: var(--paper);
+  cursor: pointer;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+}
+
+.orbit-tile:hover,
+.orbit-tile:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+  transform: translateY(-2px);
+}
+
+.orbit-tile:active {
+  transform: translateY(1px);
+}
+
+.orbit-tile canvas {
+  width: 56px;
+  height: 56px;
+  image-rendering: pixelated;
+}
+
+.orbit-tile-name {
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.orbit-tile-stat {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.orbit-tile .orbit-price {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+}
+
+.orbit-price {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: rgba(245, 197, 66, 0.16);
+  color: #f5c542;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.orbit-keys {
+  margin: 8px 0 0;
+  color: var(--paper);
+  font-size: 10.5px;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.7);
+}
+
+.orbit-rocket-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.orbit-rocket-head h3 {
+  margin: 0;
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.orbit-rocket-head small {
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.orbit-pilot {
+  padding: 4px 9px;
+  border: 2px solid var(--wood-edge);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--paper);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.orbit-pilot b {
+  color: #f5c542;
+}
+
+/* Readiness: speed to spend against orbit (mark at the middle), lift-off push against 1× (mark at a third) */
+.orbit-ready {
+  display: grid;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--tablet);
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  box-shadow: var(--tablet-shadow);
+}
+
+.orbit-ready-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 8px;
+  align-items: baseline;
+}
+
+.orbit-ready-row span:first-child {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.orbit-ready-row b {
+  font-variant-numeric: tabular-nums;
+}
+
+.orbit-track {
+  position: relative;
+  grid-column: 1 / -1;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.orbit-track-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: linear-gradient(90deg, #f5c542, #ffb13b);
+  transition: width 0.25s ease;
+}
+
+.orbit-track-fill[data-state="ok"] {
+  background: linear-gradient(90deg, #22c55e, #b8f0c8);
+}
+
+.orbit-track-fill[data-state="bad"] {
+  background: linear-gradient(90deg, #ff6a3a, #e5533d);
+}
+
+.orbit-track-mark {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 2px;
+  background: #fff;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+}
+
+.orbit-track-twr .orbit-track-mark {
+  left: 33.3%;
+}
+
+.orbit-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.orbit-facts li {
+  display: flex;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 10.5px;
+}
+
+.orbit-facts li span:first-child {
+  color: var(--muted);
+}
+
+.orbit-facts li[data-warn="warn"] span:last-child {
+  color: var(--warn);
+}
+
+/* The stack, top down, each stage under its coloured label and a thin divider */
+.orbit-stack {
+  flex: 1;
+  min-height: 60px;
+  margin: 0;
+  padding: 4px 8px;
+  overflow: auto;
+  list-style: none;
+  background: var(--tablet);
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  box-shadow: var(--tablet-shadow);
+}
+
+.orbit-stage-head {
+  margin: 6px 0 2px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--hue);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.orbit-stack li:not(.orbit-stage-head):not(.orbit-empty) {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.orbit-stage-head:first-child {
+  margin-top: 2px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.orbit-stack li[data-selected="true"] {
+  background: rgba(240, 176, 90, 0.18);
+}
+
+.orbit-stack .orbit-row-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 1px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--paper);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.orbit-mini {
+  width: 26px;
+  height: 26px;
+  image-rendering: pixelated;
+}
+
+.orbit-tools {
+  display: flex;
+  gap: 2px;
+  opacity: 0.55;
+}
+
+.orbit-stack li:hover .orbit-tools,
+.orbit-stack li[data-selected="true"] .orbit-tools {
+  opacity: 1;
+}
+
+.orbit-stack .orbit-tool {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--paper);
+  cursor: pointer;
+}
+
+.orbit-stack .orbit-remove:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.orbit-empty {
+  padding: 10px 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* Ready rockets: golden plank cards with a glow; the one on the pad is ticked and framed brighter */
+.orbit-ready-rockets h4 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 5px;
+  color: var(--accent);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.orbit-clear {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-decoration: underline;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.orbit-clear:hover {
+  color: var(--paper);
+}
+
+.orbit-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.orbit-preset {
+  display: grid;
+  gap: 2px;
+  padding: 8px 6px;
+  border: 2px solid var(--wood-edge);
+  border-radius: 8px;
+  background: linear-gradient(#f5c870, var(--accent));
+  color: var(--ink);
+  text-align: center;
+  box-shadow: 0 3px 0 var(--nail), 0 0 14px rgba(240, 176, 90, 0.35);
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.orbit-preset:hover,
+.orbit-preset:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 var(--nail), 0 0 20px rgba(245, 197, 66, 0.6);
+  outline: none;
+}
+
+.orbit-preset:active {
+  transform: translateY(1px);
+}
+
+.orbit-preset[aria-pressed="true"] {
+  background: linear-gradient(#ffe39a, #f5c542);
+  border-color: #fff4cf;
+  box-shadow: 0 3px 0 var(--nail), 0 0 22px rgba(255, 228, 140, 0.8);
+}
+
+.orbit-preset-name {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.orbit-preset[aria-pressed="true"] .orbit-preset-name::before {
+  content: "\2713 ";
+}
+
+.orbit-preset-note {
+  font-size: 9.5px;
+  opacity: 0.75;
+}
+
+.orbit-problems {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+}
+
+.orbit-problems li {
+  margin: 2px 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+.orbit-problems li[data-warn="bad"] {
+  color: #ffb4a6;
+}
+
+.orbit-problems li[data-warn="warn"] {
+  color: #f3dfa0;
+}
+
+.orbit-problems li[data-warn="ok"] {
+  color: #b8f0c8;
+}
+
+.orbit-launch {
+  width: 100%;
+  margin: 0;
+}
+
+/* Drag and drop: tiles and rows lift under the pointer; a ghost of the part follows it, a glowing line marks where it
+   goes, and a row dragged off turns the ghost red for removal */
+.orbit-tile,
+.orbit-stack li[data-index] {
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.orbit-tile {
+  cursor: grab;
+}
+
+body.orbit-dragging,
+body.orbit-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+
+body.orbit-dragging #tooltip {
+  display: none;
+}
+
+.orbit-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 4px;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(20, 16, 12, 0.92);
+  color: var(--paper);
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.orbit-ghost .orbit-mini {
+  width: 34px;
+  height: 34px;
+}
+
+.orbit-ghost[data-remove="true"] {
+  border-color: var(--danger);
+  color: #ffb4a6;
+}
+
+.orbit-ghost[data-remove="true"]::after {
+  content: "remove";
+  color: var(--danger);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.orbit-drop-line {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 49;
+  height: 4px;
+  border-radius: 2px;
+  background: #f5c542;
+  box-shadow: 0 0 10px rgba(245, 197, 66, 0.9);
+  pointer-events: none;
+}
+
+.orbit-launch:disabled {
+  filter: grayscale(0.8) brightness(0.8);
+  cursor: not-allowed;
+}
+
+/* In flight two plank cards: the mission down the left, the flight's instruments down the right */
+.orbit-card-panel {
+  position: absolute;
+  top: calc(74px + var(--safe-top));
+  padding: 10px 12px 12px;
+  border: 3px solid var(--wood-edge);
+  border-radius: var(--radius);
+  background: var(--planks);
+  box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35);
+  color: var(--paper);
+  pointer-events: none;
+}
+
+.orbit-card-panel h3 {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+.orbit-mission-card {
+  left: calc(16px + var(--safe-left));
+  width: 290px;
+}
+
+.orbit-eva {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 14px;
+  border: 2px solid var(--wood-edge);
+  border-radius: 6px;
+  background: linear-gradient(#7fe0ff, #3fa9c9);
+  color: var(--ink);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.orbit-eva small {
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+/* The checklist: the current step lit with its live detail, done ticked, missed struck */
+.orbit-mission {
+  margin: 0;
+  padding: 6px 10px;
+  list-style: none;
+  counter-reset: step;
+  background: var(--tablet);
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  box-shadow: var(--tablet-shadow);
+  pointer-events: none;
+}
+
+.orbit-mission li {
+  display: grid;
+  grid-template-columns: 1.6em 1fr;
+  padding: 3px 0;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.orbit-mission li::before {
+  counter-increment: step;
+  content: counter(step);
+  grid-row: span 2;
+  color: var(--faint);
+  font-weight: 700;
+}
+
+.orbit-detail {
+  grid-column: 2;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+.orbit-mission li:not([data-state="now"]) .orbit-detail {
+  display: none;
+}
+
+.orbit-mission li[data-state="now"] {
+  color: var(--paper);
+  font-weight: 700;
+}
+
+.orbit-mission li[data-state="now"]::before {
+  content: "\25B6";
+  color: #f5c542;
+}
+
+.orbit-mission li[data-state="now"] .orbit-detail {
+  color: #f5c542;
+  font-weight: 600;
+}
+
+.orbit-mission li[data-state="done"] {
+  color: #b8f0c8;
+}
+
+.orbit-mission li[data-state="done"]::before {
+  content: "\2713";
+  color: var(--ok);
+}
+
+.orbit-mission li[data-state="missed"] {
+  color: var(--faint);
+  text-decoration: line-through;
+}
+
+/* The flight card: height big, speed and stage beside it, the meters, and the height meter up the right edge with
+   marks at the pad and where the air ends (their heights over the top's 500 are fixed here) */
+.orbit-flight {
+  right: calc(70px + var(--safe-right));
+  width: 240px;
+}
+
+.orbit-flight-head,
+.orbit-flight-body {
+  padding: 8px 10px;
+  background: var(--tablet);
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  box-shadow: var(--tablet-shadow);
+}
+
+.orbit-flight-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+}
+
+.orbit-big {
+  grid-row: span 2;
+  display: flex;
+  flex-direction: column;
+}
+
+.orbit-big span,
+.orbit-small span,
+.orbit-meter span:first-child {
+  color: var(--muted);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.orbit-big b {
+  color: #f5c542;
+  font-size: 32px;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.orbit-big small {
+  color: var(--muted);
+  font-size: 9.5px;
+}
+
+.orbit-small {
+  text-align: right;
+}
+
+.orbit-small b {
+  display: block;
+  font-size: 16px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.orbit-small small {
+  color: var(--muted);
+}
+
+.orbit-flight-body {
+  display: grid;
+  grid-template-columns: 1fr 46px;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.orbit-meters {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.orbit-meter {
+  display: grid;
+  gap: 3px;
+}
+
+.orbit-meter .race-boost {
+  width: 100%;
+  height: 8px;
+}
+
+.orbit-altimeter {
+  position: relative;
+  justify-self: end;
+  width: 16px;
+  height: 190px;
+  border: 2px solid var(--wood-edge);
+  border-radius: 999px;
+  background: linear-gradient(0deg, rgba(47, 163, 184, 0.45), rgba(8, 10, 24, 0.8) 40%, rgba(0, 0, 0, 0.9));
+}
+
+.orbit-alt-fill {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: 2px;
+  height: 0;
+  max-height: calc(100% - 4px);
+  border-radius: 999px;
+  background: linear-gradient(0deg, #ff8a2a, #f5c542);
+}
+
+.orbit-alt-mark {
+  position: absolute;
+  right: 20px;
+  transform: translateY(50%);
+  color: var(--muted);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.orbit-alt-mark::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -20px;
+  width: 18px;
+  border-top: 1px solid currentColor;
+}
+
+.orbit-alt-top {
+  bottom: 100%;
+  color: #7fe0ff;
+  font-weight: 700;
+}
+
+.orbit-alt-air {
+  bottom: 30%;
+}
+
+.orbit-alt-pad {
+  bottom: 8.5%;
+}
+
+/* The notch riding at the current height */
+.orbit-alt-now {
+  position: absolute;
+  left: -5px;
+  right: -5px;
+  bottom: 0;
+  height: 4px;
+  transform: translateY(50%);
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+}
+
+.orbit-fill[data-state="warn"] {
+  background: linear-gradient(90deg, #f0b05a, #ff8a2a);
+}
+
+.orbit-fill[data-state="bad"] {
+  background: linear-gradient(90deg, #ff6a3a, #e5533d);
+}
+
+.orbit-fill[data-state="ok"] {
+  background: linear-gradient(90deg, #22c55e, #b8f0c8);
+}
+
+.orbit-hot {
+  background: linear-gradient(90deg, #d8892b, #ffb13b);
+}
+
+/* The flight's callout: a glassy panel low in the view with an accent edge, keys drawn as key caps, easing in */
+#orbit-notice {
+  top: auto;
+  bottom: calc(12% + var(--safe-bottom));
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(24, 19, 14, 0.9), rgba(12, 10, 8, 0.9));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  color: var(--paper);
+  font-size: 14px;
+  line-height: 1.6;
+  letter-spacing: 0.02em;
+  text-align: center;
+  text-transform: none;
+  animation: orbit-callout 0.28s ease-out;
+}
+
+#orbit-notice kbd {
+  display: inline-block;
+  min-width: 1.6em;
+  margin: 0 2px;
+  padding: 0 7px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-bottom-width: 3px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5c542;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+@keyframes orbit-callout {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #orbit-notice,
+  .orbit-final.is-shown b {
+    animation: none;
+  }
+}
+
+/* The clamp gauge: the needle fills from the left; let go in the green, best in the gold */
+.orbit-gauge {
+  position: absolute;
+  left: 50%;
+  bottom: calc(22% + var(--safe-bottom));
+  width: min(360px, calc(100vw - 48px));
+  height: 20px;
+  transform: translateX(-50%);
+  border: 3px solid var(--wood-edge);
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+.orbit-gauge-green,
+.orbit-gauge-gold,
+.orbit-needle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+
+.orbit-gauge-green {
+  left: 55%;
+  width: 31%;
+  background: rgba(34, 197, 94, 0.55);
+}
+
+.orbit-gauge-gold {
+  left: 66%;
+  width: 12%;
+  background: rgba(245, 197, 66, 0.8);
+}
+
+.orbit-needle {
+  left: 0;
+  width: 0;
+  border-right: 3px solid #fff;
+  background: linear-gradient(90deg, rgba(255, 106, 30, 0.25), rgba(255, 179, 59, 0.6));
+}
+
 [hidden] {
   display: none !important;
 }
@@ -2145,4 +3165,180 @@ select {
   .jetpack-hud {
     top: calc(98px + var(--safe-top));
   }
+}
+
+/* Ooga Orbit on phones: the two builder panels share the bottom, the pad above them */
+@media (max-width: 720px) {
+  .orbit-panel {
+    top: auto;
+    bottom: calc(8px + var(--safe-bottom));
+    height: 46vh;
+    width: calc(50vw - 12px);
+    padding: 8px 9px 10px;
+  }
+
+  .orbit-build {
+    left: calc(6px + var(--safe-left));
+  }
+
+  .orbit-rocket {
+    right: calc(6px + var(--safe-right));
+  }
+
+  .orbit-head .help,
+  .orbit-keys,
+  .orbit-tile-stat,
+  .orbit-facts {
+    display: none;
+  }
+
+  .orbit-head h2 {
+    font-size: 16px;
+  }
+
+  .orbit-tab {
+    padding: 3px 5px;
+    font-size: 9.5px;
+  }
+
+  .orbit-tiles {
+    grid-template-columns: 1fr;
+  }
+
+  .orbit-tile canvas {
+    width: 40px;
+    height: 40px;
+  }
+
+  .orbit-ready {
+    padding: 5px 7px;
+    gap: 5px;
+  }
+
+  .orbit-ready-row span:first-child {
+    font-size: 8.5px;
+  }
+
+  /* The rocket panel scrolls on a phone with Launch pinned to its foot */
+  .orbit-rocket {
+    overflow: auto;
+    gap: 6px;
+  }
+
+  .orbit-rocket-head small,
+  .orbit-problems li[data-warn="ok"] {
+    display: none;
+  }
+
+  .orbit-stack {
+    flex: none;
+    min-height: 110px;
+    max-height: 150px;
+  }
+
+  .orbit-presets {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .orbit-preset {
+    padding: 4px 6px;
+  }
+
+  .orbit-preset-name {
+    font-size: 11px;
+  }
+
+  .orbit-preset-note {
+    display: none;
+  }
+
+  .orbit-stack .orbit-tool:not(.orbit-remove) {
+    display: none;
+  }
+
+  .orbit-stack .orbit-row-name {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 11px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .orbit-launch {
+    position: sticky;
+    bottom: 0;
+    padding: 6px 10px;
+    font-size: 15px;
+  }
+
+  #orbit-notice {
+    bottom: calc(230px + var(--safe-bottom));
+    font-size: 12.5px;
+    padding: 8px 12px;
+  }
+
+  /* Phones: both cards shrink under the topbar, the mission shows only the step in hand and the flight
+     card only the height, fuel and heat */
+  .orbit-card-panel {
+    top: calc(100px + var(--safe-top));
+    padding: 5px 6px 6px;
+    border-width: 2px;
+  }
+
+  .orbit-small b {
+    font-size: 13px;
+  }
+
+  .orbit-small span {
+    font-size: 8px;
+  }
+
+  .orbit-meter:nth-child(2),
+  .orbit-meter:nth-child(5) {
+    display: none;
+  }
+
+  .orbit-card-panel h3 {
+    display: none;
+  }
+
+  .orbit-mission-card {
+    left: calc(8px + var(--safe-left));
+    width: calc(100vw - 162px - var(--safe-left) - var(--safe-right));
+    font-size: 11px;
+  }
+
+  .orbit-mission li:not([data-state="now"]) {
+    display: none;
+  }
+
+  .orbit-flight {
+    right: calc(8px + var(--safe-right));
+    width: 138px;
+  }
+
+  .orbit-big b {
+    font-size: 22px;
+  }
+
+  .orbit-big small {
+    display: none;
+  }
+
+  .orbit-flight-body {
+    grid-template-columns: 1fr 34px;
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .orbit-altimeter {
+    height: 88px;
+    width: 12px;
+  }
+
+  .orbit-meters {
+    gap: 4px;
+  }
+
 }

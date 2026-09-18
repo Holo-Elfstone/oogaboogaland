@@ -105,12 +105,19 @@ every scene has registered on `BL.scenes`.
 | `skydiver.js` | `BL.skydiver` | one contributor body on a quaternion: `place`, `jump`, `deploy`, `land` (under the canopy every touchdown stands; without one the impact picks `hole`, `tumble` or `pancake` from the spine angle and the ground speed); the fixed-step flat-plate model (gravity, plate pressure along the belly normal, skin drag, player rates, a weathervane the stick cannot outmuscle), the canopy flight (bloom, sink, forward, toggles, flare reserve), `pose` by phase |
 | `drop-audio.js` | `BL.dropAudio` | the drop's procedural sound on the rally's pattern: one context from an activated gesture, eight pooled voices, one noise loop behind the plane's engine drone (pitched by its speed, fading with its distance), the wind (band and level by the diver's speed) and the canopy flutter; cues for the mark, jump, rings, misses, pull, flare, the landings and crashes, lost and a medal; the same mute key as the rally |
 | `drop-hud.js` | `BL.dropHud` | the launch board, the flight strip (altitude, sink, rings, time, chute), centre calls and notices, the results rows; text nodes mutate only on change |
+| `rocket-parts.js` | `BL.rocketParts` | Ooga Orbit's part catalog (`PARTS`: pods, shields, tanks, engines, the Vine Knot, fins, with height, radius, dry mass, fuel, thrust, exhaust speed, shield and hull ratings and a banana price), `PRESETS`, `stagesOf` (the stack cut at its knots), `check` (problems stop a launch, warnings only say), `stats` (mass, speed per stage, lift-off push, bill), `sanitize`; loads before `game.js`, which validates the saved build with it |
+| `rocket.js` | `BL.rocket` | the flight on the 1/120 s step: the attached stack as one body over a round world (`R`, `SEA`, `CY`, `GM`), air thinning by `SCALE_H`, thrust and fuel by stage, a planar lean (`psi`) in the launch plane on the way up with fins against flipping, stress from dynamic pressure and lean, heat from density times speed cubed on the pod's hull and shield, `homeward` (everything that can come off comes off and the pod turns freely on three axes with lift and a weathervane), the sky hook (`hold`, `stand`), air that ends at 150, ground only near the top of the world (`NEAR_GROUND`), the steerable leaf chute, touchdowns on land and water, `orbitOf`, `setCircle`, and `onDrop` for every stage that comes off |
+| `rocket-models.js` | `BL.rocketModels` | cached geometry for every part, `assemble(stack)` (a group at the stack's bottom, a flame under each engine), flame, smoke puff, fireball, plasma streak, splash, heat shell; the launch site (`SITE`, `siteSpot`, `site`, `siteGroundAt`: a voxel islet, the pad, the tower, the sagging rope bridge and the sign, shared by the hub and the scene) and the world sphere with continents kept away from home (`planet`, `onContinent`) |
 | `scene-drop.js` | `BL.scenes.drop` | Ooga Drop: phases `board`, `climb`, `air`, `down`, `lost`, `results`; the plane's roll, helix climb and jump mark, the course laid on a hands-off reference fall, ring crossings, the streak batch, clouds, the two-axis orbit camera (unbounded yaw in flight, easing back behind the subject 1.5 s after the last drag), the island's clock, donations, `leave` |
+| `rocket-hud.js` | `BL.rocketHud` | the builder (a tab per part kind over tiles of each part drawn once per page by `hud.renderIcon`, the readiness gauges for speed to spend and lift-off push, fact chips, the stack grouped by stage with move and remove by one delegated listener, problems, presets, pilot, Launch; drag and drop on pointer events alone: tiles onto the rocket (`slots` from the scene projects its part boundaries) or into the list, rows to reorder or off to remove, a long press to pick up on touch), the flight strip (height, speed, stage, fuel, push, heat, shield, stress and orbit bars, apsides), the clamp gauge, centre calls and notices, the flight log; text and bars change only with their value |
+| `rocket-audio.js` | `BL.rocketAudio` | the orbit's procedural sound on the drop's pattern: engine roar and rumble, wind, plasma hiss, cues for the count, clamps, stages, space, orbit, the mark, the chute, splash, thud and boom |
+| `scene-orbit.js` | `BL.scenes.orbit` | Ooga Orbit: phases `build`, `count`, `ignite`, `ascent`, `orbit`, `eva`, `descent`, `down`, `boom`, `results`; the pad builder, the side camera on the way up (downrange to the right), the camera-relative pod turn with rim air puffs and the attitude ball, the Sky Top goal (`TOP` = `rocket.ORBIT_ALT`, 500: reaching it with anything still rising hands the flight to the sky hook, which reels it over the pad and holds it still there with `flight.hold`, then after the spacewalk lets go with `flight.stand` and a downward throw) with the height meter, the climb autopilot (`leanTarget` by height, an arc capped at 40°, flown whenever A and D are left alone, G toggles it) with its yellow aim line, the reason a flight missed orbit in the log, the mission checklist (seven steps, the one in hand lit with a live detail, skipped and failed ones struck), the spacewalk (phase `eva`: a suited copy of the pilot flying on a tether in the pod's own frame to the space rock, measuring it and climbing back in), falling stages, a fixed ring of smoke puffs and plasma streaks in instanced batches, the sky darkening with height, donations, `leave` |
 | `director.js` | `window.__ooga` (debug only) | the app: renderer, frame loop, governor, housekeeping, keys, donations, routing, transitions |
 
 The rally and drop modules load after both scenes so the hub stays the landing scene, and
 before `director.js`; `drop-models.js` loads before `scene-hub.js` because the hub parks the
-plane on the rally roof.
+plane on the rally roof. `rocket.js` and `rocket-models.js` load before `scene-hub.js` too, which
+builds the launch islet, the bridge and the last rocket flown off the south rim.
 
 Both renderers implement the same surface: `render(root, camera, opts)` returning
 whether a frame was drawn, `project(x, y, z, out)`, `ray(px, py, camera, out)`,
@@ -350,6 +357,16 @@ points a race, shows standings on each podium and saves the best cup medal throu
 `startRace`, `toGarage`, `pause`, `finishRace`, `cam` and `simulate(seconds)`, which runs
 substeps without frames; `__ooga.racers.autopilot = true` lets the AI drive the visitor.
 
+In the orbit: tap parts to stack them, Enter launches, Space lets go of the clamps in the green and
+stages; W S push and the climb autopilot leans the arc (A D steer, G flies by hand); at the Sky Top
+Space takes the next mission step (drop the rest, go outside, and after the spacewalk leave orbit); V also spacewalks (W A S D fly where you look, Q E down and up, drag looks, Space measures at the
+rock, after which the tether reels the Ooga back and in); falling home W A S D push the shield across the attitude ball and
+Q E spin the pod, Space pulls the chute and A D steer it; 0 resets the camera, M mutes, Escape
+returns to the builder. `__ooga.orbit` exposes `phase`, `stack`, `score`, `result`, `gauge`, `eva`,
+`setStack`, `launch`, `releaseClamps`, `dropRest`, `letGo`, `pullChute`, `startEva`, `evaAct`,
+`toOrbit`, `slots` (the rocket's part boundaries on screen), `setInput` and `simulate(seconds)`; `__ooga.flight` is the flight and `__ooga.site` the
+launch site. The loading curtain shows one saying from `SAYINGS` in `director.js` per load.
+
 In the drop: Enter flies, Space jumps at the mark (held, it hurries the climb and jumps when
 the mark comes), then pulls; W S A D Q E turn the body, S or a held Space flares, 0 resets
 the orbit, Escape returns to the board. `__ooga.drop` exposes `phase`, `score`, `ringsHit`,
@@ -424,7 +441,8 @@ another hour) and asserts on real interaction: drags at projected positions, cli
 Lab checks add `scene=lab`, rally checks `scene=race` (they drive the physics through
 `race.simulate` and `racers.setInput`, isolating the visitor with the `isolate` helper),
 drop checks `scene=drop` (`drop.jumpNow`, `drop.setInput` and `drop.simulate`, the diver
-parked high in still air by `isolateDiver`);
+parked high in still air by `isolateDiver`), orbit checks `scene=orbit` (`orbit.simulate` from one tick,
+`orbit.toOrbit` to skip the climb, `orbit.slots` for drops onto the rocket);
 hub checks open the page without it and hold keys through `hold`. New behaviour needs a check. Follow the existing shape: one `withPage` block,
 `record(name, ok, detail)` per assertion, no fixed sleeps where waiting on
 `renderedFrames` is possible. A loop over fixtures on a plain hub URL starts each one with
@@ -447,8 +465,8 @@ target, tween, DOM, listener and GPU record counts identical and the heap within
 GPU residency: each scene after visiting the other holds only its own geometry.
 Donations, per scene: sixty tips over fifteen simulated seconds (`__ooga.advance`) with every crate opened end with
 crates, particles and tweens at zero, nodes and targets back to base plus the trimmed
-pool and what the crew built, GPU records bounded, heap within 15%. The rally and the drop
-have their own turns: six hub round trips each, sixty tips mid-race and mid-fall. Anything a scene creates per visit
+pool and what the crew built, GPU records bounded, heap within 15%. The rally, the drop and
+the orbit have their own turns: six hub round trips each, sixty tips mid-race, mid-fall and mid-climb. Anything a scene creates per visit
 must come back to base there.
 
 Profile before optimizing. Boot phases are `performance.mark`s readable from
