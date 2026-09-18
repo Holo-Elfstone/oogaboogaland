@@ -24,6 +24,7 @@
     v.z = z;
     return v;
   };
+  const ROCK_BITS = [models.particleGeometry("#6b625a", 0.09, 0)];
   const create = (ctx) => {
     const { root, racers, fx } = ctx;
     let track = ctx.track;
@@ -286,7 +287,7 @@
         if (done) {
           rock.live = false;
           rock.node.visible = false;
-          fx.burst(rock.x, rock.y, rock.z, 5, [models.particleGeometry("#6b625a", 0.09, 0)], 1.6);
+          fx.burst(rock.x, rock.y, rock.z, 5, ROCK_BITS, 1.6);
         }
       }
       for (let i = 0; i < peels.length; i++) {

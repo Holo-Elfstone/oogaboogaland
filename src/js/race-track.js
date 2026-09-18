@@ -702,7 +702,7 @@
     // Torches along the road on cave tracks, each a point light candidate
     const torches = [];
     if (theme.torches) {
-      const every = Math.floor(n / (theme.torches * 4));
+      const every = Math.max(1, Math.floor(n / (theme.torches * 4)));
       for (let i = 0, t = 0; i < n; i += every, t++) {
         const side = t % 2 ? 1 : -1;
         if (S.surface[i] === SURF.gap) continue;
@@ -858,6 +858,7 @@
       torches.length = 0;
     };
     return {
+      floorLevel: floor.level,
       id: def.id, name: def.name, laps: def.laps, targets: def.targets, hazard: def.hazard, theme: def.theme,
       root, samples: S, count: n, length: S.length, sectors, terrainNodes, checkpoints, grid, spawns, torches, lamps, spectators, renderOpts,
       nearest, project, heightAt, surfaceAt, groundAt, waterAt, roadY, slabY, halfAt, slipAt, wet, precipitation, rightX, rightZ, mapPts, mapPoint, bounds, update, dispose,

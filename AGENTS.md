@@ -30,7 +30,8 @@ do not add network code before it exists. Visitor-facing controls are in the REA
 - Smallest change that works. No refactors, reformatting, or renames the task does not
   require. Match the surrounding style.
 - No console noise. The suite fails a check if the console is not clean.
-- Run `npm test` before finishing. Fix failures; never weaken or skip a check.
+- Verify with a targeted run (`ONLY=`) and `npm run test:unit` before finishing; do not run
+  the full suite unless asked, and never weaken or skip a check.
 
 ## Repository
 
@@ -40,14 +41,19 @@ do not add network code before it exists. Visitor-facing controls are in the REA
 | `oogaboogaland.html` | the built single-file page, committed; regenerate with `npm run build` after any change under `src/` |
 | `scripts/build.mjs` | inlines `src/` in script order and pins the content policy hashes |
 | `.github/workflows/pages.yml` | builds and deploys the single-file page to GitHub Pages on pushes to `rock` or manual runs |
-| `test/run.mjs`, `test/browser.mjs` | the suite and its headless Chrome driver |
+| `test/run.mjs`, `test/browser.mjs` | the suite and its headless Chrome driver; these two files are the whole of `test/` |
 | `untracked/` | local planning notes, ignored by git |
 
 Nothing to install. `npm test` needs Node 22 or newer (the driver uses the global
 `fetch` and `WebSocket`) and Chrome; the driver looks at the macOS application path, so
-on Linux or Windows set `CHROME` to the binary. A full run takes about nine minutes,
-mostly in the soak blocks; each case's closing record carries its seconds. A DevTools
-command with no reply in 90 s fails its case rather than freezing the run, so never
+on Linux or Windows set `CHROME` to the binary. `npm run test:unit` needs neither Chrome
+nor a build. Each case's closing record carries its seconds, and each page session prints
+a `TIME <names> · launch · boot · body` line, which is how the suite's cost was measured:
+launch is ~0.8 s, a hub boot ~2.0 s and a hub re-entry ~0.7 s, and a page build happens
+~200 times a run, so the way to make the suite faster is fewer page builds, not faster
+checks. A DevTools command with no reply in 90 s (10 s while a Chrome is starting) fails
+its case, and a session still running after 5 minutes has its Chrome killed, so no hang can
+hold a lane; the longest healthy session is ~40 s. Never
 return a scene node or a pick hit from an evaluate, only the fields a check reads. Deploy only `oogaboogaland.html`, served as `index.html`.
 
 GitHub Pages uses the Actions workflow above. It rebuilds the page and uploads only
@@ -64,7 +70,7 @@ every scene has registered on `BL.scenes`.
 | File | Exposes | Job |
 |---|---|---|
 | `qr.js` | `BL.qr` | QR code for the donation link |
-| `math.js` | `BL.math` | `mat4` (with `invert` and `fromTQS`), `quat` (unit quaternions: axis-angle, YXZ Euler, multiply, world-frame `integrate`, `rotateVec`, `slerpTo`), easing, damping, hashing, `rayFromView` |
+| `math.js` | `BL.math` | `mat4` (with `invert` and `fromTQS`), `quat` (unit quaternions: axis-angle, YXZ Euler, multiply, world-frame `integrate`, `rotateVec`, `slerpTo`), easing, damping, hashing, `rayFromView`, stable `sortByKey` with caller-owned `sortScratch` |
 | `daylight.js` | `BL.daylight` | the local solar clock: continuous sun/moon directions, sidereal star frame, altitude-driven sky/light factors, six semantic phases, `sample`, `createClock` |
 | `scene.js` | `BL.scene` | nodes (a node with a `quaternion` turns by it instead of its Euler `rotation`), world transforms, camera, bounds cache, tweens |
 | `gl-renderer.js` | `BL.glRenderer` | WebGL2: instancing, frustum culling, shadow map, sky pass with sun, moon and stars, ten bounded point lights, bloom, MSAA, quality tiers, pixel budget |
@@ -72,6 +78,7 @@ every scene has registered on `BL.scenes`.
 | `models.js` | `BL.models` | procedural geometry: room, cavemen, props, crates, `SWAG` catalog |
 | `terrain.js` | `BL.terrain` | voxel grid, greedy meshing, the island: `heightAt`, `surfaceAt`, `onLand`, `isPath`, mouths |
 | `hub-models.js` | `BL.hubModels` | cached hub props: cave rim, gate, shelves, sign, lantern, trees, bushes, grass, rocks, barrels, torches, fire pit, clouds, dock, critter bodies |
+| `jumbotron-data.js`, `jumbotron.js` | `BL.jumbotronData`, `BL.jumbotron` | baked contributor statistics and the hub board: cached cabinet, bitmap views, bounded screen geometry replaced and released on refresh; no runtime requests |
 | `caves.js` | `BL.caves` | the seven cave slots (clock position, status, scene, name) and the gate |
 | `contributors.js` | `BL.contributors` | roster snapshot, state by commit age, hashed traits, `LIKENESS` |
 | `donations.js` | `BL.donations` | donation request, simulator, event contract, `sanitize` |
@@ -122,8 +129,10 @@ pause, `game`, `world`, the donation subscription, `BL.scenes`, `?scene=` routin
 transitions, the `[data-scene]` HUD sections, `__ooga`, and `destroy` on pagehide. A
 scene builds its root, camera, input, HUD and systems in `enter` and drops them in `leave`.
 
-`world` is `{ level, pilot }`: the banana level every scene shares, and the handle of the
-Ooga driven into a launcher (the drop reads and clears it in `enter`). With `game` it is the
+`world` is `{ level, pilot, jetpack }`: the shared banana level, the handle of the
+Ooga driven into a launcher (the drop reads and clears it in `enter`), and jetpack ownership
+and fuel. The delivery system can also attach `delivery`. Keep the reset in the suite's
+`reenterHub` synchronized with every persistent field. With `game` it is the
 only gameplay state that crosses a transition.
 
 The scene contract, as `scene-lab.js` and `scene-hub.js` implement it:
@@ -162,7 +171,7 @@ measure exactly that.
 `hud`, `applyAllSwag`, `renderLocker`, `demoTip`, `refreshStates`, `trimPool`, `shown`,
 `island`, `mouths`, `camera`, `crew`, `controls`, `pilot`, `renderOpts`, `lamps`, `fireSeats`,
 `critters`, `daylight`, `setHour`, `track`, `racers`, `items`, `race`, `launchers`, `drop`,
-`diver`, `plane` and `course`; a scene fills in what it has.
+`diver`, `plane`, `course` and `jumbotron`; a scene fills in what it has.
 
 ## Engine patterns to keep
 
@@ -175,6 +184,11 @@ measure exactly that.
 - **Instance by geometry.** Nodes sharing a geometry object are one draw call. Reuse
   geometry; cache builders with `cached()` or a `Map` keyed by parameters, as `models.js`
   does.
+- **Shared builders and index sorts.** Use `BL.models.makeVox`, `voxCoords` and
+  `voxelGeometry` for voxel props. Bounding-volume indexes use `BL.math.sortByKey`
+  with one `sortScratch` allocation during construction, rather than comparator sorts.
+  Geometry and island-query changes claimed to preserve behavior need before/after
+  golden hashes.
 - **Release what you stop using.** Nodes removed from the graph leave picking and the GPU
   at the next housekeeping pass. Call `input.remove` for anything you registered.
 - **Deterministic cosmetics.** Contributor traits hash from the handle, loot from the
@@ -342,7 +356,7 @@ the orbit, Escape returns to the board. `__ooga.drop` exposes `phase`, `score`, 
 `__ooga.diver` is the skydiver, `__ooga.course` its rings, target and `jumpAngle`.
 
 URL flags: `?debug=1` exposes `window.__ooga` with the scene, game, renderer, input,
-`stats()`, `timing`, `frameInterval`, and in the hub `island`, `mouths`, `camera`;
+`stats()`, `timing`, `frameInterval`, `advance(seconds, dt)` (whole frames at a fixed step, without waiting on the display), and in the hub `island`, `mouths`, `camera`;
 `?scene=<id>` opens that scene (unknown ids land on the hub); `?nosim=1` silences the
 simulator; `?canvas2d=1` forces the fallback; `?yaw=` sets the starting camera angle;
 `?debug=1&bananas=` overrides the initial pile level for visual testing; `?debug=1&hour=`
@@ -356,8 +370,54 @@ pinned hour when both are given). `__ooga.daylight` exposes the bounded celestia
 
 ## Testing
 
-`npm test` builds `oogaboogaland.html` and runs `test/run.mjs` in headless Chrome over
-the DevTools protocol. Every check opens the page with `?debug=1&nosim=1&hour=12` (noon, unless the check asks for
+**`test/` contains exactly two files: `run.mjs` and `browser.mjs`. Never add a third.**
+Every check, every probe and every fixture lives in `run.mjs`; `browser.mjs` is only the
+Chrome driver. Do not create `test/<feature>.mjs`, a per-probe module, a helper file, or a
+second entry point, however tidy the split looks: the suite had drifted to 72 extra probe
+modules and 11,149 lines spread across them, which hid the shape of the suite, let the same
+helper be written several times over, and made a check's real cost invisible. If a probe is
+long, keep it long and next to its check. Lanes, not files, separate concerns
+(`LANE=unit | fast | canvas | soak | perf | full`), and the Node tier is a lane inside
+`run.mjs`, not a file beside it.
+
+**Verify what you touched, not everything. Do not run the full suite unless asked.**
+`npm run test:full` is the maintainer's gate (~6 min on 8 lanes; `LANES=` overrides, and 8
+was measured as the widest that adds no contention), run once when the PR is reviewed. A
+contributor's loop is:
+
+1. `npm run test:unit` — browser-free, about three seconds, run it freely.
+2. `ONLY=<substring> node test/run.mjs` — the checks covering your change. `ONLY` matches
+   task names, so `ONLY=banana`, `ONLY="movement collision"` or `ONLY=race` is usually one
+   command and a few seconds. Add `LANE=full` to reach soak or frame-rate tasks.
+3. `npm test` (the fast lane) only when a change is broad enough to warrant it.
+
+This is not only about time. A full run is ~200 Chrome launches, and at that volume a
+browser occasionally fails to start or its DevTools session wedges, so a clean run is not
+guaranteed even when nothing is wrong. A session that hits a driver error (`Chrome hung`,
+`the page did not draw its first frame`, `DevTools socket failed`) before any assertion has
+failed runs once more on a fresh Chrome and prints `RETRY`; only a second failure is
+recorded, and assertion failures are never retried. A targeted run has none of that
+noise, which is exactly why it is the better signal about your change.
+
+**Frame-rate dependence is a real failure mode.** The page is vsync-locked, so a check that
+counts rendered frames is measuring the host display. One movement check asserted easing
+over 38 sampled frames; on battery, in Low Power Mode, the same machine rendered 30 fps, the
+walk took 19 frames and the check failed while the app was perfectly correct. Drive motion
+with an explicit `dt` (as most probes already do, and as `race.simulate` / `drop.simulate`
+exist for) rather than counting real frames, and keep the genuine frame-rate floors in the
+`perf` lane where the limiter stays on. Before trusting any timing failure, check
+`pmset -g batt`.
+
+**So is the calendar and the crew's dice.** The solar clock runs on the page's day of year,
+which is today unless the URL pins `day=`: a check that sets an hour and compares light must
+pin `day=80` like the daylight checks, because the moon phase alone flipped dusk and midnight
+between two consecutive days. The crew draws some choices with `randomInt` (crypto, not
+seedable), such as the bed the napping Ooga claims at boot, so a fixture must never be "the
+first free one" of something the crew also picks from; name the fixture and keep a fallback.
+
+`npm test` builds `oogaboogaland.html` and runs the fast lane of `test/run.mjs` in headless
+Chrome over the DevTools protocol. `npm run test:unit` runs the browser-free checks in about
+three seconds; `npm run test:full` is the pre-merge gate. Every check opens the page with `?debug=1&nosim=1&hour=12` (noon, unless the check asks for
 another hour) and asserts on real interaction: drags at projected positions, clicks, keys, DOM state, a clean console.
 Lab checks add `scene=lab`, rally checks `scene=race` (they drive the physics through
 `race.simulate` and `racers.setInput`, isolating the visitor with the `isolate` helper),
@@ -365,7 +425,10 @@ drop checks `scene=drop` (`drop.jumpNow`, `drop.setInput` and `drop.simulate`, t
 parked high in still air by `isolateDiver`);
 hub checks open the page without it and hold keys through `hold`. New behaviour needs a check. Follow the existing shape: one `withPage` block,
 `record(name, ok, detail)` per assertion, no fixed sleeps where waiting on
-`renderedFrames` is possible. A failure prints `FAIL` with its detail, so
+`renderedFrames` is possible. A loop over fixtures on a plain hub URL starts each one with
+`reenterHub(b)` rather than `b.open`: a scene re-entry with `world` reset costs ~0.7 s
+against ~2.4 s for a page build. Diff the loop's records against page builds before
+switching; a probe whose results then differ keeps its page builds. A failure prints `FAIL` with its detail, so
 `npm test 2>&1 | grep -E '^FAIL|checks passed'` is enough to read a result.
 
 The `soak` blocks settle the memory question from `stats()`,
@@ -373,7 +436,7 @@ The `soak` blocks settle the memory question from `stats()`,
 bars apply to the non-code heap). Scene cycles: ten hub / lab round trips leave node,
 target, tween, DOM, listener and GPU record counts identical and the heap within 10%.
 GPU residency: each scene after visiting the other holds only its own geometry.
-Donations, per scene: sixty tips in fifteen seconds with every crate opened end with
+Donations, per scene: sixty tips over fifteen simulated seconds (`__ooga.advance`) with every crate opened end with
 crates, particles and tweens at zero, nodes and targets back to base plus the trimmed
 pool and what the crew built, GPU records bounded, heap within 15%. The rally and the drop
 have their own turns: six hub round trips each, sixty tips mid-race and mid-fall. Anything a scene creates per visit

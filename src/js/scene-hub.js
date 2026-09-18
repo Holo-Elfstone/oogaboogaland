@@ -84,6 +84,36 @@
     hour: 12, continuousDay: 171.5, phase: "noon", latitude: 20, dayOfYear: 172, solarDeclination: 0, siderealAngle: 0, sunAltitude: 90, sunAzimuth: 180, moonAltitude: -90, moonAzimuth: 0,
     daylightFactor: 1, twilightFactor: 0, starFactor: 0, lampFactor: 0, directStrength: 1, directionalLightStrength: 1, moonStrength: 0, ambientFloor: 0.18, diffuseFloor: 0, shadowStrength: 1, shadowFloor: 0, shadowBias: 0.002, outdoorDarkestSurfaceEstimate: 0.34, activeLightSource: "sun", sunriseHour: 6, sunsetHour: 18
   };
+  // Mirrored out of RENDER_OPTS for __ooga only, so it stays off the shipped frame path
+  const syncDaylightDebug = (hour) => {
+    DAYLIGHT_DEBUG.hour = hour;
+    DAYLIGHT_DEBUG.continuousDay = RENDER_OPTS.continuousDay;
+    DAYLIGHT_DEBUG.phase = phase;
+    DAYLIGHT_DEBUG.latitude = RENDER_OPTS.latitude;
+    DAYLIGHT_DEBUG.dayOfYear = RENDER_OPTS.dayOfYear;
+    DAYLIGHT_DEBUG.solarDeclination = RENDER_OPTS.solarDeclination;
+    DAYLIGHT_DEBUG.siderealAngle = RENDER_OPTS.siderealAngle;
+    DAYLIGHT_DEBUG.sunAltitude = RENDER_OPTS.sunAltitude;
+    DAYLIGHT_DEBUG.sunAzimuth = RENDER_OPTS.sunAzimuth;
+    DAYLIGHT_DEBUG.moonAltitude = RENDER_OPTS.moonAltitude;
+    DAYLIGHT_DEBUG.moonAzimuth = RENDER_OPTS.moonAzimuth;
+    DAYLIGHT_DEBUG.daylightFactor = RENDER_OPTS.day;
+    DAYLIGHT_DEBUG.twilightFactor = RENDER_OPTS.twilight;
+    DAYLIGHT_DEBUG.starFactor = RENDER_OPTS.stars;
+    DAYLIGHT_DEBUG.lampFactor = RENDER_OPTS.lampFactor;
+    DAYLIGHT_DEBUG.directStrength = RENDER_OPTS.directStrength;
+    DAYLIGHT_DEBUG.directionalLightStrength = RENDER_OPTS.directionalLightStrength;
+    DAYLIGHT_DEBUG.moonStrength = RENDER_OPTS.moonStrength;
+    DAYLIGHT_DEBUG.ambientFloor = RENDER_OPTS.ambientFloor;
+    DAYLIGHT_DEBUG.diffuseFloor = RENDER_OPTS.diffuseFloor;
+    DAYLIGHT_DEBUG.shadowStrength = RENDER_OPTS.shadowStrength;
+    DAYLIGHT_DEBUG.shadowFloor = RENDER_OPTS.shadowFloor;
+    DAYLIGHT_DEBUG.shadowBias = RENDER_OPTS.shadowBias;
+    DAYLIGHT_DEBUG.outdoorDarkestSurfaceEstimate = RENDER_OPTS.outdoorDarkestSurfaceEstimate;
+    DAYLIGHT_DEBUG.activeLightSource = RENDER_OPTS.activeLightSource;
+    DAYLIGHT_DEBUG.sunriseHour = RENDER_OPTS.sunriseHour;
+    DAYLIGHT_DEBUG.sunsetHour = RENDER_OPTS.sunsetHour;
+  };
   const PHASE_TOASTS = { dawn: "Dawn breaks over the island", morning: "Morning on the island", noon: "High noon", dusk: "Dusk settles over the island", night: "Night. The torches are lit.", midnight: "Midnight. The island sleeps." };
   // Lamp colours and reach; a lamp's flame reads through node.glow
   const LAMP = { torch: { r: 1.0, g: 0.62, b: 0.25, radius: 6, glow: 0.85, hide: false }, fire: { r: 1.0, g: 0.55, b: 0.2, radius: 9, glow: 0.9, hide: true }, lantern: { r: 1.0, g: 0.8, b: 0.45, radius: 4, glow: 0.9, hide: false } };
@@ -395,6 +425,22 @@
   // Sample actual carved polygons and prop faces once. Horizontal terrain lanes
   // span coplanar mesh seams; only genuine holes, steps and outer edges inset them.
   // All caves share the original eight voxel meshes and immutable backing geometry.
+  // Island faces bucketed by their cave, plus the access-ramp faces, computed
+  // once and kept on the memoised island rather than rescanned per cave visit.
+  const EMPTY_FACES = [];
+  const islandFaceIndex = () => {
+    if (island.faceIndex) return island.faceIndex;
+    const byCave = new Map(), ramps = [];
+    for (let i = 0; i < island.geometry.faces.length; i++) {
+      const face = island.geometry.faces[i];
+      if (face.headquartersRamp || face.headquartersBasementRamp) ramps.push(face);
+      if (face.matrixCave === undefined || face.matrixWorldGlyphSurface) continue;
+      let list = byCave.get(face.matrixCave);
+      if (!list) byCave.set(face.matrixCave, list = []);
+      list.push(face);
+    }
+    return island.faceIndex = { byCave, ramps };
+  };
   const buildCaveGlyphs = (slot, m, group) => {
     const caveIndex = island.mouths.indexOf(m) + 1, cr = Math.cos(m.ry), sr = Math.sin(m.ry);
     const sections = [], streams = [], entries = [], nodes = [], horizontalDomains = [];
@@ -410,11 +456,12 @@
       const speed = MATRIX_STREAM_SPEED_MIN + rand() * MATRIX_STREAM_SPEED_RANGE, phase = rand() * span, brightness = 0.58 + rand() * 0.36;
       const direction = horizontal && ny > 0 ? 1 : -1;
       const characters = Math.ceil((flowMax - flowMin) / MATRIX_SURFACE_GAP) + 1, rank = matrixModulo(column, 8);
-      const stream = { section: sections.length, cross, speed, phase, brightness, trainLength, gapLength, direction, flowMin, flowMax, flowRange: span, seed, head: 0, gap: 0 };
+      const stream = { section: sections.length, cross, speed, phase, brightness, trainLength, gapLength, direction, flowMin, flowMax, flowRange: span, seed, head: 0, gap: 0, rank, entryStart: entries.length, entryCount: 0 };
       const streamIndex = streams.length;
       streams.push(stream);
       if (renderer.kind !== "canvas2d" || rank < MATRIX_DENSITY.canvas2d) {
         for (let character = 0; character < characters; character++) entries.push({ stream: streamIndex, character, rank });
+        stream.entryCount = characters;
         // Advected cell identities cover every glyph once per eight consecutive slots.
         perGlyphCapacity += Math.ceil(characters / MATRIX_TYPES);
       }
@@ -510,10 +557,8 @@
       }
       if (source === "terrain") terrainFaces++; else propFaces++;
     };
-    for (let i = 0; i < island.geometry.faces.length; i++) {
-      const face = island.geometry.faces[i];
-      if (face.matrixCave === caveIndex && !face.matrixWorldGlyphSurface) addFace(island.geometry, face, null, "terrain");
-    }
+    const caveFaces = islandFaceIndex().byCave.get(caveIndex) || EMPTY_FACES;
+    for (let i = 0; i < caveFaces.length; i++) addFace(island.geometry, caveFaces[i], null, "terrain");
     for (const section of horizontalDomains) {
       section.streamStart = streams.length;
       const portalU = sr * section.ux + cr * section.uz, portalV = sr * section.vx + cr * section.vz;
@@ -617,52 +662,59 @@
         clearMatrixDraw(cave);
         continue;
       }
-      for (let glyph = 0; glyph < MATRIX_TYPES; glyph++) cave.nodes[glyph].instanceCount = 0;
+      const nodes = cave.nodes, streams = cave.streams, sections = cave.sections, radius = MATRIX_WORLD.radius;
+      for (let glyph = 0; glyph < MATRIX_TYPES; glyph++) nodes[glyph].instanceCount = 0;
       const counts = cave.activeSurfaceCounts;
       counts.floor = counts.ceiling = counts.wall = counts.prop = 0;
       let active = 0, revealed = 0, bright = 0, gaps = 0, first = true, mutationHash = 2166136261;
-      for (let i = 0; i < cave.entries.length; i++) {
-        const entry = cave.entries[i];
-        if (entry.rank >= densityRankLimit) continue;
-        const stream = cave.streams[entry.stream], section = cave.sections[stream.section];
-        const sequence = stream.trainLength + stream.gapLength;
-        const travel = elapsed * stream.speed + stream.phase;
-        const cell = Math.ceil((stream.flowMin - stream.direction * travel) / MATRIX_SURFACE_GAP) + entry.character;
-        const flow = cell * MATRIX_SURFACE_GAP + stream.direction * travel;
-        if (flow < stream.flowMin || flow > stream.flowMax) continue;
-        const plane = section.plane + 0.015;
-        const x = section.ux * stream.cross + section.vx * flow + section.nx * plane;
-        const z = section.uz * stream.cross + section.vz * flow + section.nz * plane;
-        const distance = matrixTravelDistance(x, z, cave.caveIndex);
-        if (!permanent && distance - MATRIX_GLYPH_REACH >= MATRIX_WORLD.radius) continue;
-        const trainPosition = matrixModulo(-stream.direction * cell, sequence);
-        if (trainPosition >= stream.trainLength) { gaps++; continue; }
-        const tip = trainPosition === 0 ? 1 : trainPosition === 1 ? 0.55 : 0;
-        const glow = stream.brightness * (0.48 + (1 - trainPosition / stream.trainLength) * 0.52);
-        const version = Math.floor(elapsed * MATRIX_GLYPH_HZ + (stream.seed & 15) / 16);
-        const glyph = (cell + version + (stream.seed & 7)) & 7;
-        const node = cave.nodes[glyph], slot = node.instanceCount++;
-        if (slot >= cave.perGlyphCapacity) throw new Error("Cave Matrix glyph instance capacity exceeded");
-        const data = node.instanceData, offset = slot * 20;
-        data[offset] = section.ux; data[offset + 1] = section.uy; data[offset + 2] = section.uz; data[offset + 3] = 0;
-        data[offset + 4] = section.vx; data[offset + 5] = section.vy; data[offset + 6] = section.vz; data[offset + 7] = 0;
-        data[offset + 8] = section.nx; data[offset + 9] = section.ny; data[offset + 10] = section.nz; data[offset + 11] = 0;
-        data[offset + 12] = x;
-        data[offset + 13] = section.uy * stream.cross + section.vy * flow + section.ny * plane;
-        data[offset + 14] = z;
-        data[offset + 15] = 1; data[offset + 16] = glow; data[offset + 17] = 0; data[offset + 18] = tip; data[offset + 19] = 1;
-        mutationHash = Math.imul(mutationHash ^ glyph ^ Math.imul(i + 1, 16777619), 16777619) >>> 0;
-        counts[section.category]++;
-        if (first && !section.horizontal) { cave.firstGlyphY = data[offset + 13]; first = false; }
-        active++; if (permanent || distance < MATRIX_WORLD.radius) revealed++; if (tip) bright++;
-      }
-      for (let i = 0; i < cave.streams.length; i++) {
-        const stream = cave.streams[i], travel = matrixModulo(elapsed * stream.speed + stream.phase, stream.flowRange);
-        stream.head = stream.direction * travel;
-        stream.gap = stream.direction * matrixModulo(travel - stream.trainLength * MATRIX_SURFACE_GAP, stream.flowRange);
+      // Entries are contiguous per stream with ascending character, so one pass over
+      // the streams visits them in registry order with every per-stream term hoisted.
+      for (let s = 0; s < streams.length; s++) {
+        const stream = streams[s], direction = stream.direction, travel = elapsed * stream.speed + stream.phase;
+        if (stream.entryCount && stream.rank < densityRankLimit) {
+          const section = sections[stream.section], flowMin = stream.flowMin, flowMax = stream.flowMax, trainLength = stream.trainLength;
+          const sequence = trainLength + stream.gapLength, shift = direction * travel, brightness = stream.brightness;
+          const base = Math.ceil((flowMin - shift) / MATRIX_SURFACE_GAP), plane = section.plane + 0.015, cross = stream.cross;
+          const ux = section.ux, uy = section.uy, uz = section.uz, vx = section.vx, vy = section.vy, vz = section.vz, nx = section.nx, ny = section.ny, nz = section.nz;
+          const xu = ux * cross, yu = uy * cross, zu = uz * cross, xn = nx * plane, yn = ny * plane, zn = nz * plane;
+          const pick = Math.floor(elapsed * MATRIX_GLYPH_HZ + (stream.seed & 15) / 16) + (stream.seed & 7);
+          const from = stream.entryStart, to = from + stream.entryCount;
+          let streamActive = 0;
+          for (let i = from; i < to; i++) {
+            const cell = base + (i - from), flow = cell * MATRIX_SURFACE_GAP + shift;
+            if (flow < flowMin || flow > flowMax) continue;
+            const x = xu + vx * flow + xn, z = zu + vz * flow + zn;
+            let distance = 0;
+            if (!permanent) {
+              distance = matrixTravelDistance(x, z, cave.caveIndex);
+              if (distance - MATRIX_GLYPH_REACH >= radius) continue;
+            }
+            const trainPosition = matrixModulo(-direction * cell, sequence);
+            if (trainPosition >= trainLength) { gaps++; continue; }
+            const tip = trainPosition === 0 ? 1 : trainPosition === 1 ? 0.55 : 0;
+            const glyph = (cell + pick) & 7;
+            const node = nodes[glyph], slot = node.instanceCount++;
+            if (slot >= cave.perGlyphCapacity) throw new Error("Cave Matrix glyph instance capacity exceeded");
+            const data = node.instanceData, offset = slot * 20;
+            data[offset] = ux; data[offset + 1] = uy; data[offset + 2] = uz; data[offset + 3] = 0;
+            data[offset + 4] = vx; data[offset + 5] = vy; data[offset + 6] = vz; data[offset + 7] = 0;
+            data[offset + 8] = nx; data[offset + 9] = ny; data[offset + 10] = nz; data[offset + 11] = 0;
+            data[offset + 12] = x;
+            data[offset + 13] = yu + vy * flow + yn;
+            data[offset + 14] = z;
+            data[offset + 15] = 1; data[offset + 16] = brightness * (0.48 + (1 - trainPosition / trainLength) * 0.52); data[offset + 17] = 0; data[offset + 18] = tip; data[offset + 19] = 1;
+            if (DEBUG) mutationHash = Math.imul(mutationHash ^ glyph ^ Math.imul(i + 1, 16777619), 16777619) >>> 0;
+            if (first && !section.horizontal) { cave.firstGlyphY = data[offset + 13]; first = false; }
+            streamActive++; if (permanent || distance < radius) revealed++; if (tip) bright++;
+          }
+          counts[section.category] += streamActive; active += streamActive;
+        }
+        const wrapped = matrixModulo(travel, stream.flowRange);
+        stream.head = direction * wrapped;
+        stream.gap = direction * matrixModulo(wrapped - stream.trainLength * MATRIX_SURFACE_GAP, stream.flowRange);
       }
       for (let glyph = 0; glyph < MATRIX_TYPES; glyph++) {
-        const node = cave.nodes[glyph];
+        const node = nodes[glyph];
         node.drawInstanceCount = node.instanceCount;
         if (active) node.instanceVersion++;
       }
@@ -1450,7 +1502,8 @@
   };
   // A seat nobody is heading for or sitting on
   const seatTaken = (s) => {
-    for (const cave of crew.cavemen.values()) {
+    for (let caveIndex = 0; caveIndex < crew.list.length; caveIndex++) {
+      const cave = crew.list[caveIndex];
       const a = cave.act;
       if ((a.kind === "wander" || a.kind === "idle") && a.spot.x === s.x && a.spot.z === s.z) return true;
     }
@@ -1530,7 +1583,8 @@
     return BODY_BOUNDS;
   };
   const updateSleepingSolids = () => {
-    for (const cave of crew.cavemen.values()) {
+    for (let index = 0; index < crew.list.length; index++) {
+      const cave = crew.list[index];
       if (!cave.root.visible || !cave.root.quaternion) continue;
       const out = cave.solidBounds;
       out[0] = out[1] = out[2] = Infinity; out[3] = out[4] = out[5] = -Infinity;
@@ -1570,7 +1624,8 @@
     if (!standingPassenger(cave)) return null;
     const p = cave.root.position, feet = p.y - cave.baseY;
     let support = null, distance = Infinity;
-    for (const other of crew.cavemen.values()) {
+    for (let otherIndex = 0; otherIndex < crew.list.length; otherIndex++) {
+      const other = crew.list[otherIndex];
       if (other === cave || !uprightCharacter(other)) continue;
       const b = actorBounds(other);
       if (Math.abs(b[4] - feet) > 1e-6 || !bodyOverlaps(other, b, p.x, p.z, PLAYER_RADIUS)) continue;
@@ -1582,7 +1637,8 @@
   const propSupportAt = (x, z, y, rise, actor) => {
     let floor = solids ? solids.supportAt(x, z, y, rise, PLAYER_RADIUS) : -Infinity;
     if (altar && ALTAR_HEIGHT <= y + rise + 1e-7 && Math.hypot(x, z) < altar.platformRadius + PLAYER_RADIUS - 1e-7) floor = Math.max(floor, ALTAR_HEIGHT);
-    if (crew) for (const other of crew.cavemen.values()) {
+    if (crew) for (let i = 0; i < crew.list.length; i++) {
+      const other = crew.list[i];
       if (other === actor || !other.root.visible) continue;
       const b = actorBounds(other);
       if (b[4] > floor && b[4] <= y + rise + 1e-7 && bodyOverlaps(other, b, x, z, PLAYER_RADIUS)) floor = b[4];
@@ -1592,7 +1648,8 @@
   const propCeilingAt = (x, z, y, radius, actor) => {
     let ceiling = solids ? solids.ceilingAt(x, z, y, radius) : Infinity;
     if (altar && y < ALTAR_HEIGHT - 1e-7 && Math.hypot(x, z) < altar.platformRadius + radius - 1e-7) ceiling = Math.min(ceiling, 0);
-    if (crew) for (const other of crew.cavemen.values()) {
+    if (crew) for (let i = 0; i < crew.list.length; i++) {
+      const other = crew.list[i];
       if (other === actor || !other.root.visible || passengerOf(other, actor)) continue;
       const b = actorBounds(other);
       if (b[1] > y + 1e-7 && y < b[4] - 1e-7 && bodyOverlaps(other, b, x, z, radius)) ceiling = Math.min(ceiling, b[1]);
@@ -1602,7 +1659,8 @@
   const propSegmentClear = (x, y, z, toX, toY, toZ, radius, height, actor, carrying = false) => {
     if (solids && !solids.segmentClear(x, y, z, toX, toY, toZ, radius, height)) return false;
     if (altar && !cylinderSegmentClear(x, y, z, toX, toY, toZ, radius, height, 0, 0, 0, ALTAR_HEIGHT, altar.platformRadius)) return false;
-    if (crew) for (const other of crew.cavemen.values()) {
+    if (crew) for (let otherIndex = 0; otherIndex < crew.list.length; otherIndex++) {
+      const other = crew.list[otherIndex];
       if (other === actor || !other.root.visible || passengerOf(other, actor) || carrying && passengerOf(actor, other)) continue;
       const b = actorBounds(other), p = other.root.position;
       if (other.root.quaternion) {
@@ -1856,7 +1914,8 @@
       if (y < m.floorY - STEP_MAX || y > m.floorY + rim.ceilingY || along < rim.minZ + PORTAL_Z - PLAYER_RADIUS || along > rim.maxZ + PORTAL_Z + PLAYER_RADIUS || across < rim.minX - PLAYER_RADIUS || across > rim.maxX + PLAYER_RADIUS) continue;
       ceiling = Math.min(ceiling, m.floorY + rim.ceilingY);
     }
-    if (passengers && actor && crew && (actor.hopV > 0 || y > actor.riding.y - actor.baseY + 1e-7)) for (const rider of crew.cavemen.values()) {
+    if (passengers && actor && crew && (actor.hopV > 0 || y > actor.riding.y - actor.baseY + 1e-7)) for (let riderIndex = 0; riderIndex < crew.list.length; riderIndex++) {
+      const rider = crew.list[riderIndex];
       if (rider === actor || !passengerOf(rider, actor)) continue;
       const from = actor.riding, riding = rider.riding;
       const offset = riding.y - rider.baseY - from.y + actor.baseY;
@@ -2409,8 +2468,9 @@
   const buildCameraRamps = () => {
     CAMERA_RAMP_CELLS.clear();
     const v = island.geometry.verts, unit = island.unit;
-    for (const face of island.geometry.faces) {
-      if (!face.headquartersRamp && !face.headquartersBasementRamp) continue;
+    const rampFaces = islandFaceIndex().ramps;
+    for (let n = 0; n < rampFaces.length; n++) {
+      const face = rampFaces[n];
       const a = face.i[0] * 3, b = face.i[1] * 3, c = face.i[2] * 3;
       const key = Math.floor((v[a] + v[b] + v[c]) / (3 * unit)) * 512 + Math.floor((v[a + 2] + v[b + 2] + v[c + 2]) / (3 * unit));
       let faces = CAMERA_RAMP_CELLS.get(key);
@@ -2567,7 +2627,8 @@
     gate.held = false;
     // Never lower a barrier into an existing body. Hold it just above that
     // head until the footprint clears; the nearby release remains usable.
-    for (const cave of crew.cavemen.values()) {
+    for (let caveIndex = 0; caveIndex < crew.list.length; caveIndex++) {
+      const cave = crew.list[caveIndex];
       if (!cave.root.visible) continue;
       const p = cave.root.position, feet = p.y - cave.baseY, head = feet + cave.bodyHeight + Math.max(0, cave.viewLift);
       if (feet >= m.floorY + gate.ceiling || head <= m.floorY + nextY + gate.bottom) continue;
@@ -3414,7 +3475,7 @@
 
   // ---------- per frame ----------
   const updateMeter = () => {
-    const seconds = game.forecast(world.level, crew.eatingCavemen().length, EAT_RATE);
+    const seconds = game.forecast(world.level, crew.eatingCount(), EAT_RATE);
     hud.setMeter(world.level, METER_CAPACITY, Number.isFinite(seconds) ? `≈ ${game.formatDuration(seconds)} left` : "stable");
   };
   // The clock drives the sky, the lamps and who is out
@@ -3433,33 +3494,7 @@
     if (jumbotron) jumbotron.update(elapsed, renderer);
     const next = daylight.phaseAt(hour);
     if (next !== phase) setPhase(next);
-    DAYLIGHT_DEBUG.hour = hour;
-    DAYLIGHT_DEBUG.continuousDay = RENDER_OPTS.continuousDay;
-    DAYLIGHT_DEBUG.phase = phase;
-    DAYLIGHT_DEBUG.latitude = RENDER_OPTS.latitude;
-    DAYLIGHT_DEBUG.dayOfYear = RENDER_OPTS.dayOfYear;
-    DAYLIGHT_DEBUG.solarDeclination = RENDER_OPTS.solarDeclination;
-    DAYLIGHT_DEBUG.siderealAngle = RENDER_OPTS.siderealAngle;
-    DAYLIGHT_DEBUG.sunAltitude = RENDER_OPTS.sunAltitude;
-    DAYLIGHT_DEBUG.sunAzimuth = RENDER_OPTS.sunAzimuth;
-    DAYLIGHT_DEBUG.moonAltitude = RENDER_OPTS.moonAltitude;
-    DAYLIGHT_DEBUG.moonAzimuth = RENDER_OPTS.moonAzimuth;
-    DAYLIGHT_DEBUG.daylightFactor = RENDER_OPTS.day;
-    DAYLIGHT_DEBUG.twilightFactor = RENDER_OPTS.twilight;
-    DAYLIGHT_DEBUG.starFactor = RENDER_OPTS.stars;
-    DAYLIGHT_DEBUG.lampFactor = RENDER_OPTS.lampFactor;
-    DAYLIGHT_DEBUG.directStrength = RENDER_OPTS.directStrength;
-    DAYLIGHT_DEBUG.directionalLightStrength = RENDER_OPTS.directionalLightStrength;
-    DAYLIGHT_DEBUG.moonStrength = RENDER_OPTS.moonStrength;
-    DAYLIGHT_DEBUG.ambientFloor = RENDER_OPTS.ambientFloor;
-    DAYLIGHT_DEBUG.diffuseFloor = RENDER_OPTS.diffuseFloor;
-    DAYLIGHT_DEBUG.shadowStrength = RENDER_OPTS.shadowStrength;
-    DAYLIGHT_DEBUG.shadowFloor = RENDER_OPTS.shadowFloor;
-    DAYLIGHT_DEBUG.shadowBias = RENDER_OPTS.shadowBias;
-    DAYLIGHT_DEBUG.outdoorDarkestSurfaceEstimate = RENDER_OPTS.outdoorDarkestSurfaceEstimate;
-    DAYLIGHT_DEBUG.activeLightSource = RENDER_OPTS.activeLightSource;
-    DAYLIGHT_DEBUG.sunriseHour = RENDER_OPTS.sunriseHour;
-    DAYLIGHT_DEBUG.sunsetHour = RENDER_OPTS.sunsetHour;
+    if (DEBUG) syncDaylightDebug(hour);
     critters.update(dt, elapsed, RENDER_OPTS.day, RENDER_OPTS.stars, fire.k, 1);
     updateClouds(dt);
     solids.sync();
@@ -3859,6 +3894,7 @@
     headquarters.cameraCover = cameraCover.state;
     headquarters.glyphMaterial = CAMERA_GLYPHS;
     rockGuides = headquarters.rockGuides = BL.rockGuides.create({ island, sealed: sealedCaves });
+    mark("rockGuides");
     pile = shared.pile = pileMod.create(shared);
     bananaCover = BL.bananaCover.create({ overlay: ctx.overlay, pile, renderOpts: RENDER_OPTS, renderer, floor: ALTAR_HEIGHT, lightVisibleAt: bananaLightVisibleAt });
     headquarters.bananaCover = bananaCover;
@@ -3868,7 +3904,8 @@
     shared.bedRoute = (cave, bed, toBed) => sleepNavigation.route(cave.root.position.x, cave.root.position.y - cave.baseY, cave.root.position.z, bed, toBed, cave.slot?.x, cave.slot?.z);
     mark("pile");
     crew = shared.crew = crewMod.create(shared);
-    for (const cave of crew.cavemen.values()) {
+    for (let caveIndex = 0; caveIndex < crew.list.length; caveIndex++) {
+      const cave = crew.list[caveIndex];
       cave.root.matrixLiving = true;
       cave.solidBounds = new Float64Array(6);
     }
@@ -3976,6 +4013,7 @@
     bananaGuides.reserve(objectGuides.result, null);
     headquarters.sightGuides = sightGuides.state;
     headquarters.bananaGuides = bananaGuides.state;
+    mark("guides");
     updateMeter();
     if (window.matchMedia("(max-width: 720px), (max-height: 500px)").matches) hud.el.sheet.dataset.open = "false";
     hintTimer = window.setTimeout(() => {

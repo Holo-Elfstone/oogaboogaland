@@ -171,7 +171,7 @@
       const limit = y * direction + maxStep;
       for (const entry of entries) {
         const box = entry.box;
-        if (!entry.active || entry.shoulderOnly || ignore && belongs(entry.node, ignore) || box[0] > x + radius || box[3] < x - radius || box[2] > z + radius || box[5] < z - radius) continue;
+        if (!entry.active || entry.shoulderOnly || box[0] > x + radius || box[3] < x - radius || box[2] > z + radius || box[5] < z - radius || ignore && belongs(entry.node, ignore)) continue;
         const low = direction > 0 ? box[1] : Math.max(box[1], y - maxStep), high = direction > 0 ? Math.min(box[4], y + maxStep) : box[4];
         if (low > high + EPS) continue;
         localQuery(entry, x - radius, low, z - radius, x + radius, high, z + radius);
@@ -223,7 +223,7 @@
       stats.queries++;
       const x0 = Math.min(x, toX) - radius, x1 = Math.max(x, toX) + radius, y0 = Math.min(y, toY), y1 = Math.max(y, toY) + height, z0 = Math.min(z, toZ) - radius, z1 = Math.max(z, toZ) + radius;
       for (const entry of entries) {
-        if (!entry.active || entry.shoulderOnly || ignore && belongs(entry.node, ignore) || !overlaps(entry.box, x0, y0, z0, x1, y1, z1)) continue;
+        if (!entry.active || entry.shoulderOnly || !overlaps(entry.box, x0, y0, z0, x1, y1, z1) || ignore && belongs(entry.node, ignore)) continue;
         if (inside(entry, x, y + height / 2, z) || inside(entry, toX, toY + height / 2, toZ)) return false;
         localQuery(entry, x0, y0, z0, x1, y1, z1);
         let size = 1; stack[0] = 0;

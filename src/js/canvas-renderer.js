@@ -2,9 +2,10 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const { mat4, lerp } = BL.math;
-  const { updateWorld, traverseVisible } = BL.scene;
+  const { updateWorld, traverseVisible, matrixModeOf, hiddenFromCamera } = BL.scene;
   const DEFAULT_SKY = [0.5, 0.52, 0.58];
   const DEFAULT_GROUND = [0.22, 0.2, 0.19];
+  const byDepth = (a, b) => a.depth - b.depth;
   const createRenderer = (canvas, { width: fixedW = 0, height: fixedH = 0, transparent = false } = {}) => {
     const ctx = canvas.getContext("2d");
     let width = 0, height = 0, dpr = 1, backdrop = null, skyGradient = null, lastF = 1;
@@ -145,16 +146,6 @@
     // Distance fog toward a colour, off until a frame passes one
     const fogRgb = [0, 0, 0];
     let fogNear = 1e8, fogFar = 1e8 + 1;
-    const matrixModeOf = (node) => {
-      let partial = 0;
-      while (node) {
-        if (node.matrixLiving) return 2;
-        if (node.matrixCloud) return 4;
-        if (node.matrixEmissiveLiving) partial = 3;
-        node = node.parent;
-      }
-      return partial;
-    };
     const smooth = (value) => {
       const t = Math.max(0, Math.min(1, value));
       return t * t * (3 - 2 * t);
@@ -200,10 +191,6 @@
       }
       return -1;
     };
-    const hiddenFromCamera = (node) => {
-      for (let n = node; n; n = n.parent) if (n.cameraHidden) return true;
-      return false;
-    };
     const shadeNode = (node) => {
       if (node.smokeOpacity === 0) return;
       const { verts, faces, lines } = node.geometry;
@@ -221,6 +208,8 @@
       const glyphDepth = localMatrixGlyph ? view[2] * w[12] + view[6] * w[13] + view[10] * w[14] + view[14] : 0;
       const matrixMode = matrixModeOf(node) || node.tip;
       if (mirrorFace && portalFace) return;
+      const mirrorReveal = mirrorFace ? Math.max(0, Math.min(1, node.mirrorReveal || 0)) : 0;
+      const clipMinimumY = node.geometry.clipMinY ?? -Infinity, clipMaximumY = node.geometry.clipMaxY ?? Infinity;
       if (faces) {
         for (const face of faces) {
           const idx = face.i;
@@ -275,31 +264,34 @@
           if ((localMatrixGlyph || revealBacking) && maximumFront <= 0) continue;
           const partial = maximumFront > 0 && minimumFront < 1;
           const matrixAmount = !localMatrixGlyph && !partial ? minimumFront : 0;
-          let surface = MIRROR_CLIP_IN, surfaceCount = count;
-          for (let k = 0; k < count; k++) {
-            surface[k * 3] = V[k][0]; surface[k * 3 + 1] = V[k][1]; surface[k * 3 + 2] = V[k][2];
-          }
-          const mirrorReveal = mirrorFace ? Math.max(0, Math.min(1, node.mirrorReveal || 0)) : 0;
-          let minimumY = node.geometry.clipMinY ?? -Infinity;
+          let surface = null, surfaceCount = count;
+          let minimumY = clipMinimumY;
           if (mirrorReveal > 0) {
             let minY = Infinity, maxY = -Infinity;
             for (let k = 0; k < count; k++) { minY = Math.min(minY, V[k][1]); maxY = Math.max(maxY, V[k][1]); }
             minimumY = Math.max(minimumY, lerp(minY, maxY, mirrorReveal));
+          }
+          // Only clipped geometry needs its face copied into the clip buffers
+          if (minimumY > -Infinity || clipMaximumY < Infinity) {
+            surface = MIRROR_CLIP_IN;
+            for (let k = 0; k < count; k++) {
+              surface[k * 3] = V[k][0]; surface[k * 3 + 1] = V[k][1]; surface[k * 3 + 2] = V[k][2];
+            }
           }
           if (minimumY > -Infinity) {
             surfaceCount = clipHeight(MIRROR_CLIP_IN, count, minimumY, MIRROR_CLIP_OUT);
             surface = MIRROR_CLIP_OUT;
             if (surfaceCount < 3) continue;
           }
-          const maximumY = node.geometry.clipMaxY ?? Infinity;
-          if (maximumY < Infinity) {
+          if (clipMaximumY < Infinity) {
             const destination = surface === MIRROR_CLIP_IN ? MIRROR_CLIP_OUT : MIRROR_CLIP_IN;
-            surfaceCount = clipHeight(surface, surfaceCount, maximumY, destination, false);
+            surfaceCount = clipHeight(surface, surfaceCount, clipMaximumY, destination, false);
             surface = destination;
             if (surfaceCount < 3) continue;
           }
           for (let k = 0; k < surfaceCount; k++) {
-            mat4.transformPoint(V[k], view, surface[k * 3], surface[k * 3 + 1], surface[k * 3 + 2]);
+            if (surface) mat4.transformPoint(V[k], view, surface[k * 3], surface[k * 3 + 1], surface[k * 3 + 2]);
+            else mat4.transformPoint(V[k], view, V[k][0], V[k][1], V[k][2]);
             CLIP_IN[k * 3] = V[k][0];
             CLIP_IN[k * 3 + 1] = V[k][1];
             CLIP_IN[k * 3 + 2] = V[k][2];
@@ -805,7 +797,7 @@
         }
         active[i] = rec;
       }
-      active.sort((a, b) => a.depth - b.depth);
+      active.sort(byDepth);
       matrixSampleStep = Math.max(1, Math.ceil(Math.sqrt(matrixArea / MATRIX_SAMPLE_BUDGET)));
       if (matrixArea) {
         let samples;

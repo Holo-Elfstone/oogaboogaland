@@ -65,9 +65,13 @@
       return out;
     },
     fromTRS: (out, p, r, s) => {
-      const cx = Math.cos(r.x), sx = Math.sin(r.x);
-      const cy = Math.cos(r.y), sy = Math.sin(r.y);
-      const cz = Math.cos(r.z), sz = Math.sin(r.z);
+      // cos(+-0) is exactly 1 and sin(+-0) is the angle itself, so passing the
+      // angle through keeps the sign of zero and every product below identical.
+      // Most of the graph never rotates, and most scenery only yaws.
+      const zx = r.x === 0, zy = r.y === 0, zz = r.z === 0;
+      const cx = zx ? 1 : Math.cos(r.x), sx = zx ? r.x : Math.sin(r.x);
+      const cy = zy ? 1 : Math.cos(r.y), sy = zy ? r.y : Math.sin(r.y);
+      const cz = zz ? 1 : Math.cos(r.z), sz = zz ? r.z : Math.sin(r.z);
       const ce = cy * cz, cf = cy * sz, de = sy * cz, df = sy * sz;
       out[0] = (ce + df * sx) * s.x;
       out[1] = cx * sz * s.x;
@@ -314,5 +318,41 @@
       return quat.normalize(out);
     }
   };
-  BL.math = { clamp, lerp, damp, angleDelta, ease, fnv1a, mulberry32, randomInt, hexToRgb, mat4, quat };
+  // Stable in-place sort of ids[start, end) by keys[id * stride + axis], the
+  // order a stable Array#sort gives for (a, b) => key(a) - key(b). The keys
+  // are gathered once so comparisons read memory in order, runs of 16 are
+  // insertion-sorted, then merged between the two halves of a caller-owned
+  // scratch from sortScratch(n); nothing is called per comparison, which
+  // matters because the bounding-volume builds re-sort at every tree level.
+  const RUN = 16;
+  const sortScratch = (n) => ({ ids: new Uint32Array(n * 2), keys: new Float64Array(n * 2) });
+  const sortByKey = (ids, start, end, keys, stride, axis, scratch) => {
+    const n = end - start, tid = scratch.ids, tkey = scratch.keys;
+    let from = 0, to = n;
+    for (let k = 0; k < n; k++) { const id = ids[start + k]; tid[k] = id; tkey[k] = keys[id * stride + axis]; }
+    for (let lo = 0; lo < n; lo += RUN) {
+      const hi = Math.min(lo + RUN, n);
+      for (let k = lo + 1; k < hi; k++) {
+        const id = tid[k], key = tkey[k];
+        let m = k;
+        while (m > lo && tkey[m - 1] > key) { tid[m] = tid[m - 1]; tkey[m] = tkey[m - 1]; m--; }
+        tid[m] = id; tkey[m] = key;
+      }
+    }
+    for (let width = RUN; width < n; width *= 2) {
+      for (let lo = 0; lo < n; lo += width * 2) {
+        const mid = Math.min(lo + width, n), hi = Math.min(lo + width * 2, n);
+        let i = from + lo, j = from + mid, k = to + lo;
+        const iEnd = from + mid, jEnd = from + hi;
+        while (i < iEnd && j < jEnd) {
+          if (tkey[j] < tkey[i]) { tid[k] = tid[j]; tkey[k++] = tkey[j++]; } else { tid[k] = tid[i]; tkey[k++] = tkey[i++]; }
+        }
+        while (i < iEnd) { tid[k] = tid[i]; tkey[k++] = tkey[i++]; }
+        while (j < jEnd) { tid[k] = tid[j]; tkey[k++] = tkey[j++]; }
+      }
+      const swap = from; from = to; to = swap;
+    }
+    for (let k = 0; k < n; k++) ids[start + k] = tid[from + k];
+  };
+  BL.math = { clamp, lerp, damp, angleDelta, ease, fnv1a, mulberry32, randomInt, hexToRgb, sortScratch, sortByKey, mat4, quat };
 })();

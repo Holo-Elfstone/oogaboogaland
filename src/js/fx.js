@@ -14,6 +14,9 @@
   const CONFETTI = ["#d8892b", "#22c55e", "#6f9fca", "#f3efe4", "#f5c542"].map((c) => models.particleGeometry(c, 0.09, 0.6));
   const SMOKE_TRAIL = models.particleGeometry("#c9cbce", 0.09, 0.15);
   const SCREEN = { x: 0, y: 0, depth: 0 };
+  // Sleep marks grow from 11px to 23px, so the whole range is a fixed table
+  const ZZZ_FONTS = [];
+  for (let size = 11; size <= 23; size++) ZZZ_FONTS[size] = `${size}px ui-monospace, monospace`;
   const drawBubble = (ctx, text, x, y, alpha) => {
     ctx.globalAlpha = alpha;
     ctx.font = "bold 10px ui-monospace, monospace";
@@ -176,7 +179,7 @@
         if (!pos) continue;
         ctx.globalAlpha = (1 - p.t / 2.4) * 0.8;
         ctx.fillStyle = "#ffb347";
-        ctx.font = `${Math.round(11 + p.t * 5)}px ui-monospace, monospace`;
+        ctx.font = ZZZ_FONTS[Math.round(11 + p.t * 5)];
         ctx.fillText("z", pos.x + Math.sin(p.t * 3) * 6, pos.y);
       }
       ctx.globalAlpha = 1;

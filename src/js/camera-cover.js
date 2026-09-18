@@ -9,12 +9,23 @@
     n = Math.imul(n ^ n >>> 15, -2073254261);
     return ((n ^ n >>> 16) >>> 0) / 4294967296;
   };
-  const grain = (x, y, z) => {
+  // Neighbouring texels share lattice cells. The hash is pure, so each cell's
+  // eight corners are kept per octave (field) instead of rehashed per texel.
+  const GRAIN_SLOTS = 256, grainKeys = new Float64Array(GRAIN_SLOTS * 4).fill(NaN), grainCorners = new Float64Array(GRAIN_SLOTS * 8);
+  const grain = (x, y, z, field) => {
     const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+    const slot = ((Math.imul(ix, 73856093) ^ Math.imul(iy, 19349663) ^ Math.imul(iz, 83492791) ^ field) >>> 0) & (GRAIN_SLOTS - 1), k = slot * 4, c = slot * 8;
+    if (grainKeys[k] !== ix || grainKeys[k + 1] !== iy || grainKeys[k + 2] !== iz || grainKeys[k + 3] !== field) {
+      grainKeys[k] = ix; grainKeys[k + 1] = iy; grainKeys[k + 2] = iz; grainKeys[k + 3] = field;
+      grainCorners[c] = grainHash(ix, iy, iz); grainCorners[c + 1] = grainHash(ix + 1, iy, iz);
+      grainCorners[c + 2] = grainHash(ix, iy + 1, iz); grainCorners[c + 3] = grainHash(ix + 1, iy + 1, iz);
+      grainCorners[c + 4] = grainHash(ix, iy, iz + 1); grainCorners[c + 5] = grainHash(ix + 1, iy, iz + 1);
+      grainCorners[c + 6] = grainHash(ix, iy + 1, iz + 1); grainCorners[c + 7] = grainHash(ix + 1, iy + 1, iz + 1);
+    }
     x -= ix; y -= iy; z -= iz;
     x *= x * (3 - 2 * x); y *= y * (3 - 2 * y); z *= z * (3 - 2 * z);
-    return lerp(lerp(lerp(grainHash(ix, iy, iz), grainHash(ix + 1, iy, iz), x), lerp(grainHash(ix, iy + 1, iz), grainHash(ix + 1, iy + 1, iz), x), y),
-      lerp(lerp(grainHash(ix, iy, iz + 1), grainHash(ix + 1, iy, iz + 1), x), lerp(grainHash(ix, iy + 1, iz + 1), grainHash(ix + 1, iy + 1, iz + 1), x), y), z);
+    return lerp(lerp(lerp(grainCorners[c], grainCorners[c + 1], x), lerp(grainCorners[c + 2], grainCorners[c + 3], x), y),
+      lerp(lerp(grainCorners[c + 4], grainCorners[c + 5], x), lerp(grainCorners[c + 6], grainCorners[c + 7], x), y), z);
   };
   const GLYPH_W = 32, GLYPH_H = 48, GLYPH_SIZE = GLYPH_W * GLYPH_H, GLYPH_RATE = 12;
   let glyphAtlas = null;
@@ -82,6 +93,7 @@
     let structurePhases = new Float32Array(0), structureTargets = new Uint8Array(0), structureSeen = new Uint8Array(0), structureLines = new Float32Array(0);
     const ROCK_GRID = 32, rockSamples = new Uint8Array((ROCK_GRID + 1) ** 2), rockTriangle = new Float64Array(9);
     const TEXTURE_SIZE = 128, textureTransform = new Float64Array(9), textureNext = new Float64Array(9);
+    const textureColumns = new Float64Array(TEXTURE_SIZE * 3), textureRows = new Float64Array(TEXTURE_SIZE * 3);
     textureTransform.fill(NaN);
     stone.width = stone.height = TEXTURE_SIZE;
     const stoneImage = stoneCtx.createImageData(TEXTURE_SIZE, TEXTURE_SIZE), stonePixels = stoneImage.data;
@@ -131,11 +143,15 @@
       // Sample the real section exposed by the near-plane cut. Grain is a
       // stationary 3D field; moving or turning reveals different stone, while
       // a stationary view never animates or slides a screen-space wallpaper.
+      for (let n = 0; n < TEXTURE_SIZE; n++) {
+        const right = (n + 0.5) / TEXTURE_SIZE - 0.5, up = 0.5 - (n + 0.5) / TEXTURE_SIZE;
+        textureColumns[n * 3] = textureNext[3] * right; textureColumns[n * 3 + 1] = textureNext[4] * right; textureColumns[n * 3 + 2] = textureNext[5] * right;
+        textureRows[n * 3] = textureNext[6] * up; textureRows[n * 3 + 1] = textureNext[7] * up; textureRows[n * 3 + 2] = textureNext[8] * up;
+      }
       for (let y = 0; y < TEXTURE_SIZE; y++) for (let x = 0; x < TEXTURE_SIZE; x++) {
-        const right = (x + 0.5) / TEXTURE_SIZE - 0.5, up = 0.5 - (y + 0.5) / TEXTURE_SIZE;
-        const wx = planeX + textureNext[3] * right + textureNext[6] * up;
-        const wy = planeY + textureNext[4] * right + textureNext[7] * up;
-        const wz = planeZ + textureNext[5] * right + textureNext[8] * up;
+        const wx = planeX + textureColumns[x * 3] + textureRows[y * 3];
+        const wy = planeY + textureColumns[x * 3 + 1] + textureRows[y * 3 + 1];
+        const wz = planeZ + textureColumns[x * 3 + 2] + textureRows[y * 3 + 2];
         const i = (y * TEXTURE_SIZE + x) * 4;
         // Each texel follows the same advancing/receding world wave as its
         // stone surface. Outline contrast must not recolor unreached rock.
@@ -148,7 +164,7 @@
             red = stonePixels[i]; green = stonePixels[i + 1]; blue = stonePixels[i + 2];
           } else {
             const material = materialAt(wx, wy, wz) || BL.terrain.PALETTE[5];
-            const light = 0.2 + grain(wx * 15, wy * 18, wz * 13) * 0.12 + grain(wx * 73, wy * 67, wz * 79) * 0.04;
+            const light = 0.2 + grain(wx * 15, wy * 18, wz * 13, 0) * 0.12 + grain(wx * 73, wy * 67, wz * 79, 1) * 0.04;
             red = material[0] * light; green = material[1] * light; blue = material[2] * light;
           }
         }
@@ -260,9 +276,11 @@
       apertureCtx.closePath();
       return true;
     };
-    let apertureBatch = 0;
+    let apertureBatch = 0, apertureFaces = 0;
     const appendApertureMask = (points, count) => {
-      if (appendAperture(points, count) && ++apertureBatch === 16) {
+      if (!appendAperture(points, count)) return;
+      apertureFaces++;
+      if (++apertureBatch === 16) {
         apertureCtx.fill(); apertureCtx.stroke(); apertureCtx.beginPath(); apertureBatch = 0;
       }
     };
@@ -415,7 +433,7 @@
         const structure = structures ? structures[item] : guides.structure;
         if (!(structure.surfaceWholeActive || structure.surfaceActive) || !structure.apertures) continue;
         for (let aperture = 0; aperture < structure.apertures.count; aperture++) {
-          apertureCtx.clearRect(0, 0, width, height); apertureCtx.beginPath(); apertureBatch = 0;
+          apertureCtx.clearRect(0, 0, width, height); apertureCtx.beginPath(); apertureBatch = apertureFaces = 0;
           for (let at = 0; at < structure.surfaceCount * 9; at += 9) {
             const group = structure.surfaceGroups[at / 9], whole = structure.surfaceWholePhases ? structure.surfaceWholePhases[group] : structure.surfacePhases[group];
             if (!structure.surfaceAperture[group] || whole <= 0) continue;
@@ -423,6 +441,8 @@
             if (cut.count) appendApertureMask(cut.points, cut.count);
           }
           if (apertureBatch) { apertureCtx.fill(); apertureCtx.stroke(); }
+          // An opening that received no wall face leaves a transparent mask
+          if (!apertureFaces) continue;
           apertureCtx.globalCompositeOperation = "destination-out";
           apertureCtx.beginPath(); apertureBatch = 0;
           structure.apertures.blockers(aperture, appendApertureMask);

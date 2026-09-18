@@ -15,16 +15,17 @@
     const geo = geometry();
     const ox = offset.x || 0, oy = offset.y || 0, oz = offset.z || 0;
     const px = w / 2, py = h / 2, pz = d / 2;
-    const c = [
-      [-px, -py, -pz],
-      [px, -py, -pz],
-      [px, py, -pz],
-      [-px, py, -pz],
-      [-px, -py, pz],
-      [px, -py, pz],
-      [px, py, pz],
-      [-px, py, pz]
-    ].map(([x, y, z]) => pushVert(geo, x + ox, y + oy, z + oz));
+    const b = geo.verts.length / 3;
+    geo.verts.push(
+      -px + ox, -py + oy, -pz + oz,
+      px + ox, -py + oy, -pz + oz,
+      px + ox, py + oy, -pz + oz,
+      -px + ox, py + oy, -pz + oz,
+      -px + ox, -py + oy, pz + oz,
+      px + ox, -py + oy, pz + oz,
+      px + ox, py + oy, pz + oz,
+      -px + ox, py + oy, pz + oz);
+    const c = [b, b + 1, b + 2, b + 3, b + 4, b + 5, b + 6, b + 7];
     const rgb = hexToRgb(color);
     const opts = { emissive };
     face(geo, [c[4], c[5], c[6], c[7]], rgb, opts);
@@ -130,15 +131,27 @@
     const out = geometry();
     for (const geo of geos) {
       const shift = out.verts.length / 3;
-      out.verts.push(...geo.verts);
+      // An index walk, not a spread: a large geometry would overflow the stack
+      const v = geo.verts;
+      for (let i = 0; i < v.length; i++) out.verts.push(v[i]);
       for (const f of geo.faces) out.faces.push({ ...f, i: f.i.map((i) => i + shift) });
       for (const l of geo.lines) out.lines.push({ ...l, i: l.i.map((i) => i + shift) });
     }
     return out;
   };
+  // Cells are not all integral: some builders walk half-steps, and the span
+  // exceeds a bit-packed key's range, so the key stays a string.
+  const voxKey = (x, y, z) => x + "," + y + "," + z;
+  const voxCoords = (k, out) => {
+    const a = k.split(",");
+    out[0] = +a[0];
+    out[1] = +a[1];
+    out[2] = +a[2];
+    return out;
+  };
   const makeVox = () => {
     const map = new Map();
-    const key = (x, y, z) => x + "," + y + "," + z;
+    const key = voxKey;
     return {
       map,
       has: (x, y, z) => map.has(key(x, y, z)),
@@ -158,6 +171,7 @@
     };
   };
   // Exposed voxel faces as run-merged quads
+  const CELL = [0, 0, 0];
   const voxelFaces = (iterate, has, emit) => {
     const F = { py: [], ny: [], px: [], nx: [], pz: [], nz: [] };
     iterate((x, y, z, c) => {
@@ -186,13 +200,14 @@
   };
   const voxelGeometry = (vox, { unit, palette, origin = { x: 0, y: 0, z: 0 }, emissive = {} }) => {
     const geo = geometry();
+    const rgb = palette.map((c) => typeof c === "string" ? hexToRgb(c) : c);
     const emit = (pts, c) => {
-      face(geo, pts.map(([x, y, z]) => pushVert(geo, origin.x + x * unit, origin.y + y * unit, origin.z + z * unit)), palette[c], { emissive: emissive[c] || 0 });
+      face(geo, pts.map(([x, y, z]) => pushVert(geo, origin.x + x * unit, origin.y + y * unit, origin.z + z * unit)), rgb[c], { emissive: emissive[c] || 0 });
     };
     voxelFaces((fn) => {
       for (const [k, c] of vox.map) {
-        const [x, y, z] = k.split(",").map(Number);
-        fn(x, y, z, c);
+        voxCoords(k, CELL);
+        fn(CELL[0], CELL[1], CELL[2], c);
       }
     }, vox.has, emit);
     return geo;
@@ -203,6 +218,14 @@
   const cached = (build) => {
     let value = null;
     return () => value || (value = build());
+  };
+  const variants = (build) => {
+    const cache = [];
+    return (i = 0) => cache[i] || (cache[i] = build(i));
+  };
+  const noShadow = (geo) => {
+    geo.castShadow = false;
+    return geo;
   };
   const BANANA_AMMO_SCALE = 0.34;
   // A full-shouldered loose heap encloses the dead space between curved bananas
@@ -426,7 +449,7 @@
     }
     return geo;
   };
-  const caveman = (traits) => {
+  const buildCaveman = (traits) => {
     const { skin, hair, height: h, belly, rand } = traits;
     const u = h / 16;
     const P = { skin: 0, skinDk: 1, hair: 2, hairDk: 3, fur: 4, spot: 5, white: 6, black: 7, nose: 8, stubble: 9, wood: 10, stone: 11, stoneDk: 12, apple: 13, appleDk: 14, leaf: 15, knit: 16, knitDk: 17, pom: 18, lens: 19, btc: 20, gold: 21, goldDk: 22, wing: 23, wingDk: 24, goggle: 25, goggleDk: 26, orange: 27 };
@@ -664,7 +687,8 @@
       }
       for (const [k, c] of [...v.map]) {
         if (c !== P.hair && c !== P.hairDk) continue;
-        const [x, y, z] = k.split(",").map(Number);
+        voxCoords(k, CELL);
+        const x = CELL[0], y = CELL[1], z = CELL[2];
         const exposed = !v.has(x + 1, y, z) || !v.has(x - 1, y, z) || !v.has(x, y, z + 1) || !v.has(x, y, z - 1) || !v.has(x, y + 1, z);
         if (exposed && rand() < 0.07) v.del(x, y, z);
       }
@@ -725,6 +749,25 @@
     }
     if (traits.skater) addChild(root, createNode({ position: { x: 0, y: 0.28 * h, z: -0.35 * h }, rotation: { x: 0, y: 0, z: 0.4 }, geometry: skateboardGeometry(h) }));
     return { root, parts, traits, headOffset: 1.1 * h, headOpen, headClosed, skins };
+  };
+  // Traits hash from the handle, so one handle always builds the same voxels.
+  // Each caller gets fresh nodes over one shared set of geometry objects: one
+  // voxel build per contributor for the page, and GPU records that survive a
+  // scene swap instead of being released and uploaded again.
+  const cavemen = new Map();
+  const cloneNode = (node, copies) => {
+    const copy = createNode({ ...node, position: { ...node.position }, rotation: { ...node.rotation }, scale: { ...node.scale }, parent: null, children: [], world: new Float32Array(node.world), local: new Float32Array(node.local) });
+    copies.set(node, copy);
+    for (const child of node.children) addChild(copy, cloneNode(child, copies));
+    return copy;
+  };
+  const caveman = (traits) => {
+    let template = cavemen.get(traits.name);
+    if (!template) cavemen.set(traits.name, template = buildCaveman(traits));
+    const copies = new Map(), root = cloneNode(template.root, copies), parts = {};
+    for (const key of Object.keys(template.parts)) parts[key] = copies.get(template.parts[key]);
+    const skins = { club: { ...template.skins.club }, gun: { ...template.skins.gun } };
+    return { root, parts, traits, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed, skins };
   };
   // A real die, opposite faces summing to seven
   const die = ({ size = 0.3 } = {}) => {
@@ -1115,5 +1158,5 @@
       item.buildNode = () => createNode({ geometry: swagGeo(item.id, item.build) });
     }
   }
-  BL.models = { box, panel, lathe, tube, ring, polyline, merge, voxelFaces, banana, bananaGeometry, bananaTileGeometry, bananaPileCoreGeometry, bananaPileRadiusScale, bananaPileHeightOffset, BANANA_AMMO_SCALE, BANANA_PILE_PROFILE, particleGeometry, caveman, labRoom, buildableGeos, crate, dieRotationFor, SWAG, TIER_COLORS };
+  BL.models = { geometry, pushVert, face, voxCoords, box, panel, lathe, tube, ring, polyline, merge, cached, variants, noShadow, makeVox, voxelGeometry, voxelFaces, banana, bananaGeometry, bananaTileGeometry, bananaPileCoreGeometry, bananaPileRadiusScale, bananaPileHeightOffset, BANANA_AMMO_SCALE, BANANA_PILE_PROFILE, particleGeometry, caveman, labRoom, buildableGeos, crate, dieRotationFor, SWAG, TIER_COLORS };
 })();

@@ -16,6 +16,11 @@
     cameraHidden: false,
     parent: null,
     children: [],
+    // World cull sphere, written once per frame by the renderer's collect pass
+    cullX: 0,
+    cullY: 0,
+    cullZ: 0,
+    cullR: 0,
     world: mat4.create(),
     local: mat4.create(),
     ...options
@@ -64,6 +69,22 @@
     position: { x: 0, y: 3, z: 8 },
     target: { x: 0, y: 1, z: 0 }
   });
+  // Attributes a node inherits from its ancestors. Both renderers ask the same
+  // questions of the same graph, so the walks live here rather than in each.
+  const matrixModeOf = (node) => {
+    let partial = 0;
+    while (node) {
+      if (node.matrixLiving) return 2;
+      if (node.matrixCloud) return 4;
+      if (node.matrixEmissiveLiving) partial = 3;
+      node = node.parent;
+    }
+    return partial;
+  };
+  const hiddenFromCamera = (node) => {
+    for (let n = node; n; n = n.parent) if (n.cameraHidden) return true;
+    return false;
+  };
   const boundsCache = new WeakMap();
   const boundsOf = (geometry) => {
     let b = boundsCache.get(geometry);
@@ -94,6 +115,10 @@
     tweens.push(tw);
     return tw;
   };
+  // Reverse iteration keeps the splice indices valid, and a tween added by a
+  // done callback lands past the initial length so it first steps next frame.
+  // Never call clearTweens from an update or done callback: it truncates the
+  // array this loop is walking.
   const stepTweens = (dt) => {
     for (let i = tweens.length - 1; i >= 0; i--) {
       const tw = tweens[i];
@@ -109,8 +134,8 @@
       const k = Math.min(1, tw.t);
       tw.update(tw.ease(k));
       if (k >= 1) {
-        tweens.splice(i, 1);
         tw.alive = false;
+        tweens.splice(i, 1);
         if (tw.done) tw.done();
       }
     }
@@ -120,5 +145,5 @@
     for (const tw of tweens) tw.alive = false;
     tweens.length = 0;
   };
-  BL.scene = { createNode, addChild, removeChild, updateWorld, traverseVisible, createCamera, boundsOf, addTween, stepTweens, tweenCount, clearTweens };
+  BL.scene = { createNode, addChild, removeChild, updateWorld, traverseVisible, createCamera, boundsOf, matrixModeOf, hiddenFromCamera, addTween, stepTweens, tweenCount, clearTweens };
 })();

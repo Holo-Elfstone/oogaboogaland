@@ -19,6 +19,7 @@
     const hidden = partialOcclusion ? document.createElement("canvas") : null, layer = partialOcclusion ? document.createElement("canvas") : null;
     const hiddenCtx = hidden && hidden.getContext("2d"), layerCtx = layer && layer.getContext("2d");
     const depth = new Float32Array(partialOcclusion ? DEPTH_SIZE * DEPTH_SIZE : 0), expanded = new Float32Array(depth.length);
+    let depthMinX = 0, depthMinY = 0, depthMaxX = -1, depthMaxY = -1;
     let depthWidth = 0, depthHeight = 0, depthScaleX = 1, depthScaleY = 1, depthReady = false, cameraX = 0, cameraY = 0, cameraZ = 0;
     let covered = 2, clippedUpdate = -1, clippedRevision = -1, layerUpdate = -1, layerContrast = -1;
     let dark = null, light = null, darkCtx = null, lightCtx = null, contrastReady = false;
@@ -79,7 +80,13 @@
         const t = lo + (hi - lo) * step / steps, x = Math.floor(ax + dx * t), y = Math.floor(ay + dy * t);
         if (x < 0 || y < 0 || x >= depthWidth || y >= depthHeight) continue;
         const at = y * depthWidth + x, d = ad + (bd - ad) * t;
-        if (d > depth[at]) depth[at] = d;
+        if (d > depth[at]) {
+          depth[at] = d;
+          if (x < depthMinX) depthMinX = x;
+          if (x > depthMaxX) depthMaxX = x;
+          if (y < depthMinY) depthMinY = y;
+          if (y > depthMaxY) depthMaxY = y;
+        }
       }
     };
     const rasterDepth = (count) => {
@@ -93,6 +100,12 @@
         if (Math.abs(area) < 1e-9) continue;
         const x0 = Math.max(0, Math.floor(Math.min(ax, bx, cx))), x1 = Math.min(depthWidth - 1, Math.ceil(Math.max(ax, bx, cx)));
         const y0 = Math.max(0, Math.floor(Math.min(ay, by, cy))), y1 = Math.min(depthHeight - 1, Math.ceil(Math.max(ay, by, cy)));
+        if (x0 <= x1 && y0 <= y1) {
+          if (x0 < depthMinX) depthMinX = x0;
+          if (x1 > depthMaxX) depthMaxX = x1;
+          if (y0 < depthMinY) depthMinY = y0;
+          if (y1 > depthMaxY) depthMaxY = y1;
+        }
         for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
           const wa = ((by - cy) * (x + 0.5 - cx) + (cx - bx) * (y + 0.5 - cy)) / area;
           const wb = ((cy - ay) * (x + 0.5 - cx) + (ax - cx) * (y + 0.5 - cy)) / area, wc = 1 - wa - wb;
@@ -186,11 +199,13 @@
         const scale = Math.min(1, DEPTH_SIZE / Math.max(width, height));
         depthWidth = Math.max(1, Math.ceil(width * scale)); depthHeight = Math.max(1, Math.ceil(height * scale));
         depthScaleX = depthWidth / width; depthScaleY = depthHeight / height; depth.fill(0); expanded.fill(0);
+        depthMinX = depthWidth; depthMinY = depthHeight; depthMaxX = depthMaxY = -1;
         for (let i = 0; i < ordinary.length; i++) if (ordinaryVisible[i]) mesh(geometryOf(ordinary[i].geometry), ordinary[i].world, true);
         // Carry nearest surface depth into the existing outer rim. This does
         // not grow the silhouette or draw a new rim along an occluder edge.
         const pad = Math.max(2, Math.ceil(5 * Math.max(depthScaleX, depthScaleY)));
-        for (let y = 0; y < depthHeight; y++) for (let x = 0; x < depthWidth; x++) {
+        // Outside the rasterised bounds every neighbourhood is empty and stays 0
+        for (let y = Math.max(0, depthMinY - pad); y <= Math.min(depthHeight - 1, depthMaxY + pad); y++) for (let x = Math.max(0, depthMinX - pad); x <= Math.min(depthWidth - 1, depthMaxX + pad); x++) {
           const at = y * depthWidth + x;
           let d = depth[at];
           if (!d) for (let j = Math.max(0, y - pad); j <= Math.min(depthHeight - 1, y + pad); j++) for (let i = Math.max(0, x - pad); i <= Math.min(depthWidth - 1, x + pad); i++) d = Math.max(d, depth[j * depthWidth + i]);

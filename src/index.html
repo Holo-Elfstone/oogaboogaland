@@ -180,12 +180,12 @@
       </nav>
       <nav class="presets" aria-label="Race" data-scene="race" hidden>
         <button type="button" data-action="garage" id="race-garage-btn">Garage</button>
-        <button type="button" data-action="mute" id="race-mute" aria-pressed="false">Sound</button>
+        <button type="button" data-action="mute" id="race-mute" aria-label="Mute sound" aria-pressed="false">Sound</button>
         <button type="button" class="leave" data-action="leave">Leave<span> cave</span></button>
       </nav>
       <nav class="presets" aria-label="Drop" data-scene="drop" hidden>
         <button type="button" data-action="drop-board" id="drop-board-btn">Board</button>
-        <button type="button" data-action="mute" id="drop-mute" aria-pressed="false">Sound</button>
+        <button type="button" data-action="mute" id="drop-mute" aria-label="Mute sound" aria-pressed="false">Sound</button>
         <button type="button" class="leave" data-action="leave">Back<span> to the island</span></button>
       </nav>
     </header>
@@ -223,7 +223,7 @@
       <section class="panel" data-panel="bananas" role="tabpanel" hidden>
         <section class="meter" aria-label="Banana supply">
           <span class="meter-label">Bananas</span>
-          <span class="meter-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span class="meter-fill"
+          <span class="meter-bar" role="progressbar" aria-label="Supply level" aria-valuemin="0" aria-valuemax="100"><span class="meter-fill"
               id="meter-fill"></span></span>
           <span class="meter-count" id="meter-count">0</span>
           <span class="meter-forecast" id="meter-forecast"></span>

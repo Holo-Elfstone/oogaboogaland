@@ -3,6 +3,10 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const RANGE = 12, SURFACE_STEP = 0.1, EDGE_STEP = 0.035, SAMPLE_BLOCK = 32, EPS = 1e-6;
+  // A bake reads only verts and each face's index list, and is never written
+  // after it is built. Shared vertex arrays (page-cached props, per-node
+  // clipped wrappers) reuse one bake for the page instead of per registry.
+  const bakes = new WeakMap();
   const create = ({ roots, crew, exclude = [], providers = [], propsBlockActor = true, perceptionThrough = null }) => {
     const excluded = new Set(exclude), geometries = new Map(), registered = [], seen = new Set(), entries = new Map(), ownerEntries = new Map(), ownerGroups = [];
     const aliases = new Map(), providerOwners = new Map();
@@ -43,9 +47,29 @@
       if (!geometry || excluded.has(geometry) || geometry.matrixGlyph || !geometry.faces || !geometry.faces.length) return null;
       let cached = geometries.get(geometry);
       if (cached) return cached;
-      const v = geometry.verts, triangles = [], triangleBounds = [], triangleCoverFaces = [], coverFaces = [], edgeMap = new Map(), planes = new Map(), surfacePoints = new Map();
-      const vertexKey = (i) => `${Math.round(v[i] / EPS)},${Math.round(v[i + 1] / EPS)},${Math.round(v[i + 2] / EPS)}`;
-      const sample = (x, y, z) => { const key = `${Math.round(x / EPS)},${Math.round(y / EPS)},${Math.round(z / EPS)}`; if (!surfacePoints.has(key)) surfacePoints.set(key, [x, y, z]); };
+      const baked = bakes.get(geometry.verts);
+      if (baked) for (const bake of baked) {
+        let same = bake.faces.length === geometry.faces.length;
+        for (let n = 0; same && n < bake.faces.length; n++) same = bake.faces[n] === geometry.faces[n].i;
+        if (!same) continue;
+        cached = bake.record;
+        geometries.set(geometry, cached); stats.geometries++; stats.triangles += cached.triangles.length / 9; stats.samples += cached.samples.length / 3;
+        return cached;
+      }
+      const v = geometry.verts, triangles = [], triangleBounds = [], triangleCoverFaces = [], coverFaces = [], edgeMap = new Map(), planes = new Map();
+      // Witnesses deduplicate by rounded coordinates, first point kept, in
+      // insertion order. Numeric keys avoid a string per vertex and sample.
+      const surfacePoints = new Map(), samplePoints = [], vertexIds = new Int32Array(v.length / 3);
+      const sample = (x, y, z) => {
+        const kx = Math.round(x / EPS), ky = Math.round(y / EPS), kz = Math.round(z / EPS);
+        let byY = surfacePoints.get(kx);
+        if (!byY) surfacePoints.set(kx, byY = new Map());
+        let byZ = byY.get(ky);
+        if (!byZ) byY.set(ky, byZ = new Map());
+        let id = byZ.get(kz);
+        if (id === undefined) { id = samplePoints.length / 3; byZ.set(kz, id); samplePoints.push(x, y, z); }
+        return id;
+      };
       for (let faceIndex = 0; faceIndex < geometry.faces.length; faceIndex++) {
         const face = geometry.faces[faceIndex];
         if (face.i.length < 3) continue;
@@ -77,7 +101,7 @@
         for (const vertex of face.i) {
           const at = vertex * 3;
           centerX += v[at]; centerY += v[at + 1]; centerZ += v[at + 2];
-          sample(v[at], v[at + 1], v[at + 2]);
+          vertexIds[vertex] = sample(v[at], v[at + 1], v[at + 2]);
         }
         // Interior witnesses are needed when a window reveals only a patch
         // between every vertex, face center and outer contour. Project a
@@ -110,7 +134,7 @@
           triangleBounds.push(Math.min(v[a], v[b], v[c]), Math.min(v[a + 1], v[b + 1], v[c + 1]), Math.min(v[a + 2], v[b + 2], v[c + 2]), Math.max(v[a], v[b], v[c]), Math.max(v[a + 1], v[b + 1], v[c + 1]), Math.max(v[a + 2], v[b + 2], v[c + 2]));
         }
         for (let j = 0; j < face.i.length; j++) {
-          const a = face.i[j] * 3, b = face.i[(j + 1) % face.i.length] * 3, ak = vertexKey(a), bk = vertexKey(b), key = ak < bk ? `${ak}:${bk}` : `${bk}:${ak}`;
+          const a = face.i[j] * 3, b = face.i[(j + 1) % face.i.length] * 3, ak = vertexIds[a / 3], bk = vertexIds[b / 3], key = ak < bk ? ak * 67108864 + bk : bk * 67108864 + ak;
           const existing = edgeMap.get(key);
           if (existing) {
             existing.shared = true;
@@ -181,9 +205,7 @@
         const e = edges[i], g = e.g, t = (end ? e.hi : e.lo) - g.origin, at = i * 6 + end * 3;
         edgeLines[at] = g.ax + g.dx * t; edgeLines[at + 1] = g.ay + g.dy * t; edgeLines[at + 2] = g.az + g.dz * t;
       }
-      const samples = new Float32Array(surfacePoints.size * 3);
-      let sampleAt = 0;
-      for (const point of surfacePoints.values()) { samples[sampleAt++] = point[0]; samples[sampleAt++] = point[1]; samples[sampleAt++] = point[2]; }
+      const samples = new Float32Array(samplePoints);
       surfacePoints.clear();
       // The original face grids already place neighboring witnesses together.
       // Small contiguous bounds keep every witness while proving occlusion
@@ -199,21 +221,25 @@
       }
       const count = triangles.length / 9;
       if (!count) return null;
-      const indices = Array.from({ length: count }, (_, i) => i), bounds = [], left = [], right = [], starts = [], counts = [];
+      const indices = Uint32Array.from({ length: count }, (_, i) => i), scratch = BL.math.sortScratch(count), bounds = [], left = [], right = [], starts = [], counts = [];
+      // Centroid sort keys, computed once rather than inside every comparison
+      const keys = new Float64Array(count * 3);
+      for (let i = 0; i < count; i++) for (let axis = 0; axis < 3; axis++) keys[i * 3 + axis] = triangleBounds[i * 6 + axis] + triangleBounds[i * 6 + axis + 3];
       const build = (lo, hi) => {
         const id = left.length, b = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
         for (let n = lo; n < hi; n++) { const at = indices[n] * 6; for (let axis = 0; axis < 3; axis++) { b[axis] = Math.min(b[axis], triangleBounds[at + axis]); b[axis + 3] = Math.max(b[axis + 3], triangleBounds[at + axis + 3]); } }
         bounds.push(...b); left.push(-1); right.push(-1); starts.push(lo); counts.push(hi - lo);
         if (hi - lo <= 8) return id;
         let axis = 0; if (b[4] - b[1] > b[3] - b[0]) axis = 1; if (b[5] - b[2] > b[axis + 3] - b[axis]) axis = 2;
-        const ordered = indices.slice(lo, hi).sort((a, b) => triangleBounds[a * 6 + axis] + triangleBounds[a * 6 + axis + 3] - triangleBounds[b * 6 + axis] - triangleBounds[b * 6 + axis + 3]);
-        for (let n = 0; n < ordered.length; n++) indices[lo + n] = ordered[n];
+        BL.math.sortByKey(indices, lo, hi, keys, 3, axis, scratch);
         const middle = (lo + hi) >> 1;
         left[id] = build(lo, middle); right[id] = build(middle, hi); counts[id] = 0;
         return id;
       };
       if (count) build(0, count);
-      cached = { lines: edgeLines, samples, sampleBounds, coverFaces: new Uint32Array(coverFaces), triangleCoverFaces: new Int32Array(triangleCoverFaces), edgeStarts, edgeNormals: new Float64Array(edgeNormals), triangles: new Float64Array(triangles), indices: new Uint32Array(indices), bounds: new Float64Array(bounds), left: new Int32Array(left), right: new Int32Array(right), starts: new Uint32Array(starts), counts: new Uint32Array(counts), sphere: BL.scene.boundsOf(geometry) };
+      cached = { lines: edgeLines, samples, sampleBounds, coverFaces: new Uint32Array(coverFaces), triangleCoverFaces: new Int32Array(triangleCoverFaces), edgeStarts, edgeNormals: new Float64Array(edgeNormals), triangles: new Float64Array(triangles), indices, bounds: new Float64Array(bounds), left: new Int32Array(left), right: new Int32Array(right), starts: new Uint32Array(starts), counts: new Uint32Array(counts), sphere: BL.scene.boundsOf(geometry) };
+      const bake = { faces: geometry.faces.map((face) => face.i), record: cached };
+      if (baked) baked.push(bake); else bakes.set(geometry.verts, [bake]);
       geometries.set(geometry, cached); stats.geometries++; stats.triangles += count; stats.samples += samples.length / 3;
       return cached;
     };

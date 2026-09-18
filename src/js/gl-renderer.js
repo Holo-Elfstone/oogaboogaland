@@ -2,7 +2,7 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const { mat4 } = BL.math;
-  const { updateWorld, traverseVisible, boundsOf } = BL.scene;
+  const { updateWorld, traverseVisible, boundsOf, matrixModeOf, hiddenFromCamera } = BL.scene;
   const POINT_LIGHT_CAPACITY = 10;
   const QUALITY = {
     high: { dpr: 1.5, msaa: 4, shadow: 2048, bloom: true, mirror: 512, lights: POINT_LIGHT_CAPACITY },
@@ -282,7 +282,8 @@ float shadowAt(vec3 p, float bias) {
 }
 vec3 lightFactorAt(vec3 n) {
   float ndl = max(max(dot(n, uLightDir), 0.0), uDiffuseFloor);
-  vec3 sp = vShadow.xyz / vShadow.w * 0.5 + 0.5;
+  // The light matrix is orthographic, so vShadow.w is exactly 1
+  vec3 sp = vShadow.xyz * 0.5 + 0.5;
   float bias = max(uShadowBias * (1.0 - ndl), uShadowBias * 0.32);
   float sh = shadowAt(sp, bias);
   vec3 factor = max(mix(uGround, uSky, n.y * 0.5 + 0.5), vec3(uAmbientFloor));
@@ -664,6 +665,10 @@ void main() {
   const createRenderer = (canvas, { quality = "high" } = {}) => {
     const gl = canvas.getContext("webgl2", { antialias: false, alpha: false, powerPreference: "high-performance" });
     if (!gl) throw new Error("WebGL2 unavailable");
+    // Hoisted so the per-frame resolve allocates no draw-buffer arrays
+    const DRAW_COLOR = [gl.COLOR_ATTACHMENT0, gl.NONE];
+    const DRAW_BRIGHT = [gl.NONE, gl.COLOR_ATTACHMENT1];
+    const DRAW_BOTH = [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1];
     let settings = QUALITY[quality] || QUALITY.high;
     let qualityName = QUALITY[quality] ? quality : "high";
     let width = 0, height = 0, dpr = 1, pw = 0, ph = 0;
@@ -685,7 +690,7 @@ void main() {
     const mirrorCapturedViewProj = mat4.create();
     const invViewProj = mat4.create();
     const mirrorInvViewProj = mat4.create();
-    const FRUSTUM = new Float32Array(24);
+    const FRUSTUM = new Float32Array(24), LIGHT_FRUSTUM = new Float32Array(24), MIRROR_FRUSTUM = new Float32Array(24);
     const CENTER = new Float32Array(3);
     let culled = 0, drawn = 0, suppressed = 0, shadowPassCount = 0;
     const mirrorEye = { x: 0, y: 0, z: 0 };
@@ -924,9 +929,10 @@ void main() {
         gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, d);
       }
       gl.bindFramebuffer(gl.FRAMEBUFFER, f.scene);
-      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+      gl.drawBuffers(DRAW_BOTH);
       const bw = Math.max(1, pw >> 2), bh = Math.max(1, ph >> 2);
-      f.bloomSize = [bw, bh];
+      f.bloomW = bw;
+      f.bloomH = bh;
       f.ping = [];
       for (let i = 0; i < 2; i++) {
         const tex = createTexture(bw, bh, gl.RGBA8, gl.LINEAR);
@@ -984,6 +990,7 @@ void main() {
       gl.deleteBuffer(rec.ibo);
       rec.nodes.length = 0;
       rec.batch = null;
+      rec.data = null;
     };
     const destroyRecords = () => {
       for (const rec of records.values()) deleteRecord(rec);
@@ -1089,38 +1096,60 @@ void main() {
       let rec = records.get(geometry);
       if (!rec) {
         const ibo = gl.createBuffer();
-        rec = { geometry, ibo, capacity: 0, mesh: buildMeshPart(geometry, ibo), line: buildLinePart(geometry, ibo), nodes: [], count: 0, drawCount: 0, cameraHiddenCount: 0, active: false, data: null, batch: null, batchVersion: -1 };
+        rec = { geometry, ibo, capacity: 0, mesh: buildMeshPart(geometry, ibo), line: buildLinePart(geometry, ibo), nodes: [], count: 0, drawCount: 0, cameraHiddenCount: 0, active: false, data: null, batch: null, batchVersion: -1, lightVisible: true, mirrorVisible: true };
         records.set(geometry, rec);
       }
       return rec;
     };
     // Gribb-Hartmann planes of a column-major view-projection: left, right, bottom, top, near, far
-    const extractFrustum = (m) => {
+    const extractFrustum = (m, planes = FRUSTUM) => {
       for (let i = 0; i < 6; i++) {
         const row = i >> 1, sign = i & 1 ? -1 : 1, o = i * 4;
         const a = m[3] + sign * m[row], b = m[7] + sign * m[4 + row], c = m[11] + sign * m[8 + row], d = m[15] + sign * m[12 + row];
         const len = Math.hypot(a, b, c) || 1;
-        FRUSTUM[o] = a / len;
-        FRUSTUM[o + 1] = b / len;
-        FRUSTUM[o + 2] = c / len;
-        FRUSTUM[o + 3] = d / len;
+        planes[o] = a / len;
+        planes[o + 1] = b / len;
+        planes[o + 2] = c / len;
+        planes[o + 3] = d / len;
       }
     };
-    const sphereInFrustum = (x, y, z, r) => {
+    const sphereInFrustum = (x, y, z, r, planes = FRUSTUM) => {
       for (let i = 0; i < 24; i += 4) {
-        if (FRUSTUM[i] * x + FRUSTUM[i + 1] * y + FRUSTUM[i + 2] * z + FRUSTUM[i + 3] < -r) return false;
+        if (planes[i] * x + planes[i + 1] * y + planes[i + 2] * z + planes[i + 3] < -r) return false;
       }
       return true;
     };
-    const inFrustum = (node) => {
+    // The camera, shadow and mirror passes all test the same world sphere, so
+    // collect computes it once onto the node and they each just dot the planes.
+    const writeCullSphere = (node) => {
       const b = boundsOf(node.geometry), w = node.world;
       mat4.transformPoint(CENTER, w, b.center[0], b.center[1], b.center[2]);
       const scale = Math.max(w[0] * w[0] + w[1] * w[1] + w[2] * w[2], w[4] * w[4] + w[5] * w[5] + w[6] * w[6], w[8] * w[8] + w[9] * w[9] + w[10] * w[10]);
-      return sphereInFrustum(CENTER[0], CENTER[1], CENTER[2], b.radius * Math.sqrt(scale) + CULL_MARGIN);
+      node.cullX = CENTER[0];
+      node.cullY = CENTER[1];
+      node.cullZ = CENTER[2];
+      node.cullR = b.radius * Math.sqrt(scale) + CULL_MARGIN;
     };
-    const hiddenFromCamera = (node) => {
-      for (let n = node; n; n = n.parent) if (n.cameraHidden) return true;
-      return false;
+    const nodeInFrustum = (node, planes) => sphereInFrustum(node.cullX, node.cullY, node.cullZ, node.cullR, planes);
+    // The shadow map and the mirror capture draw every instance of a record.
+    // A record wholly outside that pass's clip volume writes no depth and no
+    // pixels there, so it skips the draw call; partial records draw in full.
+    const markLightVisible = () => {
+      for (const rec of activeRecords) {
+        if (rec.geometry.castShadow === false) continue;
+        const sphere = rec.batch && rec.batch.cullSphere;
+        let visible = rec.batch ? !sphere || sphereInFrustum(sphere[0], sphere[1], sphere[2], sphere[3] + CULL_MARGIN, LIGHT_FRUSTUM) : false;
+        for (let i = 0; !rec.batch && !visible && i < rec.count; i++) visible = nodeInFrustum(rec.nodes[i], LIGHT_FRUSTUM);
+        rec.lightVisible = visible;
+      }
+    };
+    const markMirrorVisible = () => {
+      for (const rec of activeRecords) {
+        const sphere = rec.batch && rec.batch.cullSphere;
+        let visible = rec.batch ? !sphere || sphereInFrustum(sphere[0], sphere[1], sphere[2], sphere[3] + CULL_MARGIN, MIRROR_FRUSTUM) : false;
+        for (let i = 0; !rec.batch && !visible && i < rec.count; i++) visible = nodeInFrustum(rec.nodes[i], MIRROR_FRUSTUM);
+        rec.mirrorVisible = visible;
+      }
     };
     const collect = (node) => {
       if (!node.geometry) return;
@@ -1155,27 +1184,22 @@ void main() {
       // In-frustum nodes stay in front of the culled ones by swapping into the draw region
       const idx = rec.count++;
       rec.nodes[idx] = node;
+      // Camera-hidden nodes still cast shadows and appear in the mirror
+      writeCullSphere(node);
       if (node.smokeOpacity === 0 || hiddenFromCamera(node)) {
         rec.cameraHiddenCount++;
         suppressed++;
-      } else if (inFrustum(node)) {
+      } else if (nodeInFrustum(node, FRUSTUM)) {
         rec.nodes[idx] = rec.nodes[rec.drawCount];
         rec.nodes[rec.drawCount++] = node;
       } else culled++;
     };
-    const matrixModeOf = (node) => {
-      let partial = 0;
-      while (node) {
-        if (node.matrixLiving) return 2;
-        if (node.matrixCloud) return 4;
-        if (node.matrixEmissiveLiving) partial = 3;
-        node = node.parent;
-      }
-      return partial;
-    };
     const uploadInstances = (rec) => {
       const need = rec.count * INSTANCE_FLOATS;
       if (rec.batch) {
+        // A reserved pool that has never held an instance owns no GPU memory
+        // until it does: empty cave batches cost nothing until the wave arrives.
+        if (!need && !rec.capacity) return;
         gl.bindBuffer(gl.ARRAY_BUFFER, rec.ibo);
         // Fixed-capacity systems reserve their bounded upload once; variable batches grow geometrically.
         const cap = rec.batch.fixedInstanceCapacity ? rec.batch.instanceData.length : Math.min(rec.batch.instanceData.length, Math.max(need, rec.capacity * 2));
@@ -1195,24 +1219,35 @@ void main() {
       if (!rec.data || rec.data.length < need) {
         rec.data = new Float32Array(Math.max(need, (rec.data ? rec.data.length : 0) * 2, INSTANCE_FLOATS));
       }
+      // The buffer mirrors rec.data exactly, so an unchanged block (static
+      // props, resting crew) needs no upload this frame.
       const d = rec.data;
+      // One moving node in a shared record uploads only its own span
+      let lo = need, hi = 0;
       for (let i = 0; i < rec.count; i++) {
-        const n = rec.nodes[i];
+        const n = rec.nodes[i], w = n.world;
         const o = i * INSTANCE_FLOATS;
-        d.set(n.world, o);
-        // Body heat shares the negative half of the nonnegative glow channel.
-        d[o + 16] = n.ember > 0 ? -n.ember : n.glow;
-        // Scorch shares the negative half of the nonnegative highlight channel.
-        d[o + 17] = n.scorch > 0 ? -n.scorch : n.highlight;
-        d[o + 18] = n.smokeOpacity === undefined ? matrixModeOf(n) : -1 - n.smokeOpacity;
+        let dirty = false;
+        for (let j = 0; j < 16; j++) if (d[o + j] !== w[j]) { d[o + j] = w[j]; dirty = true; }
+        // Preserve fire and smoke parameters in the cached Float32 upload.
+        const glow = Math.fround(n.ember > 0 ? -n.ember : n.glow), highlight = Math.fround(n.scorch > 0 ? -n.scorch : n.highlight);
+        const mode = Math.fround(n.smokeOpacity === undefined ? matrixModeOf(n) : -1 - n.smokeOpacity);
+        if (d[o + 16] !== glow) { d[o + 16] = glow; dirty = true; }
+        if (d[o + 17] !== highlight) { d[o + 17] = highlight; dirty = true; }
+        if (d[o + 18] !== mode) { d[o + 18] = mode; dirty = true; }
         d[o + 19] = 0;
+        if (dirty) {
+          if (o < lo) lo = o;
+          if (o + INSTANCE_FLOATS > hi) hi = o + INSTANCE_FLOATS;
+        }
       }
-      gl.bindBuffer(gl.ARRAY_BUFFER, rec.ibo);
       if (rec.capacity < d.length) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, rec.ibo);
         gl.bufferData(gl.ARRAY_BUFFER, d, gl.DYNAMIC_DRAW);
         rec.capacity = d.length;
-      } else {
-        gl.bufferSubData(gl.ARRAY_BUFFER, 0, d, 0, need);
+      } else if (hi > lo) {
+        gl.bindBuffer(gl.ARRAY_BUFFER, rec.ibo);
+        gl.bufferSubData(gl.ARRAY_BUFFER, lo * 4, d, lo, hi - lo);
       }
     };
     const skipMirrorPass = (reason) => {
@@ -1408,6 +1443,7 @@ void main() {
         if (!part || !n) continue;
         if (cull && rec.offscreen) continue;
         if (kind === "mesh" && useProgram === "shadow" && rec.geometry.castShadow === false) continue;
+        if (useProgram === "shadow" ? !rec.lightVisible : !cull && !rec.mirrorVisible) continue;
         if (kind === "mesh" && useProgram === "mesh") {
           const stage = rec.geometry.matrixRevealBacking ? 1 : rec.geometry.matrixGlyph ? 2 : 0;
           if (stage !== matrixStage) continue;
@@ -1461,6 +1497,8 @@ void main() {
     };
     const renderMirrorCapture = (clear, sky, ground, direct, directStrength, ambientFloor, diffuseFloor, shadowStrength, shadowFloor, shadowBias, lx, ly, lz, sh, lights, lightCount, skyOn, fog, fogNear, fogFar, matrix) => {
       ensureMirrorTarget();
+      extractFrustum(mirrorViewProj, MIRROR_FRUSTUM);
+      markMirrorVisible();
       const pg = res.programs;
       gl.bindFramebuffer(gl.FRAMEBUFFER, mirror.msFb || mirror.fb);
       gl.viewport(0, 0, mirror.width, mirror.height);
@@ -1547,12 +1585,12 @@ void main() {
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, f.scene);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, f.resolve);
       gl.readBuffer(gl.COLOR_ATTACHMENT0);
-      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.NONE]);
+      gl.drawBuffers(DRAW_COLOR);
       gl.blitFramebuffer(0, 0, pw, ph, 0, 0, pw, ph, gl.COLOR_BUFFER_BIT, gl.NEAREST);
       gl.readBuffer(gl.COLOR_ATTACHMENT1);
-      gl.drawBuffers([gl.NONE, gl.COLOR_ATTACHMENT1]);
+      gl.drawBuffers(DRAW_BRIGHT);
       gl.blitFramebuffer(0, 0, pw, ph, 0, 0, pw, ph, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+      gl.drawBuffers(DRAW_BOTH);
     };
     const fullscreen = (program, fb, w, h) => {
       gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
@@ -1633,7 +1671,9 @@ void main() {
       mat4.multiply(lightViewProj, lightProj, lightView);
       for (const rec of activeRecords) {
         rec.active = false;
-        rec.nodes.length = 0;
+        // Drop the references without trimming the backing store the next
+        // frame's collect would immediately regrow
+        rec.nodes.fill(null);
         rec.batch = null;
         rec.offscreen = false;
       }
@@ -1649,7 +1689,6 @@ void main() {
       updateWorld(root, null);
       traverseVisible(root, collect);
       for (const rec of activeRecords) {
-        if (!rec.batch) rec.nodes.length = rec.count;
         if (rec.offscreen) culled += rec.drawCount; else drawn += rec.drawCount;
         uploadInstances(rec);
       }
@@ -1658,6 +1697,8 @@ void main() {
       gl.clear(gl.DEPTH_BUFFER_BIT);
       gl.useProgram(pg.shadow.prog);
       gl.uniformMatrix4fv(pg.shadow.u.uLightViewProj, false, lightViewProj);
+      extractFrustum(lightViewProj, LIGHT_FRUSTUM);
+      markLightVisible();
       gl.cullFace(gl.FRONT);
       drawParts("mesh", "shadow");
       gl.cullFace(gl.BACK);
@@ -1731,7 +1772,7 @@ void main() {
       gl.enable(gl.CULL_FACE);
       if (f.samples > 0) blit(f);
       gl.disable(gl.DEPTH_TEST);
-      const [bw, bh] = f.bloomSize;
+      const bw = f.bloomW, bh = f.bloomH;
       if (settings.bloom) {
         gl.useProgram(pg.blur.prog);
         gl.uniform1i(pg.blur.u.uTex, 0);
@@ -1796,7 +1837,7 @@ void main() {
     const releaseUnused = (live) => {
       let released = 0;
       if (mirror.geometry && !live.has(mirror.geometry)) destroyMirror();
-      for (const geometry of [...records.keys()]) {
+      for (const geometry of records.keys()) {
         if (live.has(geometry)) continue;
         releaseGeometry(geometry);
         released++;
