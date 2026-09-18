@@ -806,6 +806,8 @@
     dhud.buildBoard((name) => contributors.stateFor(contributors.roster.find((c) => c.name === name)));
     controls = controlsMod.create({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, chord: ctx.canvas, onAction: act });
     audio = dropAudio.create();
+    // Cleared per visit: a flare held at leave would suppress the next cue
+    flaringWas = false;
     dhud.el.mute.setAttribute("aria-pressed", String(audio.muted));
     window.addEventListener("pointerdown", onGesture);
     window.addEventListener("keydown", onGesture);

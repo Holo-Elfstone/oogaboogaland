@@ -192,6 +192,9 @@
     // Where a flying caveman may go
     const flyable = ctx.flyable || walkable;
     const cavemen = new Map();
+    // Same cavemen in roster order. The Map is only written in create and
+    // cleared in dispose, so an array view stays valid for the whole visit.
+    const crewList = [];
     contributors.roster.forEach((contributor, i) => {
       const cave = models.caveman(contributors.traitsFor(contributor.name));
       Object.assign(cave, {
@@ -262,6 +265,7 @@
       }
       for (const key of BODY_PARTS) input.add(cave.parts[key], { kind: "caveman", cave, priority: 1 });
       cavemen.set(contributor.name, cave);
+      crewList.push(cave);
     });
     const stateOf = (cave) => cave.override || contributors.stateFor(cave.contributor);
     const groundY = (cave) => {
@@ -297,6 +301,22 @@
       return counts;
     };
     const workingCavemen = () => [...cavemen.values()].filter((c) => c.state === "working" && !c.walk && !c.bedTravel.mode);
+    const workingCount = () => {
+      let n = 0;
+      for (let i = 0; i < crewList.length; i++) {
+        const c = crewList[i];
+        if (c.state === "working" && !c.walk && !c.bedTravel.mode) n++;
+      }
+      return n;
+    };
+    const eatingCount = () => {
+      let n = 0;
+      for (let i = 0; i < crewList.length; i++) {
+        const c = crewList[i];
+        if (c.state === "working" && !c.walk && !c.build && atPile(c)) n++;
+      }
+      return n;
+    };
     const eatingCavemen = () => [...cavemen.values()].filter((c) => c.state === "working" && !c.walk && !c.build && atPile(c));
     const feedableCavemen = () => [...cavemen.values()].filter((c) => c.root.visible && (c.state === "working" || c.state === "sleeping"));
     const releaseBuild = (cave) => {
@@ -318,7 +338,7 @@
       s.rear = s.prop = false;
       s.motionX = s.motionZ = 0;
       s.attempted = false;
-      for (const part of cave.root.children) part.poseYaw = 0;
+      for (let i = 0; i < cave.root.children.length; i++) cave.root.children[i].poseYaw = 0;
     };
     const resetPose = (cave) => {
       clearHeadLook(cave);
@@ -497,7 +517,8 @@
     const slotAvailable = (cave, slot) => {
       const floor = groundAt(slot.x, slot.z, 0, 0, cave);
       if (ctx.npcLandingAllowed && !ctx.npcLandingAllowed(slot.x, floor, slot.z, cave.bodyHeight)) return false;
-      for (const other of cavemen.values()) {
+      for (let index = 0; index < crewList.length; index++) {
+        const other = crewList[index];
         if (other === cave || !other.root.visible) continue;
         const p = other.root.position, feet = p.y - other.baseY;
         if (feet < floor + cave.bodyHeight && feet + other.bodyHeight > floor && Math.hypot(p.x - slot.x, p.z - slot.z) < 0.68) return false;
@@ -571,7 +592,8 @@
     // Everyone awake and free runs to the pile
     const rush = () => {
       if (!wanderSpot) return;
-      for (const cave of cavemen.values()) {
+      for (let caveIndex = 0; caveIndex < crewList.length; caveIndex++) {
+        const cave = crewList[caveIndex];
         if (cave.state !== "working" || cave.build || cave === player) continue;
         cave.act.kind = "rush";
         cave.act.until = elapsed + EAT_MIN + Math.random() * EAT_SPREAD;
@@ -861,7 +883,8 @@
       return true;
     };
     const updateFireThreats = () => {
-      for (const cave of cavemen.values()) {
+      for (let caveIndex = 0; caveIndex < crewList.length; caveIndex++) {
+        const cave = crewList[caveIndex];
         const panic = cave.camp.panic, memory = panic.memory, p = cave.root.position;
         panic.threat = null;
         panic.remembered = false;
@@ -870,7 +893,8 @@
         if (cave.camp.rolling) continue;
         const reach = panic.active ? FIRE_FLEE_CLEAR : FIRE_FLEE_REACH, feet = p.y - cave.baseY;
         let nearest = Infinity;
-        for (const other of cavemen.values()) {
+        for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
+          const other = crewList[otherIndex];
           const at = other.index * 4;
           if (other === cave || !other.root.visible || !other.camp.burning) { memory[at + 3] = 0; continue; }
           const q = other.root.position, floor = other.camp.rolling ? other.camp.floor : q.y - other.baseY;
@@ -1083,9 +1107,10 @@
     };
     const updateFireContacts = () => {
       let burning = false;
-      for (const cave of cavemen.values()) if (cave.root.visible && cave.camp.burning) { burning = true; break; }
+      for (let i = 0; i < crewList.length; i++) if (crewList[i].root.visible && crewList[i].camp.burning) { burning = true; break; }
       if (!burning) return;
-      for (const cave of cavemen.values()) {
+      for (let caveIndex = 0; caveIndex < crewList.length; caveIndex++) {
+        const cave = crewList[caveIndex];
         const c = cave.camp, p = cave.root.position, b = c.contactBounds;
         c.contactBurning = c.burning;
         if (!cave.root.visible || cave.state === "away") continue;
@@ -1108,10 +1133,12 @@
           }
         }
       }
-      for (const source of cavemen.values()) {
+      for (let sourceIndex = 0; sourceIndex < crewList.length; sourceIndex++) {
+        const source = crewList[sourceIndex];
         if (!source.root.visible || !source.camp.contactBurning) continue;
         const a = source.camp.contactBounds;
-        for (const target of cavemen.values()) {
+        for (let targetIndex = 0; targetIndex < crewList.length; targetIndex++) {
+          const target = crewList[targetIndex];
           if (source === target || !target.root.visible || target.state === "away" || target.camp.burning || target.camp.cooldown > 0) continue;
           const b = target.camp.contactBounds;
           if (a[1] > b[4] + 0.06 || b[1] > a[4] + 0.06) continue;
@@ -1261,7 +1288,8 @@
     // lab. Passing changes the path, never the bodies' collision radii.
     const shoulderClear = (cave, x, z) => {
       const p = cave.root.position, dx = x - p.x, dz = z - p.z, length = dx * dx + dz * dz;
-      for (const other of cavemen.values()) {
+      for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
+        const other = crewList[otherIndex];
         if (!shoulderNeighbor(cave, other)) continue;
         const q = other.root.position, ox = p.x - q.x, oz = p.z - q.z, before = ox * ox + oz * oz;
         if (before < SHOULDER_GAP * SHOULDER_GAP && (x - q.x) ** 2 + (z - q.z) ** 2 > before && ox * dx + oz * dz >= 0) continue;
@@ -1278,7 +1306,8 @@
       if (s.phase && fx * s.forwardX + fz * s.forwardZ < (npc ? 0.3 : 0.94)) { s.phase = 0; s.other = null; }
       if (!s.phase) {
         let nearest = SHOULDER_REACH, found = null, across = 0, rear = false;
-        for (const other of cavemen.values()) {
+        for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
+          const other = crewList[otherIndex];
           if (!shoulderNeighbor(cave, other)) continue;
           const dx = other.shoulder.snapX - s.snapX, dz = other.shoulder.snapZ - s.snapZ;
           const along = dx * fx + dz * fz, side = dx * fz - dz * fx;
@@ -1368,7 +1397,10 @@
       if (!s.attempted) { s.phase = 0; s.other = null; s.obstacle.node = null; }
       s.yaw = damp(s.yaw, s.attempted ? s.targetYaw : 0, 16, dt);
       if (Math.abs(s.yaw) < 1e-5) s.yaw = 0;
-      for (const part of cave.root.children) part.poseYaw = part === cave.parts.head ? 0 : s.yaw;
+      for (let i = 0; i < cave.root.children.length; i++) {
+        const part = cave.root.children[i];
+        part.poseYaw = part === cave.parts.head ? 0 : s.yaw;
+      }
     };
     // Walkers use the same swept body as the visitor. Hold one detour side
     // until the direct route clears, instead of alternating at every corner.
@@ -1546,7 +1578,12 @@
           // Scenery may cover an intermediate architectural waypoint. Aim
           // around that prop toward the next one; never insist on occupying
           // an impossible point inside its trunk, barrel or another walker.
-          if (distance < 3 && travel.index + 1 < travel.route.length && !npcWalkable(target.x, target.z, target.x, target.z, target.y, cave.bodyHeight, cave)) { travel.index++; continue; }
+          // Keep the doorway turn until the shortcut itself is clear.
+          // Temporary bodies and props still use the local walking avoidance.
+          if (distance < 3 && travel.index + 1 < travel.route.length && !npcWalkable(target.x, target.z, target.x, target.z, target.y, cave.bodyHeight, cave)) {
+            const next = travel.route[travel.index + 1];
+            if (ctx.bedRouteClear(cave, next)) { travel.index++; continue; }
+          }
           if (!recoveryChecked) { recoverWalker(cave, target.x, target.z, dt); recoveryChecked = true; }
           const step = walkToward(cave, target.x, target.z, remaining);
           if (!step) { travel.blocked += dt; break; }
@@ -1898,7 +1935,7 @@
         if (p.y < floor) p.y = floor;
       }
       cave.highlight = damp(cave.highlight, cave.highlightTarget, 12, dt);
-      for (const key of BODY_PARTS) parts[key].highlight = cave.highlight;
+      for (let i = 0; i < BODY_PARTS.length; i++) parts[BODY_PARTS[i]].highlight = cave.highlight;
       if (cave.hopV > 0 || cave.hop > 0) {
         cave.hopV -= WALK.gravity * dt;
         // Fruit slows travel in either vertical direction without changing
@@ -1926,9 +1963,10 @@
       if (cave.cheer > 0) cave.cheer -= dt;
       if (cave.yawn > 0) cave.yawn -= dt;
       if (cave.catchT > 0) cave.catchT = Math.max(0, cave.catchT - dt * 1.6);
-      for (const node of cave.swagNodes) {
+      for (let i = 0; i < cave.swagNodes.length; i++) {
+        const node = cave.swagNodes[i];
         if (node.swag.float) node.position.y = (node.swag.offset ? node.swag.offset.y : 0) + Math.sin(elapsed * 2.5 + cave.phase) * 0.04;
-        for (const child of node.children) if (child.spin) child.rotation.y += dt * 9;
+        for (let c = 0; c < node.children.length; c++) if (node.children[c].spin) node.children[c].rotation.y += dt * 9;
       }
       if (cave.bedTravel.mode) { runBed(cave, dt); return; }
       if (cave.state !== "working") {
@@ -2339,7 +2377,8 @@
     };
     // Build quotes, drawn by fx.drawOverlay
     const drawQuotes = (ctx2d, project, drawBubble) => {
-      for (const cave of cavemen.values()) {
+      for (let caveIndex = 0; caveIndex < crewList.length; caveIndex++) {
+        const cave = crewList[caveIndex];
         const b = cave.build;
         if (!b || b.phase === "return") continue;
         const pos = project(cave.root.position.x, cave.root.position.y - cave.baseY + cave.headOffset + cave.viewLift + 0.45, cave.root.position.z);
@@ -2348,7 +2387,8 @@
     };
     const runMaskBreath = (cave, dt) => {
       if (!cave.traits.gasMask) return;
-      for (const puff of cave.breathSmoke) {
+      for (let i = 0; i < cave.breathSmoke.length; i++) {
+        const puff = cave.breathSmoke[i];
         if (puff.life <= 0) continue;
         puff.life = Math.max(0, puff.life - dt);
         const drag = Math.exp(-1.3 * dt);
@@ -2437,7 +2477,8 @@
       if (!batch) return;
       const data = batch.instanceData;
       let count = 0;
-      for (const puff of cave.breathSmoke) {
+      for (let i = 0; i < cave.breathSmoke.length; i++) {
+        const puff = cave.breathSmoke[i];
         if (puff.life <= 0) continue;
         const node = puff.node, offset = count++ * 20;
         math.mat4.fromTRS(node.world, node.position, node.rotation, node.scale);
@@ -2507,7 +2548,8 @@
       // Snapshot both sides before anyone moves, so a centered meeting gives
       // both walkers the same right-shoulder default regardless of update order.
       // Previous-frame motion distinguishes an overtaker from someone behind.
-      for (const cave of cavemen.values()) {
+      for (let caveIndex = 0; caveIndex < crewList.length; caveIndex++) {
+        const cave = crewList[caveIndex];
         const s = cave.shoulder, riding = cave.riding, p = cave.root.position;
         riding.support = null; riding.updated = riding.continuous = false;
         riding.x = p.x; riding.y = p.y; riding.z = p.z;
@@ -2516,18 +2558,22 @@
         s.snapVX = s.motionX; s.snapVZ = s.motionZ;
         s.attempted = false; s.targetYaw = 0;
       }
-      if (dt > 0 && ctx.characterSupportAt) for (const cave of cavemen.values()) cave.riding.support = ctx.characterSupportAt(cave);
+      if (dt > 0 && ctx.characterSupportAt) for (let i = 0; i < crewList.length; i++) {
+        const cave = crewList[i];
+        cave.riding.support = ctx.characterSupportAt(cave);
+      }
       if (dt > 0) updateFireContacts();
       updateFireThreats();
-      for (const cave of cavemen.values()) updateMember(cave, dt);
+      for (let i = 0; i < crewList.length; i++) updateMember(crewList[i], dt);
       if (dt > 0) updateFireContacts();
       // Collision exclusions belong only to this ordered physics update.
       // Input, dragging and relocation outside it must see ordinary bodies.
-      for (const cave of cavemen.values()) cave.riding.support = null;
+      for (let i = 0; i < crewList.length; i++) crewList[i].riding.support = null;
     };
     const dispose = () => {
       player = null;
-      for (const cave of cavemen.values()) {
+      for (let caveIndex = 0; caveIndex < crewList.length; caveIndex++) {
+        const cave = crewList[caveIndex];
         releaseBedroll(cave);
         if (cave.camp.seat) cave.camp.seat.sitter = null;
         for (const key of BODY_PARTS) input.remove(cave.parts[key]);
@@ -2535,6 +2581,7 @@
         if (cave.breathBatch) removeChild(root, cave.breathBatch);
       }
       cavemen.clear();
+      crewList.length = 0;
       fanSlots.length = 0;
       for (const node of bulletPool) removeChild(root, node);
       bulletPool.length = 0;
@@ -2546,7 +2593,7 @@
     };
     const stats = () => ({ built: builtEquipment.length });
     return {
-      cavemen, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, drawQuotes,
+      cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, drawQuotes,
       control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, ignite, dropRoll, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, wearJetpack, removeJetpack, thrust, update, dispose, stats,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {

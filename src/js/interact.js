@@ -20,9 +20,9 @@
     const lastTap = { at: -Infinity, node: null, owner: null, x: 0, y: 0 };
     // Every body part of one caveman is the same target, so a poke hop cannot break a double tap
     const sameTarget = (hit) => hit ? hit.node === lastTap.node || (!!hit.owner.cave && !!lastTap.owner && hit.owner.cave === lastTap.owner.cave) : lastTap.node === null;
-    const call = (name, ...args) => hooks[name] ? hooks[name](...args) : undefined;
+    const call = (name, a, b, c, d) => hooks[name] ? hooks[name](a, b, c, d) : undefined;
     const add = (node, owner, { radius = 0 } = {}) => {
-      targets.push({ node, owner, radius });
+      targets.push({ node, owner, radius, geometry: null, bounds: null });
     };
     const remove = (node) => {
       const i = targets.findIndex((t) => t.node === node);
@@ -37,14 +37,22 @@
       for (let n = node; n; n = n.parent) if (!n.visible || n.cameraHidden) return false;
       return true;
     };
-    const worldScale = (m) => Math.max(Math.hypot(m[0], m[1], m[2]), Math.hypot(m[4], m[5], m[6]), Math.hypot(m[8], m[9], m[10]));
+    const worldScale = (m) => Math.sqrt(Math.max(
+      m[0] * m[0] + m[1] * m[1] + m[2] * m[2],
+      m[4] * m[4] + m[5] * m[5] + m[6] * m[6],
+      m[8] * m[8] + m[9] * m[9] + m[10] * m[10]));
     const pick = (px, py) => {
       renderer.ray(px, py, camera, ray);
       let best = null, bestT = Infinity, bestPriority = -Infinity;
       for (const t of targets) {
         const { node } = t;
         if (!node.geometry || !nodeShown(node)) continue;
-        const b = boundsOf(node.geometry);
+        // A caveman swaps its head geometry, so key the memo on the geometry
+        if (t.geometry !== node.geometry) {
+          t.geometry = node.geometry;
+          t.bounds = boundsOf(node.geometry);
+        }
+        const b = t.bounds;
         const m = node.world;
         BL.math.mat4.transformPoint(C, m, b.center[0], b.center[1], b.center[2]);
         const r = (t.radius || b.radius) * worldScale(m);
@@ -74,6 +82,19 @@
       out.z = ray.oz + ray.dz * t;
       return out;
     };
+    // The two live pointers, without materialising the map's values
+    const PINCH = { d: 0 };
+    const pinchSpan = (out) => {
+      let ax = 0, ay = 0, n = 0;
+      for (const q of pointers.values()) {
+        if (n === 0) {
+          ax = q.x;
+          ay = q.y;
+        } else if (n === 1) out.d = Math.hypot(ax - q.x, ay - q.y);
+        n++;
+      }
+      return out;
+    };
     const local = (e) => {
       const r = canvas.getBoundingClientRect();
       return { x: e.clientX - r.left, y: e.clientY - r.top };
@@ -101,8 +122,8 @@
           call("onGrabEnd", gesture.hit, p, null, true);
           canvas.style.cursor = "grab";
         }
-        const [a, b] = [...pointers.values()];
-        pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+        pinchSpan(PINCH);
+        pinchDist = PINCH.d;
         gesture = { mode: "pinch" };
         return;
       }
@@ -141,8 +162,8 @@
       pointers.set(e.pointerId, p);
       if (!gesture) return;
       if (gesture.mode === "pinch" && pointers.size === 2) {
-        const [a, b] = [...pointers.values()];
-        const d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+        pinchSpan(PINCH);
+        const d = PINCH.d || 1;
         call("onZoom", pinchDist / d);
         pinchDist = d;
         return;

@@ -3,46 +3,7 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const { hexToRgb, mulberry32 } = BL.math;
-  const { box, lathe, ring, merge, voxelFaces } = BL.models;
-  const cached = (build) => {
-    let value = null;
-    return () => value || (value = build());
-  };
-  const variants = (build) => {
-    const cache = [];
-    return (i = 0) => cache[i] || (cache[i] = build(i));
-  };
-  const vox = () => {
-    const map = new Map();
-    const key = (x, y, z) => x + "," + y + "," + z;
-    return {
-      map,
-      has: (x, y, z) => map.has(key(x, y, z)),
-      set: (x, y, z, c) => map.set(key(x, y, z), c),
-      fill(x0, x1, y0, y1, z0, z1, c) {
-        for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) map.set(key(x, y, z), typeof c === "function" ? c(x, y, z) : c);
-      }
-    };
-  };
-  // Voxel cells to geometry, palette in hex
-  const voxGeo = (v, { unit, palette, origin = { x: 0, y: 0, z: 0 }, emissive = {} }) => {
-    const geo = { verts: [], faces: [], lines: [] };
-    const rgb = palette.map(hexToRgb);
-    const emit = (pts, c) => {
-      const i = pts.map(([x, y, z]) => {
-        geo.verts.push(origin.x + x * unit, origin.y + y * unit, origin.z + z * unit);
-        return geo.verts.length / 3 - 1;
-      });
-      geo.faces.push({ i, color: rgb[c], emissive: emissive[c] || 0 });
-    };
-    voxelFaces((fn) => {
-      for (const [k, c] of v.map) {
-        const [x, y, z] = k.split(",").map(Number);
-        fn(x, y, z, c);
-      }
-    }, v.has, emit);
-    return geo;
-  };
+  const { box, lathe, ring, merge, cached, variants, makeVox: vox, voxelGeometry: voxGeo, voxCoords } = BL.models;
   // Ellipsoid of cells, chipped and cut off below floor
   const blob = (v, { cx, cy, cz, rx, ry, rz, chip = 0, floor = -Infinity, rand, color }) => {
     for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
@@ -56,12 +17,14 @@
       }
     }
   };
+  const CELL = [0, 0, 0];
   const pick = (rand, base, alt, p) => () => rand() < p ? alt : base;
   // Tone leaf cells between lo and hi: dark under the lower third, light caps on top
   const foliage = (v, rand, base, lo, hi, berry = 0) => {
     for (const [k, c] of v.map) {
       if (c < base) continue;
-      const [x, y, z] = k.split(",").map(Number);
+      voxCoords(k, CELL);
+      const x = CELL[0], y = CELL[1], z = CELL[2];
       let tone;
       if ((y - lo) / (hi - lo) < 0.34) tone = rand() < 0.75 ? 0 : 1;
       else if (!v.has(x, y + 1, z)) tone = rand() < berry ? 4 : rand() < 0.65 ? 3 : 2;
@@ -390,7 +353,8 @@
     const tall = vox();
     let canopyFloor = Infinity;
     for (const [key, color] of v.map) {
-      const [x, y, z] = key.split(",").map(Number), lifted = y ? y + TREE_TRUNK_LIFT : 0;
+      voxCoords(key, CELL);
+      const x = CELL[0], y = CELL[1], z = CELL[2], lifted = y ? y + TREE_TRUNK_LIFT : 0;
       tall.set(x, lifted, z, color);
       if (color >= 2) canopyFloor = Math.min(canopyFloor, lifted * QUARTER);
     }
@@ -426,9 +390,10 @@
     const { rx, ry, rz } = ROCK_SHAPES[i];
     blob(v, { cx: 0.5, cy: 0.4, cz: 0.5, rx, ry, rz, chip: 0.2, floor: 0, rand, color: pick(rand, 0, 1, 0.3) });
     let top = 0;
-    for (const k of v.map.keys()) top = Math.max(top, +k.split(",")[1]);
+    for (const k of v.map.keys()) top = Math.max(top, voxCoords(k, CELL)[1]);
     for (const [k, c] of v.map) {
-      const [x, y, z] = k.split(",").map(Number);
+      voxCoords(k, CELL);
+      const x = CELL[0], y = CELL[1], z = CELL[2];
       if (y >= top * 2 / 3 && !v.has(x, y + 1, z) && rand() < 0.3) v.map.set(k, 3);
       else if (c === 0 && rand() < 0.15) v.map.set(k, 2);
     }

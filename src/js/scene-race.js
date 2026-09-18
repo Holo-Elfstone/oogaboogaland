@@ -468,9 +468,14 @@
   const updateAudio = (dt) => {
     const p = racers.player, a = audio.state;
     if (phase !== "racing" && phase !== "countdown" && phase !== "finished") {
-      audio.quiet();
+      // setTargetAtTime is idempotent at target, so schedule the fade once
+      if (!quieted) {
+        audio.quiet();
+        quieted = true;
+      }
       return;
     }
+    quieted = false;
     a.speed = p.speed;
     a.top = p.mount.top;
     a.mount = p.mount.id;
@@ -499,7 +504,7 @@
     audio.update(dt);
   };
   // A tyre puff behind a racer near the camera, with a screech when it is the visitor
-  let screechAt = -9, crewScreechAt = -9;
+  let screechAt = -9, crewScreechAt = -9, quieted = false;
   const peelOut = (r, level, dur, puffs = 4) => {
     if ((r.x - camera.position.x) ** 2 + (r.z - camera.position.z) ** 2 < SMOKE_RANGE) fx.burst(r.x - Math.sin(r.heading) * 0.7, r.y + 0.15, r.z - Math.cos(r.heading) * 0.7, puffs, SMOKE, 0.9);
     if (r === racers.player) {
@@ -670,6 +675,10 @@
     wireEvents();
     controls = controlsMod.create({ move: document.getElementById("joy-move"), look: null, boost: hud.el.act, chord: ctx.canvas });
     audio = raceAudio.create();
+    // sceneTime restarts at 0 on every enter, so stale marks would sit in the
+    // future and silence these cues for the whole of the next visit
+    screechAt = crewScreechAt = -9;
+    quieted = false;
     rhud.el.mute.setAttribute("aria-pressed", String(audio.muted));
     window.addEventListener("pointerdown", onGesture);
     window.addEventListener("keydown", onGesture);

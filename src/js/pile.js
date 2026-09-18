@@ -43,6 +43,8 @@
     return footprintFor(count, scale) + BANANA_SCALE * SHELL_EDGE * mix;
   };
   const heightGrowthFor = (count) => footprintFor(count, 1) * PACKING_HEIGHT;
+  // The mound core never changes shape, only its node scale: one per page per size
+  const coreGeometries = new Map();
   const setVec = (v, x, y, z) => {
     v.x = x;
     v.y = y;
@@ -72,7 +74,10 @@
     const coreFaceSize = ctx.renderer.kind === "canvas2d" ? CORE_FACE_SIZE * 1.75 : CORE_FACE_SIZE;
     // The supporting dome stays an ordinary Matrix receiver so code runs down
     // between the bright bananas instead of turning the entire pile into a glow.
-    const core = createNode({ geometry: models.bananaPileCoreGeometry(SCALE * 6, BASE_HEIGHT * 6, coreFaceSize), visible: false });
+    const coreKey = `${SCALE}/${coreFaceSize}`;
+    let coreGeometry = coreGeometries.get(coreKey);
+    if (!coreGeometry) coreGeometries.set(coreKey, coreGeometry = models.bananaPileCoreGeometry(SCALE * 6, BASE_HEIGHT * 6, coreFaceSize));
+    const core = createNode({ geometry: coreGeometry, visible: false });
     const bananaGeometry = models.bananaGeometry();
     const shellGeometry = models.bananaTileGeometry();
     const distantShellGeometry = models.bananaTileGeometry(true);
@@ -399,6 +404,8 @@
       setVec(core.scale, coreFootprint, BASE_HEIGHT * growth, coreFootprint);
       rebuildSurface(target, growth, coreFootprint);
       if (ctx.onLayout) ctx.onLayout(footprint, target);
+      // Every level re-spreads the bases: they are the pile's measured shape,
+      // not just chooseLanding's input, so they cannot be skipped above 302.
       for (let i = 0; i < pileSlots.length; i++) {
         const slot = pileSlots[i], surface = slot.surface;
         const lift = BANANA_SCALE * 0.07;

@@ -68,6 +68,7 @@
     Object.assign(iconCamera.position, { x: 1.6, y: 1.4, z: 2.4 });
     Object.assign(iconCamera.target, { x: 0, y: 0, z: 0 });
     iconRenderer.render(iconRoot, iconCamera);
+    iconRenderer.dispose();
     return canvas;
   };
   const create = ({ roster, catalog, tierColors, renderIcon, lootEnabled = false }) => {
@@ -143,10 +144,17 @@
     };
     // Mutate the text nodes so updates make no DOM
     for (const node of [el.meterCount, el.meterForecast, el.worldBananaCount]) if (!node.firstChild) node.append("");
-    let shownBananas = -1;
+    let shownBananas = -1, shownWidth = "", shownBand = "", shownForecast = null;
     const setMeter = (level, capacity, forecastText) => {
-      el.meterFill.style.width = `${Math.min(100, Math.max(0, level / capacity * 100))}%`;
-      el.meterFill.dataset.level = level < capacity * 0.15 ? "low" : level < capacity * 0.4 ? "mid" : "ok";
+      const percent = Math.min(100, Math.max(0, level / capacity * 100));
+      const width = `${percent}%`;
+      if (width !== shownWidth) {
+        shownWidth = width;
+        el.meterFill.style.width = width;
+        el.meterFill.parentElement.setAttribute("aria-valuenow", String(Math.round(percent)));
+      }
+      const band = level < capacity * 0.15 ? "low" : level < capacity * 0.4 ? "mid" : "ok";
+      if (band !== shownBand) el.meterFill.dataset.level = shownBand = band;
       const bananas = Math.floor(level);
       if (bananas !== shownBananas) {
         shownBananas = bananas;
@@ -154,7 +162,7 @@
         el.meterCount.firstChild.data = count;
         el.worldBananaCount.firstChild.data = count;
       }
-      el.meterForecast.firstChild.data = forecastText;
+      if (forecastText !== shownForecast) el.meterForecast.firstChild.data = shownForecast = forecastText;
     };
     const setStats = ({ totalSats, donations }) => {
       el.statDonations.textContent = String(donations);

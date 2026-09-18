@@ -360,7 +360,7 @@
         }
       }
       // Off the edge and into the floor
-      const floorLevel = track.renderOpts && raceTrack.THEMES[track.theme].floor.level;
+      const floorLevel = track.renderOpts && track.floorLevel;
       const surfaceNow = track.surfaceAt(r.x, r.z, r.idx, r.lateral);
       if ((surfaceNow === SURF.gap && r.y < floorLevel + 0.1) || Math.abs(r.lateral) > half + CURB_W + SHOULDER + FALL) {
         respawnAt(r, surfaceNow === SURF.gap ? track.hazard : "fell");

@@ -8,7 +8,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { box, merge } = BL.models;
+  const { box, merge, cached } = BL.models;
   const { createNode, addChild } = BL.scene;
 
   // Palette extracted from this world's own materials (see oogatron Phase 4).
@@ -338,7 +338,7 @@
 
   // ---------- cabinet: plank sign + dark frame + legs, native boxes -------
   const SW = 16 / 9, SH = 1, BORDER = 0.1, DEPTH = 0.14;
-  const cabinetGeometry = () => {
+  const cabinetGeometry = cached(() => {
     const outerW = SW + 2 * BORDER, outerH = SH + 2 * BORDER;
     const t = outerH / 9, zr = DEPTH / 2 - 0.02;
     const parts = [
@@ -359,7 +359,7 @@
       parts.push(box({ w: 0.3, h: 0.06, d: 0.3, color: PALETTE.standDark, offset: { x: sx, y: bottom - legH - 0.03 } }));
     }
     return merge(...parts);
-  };
+  });
 
   // ---------- board pixels -> run-merged emissive quads -------------------
   const SCREEN_Z = DEPTH / 2 + 0.02;
@@ -431,7 +431,7 @@
     let dirty = true;
     let animated = false;
 
-    const cycle = () => {
+    const cycle = (() => {
       const c = [
         { name: "totals" },
         { name: "leaderboard", params: { type: "commits" } },
@@ -442,7 +442,7 @@
       if (model) for (const entry of model.contributors.slice(0, 3)) c.push({ name: "contributor", params: { login: entry.login } });
       c.push({ name: "ticker" });
       return c;
-    };
+    })();
 
     const renderBoard = (t) => {
       if (!model) {
@@ -480,9 +480,8 @@
         dirty = true;
       },
       nextView() {
-        const c = cycle();
-        cycleIndex = (cycleIndex + 1) % c.length;
-        view = c[cycleIndex];
+        cycleIndex = (cycleIndex + 1) % cycle.length;
+        view = cycle[cycleIndex];
         dirty = true;
       },
       autoRotate(seconds) {

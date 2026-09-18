@@ -101,7 +101,7 @@
       state.tx = tx; state.tz = tz; state.version = version; state.count = state.index = 0; state.plans++;
       const start = nearest(x, z), end = nearest(tx, tz);
       if (start < 0 || end < 0 || start === end) return;
-      parents.fill(-1); distances.fill(Infinity); heapIndex.fill(-1); heapCount = 0;
+      parents.fill(-1, 0, count); distances.fill(Infinity, 0, count); heapIndex.fill(-1, 0, count); heapCount = 0;
       distances[end] = 0; parents[end] = end; enqueue(end);
       while (heapCount) {
         const i = dequeue();

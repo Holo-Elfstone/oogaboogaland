@@ -56,6 +56,9 @@
       }
       order.push(i);
     }
+    // Centroid sort keys, computed once; the tree re-sorts at every level
+    const keys = new Float64Array(geometry.faces.length * 3), scratch = BL.math.sortScratch(order.length);
+    for (let i = 0; i < geometry.faces.length; i++) for (let axis = 0; axis < 3; axis++) keys[i * 3 + axis] = faceBounds[i * 6 + axis] + faceBounds[i * 6 + axis + 3];
     const build = (start, end) => {
       const box = new Float64Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
       for (let n = start; n < end; n++) for (let axis = 0; axis < 3; axis++) {
@@ -67,8 +70,7 @@
       if (end - start > 12) {
         let axis = 0;
         for (let a = 1; a < 3; a++) if (box[a + 3] - box[a] > box[axis + 3] - box[axis]) axis = a;
-        const sorted = order.slice(start, end).sort((a, b) => faceBounds[a * 6 + axis] + faceBounds[a * 6 + axis + 3] - faceBounds[b * 6 + axis] - faceBounds[b * 6 + axis + 3]);
-        for (let i = 0; i < sorted.length; i++) order[start + i] = sorted[i];
+        BL.math.sortByKey(order, start, end, keys, 3, axis, scratch);
         const middle = (start + end) >>> 1;
         node.left = build(start, middle); node.right = build(middle, end);
       }
@@ -119,6 +121,11 @@
       const canvas = renderer?.kind === "canvas2d", ambient = renderOpts.ambientFloor, diffuseFloor = renderOpts.diffuseFloor;
       const skyLuma = sky[0] * 0.2126 + sky[1] * 0.7152 + sky[2] * 0.0722;
       const groundLuma = ground[0] * 0.2126 + ground[1] * 0.7152 + ground[2] * 0.0722;
+      // The Canvas path shades one grey value where WebGL shades three, so its
+      // direct term is the luminance of the same direct colour. A fixed factor
+      // here tracks the sun but not the dimmer, differently weighted moon: it
+      // read dusk darker than midnight, inverting the daylight order.
+      const directLuma = direct[0] * 0.2126 + direct[1] * 0.7152 + direct[2] * 0.0722;
       const lights = renderOpts.lights, lightCount = canvas || !lights ? 0 : Math.min(10, renderOpts.lightCount);
       lightingX = p.x - reach; lightingZ = p.z - reach; lightingSpan = Math.max(1e-5, reach * 2);
       const step = core.scale.x * 0.0015, limit = core.scale.x * Math.cos(Math.PI / segments) - step * 2.1;
@@ -145,7 +152,7 @@
           visibility = 1 + (Math.max(shadowCache[at + 7], renderOpts.shadowFloor) - 1) * renderOpts.shadowStrength;
           if (visibility < 1) state.shadowedSamples++;
         }
-        const canvasLight = Math.min(1, Math.max(ambient, groundLuma + (skyLuma - groundLuma) * hemi) + diffuse * 0.7 * strength);
+        const canvasLight = Math.min(1, Math.max(ambient, groundLuma + (skyLuma - groundLuma) * hemi) + diffuse * directLuma * strength);
         for (let channel = 0; channel < 3; channel++) {
           let value = canvas ? canvasLight : Math.max(ambient, ground[channel] + (sky[channel] - ground[channel]) * hemi) + direct[channel] * diffuse * strength * visibility;
           for (let n = 0; n < lightCount; n++) {

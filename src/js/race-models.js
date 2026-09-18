@@ -4,15 +4,7 @@
   const BL = window.BL = window.BL || {};
   const { hexToRgb, mulberry32 } = BL.math;
   const { createNode, addChild } = BL.scene;
-  const { box, lathe, merge, voxelFaces } = BL.models;
-  const cached = (build) => {
-    let value = null;
-    return () => value || (value = build());
-  };
-  const variants = (build) => {
-    const cache = [];
-    return (i = 0) => cache[i] || (cache[i] = build(i));
-  };
+  const { box, lathe, merge, cached, variants, makeVox: vox, voxelGeometry: voxGeo } = BL.models;
   const keyed = (build) => {
     const cache = new Map();
     return (key) => {
@@ -20,40 +12,6 @@
       if (!value) cache.set(key, value = build(key));
       return value;
     };
-  };
-  const vox = () => {
-    const map = new Map();
-    const key = (x, y, z) => x + "," + y + "," + z;
-    return {
-      map,
-      has: (x, y, z) => map.has(key(x, y, z)),
-      set: (x, y, z, c) => map.set(key(x, y, z), c),
-      del: (x, y, z) => map.delete(key(x, y, z)),
-      fill(x0, x1, y0, y1, z0, z1, c) {
-        for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) {
-          const value = typeof c === "function" ? c(x, y, z) : c;
-          if (value != null) map.set(key(x, y, z), value);
-        }
-      }
-    };
-  };
-  const voxGeo = (v, { unit, palette, origin = { x: 0, y: 0, z: 0 }, emissive = {} }) => {
-    const geo = { verts: [], faces: [], lines: [] };
-    const rgb = palette.map((c) => typeof c === "string" ? hexToRgb(c) : c);
-    const emit = (pts, c) => {
-      const i = pts.map(([x, y, z]) => {
-        geo.verts.push(origin.x + x * unit, origin.y + y * unit, origin.z + z * unit);
-        return geo.verts.length / 3 - 1;
-      });
-      geo.faces.push({ i, color: rgb[c], emissive: emissive[c] || 0 });
-    };
-    voxelFaces((fn) => {
-      for (const [k, c] of v.map) {
-        const [x, y, z] = k.split(",").map(Number);
-        fn(x, y, z, c);
-      }
-    }, v.has, emit);
-    return geo;
   };
   // Cyclic axis swap y -> x, a proper rotation, so winding holds
   const yToX = (geo) => {

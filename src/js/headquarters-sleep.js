@@ -3,8 +3,12 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const RADIUS = 0.3, HEIGHT = 2, STEP = 0.6, SAMPLE = 0.125;
+  // The validated waypoint graph depends only on the island's architecture;
+  // later visits reuse it and map their fresh bed objects onto its nodes.
+  const graphs = new WeakMap();
   const create = ({ island, beds, walkable = null, surfaceRoute = null }) => {
-    const H = island.headquarters, points = [], edges = [], bedNodes = new Map(), surface = [];
+    const cached = graphs.get(island), reuse = !!cached && cached.bedIds.length === beds.length;
+    const H = island.headquarters, points = reuse ? cached.points : [], edges = reuse ? cached.edges : [], bedNodes = new Map(), surface = [];
     const floorAt = (x, y, z) => island.supportAt(x, z, y, STEP, -120, RADIUS);
     const clear = (x, y, z, lift = STEP) => island.clearAt(x, y + lift, z, RADIUS, HEIGHT - lift) && island.ceilingAt(x, y, z, RADIUS) >= y + HEIGHT - 1e-7;
     const segment = (a, b, surfaceOnly = false, lift = STEP) => {
@@ -56,22 +60,27 @@
       }
       return { first, last: previous };
     };
-    surface.push(...ring(17, 0, 72));
-    const upper = ring(11, H.floor, 48), lower = ring(7, H.basement.floor, 48);
-    for (const ramp of H.ramps) {
-      const m = island.mouths.find((mouth) => mouth.id === ramp.id), apron = node(m.apron.x, 0, m.apron.z), route = chain(ramp.samples);
-      joinRing(apron, surface); requireLink(apron, route.first); joinRing(route.last, upper);
-    }
-    for (const ramp of H.basement.ramps) {
-      const route = chain(ramp.samples);
-      joinRing(route.first, upper); joinRing(route.last, lower);
-    }
-    for (const bed of beds) {
-      const room = bed.room, approach = node(room.approach.x, room.floor, room.approach.z), entrance = node(room.entrance.x, room.floor, room.entrance.z), center = node(room.x, room.floor, room.z), at = bed.walkAt;
-      const end = node(at.x, room.floor, at.z);
-      joinRing(approach, room.basement ? lower : upper);
-      requireLink(approach, entrance); requireLink(entrance, center); requireLink(center, end);
-      bedNodes.set(bed, end);
+    if (reuse) {
+      beds.forEach((bed, i) => bedNodes.set(bed, cached.bedIds[i]));
+    } else {
+      surface.push(...ring(17, 0, 72));
+      const upper = ring(11, H.floor, 48), lower = ring(7, H.basement.floor, 48);
+      for (const ramp of H.ramps) {
+        const m = island.mouths.find((mouth) => mouth.id === ramp.id), apron = node(m.apron.x, 0, m.apron.z), route = chain(ramp.samples);
+        joinRing(apron, surface); requireLink(apron, route.first); joinRing(route.last, upper);
+      }
+      for (const ramp of H.basement.ramps) {
+        const route = chain(ramp.samples);
+        joinRing(route.first, upper); joinRing(route.last, lower);
+      }
+      for (const bed of beds) {
+        const room = bed.room, approach = node(room.approach.x, room.floor, room.approach.z), entrance = node(room.entrance.x, room.floor, room.entrance.z), center = node(room.x, room.floor, room.z), at = bed.walkAt;
+        const end = node(at.x, room.floor, at.z);
+        joinRing(approach, room.basement ? lower : upper);
+        requireLink(approach, entrance); requireLink(entrance, center); requireLink(center, end);
+        bedNodes.set(bed, end);
+      }
+      graphs.set(island, { points, edges, bedIds: beds.map((bed) => bedNodes.get(bed)) });
     }
     // Search storage belongs to this visit and is reused for each state change.
     const size = points.length, distance = new Float64Array(size), previous = new Int32Array(size), visited = new Uint8Array(size);
@@ -181,7 +190,7 @@
       }
       return smooth;
     };
-    return { route, points, radius: RADIUS, height: HEIGHT, nodeCount: size, edgeCount: edges.reduce((sum, list) => sum + list.length, 0) / 2 };
+    return { route, clearSegment: segment, points, radius: RADIUS, height: HEIGHT, nodeCount: size, edgeCount: edges.reduce((sum, list) => sum + list.length, 0) / 2 };
   };
   BL.headquartersSleep = { create };
 })();

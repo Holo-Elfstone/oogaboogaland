@@ -4,35 +4,53 @@
   const BL = window.BL = window.BL || {};
   const LIMIT = 96, EPS = 1e-5, RADIUS = 12, FADE_START = 10.5, FADE_SECONDS = 0.25, SURFACE_PATCH = 0.6;
   const OUTDOOR_CHUNK = 6, OUTDOOR_PATCH = 1.5;
-  const create = ({ island, sealed = [] }) => {
+  // Wall geometry is a pure function of the memoised island. Each visit gets
+  // fresh fade and camera state over one shared, never-written build.
+  const BUILDS = new WeakMap(), round = (n) => Math.round(n / EPS);
+  // Room, ramp and common walls in station order, keyed by the shared sample order
+  const STATION_ORDERS = new WeakMap();
+  const build = (island) => {
     const H = island.headquarters, contexts = [], windowOwners = new Map();
     const slopes = BL.slopeGuides.create({ island }), slopeSample = { side: 0, sector: 0 };
     const probe = { distance: Infinity, floor: 0, side: 0, station: 0 };
     // These routes are immutable. Floor clipping revisits their grid vertices
     // many times, so keep each segment's exact measures instead of rebuilding
     // them for every point query. Bounds only reject strictly farther spans.
-    const rampSegments = new Map();
+    const rampSegments = new Map(), rampBlocks = new Map();
     for (const ramp of [...H.ramps, ...H.basement.ramps]) {
-      const segments = new Float64Array((ramp.samples.length - 1) * 13);
+      const segments = new Float64Array((ramp.samples.length - 1) * 13 + 1), blocks = new Float64Array(Math.ceil((ramp.samples.length - 1) / 8) * 4);
+      for (let n = 0; n < blocks.length; n += 4) { blocks[n] = blocks[n + 1] = Infinity; blocks[n + 2] = blocks[n + 3] = -Infinity; }
+      rampBlocks.set(ramp, blocks);
       let station = 0;
       for (let i = 1; i < ramp.samples.length; i++) {
         const a = ramp.samples[i - 1], b = ramp.samples[i], dx = b.x - a.x, dz = b.z - a.z, length = Math.hypot(dx, dz), at = (i - 1) * 13;
         segments.set([a.x, a.y, a.z, dx, b.y - a.y, dz, dx * dx + dz * dz, length, station, Math.min(a.x, b.x), Math.min(a.z, b.z), Math.max(a.x, b.x), Math.max(a.z, b.z)], at);
         station += length;
+        const block = ((i - 1) >> 3) * 4;
+        blocks[block] = Math.min(blocks[block], a.x, b.x); blocks[block + 1] = Math.min(blocks[block + 1], a.z, b.z); blocks[block + 2] = Math.max(blocks[block + 2], a.x, b.x); blocks[block + 3] = Math.max(blocks[block + 3], a.z, b.z);
       }
       rampSegments.set(ramp, segments);
     }
-    const rampAt = (ramp, x, z, out) => {
-      out.distance = Infinity;
-      const segments = rampSegments.get(ramp);
-      for (let at = 0; at < segments.length; at += 13) {
-        const bx = Math.max(segments[at + 9] - x, 0, x - segments[at + 11]), bz = Math.max(segments[at + 10] - z, 0, z - segments[at + 12]);
-        if (bx * bx + bz * bz > out.distance + 1e-12) continue;
+    const rampAt = (ramp, x, z, out, limit = Infinity) => {
+      out.distance = limit;
+      const segments = rampSegments.get(ramp), blocks = rampBlocks.get(ramp), end = segments.length - 1, last = segments[end];
+      const lx = segments[last], lz = segments[last + 2], ldx = segments[last + 3], ldz = segments[last + 5];
+      const lt = Math.max(0, Math.min(1, ((x - lx) * ldx + (z - lz) * ldz) / segments[last + 6]));
+      const bound = (x - lx - ldx * lt) ** 2 + (z - lz - ldz * lt) ** 2 + 1e-9;
+      let hit = last;
+      for (let at = 0; at < end; at += 13) {
+        if (at % 104 === 0) {
+          const block = at / 26, cx = Math.max(blocks[block] - x, 0, x - blocks[block + 2]), cz = Math.max(blocks[block + 1] - z, 0, z - blocks[block + 3]);
+          if (cx * cx + cz * cz > bound) { at += 91; continue; }
+        }
+        const bx = Math.max(segments[at + 9] - x, 0, x - segments[at + 11]), bz = Math.max(segments[at + 10] - z, 0, z - segments[at + 12]), b2 = bx * bx + bz * bz;
+        if (b2 > bound || b2 > out.distance + 1e-12) continue;
         const ax = segments[at], az = segments[at + 2], dx = segments[at + 3], dz = segments[at + 5];
         const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / segments[at + 6]));
         const d = (x - ax - dx * t) ** 2 + (z - az - dz * t) ** 2;
-        if (d < out.distance) { out.distance = d; out.floor = segments[at + 1] + segments[at + 4] * t; out.side = dx * (z - az) - dz * (x - ax); out.station = segments[at + 8] + segments[at + 7] * t; }
+        if (d < out.distance) { hit = at; out.distance = d; out.floor = segments[at + 1] + segments[at + 4] * t; out.side = dx * (z - az) - dz * (x - ax); out.station = segments[at + 8] + segments[at + 7] * t; }
       }
+      segments[end] = hit;
     };
     const rampWithin = (ramp, x, z, margin) => {
       const first = ramp.samples[0], next = ramp.samples[1], last = ramp.samples[ramp.samples.length - 1], previous = ramp.samples[ramp.samples.length - 2];
@@ -70,8 +88,10 @@
           if (inside) return true;
         }
         if (kind === "ramp") {
-          rampAt(source, x, z, probe);
-          return rampWithin(source, x, z, margin) && probe.distance <= (source.width / 2 + margin) ** 2 && y >= probe.floor - margin && y <= Math.ceil((probe.floor + height) / island.unit) * island.unit + margin;
+          const reach = (source.width / 2 + margin) ** 2;
+          if (x < search[0] - margin || x > search[3] + margin || z < search[2] - margin || z > search[5] + margin) return false;
+          rampAt(source, x, z, probe, reach * (1 + 1e-9) + 1e-9);
+          return rampWithin(source, x, z, margin) && probe.distance <= reach && y >= probe.floor - margin && y <= Math.ceil((probe.floor + height) / island.unit) * island.unit + margin;
         }
         if (y < floor - margin || y > ceiling + margin) return false;
         if (kind === "common") {
@@ -105,7 +125,6 @@
       }
       if (owner) { owner.windows.push(window); windowOwners.set(window.index, owner); }
     }
-    const round = (n) => Math.round(n / EPS);
     // Match the rendered ramp's grid vertices, including its clipped landing.
     // Wall faces are clipped at that same piecewise-linear floor during build.
     const floorVertices = new Map();
@@ -127,10 +146,19 @@
       floorVertices.set(key, probe.floor);
       return probe.floor;
     };
+    const floorSpan = Math.ceil(island.radius * 2 / island.unit) + 9, floorGrids = new Map();
+    const floorCorner = (grid, context, gx, gz) => {
+      const at = gx * floorSpan + gz;
+      let value = grid[at];
+      if (value !== value) value = grid[at] = floorVertex(context, island.sightGrid[1] + gx * island.unit, island.sightGrid[3] + gz * island.unit);
+      return value;
+    };
     const floorAt = (context, x, z) => {
       const unit = island.unit, ox = island.sightGrid[1], oz = island.sightGrid[3], gx = Math.floor((x - ox) / unit), gz = Math.floor((z - oz) / unit);
       const ax = ox + gx * unit, az = oz + gz * unit, tx = (x - ax) / unit, tz = (z - az) / unit;
-      const a = floorVertex(context, ax, az), b = floorVertex(context, ax, az + unit), c = floorVertex(context, ax + unit, az + unit), d = floorVertex(context, ax + unit, az);
+      let grid = floorGrids.get(context);
+      if (!grid) { grid = new Float64Array(floorSpan * floorSpan).fill(NaN); floorGrids.set(context, grid); }
+      const a = floorCorner(grid, context, gx, gz), b = floorCorner(grid, context, gx, gz + 1), c = floorCorner(grid, context, gx + 1, gz + 1), d = floorCorner(grid, context, gx + 1, gz);
       return tz >= tx ? a * (1 - tz) + b * (tz - tx) + c * tx : a * (1 - tx) + c * tz + d * (tx - tz);
     };
     const clipFace = (points, axis, value, direction) => {
@@ -418,6 +446,11 @@
       }
       return false;
     };
+    // No point of a box lies inside planes that its nearest corner already fails.
+    const boxOutside = (planes, minX, minY, minZ, maxX, maxY, maxZ) => {
+      for (const plane of planes) if (plane[0] * (plane[0] < 0 ? maxX : minX) + plane[1] * (plane[1] < 0 ? maxY : minY) + plane[2] * (plane[2] < 0 ? maxZ : minZ) > plane[3] + EPS * 8 + 1e-9) return true;
+      return false;
+    };
     const v = island.geometry.verts, candidates = new Uint8Array(contexts.length), faceContexts = new Uint8Array(contexts.length);
     let tested = 0, creases = 0, windowReveals = 0;
     for (const face of island.geometry.faces) {
@@ -448,6 +481,7 @@
         // The four reveal planes identify side panels, sills and soffits even
         // on steep flares that a normal-angle cutoff would misclassify.
         for (const frustum of window.flare.frusta) {
+          if (boxOutside(frustum.planes, minX, minY, minZ, maxX, maxY, maxZ)) continue;
           let inside = true;
           for (const plane of frustum.planes) if (plane[0] * cx + plane[1] * cy + plane[2] * cz > plane[3] + EPS * 8) { inside = false; break; }
           // A quad can straddle the opening even when its center lies outside;
@@ -532,10 +566,10 @@
       if (length < EPS) continue;
       nx /= length; ny /= length; nz /= length;
       const points = face.i.map((i) => [v[i * 3], v[i * 3 + 1], v[i * 3 + 2]]);
-      let cx = 0, cy = 0, cz = 0, maxY = -Infinity;
+      let cx = 0, cy = 0, cz = 0, minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
       for (const p of points) {
         cx += p[0]; cy += p[1]; cz += p[2];
-        maxY = Math.max(maxY, p[1]);
+        minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]); minZ = Math.min(minZ, p[2]); maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]); maxZ = Math.max(maxZ, p[2]);
       }
       cx /= points.length; cy /= points.length; cz /= points.length;
       const front = island.clearAt(cx + nx * 0.025, cy + ny * 0.025, cz + nz * 0.025, 0, 0), back = island.clearAt(cx - nx * 0.025, cy - ny * 0.025, cz - nz * 0.025, 0, 0);
@@ -545,6 +579,7 @@
       let reveal = false;
       for (const window of H.windows) {
         for (const frustum of window.flare.frusta) {
+          if (boxOutside(frustum.planes, minX, minY, minZ, maxX, maxY, maxZ)) continue;
           for (const p of points) {
             let inside = true;
             for (const plane of frustum.planes) if (plane[0] * p[0] + plane[1] * p[1] + plane[2] * p[2] > plane[3] + EPS * 8) { inside = false; break; }
@@ -561,25 +596,8 @@
       if (!reveal) appendOutdoorFace(points, front ? nx : -nx, outwardY, front ? nz : -nz);
     }
     contexts.push(...outdoorContexts);
-    const caves = BL.caveGuides.create({ island, sealed });
-    for (const descriptor of caves.contexts) {
-      const context = { kind: descriptor.kind, index: descriptor.index, basement: false, source: descriptor.source, floor: descriptor.floor, ceiling: descriptor.ceiling, height: descriptor.ceiling - descriptor.floor,
-        windows: [], groups: new Map(), surfaceFaces: [], surfaceGroupMap: new Map(), surfaceGroups: [], surfaceGroupSums: [], surfaceColumns: [], surfaceColumnMap: new Map(), surfaceWallGroups: [], surfaceSamples: [], walls: [], wallMap: new Map(),
-        lines: null, count: 0, bounds: new Float32Array(descriptor.bounds), searchBounds: new Float64Array(descriptor.bounds), contains: descriptor.contains };
-      for (const face of descriptor.faces) {
-        let wallIndex = context.wallMap.get(face.wall);
-        if (wallIndex === undefined) {
-          wallIndex = context.walls.length; context.wallMap.set(face.wall, wallIndex);
-          context.walls.push({ key: face.wall, bounds: new Float32Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]), distance: Infinity, target: 0, phase: 0, perceived: false, visibleMin: Infinity, visibleMax: -Infinity, surfaceTree: null, surfaceOrder: null });
-        }
-        splitFace(face.points, SURFACE_PATCH, (polygon) => appendOutdoor(context, polygon, face.nx, face.ny, face.nz, wallIndex));
-      }
-      descriptor.faces.length = 0;
-      contexts.push(context);
-    }
-    floorVertices.clear();
-    let total = 0;
-    for (const context of contexts) {
+    floorVertices.clear(); floorGrids.clear();
+    const finish = (context) => {
       const merged = [];
       for (const group of context.groups.values()) {
         group.spans.sort((a, b) => a.lo - b.lo);
@@ -621,19 +639,9 @@
         else if (context.kind === "surface" || context.kind === "front" || context.kind === "cave" || context.kind === "sealed") context.surfaceStations[group] = 0;
         else context.surfaceStations[group] = wall.key === 2 || wall.key === 3 ? (x - owner.x) * -context.sz + (z - owner.z) * context.sx : (x - owner.x) * context.sx + (z - owner.z) * context.sz;
       }
-      context.surfacePhases = new Float32Array(context.surfaceGroupCount);
-      context.surfaceWholePhases = new Float32Array(context.surfaceGroupCount);
-      context.surfacePerceived = new Float32Array(context.surfaceGroupCount);
-      context.surfaceSections = new Float32Array(context.surfaceGroupCount);
-      context.surfaceTerrainSeen = new Uint8Array(context.surfaceGroupCount);
-      context.surfaceTargets = new Float32Array(context.surfaceGroupCount);
-      context.surfaceEye = new Float64Array([NaN, NaN, NaN]);
-      context.surfacePosition = new Float64Array([NaN, NaN, NaN]);
-      context.surfaceActor = null; context.surfaceOcclusion = -1;
-      context.surfaceCamera = new Float64Array([NaN, NaN, NaN]);
-      context.surfaceView = new Float64Array([NaN, NaN, NaN, NaN]);
-      context.surfaceHidden = new Uint8Array(context.surfaceGroupCount);
-      context.surfaceAperture = new Uint8Array(context.surfaceGroupCount);
+      // Per-visit fields keep their places; arm() fills them for each visit.
+      context.surfacePhases = null; context.surfaceWholePhases = null; context.surfacePerceived = null; context.surfaceSections = null; context.surfaceTerrainSeen = null; context.surfaceTargets = null;
+      context.surfaceEye = null; context.surfacePosition = null; context.surfaceActor = null; context.surfaceOcclusion = -1; context.surfaceCamera = null; context.surfaceView = null; context.surfaceHidden = null; context.surfaceAperture = null;
       context.surfaceGroupBounds = new Float32Array(context.surfaceGroupCount * 6);
       for (let group = 0; group < context.surfaceGroupCount; group++) context.surfaceGroupBounds.set([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity], group * 6);
       for (let at = 0; at < context.surface.length; at += 9) {
@@ -642,13 +650,14 @@
           const value = context.surface[at + n + axis]; bounds[group + axis] = Math.min(bounds[group + axis], value); bounds[group + axis + 3] = Math.max(bounds[group + axis + 3], value);
         }
       }
-      context.apertures = context.windows.length ? BL.wallApertures.create({ windows: context.windows, island }) : null;
+      context.apertures = null;
       context.surfaceActive = context.surfaceWholeActive = context.surfaceVersion = 0;
       // A long curved wall rarely fits behind one solid cross-section. Split
       // its fixed air samples spatially so smaller branches can share a proof.
       for (let wallIndex = 0; wallIndex < context.walls.length; wallIndex++) {
         const wall = context.walls[wallIndex], order = [], samples = context.surfaceSamples;
         for (let group = 0; group < context.surfaceGroupCount; group++) if (context.surfaceWallGroups[group] === wallIndex) order.push(group);
+        const scratch = BL.math.sortScratch(order.length);
         const buildTree = (start, end) => {
           const bounds = new Float32Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
           for (let n = start; n < end; n++) for (let axis = 0; axis < 3; axis++) {
@@ -658,8 +667,7 @@
           if (end - start > 16) {
             let axis = 0;
             for (let n = 1; n < 3; n++) if (bounds[n + 3] - bounds[n] > bounds[axis + 3] - bounds[axis]) axis = n;
-            const sorted = order.slice(start, end).sort((a, b) => samples[a * 3 + axis] - samples[b * 3 + axis]);
-            for (let n = 0; n < sorted.length; n++) order[start + n] = sorted[n];
+            BL.math.sortByKey(order, start, end, samples, 3, axis, scratch);
             const middle = (start + end) >>> 1;
             node.left = buildTree(start, middle); node.right = buildTree(middle, end);
           }
@@ -667,6 +675,10 @@
         };
         wall.surfaceTree = buildTree(0, order.length);
         wall.surfaceOrder = new Uint16Array(order);
+        if (context.kind === "room" || context.kind === "ramp" || context.kind === "common") {
+          const stations = context.surfaceStations;
+          STATION_ORDERS.set(wall.surfaceOrder, new Uint16Array(order).sort((a, b) => stations[a] - stations[b] || a - b));
+        }
       }
       context.surfaceFaces = context.surfaceGroupSums = null;
       context.surfaceGroupMap.clear(); context.surfaceGroupMap = null;
@@ -685,11 +697,56 @@
         context.bounds[axis] = Math.min(context.bounds[axis], wall.bounds[axis]);
         context.bounds[axis + 3] = Math.max(context.bounds[axis + 3], wall.bounds[axis + 3]);
       }
-      total += context.count;
+      return context.count;
+    };
+    let total = 0;
+    for (const context of contexts) total += finish(context);
+    outdoorMap.clear(); windowOwners.clear();
+    return { contexts, total, tested, creases, windowReveals, surfaceContexts: outdoorContexts.filter((context) => context.kind === "surface").length, frontageContexts: outdoorContexts.filter((context) => context.kind === "front").length, rampAt, probe, splitFace, appendOutdoor, finish };
+  };
+  const arm = (context, island) => {
+    const count = context.surfaceGroupCount;
+    context.surfaceColumnTargets = new Float32Array(context.surfaceColumnTargets.length);
+    context.surfacePhases = new Float32Array(count);
+    context.surfaceWholePhases = new Float32Array(count);
+    context.surfacePerceived = new Float32Array(count);
+    context.surfaceSections = new Float32Array(count);
+    context.surfaceTerrainSeen = new Uint8Array(count);
+    context.surfaceTargets = new Float32Array(count);
+    context.surfaceEye = new Float64Array([NaN, NaN, NaN]);
+    context.surfacePosition = new Float64Array([NaN, NaN, NaN]);
+    context.surfaceActor = null; context.surfaceOcclusion = -1;
+    context.surfaceCamera = new Float64Array([NaN, NaN, NaN]);
+    context.surfaceView = new Float64Array([NaN, NaN, NaN, NaN]);
+    context.surfaceHidden = new Uint8Array(count);
+    context.surfaceAperture = new Uint8Array(count);
+    context.apertures = context.windows.length ? BL.wallApertures.create({ windows: context.windows, island }) : null;
+    return context;
+  };
+  const create = ({ island, sealed = [] }) => {
+    let built = BUILDS.get(island);
+    if (!built) BUILDS.set(island, built = build(island));
+    const { rampAt, probe, splitFace, appendOutdoor, finish } = built;
+    const contexts = built.contexts.map((template) => arm({ ...template, walls: template.walls.map((wall) => ({ ...wall })) }, island));
+    let total = built.total;
+    const caves = BL.caveGuides.create({ island, sealed });
+    for (const descriptor of caves.contexts) {
+      const context = { kind: descriptor.kind, index: descriptor.index, basement: false, source: descriptor.source, floor: descriptor.floor, ceiling: descriptor.ceiling, height: descriptor.ceiling - descriptor.floor,
+        windows: [], groups: new Map(), surfaceFaces: [], surfaceGroupMap: new Map(), surfaceGroups: [], surfaceGroupSums: [], surfaceColumns: [], surfaceColumnMap: new Map(), surfaceWallGroups: [], surfaceSamples: [], walls: [], wallMap: new Map(),
+        lines: null, count: 0, bounds: new Float32Array(descriptor.bounds), searchBounds: new Float64Array(descriptor.bounds), contains: descriptor.contains };
+      for (const face of descriptor.faces) {
+        let wallIndex = context.wallMap.get(face.wall);
+        if (wallIndex === undefined) {
+          wallIndex = context.walls.length; context.wallMap.set(face.wall, wallIndex);
+          context.walls.push({ key: face.wall, bounds: new Float32Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]), distance: Infinity, target: 0, phase: 0, perceived: false, visibleMin: Infinity, visibleMax: -Infinity, surfaceTree: null, surfaceOrder: null });
+        }
+        splitFace(face.points, SURFACE_PATCH, (polygon) => appendOutdoor(context, polygon, face.nx, face.ny, face.nz, wallIndex));
+      }
+      descriptor.faces.length = 0;
+      contexts.push(context);
+      total += finish(context);
+      arm(context, island);
     }
-    // The floor lookup only serves construction; runtime uses the finished
-    // clipped surfaces and immutable route segments.
-    floorVertices.clear();
     contexts.push(BL.holeGuides.create({ island }));
     for (const context of contexts) for (const wall of context.walls) wall.cameraReady = false;
     // The observer can see through a doorway into a second space. Keep one
@@ -704,7 +761,7 @@
     let offset = 0;
     for (const entry of unique.values()) for (let n = 0; n < 6; n++) all.lines[offset++] = entry.context.lines[entry.i + n];
     unique.clear();
-    const stats = { contexts: contexts.length, surfaceContexts: outdoorContexts.filter((context) => context.kind === "surface").length, frontageContexts: outdoorContexts.filter((context) => context.kind === "front").length, caveContexts: caves.contexts.length, lines: total, uniqueLines: all.count, surfaces: contexts.reduce((sum, context) => sum + context.surfaceCount, 0), surfacePatches: contexts.reduce((sum, context) => sum + context.surfaceGroupCount, 0), windowReveals, limit: LIMIT, tested, creases, surfaceRays: 0, surfaceCertificates: 0 };
+    const stats = { contexts: contexts.length, surfaceContexts: built.surfaceContexts, frontageContexts: built.frontageContexts, caveContexts: caves.contexts.length, lines: total, uniqueLines: all.count, surfaces: contexts.reduce((sum, context) => sum + context.surfaceCount, 0), surfacePatches: contexts.reduce((sum, context) => sum + context.surfaceGroupCount, 0), windowReveals: built.windowReveals, limit: LIMIT, tested: built.tested, creases: built.creases, surfaceRays: 0, surfaceCertificates: 0 };
     const updateSurfaceBranch = (context, wall, node, p, fx, fy, fz, near, objectClear, actor) => {
       const b = node.bounds;
       let hidden = ((fx < 0 ? b[0] : b[3]) - p.x) * fx + ((fy < 0 ? b[1] : b[4]) - p.y) * fy + ((fz < 0 ? b[2] : b[5]) - p.z) * fz <= near;
@@ -755,6 +812,28 @@
       return selected;
     };
     let surfacesActive = false;
+    const perceives = (context, group, ex, ey, ez, actor, objectClear) => {
+      const at = group * 3, samples = context.surfaceSamples, x = samples[at], y = samples[at + 1], z = samples[at + 2];
+      if (context.surfaceTerrainSeen[group] === 2) context.surfaceTerrainSeen[group] = island.sightClearAt(ex, ey, ez, x, y, z) ? 1 : 0;
+      return context.surfaceTerrainSeen[group] && (!objectClear || objectClear(ex, ey, ez, x, y, z, actor, null));
+    };
+    // Every eye ray to a sample inside a branch crosses this scaled, padded
+    // cross-section; solid rock there proves the whole branch unseen.
+    const perceiveBranch = (context, wall, node, ex, ey, ez) => {
+      const b = node.bounds;
+      for (let n = 1; n <= 7; n++) {
+        const t = n / 8, ax = ex + (b[0] - 0.03 - ex) * t, ay = ey + (b[1] - 0.03 - ey) * t, az = ez + (b[2] - 0.03 - ez) * t;
+        const bx = ex + (b[3] + 0.03 - ex) * t, by = ey + (b[4] + 0.03 - ey) * t, bz = ez + (b[5] + 0.03 - ez) * t;
+        if (!island.sightBoxSolidAt(ax, ay, az, bx, by, bz)) continue;
+        const order = wall.surfaceOrder;
+        for (let i = node.start; i < node.end; i++) context.surfaceTerrainSeen[order[i]] = 0;
+        return;
+      }
+      if (node.left) {
+        perceiveBranch(context, wall, node.left, ex, ey, ez);
+        perceiveBranch(context, wall, node.right, ex, ey, ez);
+      }
+    };
     const updateSurface = (context, ex, ey, ez, camera, dt, actor = null, objectClear = null, occlusion = 0) => {
       if (!context) return null;
       surfacesActive = true;
@@ -779,7 +858,24 @@
           const at = group * 3, wall = walls[wallGroups[group]], distance = Math.hypot(centers[at] - px, centers[at + 1] - py, centers[at + 2] - pz);
           wall.distance = Math.min(wall.distance, distance);
         }
-        for (let group = 0; group < context.surfaceGroupCount; group++) {
+        if (eyeMoved) for (const wall of walls) if (wall.distance <= RADIUS) perceiveBranch(context, wall, wall.surfaceTree, ex, ey, ez);
+        // Stations only matter at a wall's first and last perceived sample.
+        // Scan inward from both ends instead of tracing every sample.
+        if (context.kind === "room" || context.kind === "ramp" || context.kind === "common") for (const wall of walls) {
+          if (!(wall.distance <= RADIUS)) continue;
+          const order = STATION_ORDERS.get(wall.surfaceOrder), stations = context.surfaceStations;
+          let low = 0, high = order.length - 1, near = false;
+          for (; low <= high; low++) if (perceives(context, order[low], ex, ey, ez, actor, objectClear)) break;
+          if (low > high) continue;
+          for (; high > low; high--) if (perceives(context, order[high], ex, ey, ez, actor, objectClear)) break;
+          wall.visibleMin = stations[order[low]]; wall.visibleMax = stations[order[high]];
+          for (let n = low; n <= high && !near; n++) {
+            const group = order[n], at = group * 3;
+            if (Math.hypot(centers[at] - px, centers[at + 1] - py, centers[at + 2] - pz) <= RADIUS && (n === low || n === high || perceives(context, group, ex, ey, ez, actor, objectClear))) near = true;
+          }
+          wall.perceived = near;
+        }
+        else for (let group = 0; group < context.surfaceGroupCount; group++) {
           const at = group * 3, wall = walls[wallGroups[group]];
           if (wholeSection && wall.perceived) continue;
           if (wall.distance <= RADIUS) {
@@ -831,13 +927,14 @@
       if (cameraMoved) {
         if (context.apertures) {
           context.apertures.update(camera, !context.contains(p.x, p.y, p.z, 0, false));
-          for (let group = 0; group < context.surfaceGroupCount; group++) {
+          if (!context.apertures.count) context.surfaceAperture.fill(0);
+          else for (let group = 0; group < context.surfaceGroupCount; group++) {
             const portal = context.apertures.overlaps(context.surfaceGroupBounds, group * 6);
             context.surfaceAperture[group] = portal ? 2 : 0;
           }
           // Bounds can overlap a window while all of a patch's actual
           // triangles miss it. Those patches retain normal visibility.
-          for (let at = 0; at < context.surface.length; at += 9) {
+          if (context.apertures.count) for (let at = 0; at < context.surface.length; at += 9) {
             const group = context.surfaceGroups[at / 9];
             if (context.surfaceAperture[group] !== 2) continue;
             for (let aperture = 0; aperture < context.apertures.count; aperture++) if (context.apertures.clip(aperture, context.surface, at).count) { context.surfaceAperture[group] = 1; break; }
@@ -849,7 +946,7 @@
       }
       // Retain the full patch. The overlay cuts only the visible window
       // polygon, including when a new wall uses the cached camera aperture.
-      if (context.apertures) for (let group = 0; group < context.surfaceGroupCount; group++) if (context.surfaceAperture[group]) context.surfaceHidden[group] = 1;
+      if (context.apertures && context.apertures.count) for (let group = 0; group < context.surfaceGroupCount; group++) if (context.surfaceAperture[group]) context.surfaceHidden[group] = 1;
       const step = Math.max(0, dt) / FADE_SECONDS;
       for (const wall of walls) wall.phase = wall.phase < wall.target ? Math.min(wall.target, wall.phase + step) : Math.max(wall.target, wall.phase - step);
       context.surfaceActive = context.surfaceWholeActive = 0;
@@ -923,7 +1020,7 @@
         for (const wall of context.walls) wall.phase = wall.target = 0;
       }
     };
-    const dispose = () => { contexts.length = outdoorContexts.length = 0; outdoorMap.clear(); windowOwners.clear(); rampSegments.clear(); all.count = stats.contexts = stats.surfaceContexts = stats.frontageContexts = stats.caveContexts = stats.lines = stats.uniqueLines = stats.surfaces = stats.surfacePatches = stats.windowReveals = 0; };
+    const dispose = () => { contexts.length = 0; all.count = stats.contexts = stats.surfaceContexts = stats.frontageContexts = stats.caveContexts = stats.lines = stats.uniqueLines = stats.surfaces = stats.surfacePatches = stats.windowReveals = 0; };
     return { select, updateSurface, updateSurfaces, resetSurface, dispose, stats, contexts, all };
   };
   BL.rockGuides = { create };

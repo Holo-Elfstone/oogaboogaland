@@ -27,7 +27,7 @@
   const curtain = $("curtain");
   const worldClock = $("world-clock");
   let renderer = null;
-  if (!params.has("canvas2d") && glRenderer.isSupported()) {
+  if (!params.has("canvas2d")) {
     try {
       renderer = glRenderer.createRenderer(sceneCanvas, { quality: COARSE ? "medium" : "high" });
     } catch (err) {
@@ -64,6 +64,7 @@
   const requestedClockHour = DEBUG && params.has("hour") ? Number(params.get("hour")) : NaN;
   const clockBaseHour = Number.isFinite(requestedClockHour) ? requestedClockHour : clockStartDate.getHours() + clockStartDate.getMinutes() / 60 + clockStartDate.getSeconds() / 3600;
   let clockNextUpdate = 0, clockMinute = -1;
+  const CLOCK_DATE = new Date();
   clockSvg.setAttribute("viewBox", "0 0 30 6");
   clockSvg.setAttribute("class", "sign");
   clockSvg.setAttribute("aria-hidden", "true");
@@ -85,9 +86,9 @@
       hours = Math.floor(total / 60);
       minutes = total % 60;
     } else {
-      const local = new Date();
-      hours = local.getHours();
-      minutes = local.getMinutes();
+      CLOCK_DATE.setTime(Date.now());
+      hours = CLOCK_DATE.getHours();
+      minutes = CLOCK_DATE.getMinutes();
     }
     const minute = hours * 60 + minutes;
     if (minute === clockMinute) return;
@@ -213,16 +214,9 @@
   let elapsed = 0;
   let lastTime = performance.now();
   let raf = 0;
-  const frame = (now) => {
-    raf = window.requestAnimationFrame(frame);
-    const interval = frameInterval();
-    if (interval && now - lastRender < interval - 1) return;
-    lastRender = now;
-    renderedFrames++;
-    if (renderedFrames <= 3) mark(`frame${renderedFrames}`);
-    const t0 = performance.now();
-    const dt = Math.min(0.1, (now - lastTime) / 1e3);
-    lastTime = now;
+  // One frame of simulation and drawing, shared by the display loop and the
+  // debug `advance`, so a stepped frame is exactly a displayed one
+  const step = (dt, now, t0) => {
     elapsed += dt;
     if (transition) stepTransition(dt);
     sceneTime += dt;
@@ -243,7 +237,19 @@
     active.overlay(dt);
     active.input.update();
     if (fade > 0) drawFade();
-    autoTier(performance.now() - t0);
+    if (perf.checked < 2) autoTier(performance.now() - t0);
+  };
+  const frame = (now) => {
+    raf = window.requestAnimationFrame(frame);
+    const interval = frameInterval();
+    if (interval && now - lastRender < interval - 1) return;
+    lastRender = now;
+    renderedFrames++;
+    if (renderedFrames <= 3) mark(`frame${renderedFrames}`);
+    const t0 = performance.now();
+    const dt = Math.min(0.1, (now - lastTime) / 1e3);
+    lastTime = now;
+    step(dt, now, t0);
   };
 
   // ---------- lifecycle ----------
@@ -269,7 +275,7 @@
     if (document.hidden) {
       window.cancelAnimationFrame(raf);
       raf = 0;
-    } else if (!raf) {
+    } else if (!raf && active) {
       lastTime = performance.now();
       raf = window.requestAnimationFrame(frame);
     }
@@ -281,9 +287,15 @@
   const housekeepTimer = window.setInterval(housekeep, 6e4);
   // Only a registered id picks the scene
   const sceneId = params.get("scene");
-  enter(Object.hasOwn(scenes, sceneId) ? scenes[sceneId] : scenes[Object.keys(scenes)[0]]);
-  mark("ready");
-  raf = window.requestAnimationFrame(frame);
+  // Building the first scene holds the main thread, and nothing has been
+  // painted yet: run it from a task after the first frame so the leaf curtain
+  // is on screen while the island is built, instead of the previous page.
+  const boot = () => {
+    enter(Object.hasOwn(scenes, sceneId) ? scenes[sceneId] : scenes[Object.keys(scenes)[0]]);
+    mark("ready");
+    raf = window.requestAnimationFrame(frame);
+  };
+  window.requestAnimationFrame(() => window.setTimeout(boot, 0));
   if (DEBUG) {
     const ooga = {
       game,
@@ -294,6 +306,16 @@
       project: renderer.project,
       housekeep,
       go,
+      // Whole frames at a fixed step, without waiting on the display: a check
+      // can run seconds of simulated play in far less wall time
+      advance: (seconds, dt = 1 / 60) => {
+        for (let n = Math.round(seconds / dt); n > 0; n--) {
+          renderedFrames++;
+          const t0 = performance.now();
+          step(dt, t0, t0);
+        }
+        lastTime = performance.now();
+      },
       get scene() {
         return active.id;
       },
@@ -321,7 +343,7 @@
       }
     };
     for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron"]) {
-      Object.defineProperty(ooga, key, { get: () => active.debug[key], enumerable: true });
+      Object.defineProperty(ooga, key, { get: () => active.debug && active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;
   }
