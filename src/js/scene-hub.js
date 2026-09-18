@@ -3901,7 +3901,13 @@
     solids.sync();
     shared.npcPaths = headquarters.npcPaths = BL.npcPaths.create({ island, walkable: npcWalkable });
     const sleepNavigation = headquarters.sleepNavigation = BL.headquartersSleep.create({ island, beds: bedrolls, walkable: sleepRouteClear, surfaceRoute: shared.npcPaths.route });
+    const sleepRouteFrom = { x: 0, y: 0, z: 0 };
     shared.bedRoute = (cave, bed, toBed) => sleepNavigation.route(cave.root.position.x, cave.root.position.y - cave.baseY, cave.root.position.z, bed, toBed, cave.slot?.x, cave.slot?.z);
+    shared.bedRouteClear = (cave, to) => {
+      const p = cave.root.position;
+      sleepRouteFrom.x = p.x; sleepRouteFrom.y = p.y - cave.baseY; sleepRouteFrom.z = p.z;
+      return sleepNavigation.clearSegment(sleepRouteFrom, to, false, 0.3);
+    };
     mark("pile");
     crew = shared.crew = crewMod.create(shared);
     for (let caveIndex = 0; caveIndex < crew.list.length; caveIndex++) {
@@ -4211,6 +4217,7 @@
           return critters.stats();
         },
         get daylight() {
+          if (!DEBUG) syncDaylightDebug(hour);
           return DAYLIGHT_DEBUG;
         },
         setHour: (h, daylen = NaN, day = clock.dayOfYear) => {

@@ -190,7 +190,7 @@
       }
       return smooth;
     };
-    return { route, points, radius: RADIUS, height: HEIGHT, nodeCount: size, edgeCount: edges.reduce((sum, list) => sum + list.length, 0) / 2 };
+    return { route, clearSegment: segment, points, radius: RADIUS, height: HEIGHT, nodeCount: size, edgeCount: edges.reduce((sum, list) => sum + list.length, 0) / 2 };
   };
   BL.headquartersSleep = { create };
 })();

@@ -1578,7 +1578,12 @@
           // Scenery may cover an intermediate architectural waypoint. Aim
           // around that prop toward the next one; never insist on occupying
           // an impossible point inside its trunk, barrel or another walker.
-          if (distance < 3 && travel.index + 1 < travel.route.length && !npcWalkable(target.x, target.z, target.x, target.z, target.y, cave.bodyHeight, cave)) { travel.index++; continue; }
+          // Keep the doorway turn until the shortcut itself is clear.
+          // Temporary bodies and props still use the local walking avoidance.
+          if (distance < 3 && travel.index + 1 < travel.route.length && !npcWalkable(target.x, target.z, target.x, target.z, target.y, cave.bodyHeight, cave)) {
+            const next = travel.route[travel.index + 1];
+            if (ctx.bedRouteClear(cave, next)) { travel.index++; continue; }
+          }
           if (!recoveryChecked) { recoverWalker(cave, target.x, target.z, dt); recoveryChecked = true; }
           const step = walkToward(cave, target.x, target.z, remaining);
           if (!step) { travel.blocked += dt; break; }

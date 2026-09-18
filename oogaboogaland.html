@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-og6Z87qJQ3N8ICcHtPpXaeIDkb6v67IWdBrlbbQb+aE='; style-src 'sha256-bUniAqV9i1OXnHgmaaPJUkFdggoLsv7E79OLnEsrCLk='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-xhfM/LvX3TsEK3xuWxonvqefDJZg4dhc+HU5uIPZfrQ='; style-src 'sha256-bUniAqV9i1OXnHgmaaPJUkFdggoLsv7E79OLnEsrCLk='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -11300,7 +11300,7 @@ void main() {
       }
       return smooth;
     };
-    return { route, points, radius: RADIUS, height: HEIGHT, nodeCount: size, edgeCount: edges.reduce((sum, list) => sum + list.length, 0) / 2 };
+    return { route, clearSegment: segment, points, radius: RADIUS, height: HEIGHT, nodeCount: size, edgeCount: edges.reduce((sum, list) => sum + list.length, 0) / 2 };
   };
   BL.headquartersSleep = { create };
 })();
@@ -19111,7 +19111,12 @@ void main() {
           // Scenery may cover an intermediate architectural waypoint. Aim
           // around that prop toward the next one; never insist on occupying
           // an impossible point inside its trunk, barrel or another walker.
-          if (distance < 3 && travel.index + 1 < travel.route.length && !npcWalkable(target.x, target.z, target.x, target.z, target.y, cave.bodyHeight, cave)) { travel.index++; continue; }
+          // Keep the doorway turn until the shortcut itself is clear.
+          // Temporary bodies and props still use the local walking avoidance.
+          if (distance < 3 && travel.index + 1 < travel.route.length && !npcWalkable(target.x, target.z, target.x, target.z, target.y, cave.bodyHeight, cave)) {
+            const next = travel.route[travel.index + 1];
+            if (ctx.bedRouteClear(cave, next)) { travel.index++; continue; }
+          }
           if (!recoveryChecked) { recoverWalker(cave, target.x, target.z, dt); recoveryChecked = true; }
           const step = walkToward(cave, target.x, target.z, remaining);
           if (!step) { travel.blocked += dt; break; }
@@ -27170,7 +27175,13 @@ void main() {
     solids.sync();
     shared.npcPaths = headquarters.npcPaths = BL.npcPaths.create({ island, walkable: npcWalkable });
     const sleepNavigation = headquarters.sleepNavigation = BL.headquartersSleep.create({ island, beds: bedrolls, walkable: sleepRouteClear, surfaceRoute: shared.npcPaths.route });
+    const sleepRouteFrom = { x: 0, y: 0, z: 0 };
     shared.bedRoute = (cave, bed, toBed) => sleepNavigation.route(cave.root.position.x, cave.root.position.y - cave.baseY, cave.root.position.z, bed, toBed, cave.slot?.x, cave.slot?.z);
+    shared.bedRouteClear = (cave, to) => {
+      const p = cave.root.position;
+      sleepRouteFrom.x = p.x; sleepRouteFrom.y = p.y - cave.baseY; sleepRouteFrom.z = p.z;
+      return sleepNavigation.clearSegment(sleepRouteFrom, to, false, 0.3);
+    };
     mark("pile");
     crew = shared.crew = crewMod.create(shared);
     for (let caveIndex = 0; caveIndex < crew.list.length; caveIndex++) {
@@ -27480,6 +27491,7 @@ void main() {
           return critters.stats();
         },
         get daylight() {
+          if (!DEBUG) syncDaylightDebug(hour);
           return DAYLIGHT_DEBUG;
         },
         setHour: (h, daylen = NaN, day = clock.dayOfYear) => {

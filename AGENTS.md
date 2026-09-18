@@ -252,7 +252,9 @@ settle back; see cheer and catch. A working day is `cave.act.kind`: `eat` or `ru
 the fan slot, `wander` to a spot, `idle` there, `player` under the visitor. Strolls run
 only when the scene passes `wanderSpot` (the lab does not); `walkToSlot` leaves a
 stroller alone unless forced, which `rush` does. Walkers stand on `groundAt`, so a scene
-with terrain passes its `heightAt`.
+with terrain passes its `heightAt`. The hub supplies `bedRoute` and `bedRouteClear`
+together; waypoint shortcuts reuse `headquartersSleep.clearSegment` to check continuous
+floor and architectural clearance, while swept walking handles props and other actors.
 
 **A lamp in the hub.** Build a geometry whose flame faces are the only emissive ones, then
 `addLamp(node, LAMP.kind, x, y, z)` in `scene-hub.js`: `node.glow` follows the dusk ramp in
@@ -430,10 +432,17 @@ hub checks open the page without it and hold keys through `hold`. New behaviour 
 against ~2.4 s for a page build. Diff the loop's records against page builds before
 switching; a probe whose results then differ keeps its page builds. A failure prints `FAIL` with its detail, so
 `npm test 2>&1 | grep -E '^FAIL|checks passed'` is enough to read a result.
+Use crew state overrides and `refreshStates` to isolate other actors in movement
+fixtures. Sleeping-pose fitting requires visible body geometry.
+Walking speed checks exclude motion inherited from a confirmed standing support while
+keeping full world-space collision sweeps. Take resource baselines immediately around
+the behavior under test, and distinguish effect geometries when emitters share the FX pool.
 
 The `soak` blocks settle the memory question from `stats()`,
 `Memory.getDOMCounters` and the heap after a forced GC (code and non-code split; the
-bars apply to the non-code heap). Scene cycles: ten hub / lab round trips leave node,
+bars apply to the non-code heap). The snapshot helper freezes the page while collecting
+stats, DOM and heap data, then restores activity and focus in `finally`; parallel
+heap parsing must not let the measured world advance between those readings. Scene cycles: ten hub / lab round trips leave node,
 target, tween, DOM, listener and GPU record counts identical and the heap within 10%.
 GPU residency: each scene after visiting the other holds only its own geometry.
 Donations, per scene: sixty tips over fifteen simulated seconds (`__ooga.advance`) with every crate opened end with
