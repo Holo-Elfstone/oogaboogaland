@@ -25,6 +25,14 @@
   const overlayCtx = overlayCanvas.getContext("2d");
   const qualityLabel = $("quality");
   const curtain = $("curtain");
+  // One saying on the curtain per load, a throwaway pick
+  const SAYINGS = [
+    "growing the island…", "counting the bananas…", "waking the Oogas…", "polishing the rocks…", "herding the clouds…",
+    "lighting the torches…", "packing the leaf chutes…", "lashing sticks into a rocket…", "filling barrels with banana mash…",
+    "warming up the Fire Pot…", "sweeping the rope bridge…", "feeding the fireflies…", "teaching cavemen to drive…",
+    "hiding the jetpack…", "Ooga NASA has no budget. Wink.", "tightening the Vine Knots…", "fluffing the leaf beds…"
+  ];
+  $("curtain-saying").textContent = SAYINGS[Math.floor(Math.random() * SAYINGS.length)];
   const worldClock = $("world-clock");
   let renderer = null;
   if (!params.has("canvas2d")) {
@@ -342,7 +350,7 @@
         return world.level;
       }
     };
-    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron"]) {
+    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron", "orbit", "flight", "site"]) {
       Object.defineProperty(ooga, key, { get: () => active.debug && active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;

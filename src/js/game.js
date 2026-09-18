@@ -36,8 +36,9 @@
   };
   const isString = (v, max) => typeof v === "string" && v.length <= max;
   const isEntry = (e, catalog) => e && typeof e === "object" && isString(e.id, 40) && catalog.some((c) => c.id === e.itemId) && LOOT_TIERS.some((t) => t.tier === e.tier) && isString(e.donationId, 64) && Number.isFinite(e.at);
-  const defaults = () => ({ inventory: [], assignments: {}, handle: "", message: "", handFed: 0, totalSats: 0, donations: 0, race: { best: {}, cup: null }, drop: { best: null } });
+  const defaults = () => ({ inventory: [], assignments: {}, handle: "", message: "", handFed: 0, totalSats: 0, donations: 0, race: { best: {}, cup: null }, drop: { best: null }, orbit: { best: null, build: null } });
   const LANDINGS = ["stand", "stumble", "tumble", "hole", "pancake", "lost"];
+  const ORBIT_LANDINGS = ["pad", "islet", "island", "land", "sea", "overpressure", "stuck", "heat", "breakup", "burnup", "splat", "crash", "wreck", "debris"];
   const CUP_MEDALS = ["gold", "silver", "bronze"];
   const isTime = (v) => Number.isFinite(v) && v > 0 && v < 36e5;
   const load = (catalog) => {
@@ -69,6 +70,12 @@
       if (d && Number.isFinite(d.score) && d.score >= 0 && d.score < 1e6 && Number.isFinite(d.rings) && d.rings >= 0 && Number.isFinite(d.ringTotal) && d.ringTotal >= d.rings && d.ringTotal <= 99 && LANDINGS.includes(d.landing)) {
         state.drop.best = { score: Math.floor(d.score), rings: Math.floor(d.rings), ringTotal: Math.floor(d.ringTotal), landing: d.landing };
       }
+      const o = parsed.orbit;
+      if (o && o.best && Number.isFinite(o.best.score) && o.best.score >= 0 && o.best.score < 1e6 && typeof o.best.orbit === "boolean" && ORBIT_LANDINGS.includes(o.best.landing)) {
+        state.orbit.best = { score: Math.floor(o.best.score), orbit: o.best.orbit, landing: o.best.landing };
+      }
+      const build = o && BL.rocketParts.sanitize(o.build);
+      if (build && build.length) state.orbit.build = build;
     } catch {
       return defaults();
     }
@@ -165,6 +172,18 @@
       save(state);
       return true;
     };
+    // The best flight by score, and the last rocket flown
+    const recordOrbit = ({ score, orbit, landing }) => {
+      const b = state.orbit.best;
+      if (b && b.score >= score) return false;
+      state.orbit.best = { score: Math.floor(score), orbit, landing };
+      save(state);
+      return true;
+    };
+    const setOrbitBuild = (stack) => {
+      state.orbit.build = stack.slice();
+      save(state);
+    };
     const setIdentity = ({ handle, message }) => {
       state.handle = handle;
       state.message = message;
@@ -181,7 +200,7 @@
       if (seconds < 5400) return `${Math.round(seconds / 60)}m`;
       return `${(seconds / 3600).toFixed(1)}h`;
     };
-    return { state, countOf, lootFor: lootForVisitor, addItem, assign, unassign, itemOf, assignedTo, clearLoot, resetAll, recordDonation, recordHandFed, recordRace, recordCup, recordDrop, setIdentity, forecast, formatDuration };
+    return { state, countOf, lootFor: lootForVisitor, addItem, assign, unassign, itemOf, assignedTo, clearLoot, resetAll, recordDonation, recordHandFed, recordRace, recordCup, recordDrop, recordOrbit, setOrbitBuild, setIdentity, forecast, formatDuration };
   };
   BL.game = { create, LOOT_TIERS, STACK_MAX, SATS_PER_BANANA, tierFor, lootFor, bananasFor, formatLarge };
 })();
