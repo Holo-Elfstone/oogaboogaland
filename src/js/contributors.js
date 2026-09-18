@@ -42,6 +42,14 @@
     YellowBrokeIt: { bald: true, cleanShaven: true, wideEyes: true, yellowFace: true, cigarette: true, energyCan: true, orangeChest: true, skin: "#ffe36a", hair: "#21160e", fur: "#ed9b24" },
     DrNeski: { laserEyes: true, headband: true, stethoscope: true, newspaper: true, hair: "#f2ece0" }
   };
+  // Opt-in voices per handle: a signature line when poked, and idle lines mixed with the tribe's
+  const VOICES = {
+    DrNeski: {
+      poke: "You've got 10 seconds!",
+      idle: ["You are fired!", "Where is Kortik??", "Go rebalance your Node!", "Get laid on the 1st date", "What's your question for DrNeski?", "I sold my neighbor ex's cat for sats"]
+    }
+  };
+  const voiceFor = (name) => VOICES[name] || null;
   const SKINS = ["#c98a5b", "#a9744c", "#8a5a3a", "#d9a06b", "#b58057"];
   const HAIRS = ["#2b1b10", "#4a2c14", "#151312", "#5c4425", "#7a2e12"];
   const HAIRS_SLIM = ["#ece5d3", "#e0dac6", "#f2eee2", "#b9dcaa", "#a3d19a"];
@@ -80,5 +88,5 @@
       rand: mulberry32(fnv1a(name + "/body"))
     };
   };
-  BL.contributors = { roster, stateFor, ageLabel, traitsFor };
+  BL.contributors = { roster, stateFor, ageLabel, traitsFor, voiceFor };
 })();

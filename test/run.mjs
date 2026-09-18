@@ -12137,7 +12137,7 @@ const { contextualActionProbe } = (() => {
 })();
 
 // ---- contributor-likeness.mjs ----
-const { yellowLikenessProbe } = (() => {
+const { yellowLikenessProbe, drNeskiVoiceProbe } = (() => {
   // Default hand props must survive the same wardrobe refresh used on scene entry.
   const yellowLikenessProbe = () => {
     const B = window.__ooga, BL = window.BL, cave = B.cavemen.get("YellowBrokeIt");
@@ -12158,7 +12158,58 @@ const { yellowLikenessProbe } = (() => {
       refreshed, gold, sameShape: before.verts.every((v, i) => v === cave.skins.club.gold.verts[i]) && before.verts.length === cave.skins.club.gold.verts.length,
       restored: cave.parts.club.geometry === before };
   };
-  return { yellowLikenessProbe };
+  // DrNeski answers a poke with his own line and mixes his idle lines with the tribe's;
+  // everyone else keeps the shared pools and draws exactly as many random numbers as before.
+  const drNeskiVoiceProbe = () => {
+    const B = window.__ooga, BL = window.BL, scene = BL.scenes[B.scene], camera = scene.camera, voice = BL.contributors.voiceFor("DrNeski");
+    const neski = B.cavemen.get("DrNeski"), other = B.cavemen.get("portlandhodl"), his = [voice.poke, ...voice.idle];
+    const overlay = document.getElementById("overlay").getContext("2d"), fillText = overlay.fillText;
+    const eye = { ...camera.position }, target = { ...camera.target }, cameraUp = camera.up;
+    // One frame looking at a caveman: every word the overlay drew after ageing bubbles by dt
+    const said = (cave, dt) => {
+      const words = [], p = cave.root.position;
+      Object.assign(camera.target, { x: p.x, y: p.y + cave.headOffset, z: p.z });
+      Object.assign(camera.position, { x: p.x, y: p.y + cave.headOffset + 1.5, z: p.z + 3 });
+      camera.up = null;
+      overlay.fillText = function (text, ...rest) { words.push(text); return fillText.call(this, text, ...rest); };
+      try { B.renderer.render(scene.root, camera, scene.renderOpts); scene.overlay(dt); } finally { overlay.fillText = fillText; }
+      return words;
+    };
+    const fresh = (after, before) => after.filter((w) => !before.includes(w));
+    const quiet = () => scene.overlay(10);
+    const pinned = (values, act) => {
+      const random = Math.random;
+      let calls = 0;
+      Math.random = () => values[Math.min(calls++, values.length - 1)];
+      try { act(); } finally { Math.random = random; }
+      return calls;
+    };
+    const cryptoDraws = (act) => {
+      const get = crypto.getRandomValues;
+      let calls = 0;
+      crypto.getRandomValues = (buffer) => { calls++; buffer.fill(0); return buffer; };
+      try { act(); } finally { crypto.getRandomValues = get; }
+      return calls;
+    };
+    try {
+      quiet(); let base = said(neski, 0);
+      const pokeDraws = cryptoDraws(() => B.crew.pokeCave(neski)), poked = fresh(said(neski, 0), base);
+      quiet(); base = said(other, 0);
+      const otherPokeDraws = cryptoDraws(() => B.crew.pokeCave(other)), otherPoked = fresh(said(other, 0), base);
+      quiet(); base = said(neski, 0);
+      const voicedDraws = pinned([0, 0], () => B.crew.idleSay(neski)), voiced = fresh(said(neski, 0), base), voicedLater = fresh(said(neski, 2.5), base);
+      quiet(); base = said(neski, 0);
+      const tribeDraws = pinned([0.99, 0], () => B.crew.idleSay(neski)), tribe = fresh(said(neski, 0), base);
+      quiet(); base = said(other, 0);
+      const otherDraws = pinned([0], () => B.crew.idleSay(other)), otherIdle = fresh(said(other, 0), base), otherLater = fresh(said(other, 2.5), base);
+      quiet();
+      return {
+        poke: { poked, draws: pokeDraws, otherPoked, otherDraws: otherPokeDraws, line: voice.poke, his: his.includes(otherPoked[0]) },
+        idle: { voiced, voicedLater, draws: voicedDraws, first: voice.idle[0], tribe, tribeDraws, tribeHis: his.includes(tribe[0]), otherIdle, otherLater, otherDraws, otherHis: his.includes(otherIdle[0]) }
+      };
+    } finally { Object.assign(camera.position, eye); Object.assign(camera.target, target); camera.up = cameraUp; }
+  };
+  return { yellowLikenessProbe, drNeskiVoiceProbe };
 })();
 
 // ---- debug-url.mjs ----
@@ -17795,6 +17846,9 @@ for (const backend of ["webgl2", "canvas2d"]) for (const scene of ["hub", "lab"]
     const r = await b.evaluate(`(${yellowLikenessProbe.toString()})()`);
     record(`${label}: YellowBrokeIt joins the nine-member crew with his face, shirt, cigarette and upright can`, r.roster === 9 && r.crew === 9 && r.state === "working" && r.traits && r.yellow && r.orange && r.cigarette && r.can && r.upright, JSON.stringify(r));
     record(`${label}: wardrobe refresh and gold reskin preserve the can and restore its default finish`, r.refreshed && r.gold && r.sameShape && r.restored, JSON.stringify(r));
+    const v = await b.evaluate(`(${drNeskiVoiceProbe.toString()})()`);
+    record(`${label}: DrNeski answers a poke with his own line and no random draw, while everyone else still draws one line from the shared pool`, v.poke.poked.length === 1 && v.poke.poked[0] === v.poke.line && v.poke.draws === 0 && v.poke.otherPoked.length === 1 && !v.poke.his && v.poke.otherDraws === 1, JSON.stringify(v.poke));
+    record(`${label}: DrNeski mixes his idle lines with the tribe's and holds his own a beat longer, while everyone else draws and times out exactly as before`, v.idle.voiced.length === 1 && v.idle.voiced[0] === v.idle.first && v.idle.voicedLater.length === 1 && v.idle.voicedLater[0] === v.idle.first && v.idle.draws === 2 && v.idle.tribe.length === 1 && !v.idle.tribeHis && v.idle.tribeDraws === 2 && v.idle.otherIdle.length === 1 && !v.idle.otherHis && v.idle.otherLater.length === 0 && v.idle.otherDraws === 1, JSON.stringify(v.idle));
   }));
 }
 const npcPaths = (backend) => [`NPC paths ${backend}`, async (b) => {
