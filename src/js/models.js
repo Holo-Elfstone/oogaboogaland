@@ -131,7 +131,7 @@
     const out = geometry();
     for (const geo of geos) {
       const shift = out.verts.length / 3;
-      // An index walk, not a spread: a large geometry would overflow the stack
+      // Index walk, not a spread: a large geometry would overflow the stack.
       const v = geo.verts;
       for (let i = 0; i < v.length; i++) out.verts.push(v[i]);
       for (const f of geo.faces) out.faces.push({ ...f, i: f.i.map((i) => i + shift) });
@@ -139,8 +139,7 @@
     }
     return out;
   };
-  // Cells are not all integral: some builders walk half-steps, and the span
-  // exceeds a bit-packed key's range, so the key stays a string.
+  // Key stays a string: cells are not all integral (half-steps) and the span exceeds a bit-packed key's range.
   const voxKey = (x, y, z) => x + "," + y + "," + z;
   const voxCoords = (k, out) => {
     const a = k.split(",");
@@ -170,7 +169,7 @@
       }
     };
   };
-  // Exposed voxel faces as run-merged quads
+  // Exposed voxel faces emitted as run-merged quads.
   const CELL = [0, 0, 0];
   const voxelFaces = (iterate, has, emit) => {
     const F = { py: [], ny: [], px: [], nx: [], pz: [], nz: [] };
@@ -228,11 +227,10 @@
     return geo;
   };
   const BANANA_AMMO_SCALE = 0.34;
-  // A full-shouldered loose heap encloses the dead space between curved bananas
-  // without returning to the old pointed silhouette.
+  // Full-shouldered profile hides the dead space between curved bananas without the old pointed silhouette.
   const BANANA_PILE_PROFILE = [[1, 0], [0.98, 0.11], [0.9, 0.31], [0.72, 0.53], [0.5, 0.7], [0.28, 0.82], [0.1, 0.87], [0, 0.88]];
   const bananaPileRadiusScale = (angle, radius) => {
-    // Keep the foot of the mound circular, then blend in the lumpy silhouette above it.
+    // fade keeps the foot of the mound circular, blending the lumpy silhouette in above it.
     const fade = Math.min(1, Math.max(0, (1 - radius) / 0.18));
     return 1 + fade * (-0.025
       + Math.sin(angle * 3 + radius * 5.7 + 0.4) * 0.012
@@ -262,8 +260,8 @@
     // stick past the magazine's narrower curve above it.
     return { ...source, verts: source.verts.map((v, i) => i % 3 === 0 ? Math.max(-0.3, Math.min(0.3, v)) : i % 3 === 1 ? Math.min(0.25, v) : v) };
   });
-  // A centered copy for the pile skin. It has the full depth and dimensions of a
-  // carried banana, while its origin lets it sit evenly across the mound surface.
+  // Deliberate near-duplicate of bananaGeometry: full depth and dimensions of a carried banana.
+  // Its origin is recentred so pile tiles sit evenly across the mound surface.
   const bananaTileNearGeometry = cached(() => tube({
     rings: 8,
     segments: 5,
@@ -301,7 +299,7 @@
         profile.push([outer[0] + (inner[0] - outer[0]) * t, outer[1] + (inner[1] - outer[1]) * t]);
       }
     }
-    // Golden panels keep any backing visible between shell bananas part of the pile.
+    // Golden panels so any backing visible between shell bananas still reads as part of the pile.
     const colors = ["#c9a21d", "#ddb72b", "#b98f14", "#e5c13a", "#d1aa22"].map(hexToRgb);
     const rings = profile.map(([radius, y], ringIndex) => {
       const ring = [];
@@ -342,11 +340,9 @@
     }
     return geo;
   };
-  // Weapons, club in voxels and rifle in boxes
   const clubVoxels = (rand) => {
     const v = makeVox();
     const woodJ = () => rand() < 0.2 ? 1 : 0;
-    // Handle at the bottom, heavy head on top
     v.fill(0, 1, 0, 4, 0, 1, woodJ);
     v.fill(-1, 2, 5, 7, -1, 2, woodJ);
     v.fill(-1, 2, 8, 10, -1, 2, woodJ);
@@ -355,7 +351,6 @@
   };
   const CLUB_PALETTE = [hexToRgb("#5c4425"), hexToRgb("#3f2e18")];
   const GOLD_CLUB_PALETTE = [hexToRgb("#e0b53a"), hexToRgb("#c99a2e")];
-  // A folded broadsheet in the grip: masthead over a coin and column rules, printed both sides
   const newspaperVoxels = (rand) => {
     const v = makeVox();
     const paperJ = () => rand() < 0.1 ? 1 : 0;
@@ -515,14 +510,13 @@
     appendMagazineShell(pieces, h, pal);
     return merge(...pieces);
   };
-  // Re-axis a lathe to +Z, reversing the winding
+  // Re-axis a lathe to +z; the index reverse keeps the winding correct after the y/z swap.
   const forward = (geo, { x = 0, y = 0, z = 0 } = {}) => {
     const out = geometry();
     for (let v = 0; v < geo.verts.length; v += 3) out.verts.push(x + geo.verts[v], y + geo.verts[v + 2], z + geo.verts[v + 1]);
     out.faces = geo.faces.map((f) => ({ ...f, i: [...f.i].reverse() }));
     return out;
   };
-  // Gas mask hood, snout, filter, lenses and strap
   const gasMaskGeometry = cached(() => {
     const shell = "#3a3d35", trim = "#2a2d27", metal = "#5b6066";
     const hood = lathe({ profile: [[0.29, -0.06], [0.31, 0.1], [0.31, 0.3], [0.28, 0.46], [0.2, 0.58], [0.08, 0.66], [0, 0.68]], segments: 14, color: shell });
@@ -532,9 +526,7 @@
       forward(lathe({ profile: [[0.06, 0], [0.09, 0], [0.095, 0.03], [0.06, 0.03]], segments: 12, color: metal }), { x, y: 0.22, z: 0.28 }),
       forward(lathe({ profile: [[0, 0], [0.065, 0], [0.065, 0.005], [0, 0.005]], segments: 12, color: "#ff2a1e", emissive: 1 }), { x, y: 0.22, z: 0.31 })
     );
-    // Breathing tubes, one each side of the snout
     const tube = (x) => forward(lathe({ profile: [[0.03, 0], [0.038, 0.02], [0.038, 0.11], [0.03, 0.13], [0, 0.13]], segments: 10, color: metal }), { x, y: 0.09, z: 0.2 });
-    // A centre hole ringed by six, proud of the disc
     const holes = [[0, 0], ...[0, 1, 2, 3, 4, 5].map((i) => [Math.cos(i / 6 * Math.PI * 2) * 0.065, Math.sin(i / 6 * Math.PI * 2) * 0.065])]
       .map(([hx, hy]) => box({ w: 0.03, h: 0.03, d: 0.008, color: "#0f1113", offset: { x: hx, y: 0.1 + hy, z: 0.463 } }));
     return merge(hood, snout, filter, ...holes, lens(-0.12), lens(0.12), tube(-0.21), tube(0.21), ring({ r: 0.315, thickness: 0.02, y: 0.4, segments: 14, color: trim }));
@@ -552,7 +544,6 @@
     }
     return merge(brim, crown, ring({ r: 0.21, thickness: 0.035, y: 0.075, segments: 14, color: "#d8892b" }), ...cross);
   });
-  // A tall crook staff in the club's grip: shaft from the ground past the shoulder, knots along it, curled head
   const staffVoxels = (rand) => {
     const v = makeVox();
     const woodJ = () => rand() < 0.2 ? 1 : 0;
@@ -562,7 +553,6 @@
     return v;
   };
   const LION_PALETTE = [hexToRgb("#d4a04a"), hexToRgb("#bd8b38"), hexToRgb("#a5602a"), hexToRgb("#7d4520"), hexToRgb("#ecc98a"), hexToRgb("#141414")];
-  // A lion carried under the arm: body hanging, hind legs and tail dangling, front paws draped forward, maned head up
   const lionVoxels = (rand) => {
     const v = makeVox();
     const L = { fur: 0, furDk: 1, mane: 2, maneDk: 3, belly: 4, black: 5 };
@@ -570,7 +560,6 @@
     const mane = () => rand() < 0.35 ? L.maneDk : L.mane;
     v.fill(0, 3, 0, 5, 0, 3, fur);
     v.fill(1, 2, 0, 4, 3, 3, L.belly);
-    // Mane: a ring framing the face, a ruff under the chin, a shag down the back
     v.fill(-1, 4, 6, 10, 1, 5, (x, y, z) => (x === -1 || x === 4) && (y === 6 || y === 10) ? null : x === -1 || x === 4 || y === 6 || y === 10 || z === 1 ? mane() : null);
     v.fill(0, 3, 7, 9, 2, 5, fur);
     v.fill(1, 2, 7, 7, 5, 6, L.belly);
@@ -589,7 +578,6 @@
     v.set(2, -6, -1, L.maneDk);
     return v;
   };
-  // A deck slung across the back, wheels out
   const skateboardGeometry = (h) => merge(
     box({ w: 0.22 * h, h: 0.8 * h, d: 0.03 * h, color: "#7cc242" }),
     box({ w: 0.2 * h, h: 0.08 * h, d: 0.03 * h, color: "#f7931a", offset: { z: -0.006 * h } }),
@@ -597,9 +585,8 @@
     ...[-0.28, 0.28].flatMap((y) => [-0.085, 0.085].map((x) => box({ w: 0.06 * h, h: 0.06 * h, d: 0.05 * h, color: "#1a1a1a", offset: { x: x * h, y: y * h, z: -0.07 * h } })))
   );
   const stethoscopeCache = new Map();
-  // Slung round the neck: one tube with the bell on one end and the forked earpieces on
-  // the other. Nothing converges, so it cannot read as a chain, and the bell sits clear
-  // of the arm that carries the paper. Brass collars tie the hardware together.
+  // One tube: bell at one end, forked earpieces at the other, nothing converging (it would read as a chain).
+  // The bell sits clear of the arm that carries the paper; brass collars tie the hardware together.
   const stethoscopeGeometry = (h) => {
     let geo = stethoscopeCache.get(h);
     if (!geo) {
@@ -623,7 +610,6 @@
         prong(-1), prong(1), tip(-1), tip(1),
         disc(0.072, 0.018, GOLD),
         disc(0.052, 0.026, INSET),
-        // A B struck across the inset
         face(0.011, 0.058, -0.013, 0),
         face(0.03, 0.011, 0.002, 0.021),
         face(0.03, 0.011, 0.002, 0),
@@ -755,7 +741,6 @@
         }
       }
       if (traits.bee) {
-        // The Bee: black bands round the fuzz and two pale wings folded off the back, baked into the torso
         v.fill(1, 7, 4, 4, 1, 4, P.black);
         v.fill(1, 7, 6, 6, 1, 4, P.black);
         const vein = jit(P.wing, P.wingDk, 0.3);
@@ -797,7 +782,6 @@
     };
     parts.armL = arm(-1);
     parts.armR = arm(1);
-    // Two finishes of one model, default and gold
     const clubV = traits.anunnaki ? staffVoxels(rand) : traits.newspaper ? newspaperVoxels(rand) : clubVoxels(rand);
     const clubOrigin = { x: -1 * u, y: -1 * u, z: -1 * u };
     const clubPalette = traits.newspaper ? NEWS_PALETTE : CLUB_PALETTE;
@@ -807,7 +791,7 @@
         : { default: traits.energyCan ? energyCanGeometry(h) : voxelGeometry(clubV, { unit: u, palette: clubPalette, origin: clubOrigin }), gold: traits.energyCan ? energyCanGeometry(h, true) : voxelGeometry(clubV, { unit: u, palette: goldClubPalette, origin: clubOrigin }) },
       gun: { default: gunGeometry(h, GUN_PALETTE), gold: gunGeometry(h, GOLD_GUN_PALETTE) }
     };
-    // The staff stands upright in the grip; the club hangs forward
+    // Club rotation x: staff and newspaper stand upright in the grip (0.2), the club hangs forward (0.95).
     parts.club = createNode({
       position: { x: 0, y: -0.62 * h, z: 0.08 * h },
       rotation: { x: traits.energyCan ? 0 : traits.anunnaki || traits.newspaper ? 0.2 : traits.stoneAxe ? 0.24 : 0.95, y: 0, z: traits.newspaper ? 0.1 : 0 },
@@ -873,11 +857,10 @@
       if (traits.gasMask || traits.pumpkin) {
         // Nose, beard and mouth sit under the mask; the pumpkin's are carved below
       } else if (traits.yellowFace) {
-        // YellowBrokeIt uses a simple black nose and white muzzle below.
+        // Empty on purpose: YellowBrokeIt gets a simple black nose and white muzzle below.
       } else if (traits.slim || traits.cleanShaven) {
         v.fill(3, 3, 2, 3, 6, 6, P.nose);
       } else if (traits.skater || traits.bee) {
-        // Clean-shaven under the shades: a low nose and a smirk
         v.set(3, 1, 6, P.nose);
         v.fill(2, 4, 0, 0, 6, 6, P.spot);
       } else {
@@ -896,7 +879,6 @@
         v.fill(7, 7, traits.slim ? -3 : 2, 5, -1, 4, hairJ);
       }
       if (traits.headband) {
-        // A pale mane: a cap over the crown, locks standing off it, longer hair past the ears
         v.fill(-1, 7, 6, 8, -1, 6, hairJ);
         for (const [lx, lz] of [[-2, 0], [-2, 3], [-1, -2], [2, -2], [5, -2], [8, 0], [8, 3], [-2, 5], [8, 5], [0, 7], [4, 7], [7, 7]]) {
           for (let i = 0, n = 3 + Math.floor(rand() * 4); i < n; i++) v.set(lx, 7 + i, lz, rand() < 0.3 ? P.hairDk : P.hair);
@@ -904,11 +886,9 @@
         for (const [sx, sz] of [[-1, -1], [-1, 1], [-1, 4], [7, -1], [7, 1], [7, 4]]) {
           for (let y = -2; y <= 5; y++) v.set(sx, y, sz, rand() < 0.25 ? P.hairDk : P.hair);
         }
-        // The band sits proud of the hair it holds back
         v.fill(-1, 7, 4, 5, -1, 6, jit(P.apple, P.appleDk, 0.25));
       }
       if (traits.anunnaki) {
-        // The Anunnaki: a gold banded cap over the brow, hair curling down the back and sides, a full beard to the chest
         const curl = (x, y, z) => (x + y + z) % 2 ? P.hairDk : P.hair;
         v.fill(-1, 7, -4, 5, -2, -1, curl);
         v.fill(-1, -1, -4, 5, 0, 2, curl);
@@ -924,7 +904,6 @@
         v.fill(2, 4, 11, 11, 2, 3, P.gold);
       }
       if (traits.skater) {
-        // A slouched green beanie over dreads, shades in front of the eyes
         const rib = (x, y, z) => (x + z) % 2 ? P.knitDk : P.knit;
         v.fill(-1, 7, 4, 8, -1, 6, rib);
         v.fill(-1, 5, 9, 9, 0, 5, rib);
@@ -944,7 +923,6 @@
         v.fill(7, 7, 3, 3, 4, 6, P.black);
       }
       if (traits.bee) {
-        // The Bee: round blue goggles on a black strap, two antennae bent forward off the crown
         for (const cx of [1, 5]) {
           v.fill(cx - 1, cx + 1, 1, 4, 6, 6, P.black);
           v.fill(cx, cx, 2, 3, 6, 6, P.goggle);
@@ -1005,7 +983,7 @@
         v.set(5, 2, 5, P.black);
       }
       if (traits.symmetricTusks) {
-        // Keep w-s-bitcoin's tusks and the stubble beside them as a clean mirror pair.
+        // symmetricTusks: repaint the stubble beside w-s-bitcoin's tusks so both sides stay a clean mirror pair.
         for (let x = 0; x <= 6; x++) {
           for (let y = 0; y <= 1; y++) {
             v.set(x, y, 7, P.hair);
@@ -1022,7 +1000,7 @@
       }
     }
     const headOrigin = { x: -3.5 * u, y: 0, z: -3 * u };
-    // Laser eyes are the only lit faces on the head; closed lids cover them
+    // Laser eyes are the only lit faces on the head; the closed-lid variant covers them.
     const headEmissive = traits.laserEyes ? { [P.btc]: 1 } : traits.pumpkin ? { [P.pumpkinGlow]: 1 } : undefined;
     const headOpen = vg(headVox, headOrigin, headEmissive);
     const closedVox = makeVox();
@@ -1045,9 +1023,7 @@
     return { root, parts, traits, headOffset: 1.1 * h, headOpen, headClosed, skins, gunHeadBounds: BL.scene.boundsOf(headOpen) };
   };
   // Traits hash from the handle, so one handle always builds the same voxels.
-  // Each caller gets fresh nodes over one shared set of geometry objects: one
-  // voxel build per contributor for the page, and GPU records that survive a
-  // scene swap instead of being released and uploaded again.
+  // Callers get fresh nodes over shared geometry: one build per contributor, GPU records survive a scene swap.
   const cavemen = new Map();
   const cloneNode = (node, copies) => {
     const copy = createNode({ ...node, position: { ...node.position }, rotation: { ...node.rotation }, scale: { ...node.scale }, parent: null, children: [], world: new Float32Array(node.world), local: new Float32Array(node.local) });
@@ -1067,7 +1043,7 @@
     const skins = { club: { ...template.skins.club }, gun: { ...template.skins.gun } };
     return { root, parts, traits, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed, skins, gunHeadBounds: template.gunHeadBounds };
   };
-  // A real die, opposite faces summing to seven
+  // A real die: opposite faces sum to seven.
   const die = ({ size = 0.3 } = {}) => {
     const n = 5, u = size / n;
     const v = makeVox();
@@ -1082,7 +1058,6 @@
     for (const [a, b] of corners) v.set(a, b, 0, 1);
     return voxelGeometry(v, { unit: u, palette: [hexToRgb("#f3efe4"), hexToRgb("#141414")], origin: { x: -size / 2, y: -size / 2, z: -size / 2 } });
   };
-  // Euler rotation putting a pip count on top
   const dieRotationFor = (pips, spin) => ({
     5: { x: 0, y: spin, z: 0 },
     2: { x: Math.PI, y: spin, z: 0 },
@@ -1101,7 +1076,6 @@
   const EARTH_BEADS = 4;
   const BEAD_PITCH = 0.13;
   const DIVIDER_X = 0.2;
-  // Four earth beads left of the divider, one heaven right
   const abacus = () => {
     const frame = "#5c4425";
     const node = createNode();
@@ -1414,7 +1388,7 @@
     }
     return geo;
   };
-  // Head anchor and swag sizes, in height fractions
+  // Head anchor and swag sizes are fractions of caveman height.
   const SWAG = [
     { id: "party-hat", name: "Party Hat", tier: "common", slot: "head", offset: { y: -0.03 }, build: () => lathe({ profile: [[0.36, 0], [0.26, 0.2], [0.14, 0.42], [0.0, 0.62]], segments: 8, color: (t) => t < 0.34 ? "#d8892b" : t < 0.67 ? "#f3efe4" : "#22c55e" }) },
     { id: "bandana", name: "Bandana", tier: "common", slot: "head", offset: { y: -0.16 }, build: () => merge(ring({ r: 0.4, thickness: 0.045, segments: 10, color: "#c8342a" }), box({ w: 0.1, h: 0.04, d: 0.26, color: "#c8342a", offset: { x: 0.06, y: -0.03, z: -0.5 } }), box({ w: 0.1, h: 0.04, d: 0.2, color: "#a82a22", offset: { x: -0.08, y: -0.05, z: -0.46 } })) },

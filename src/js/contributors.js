@@ -116,7 +116,6 @@
     for (const notify of listeners) notify();
   };
   const { fnv1a, mulberry32 } = BL.math;
-  // Opt-in likeness overrides per handle
   const LIKENESS = {
     portlandhodl: { bald: true },
     "w-s-bitcoin": { apple: true, symmetricTusks: true, stoneAxe: true },
@@ -129,7 +128,7 @@
     DrNeski: { laserEyes: true, headband: true, stethoscope: true, newspaper: true, hair: "#f2ece0" },
     genXbtc: { topHat: true, skeleton: true, pumpkin: true, bald: true, cleanShaven: true, skin: "#cfc8b4", hair: "#151515", fur: "#141414", height: 1.16 }
   };
-  // Opt-in voices per handle: a signature line when poked, and idle lines mixed with the tribe's
+  // Per-handle voices: poke is a signature line; idle lines are mixed with the tribe's.
   const VOICES = {
     DrNeski: {
       poke: "You've got 10 seconds!",

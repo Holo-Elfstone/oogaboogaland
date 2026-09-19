@@ -76,9 +76,20 @@ every scene has registered on `BL.scenes`.
 | `gl-renderer.js` | `BL.glRenderer` | WebGL2: instancing, frustum culling, shadow map, sky pass with sun, moon and stars, ten bounded point lights, bloom, MSAA, quality tiers, pixel budget |
 | `canvas-renderer.js` | `BL.canvasRenderer` | Canvas 2D fallback, same API; also draws locker icons |
 | `models.js` | `BL.models` | procedural geometry: room, cavemen, props, crates, `SWAG` catalog |
+| `convex.js` | `BL.convex` | `sweptCylinder`: GJK against the convex hull of a body cylinder at both ends of its sweep, on one shared non-reentrant simplex; `terrain.js` asks it whether a rock piece blocks a move |
 | `terrain.js` | `BL.terrain` | voxel grid, greedy meshing, the island: `heightAt`, `surfaceAt`, `onLand`, `isPath`, mouths |
 | `hub-models.js` | `BL.hubModels` | cached hub props: cave rim, gate, shelves, sign, lantern, trees, bushes, grass, rocks, barrels, torches, fire pit, clouds, dock, critter bodies |
+| `lifehash.js` | `BL.lifehash` | LifeHash v2 adapted from Blockchain Commons (BSD-2-Clause-Patent; keep the header notice): `make(seed)` returns a 32x32 colour grid and its hash. The jumbotron seeds it with a contributor login, an HQ bed with its room's coordinates |
 | `jumbotron-data.js`, `jumbotron.js` | `BL.jumbotronData`, `BL.jumbotron` | baked contributor statistics and the hub board: cached cabinet, bitmap views, bounded screen geometry replaced and released on refresh; no runtime requests |
+| `headquarters-models.js` | `BL.headquartersModels` | cached geometry for the underground HQ and basement: `room`, `entranceRamp`, `roomEntrance`, `rampEntrance`, `mattress` (blanket plus a pillow carrying the same LifeHash a quarter turn round), `roomSign` (the first eight hex of that hash), `MATTRESS`, `ROOM_RADIUS`; eleven HQ and eight basement slots reuse their geometry across visits |
+| `headquarters-sleep.js` | `BL.headquartersSleep` | the validated waypoint graph from the meadow down to the HQ and basement beds, memoised per island and remapped onto each visit's beds: `route`, `clearSegment` (continuous floor plus architectural clearance, the shortcut test the crew reuses), `points`, `radius`, `height`, node and edge counts |
+| `hole-guides.js` | `BL.holeGuides` | the basement shaft's finite stone rim as one wall context for the outline pass; the rim's cell-centre cut and two shallow steps only, never the deep shaft |
+| `wall-apertures.js` | `BL.wallApertures` | camera cones through window frames over a terrain face tree shared per geometry: `update`, `overlaps`, `clip`, `blockers`, so a camera-visible portion is cut out of a wall cue without dropping the surrounding mesh's whole patch |
+| `slope-guides.js` | `BL.slopeGuides` | `classify`: connected sky-exposed slope sides and narrow terrace treads, labelled once per island from the smoothed terrain columns into eight aspect sectors and flood-filled into sides; cached in a `WeakMap` on the island |
+| `cave-guides.js` | `BL.caveGuides` | upper cave boundaries clipped per voxel cell out of the island geometry and grouped into the three authored walls of a mouth, plus the solid stone slabs sealing dark entrances |
+| `rock-guides.js` | `BL.rockGuides` | the wall cue for views through island stone: builds its contexts once per island (creating `slopeGuides`, `caveGuides`, `holeGuides` and `wallApertures` itself) over one never-written build, and gives each visit its own fade and camera state; `select`, `updateSurface`, `updateSurfaces`, `resetSurface`, `contexts`, `all`, `stats` |
+| `object-guides.js` | `BL.objectGuides` | the registry behind object outlines: camera silhouettes baked once per vertex array and never written again, exact local-space visibility, proximity, occlusion and actor tests; `register`, `collect`, `refresh`, `cameraClear`, `perceptionClear`, `perceived`, `concealed`, `distance`, `inView`, `actorVisible`, `ownerBoundaryAt`. Providers (the pile, the platform, the mirror) join the same registry |
+| `sight-guides.js` | `BL.sightGuides` | the outline pass itself: the surfaces and objects the Ooga can see in any direction while the camera cannot, as fading lines tagged with their owners; `update`, `reserve`, `state`. The hub creates two, one per camera view |
 | `caves.js` | `BL.caves` | the eight cave slots (clock position, status, scene, name, repository) and the gate |
 | `contributors.js` | `BL.contributors` | ten-member roster, bounded repository activity snapshots, working/chilling/sleeping state, active solo roster, hashed traits, `LIKENESS` |
 | `donations.js` | `BL.donations` | donation request, simulator, event contract, `sanitize` |
@@ -93,10 +104,16 @@ every scene has registered on `BL.scenes`.
 | `game.js` | `BL.game` | loot tiers, deterministic loot, inventory, localStorage, `formatLarge` |
 | `hud.js` | `BL.hud` | DOM panel: roster, meter, feed dialog, locker, toasts, tooltip, `renderIcon` |
 | `fx.js` | `BL.fx` | particle pool and bursts, speech bubbles, zzz marks, ticker, overlay drawing |
+| `camera-cover.js` | `BL.cameraCover` | the stone the camera sits inside or crosses, drawn on the overlay with hashed grain and colour taken from that actual section of rock; `draw`, `state` |
 | `crew.js` | `BL.crew` | cavemen from the roster: activity and presence, repository work trips, weapons and magazines, pile reloading, sleep, grounded cheers, strolls, possession and jetpack flight, swag, pokes |
+| `npc-paths.js` | `BL.npcPaths` | the surface path graph walkers follow: 4096 nodes of fixed capacity in typed arrays with a binary heap, rebuilt when the island's `path.version` changes; `createState`, `target`, `route`, `xAt`, `zAt`, `buffers` |
 | `pile.js` | `BL.pile` | inflating yellow-backed surface layer through 302, then the layered banana shell over a growing mound; drop-in, hatch, `MAX_BANANAS`; level on the shared `world` |
+| `pile-guides.js` | `BL.pileGuides` | wall-style cues for the pile's inner fruit shell and, separately, its stone platform, each an object-guide provider with its own silhouette and soft fill; `draw`, `cameraVisibility`, `boxClear`, `perceived`, `inView`, `version` |
+| `banana-cover.js` | `BL.bananaCover` | the passable banana interior over a solid platform, sharing one rock-cut and actor-silhouette renderer between WebGL2 and Canvas 2D; `prepare`, `draw`, `contains`, `heightAt`, `intersectsBody`, `segmentClear` |
+| `mirror-guides.js` | `BL.mirrorGuides` | the mirror entrance as one continuous silhouette plus the small plane-bound hint of code behind the reflection; contributes no geometry of its own to the visibility queries: `draw`, `update`, `updateDoorway`, `doorwayNodes` |
 | `crates.js` | `BL.crates` | loot crates: landing ring, spawn, open, remove |
 | `critters.js` | `BL.critters` | instanced butterflies by day, fireflies and embers by night, populations by phase and tier, bursts |
+| `solid-props.js` | `BL.solidProps` | props whose render mesh is also their collision shell, over one local-space tree per geometry, so arches, branches and wings keep their openings without voxelising each placed copy or retriangulating when it moves; `add`, `remove`, `sync`, `segmentClear`, `clearAt`, `supportAt`, `ceilingAt`, `shoulderAt`, `isActive` |
 | `scene-hub.js` | `BL.scenes.hub` | the island scene: the clock samples the sky and lamps each frame; registers first so it is the landing scene |
 | `scene-lab.js` | `BL.scenes.lab` | the lab scene; Escape and Leave cave return to the hub |
 | `drop-models.js` | `BL.dropModels` | cached drop props: the roof plane (body, propeller node, shared kart wheels), the windsock, the unit hoop, the canopy with its lines, the pack, the target, the wind streak; `roofSpot` places the plane over a mouth's room |
@@ -124,6 +141,24 @@ before `director.js`; `drop-models.js` loads before `scene-hub.js` because the h
 plane on the rally roof. `rocket.js` and `rocket-models.js` load before `scene-hub.js` too, which
 builds the launch islet, the bridge and the last rocket flown off the south rim.
 
+The visibility stack is the hub's, and it is the largest thing in the repository after the
+scenes themselves. `rock-guides.js` owns the stone the camera looks through and builds
+`slopeGuides`, `caveGuides`, `holeGuides` and `wallApertures` itself, so those four load
+before it and are never created anywhere else. `object-guides.js` is the registry every
+outline goes through, with `pileGuides` and `mirrorGuides` joining it as providers;
+`sight-guides.js` is the pass that draws the result, and `camera-cover.js` and
+`banana-cover.js` paint the interiors the camera ends up inside. Each one's geometry is
+built once per island and memoised, while fade and camera state belong to the visit, so a
+change on the build side has to hold for every later visit and a change on the state side
+must come back to base in `leave`. `solid-props.js` loads last of the systems, after the
+prop geometry it collides against and before `scene-hub.js` registers them.
+`rockGuides` is a fifth of the boot, so `ensureRockGuides` memoises the build and `enter`
+calls it there. Deferring it past the first paint was tried and reverted: the build holds the
+main thread for about half a second with nothing painted, so the curtain jumps and the camera
+loses that much easing. Reading `headquarters.rockGuides` builds it too, and `resetSurface`
+and `dispose` stay guarded, so anything new that reads it must guard as well, or call
+`ensureRockGuides()`.
+
 Both renderers implement the same surface: `render(root, camera, opts)` returning
 whether a frame was drawn, `project(x, y, z, out)`, `ray(px, py, camera, out)`,
 `resize`, `setQuality`, `releaseGeometry`, `releaseUnused(liveSet)`, `dispose`, and the
@@ -140,6 +175,20 @@ the frame loop, governor, quality auto-tier, minute housekeeping, keydown routin
 pause, `game`, `world`, the donation subscription, `BL.scenes`, `?scene=` routing,
 transitions, the `[data-scene]` HUD sections, `__ooga`, and `destroy` on pagehide. A
 scene builds its root, camera, input, HUD and systems in `enter` and drops them in `leave`.
+
+The quality auto-tier steps down and never up. `autoTier` judges on the interval between
+delivered frames, never on the cost of issuing one: GL calls return long before the GPU has
+drawn, so a GPU-bound machine reports cheap frames and would never step down on cost alone.
+A window closes at 45 frames or 900ms, whichever comes first, so eight frames a second
+costs a tier in about two seconds rather than the fifteen a frame count alone would take,
+and two consecutive slow windows have to agree before it steps, because one slow window can
+be another program and the step lasts the session. Unfocused frames and transitions are not
+evidence, and the debug `advance` never tiers, because a stepped frame carries no real
+interval. `tierFromBoot` seeds the opening tier before any of that exists: how long the
+first scene took to build is the one device signal Safari cannot mask, so a build past
+`BOOT_MEDIUM` or `BOOT_LOW` starts the page a tier or two down. Those thresholds are
+measured against the hub, the most expensive scene by far, so anything that makes it slower
+to build has to be checked against them.
 
 `world` starts with `{ level, pilot, jetpack, magazine, mirrorBroken }`: the shared banana level, the handle of the
 Ooga driven into a launcher (the drop reads and clears it in `enter`), and jetpack ownership
@@ -390,7 +439,7 @@ rock, after which the tether reels the Ooga back and in); falling home W A S D p
 Q E spin the pod, Space pulls the chute and A D steer it; 0 resets the camera, M mutes, Escape
 returns to the builder. `__ooga.orbit` exposes `phase`, `stack`, `score`, `result`, `gauge`, `eva`,
 `setStack`, `launch`, `releaseClamps`, `dropRest`, `letGo`, `pullChute`, `startEva`, `evaAct`,
-`toOrbit`, `slots` (the rocket's part boundaries on screen), `setInput` and `simulate(seconds)`; `__ooga.flight` is the flight and `__ooga.site` the
+`toOrbit`, `slots` (the rocket's part boundaries on screen), `rock` (the space rock's place in the pod's frame and its reach), `setInput` and `simulate(seconds)`; `__ooga.flight` is the flight and `__ooga.site` the
 launch site. The loading curtain shows one saying from `SAYINGS` in `director.js` per load.
 
 In the drop: Enter flies, Space jumps at the mark (held, it hurries the climb and jumps when

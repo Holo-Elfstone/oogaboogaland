@@ -1,4 +1,3 @@
-// Ooga Drop HUD: the launch board, the flight strip, centre calls and the results board
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -111,7 +110,6 @@
       lastSpeed = n;
       el.speed.firstChild.data = String(n);
     };
-    // The chute slot reads pack, then the open canopy, then flaring
     const setChute = (state) => {
       if (state === lastChute) return;
       lastChute = state;

@@ -1,6 +1,5 @@
-// Regenerates src/js/jumbotron-data.js from an oogatron stats snapshot.
-// Usage: node scripts/jumbotron-data.mjs <path-or-url-to-stats.json>
-// The page stays network-free: this runs at build/refresh time only.
+// Regenerates src/js/jumbotron-data.js: node scripts/jumbotron-data.mjs <path-or-url-to-stats.json>.
+// Build/refresh time only - the page stays network-free.
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";

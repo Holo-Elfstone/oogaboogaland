@@ -1,4 +1,3 @@
-// The inner fruit shell and stone platform each receive a wall-style cue.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {}, { mat4 } = BL.math;
@@ -6,8 +5,8 @@
   const create = ({ pile, altar, platform = false, cameraClear = null, cameraBoundsState = null, occlusionVersion = null }) => {
     const partialOcclusion = !platform && !!cameraClear;
     const owner = platform ? altar.node : pile.core, roots = platform ? [owner] : [owner, pile.shell], ordinary = [platform ? altar.slab : pile.core];
-    // Keep decorative fruit under the mound owner, but only register its
-    // continuous shell. The platform has independent visibility and fading.
+    // Keep decorative fruit under the mound owner but register only its continuous shell.
+    // The platform has independent visibility and fading.
     if (!platform) for (const slot of pile.slots) roots.push(slot.node);
     const includes = (node) => node === ordinary[0];
     const geometryCache = new Map(), ordinaryWorld = new Float64Array(ordinary.length * 16), ordinaryVisible = new Uint8Array(ordinary.length);
@@ -64,8 +63,8 @@
       return visible(owner);
     };
     const distance = (x, y, z) => live ? Math.hypot(Math.max(0, bounds[0] - x, x - bounds[3]), Math.max(0, bounds[1] - y, y - bounds[4]), Math.max(0, bounds[2] - z, z - bounds[5])) : Infinity;
-    // Provider hooks supplement ordinary registered meshes. There are no
-    // additional instanced surfaces: only the registered shell counts.
+    // Provider hooks supplement ordinary registered meshes.
+    // There are no additional instanced surfaces: only the registered shell counts.
     const perceived = () => false, cameraVisibility = () => 0, boxClear = () => true, inView = () => false;
     const rasterEdge = (ax, ay, ad, bx, by, bd) => {
       const dx = bx - ax, dy = by - ay;
@@ -139,16 +138,14 @@
         const reverse = (screen[2] - screen[0]) * (screen[5] - screen[1]) - (screen[3] - screen[1]) * (screen[4] - screen[0]) < 0;
         maskCtx.moveTo(screen[0], screen[1]);
         for (let a = 1; a < count; a++) { const j = (reverse ? count - a : a) * 2; maskCtx.lineTo(screen[j], screen[j + 1]); }
-        // Explicitly return to the first vertex. Closing thousands of tiny
-        // subpaths makes Canvas repeatedly revisit the growing path; fill
-        // already closes each polygon and this also seals its seam stroke.
+        // Return to the first vertex explicitly; closing tiny subpaths makes Canvas revisit the growing path.
+        // fill already closes each polygon, and this also seals the seam stroke.
         maskCtx.lineTo(screen[0], screen[1]); state.faces++;
       }
       if (!depthOnly) { maskCtx.fill(); maskCtx.stroke(); }
     };
-    // Resolve mixed visibility only on the shell's nearest surface. Whole
-    // patches use exact volume certificates; only uncertain boundary pixels
-    // need rays. Decorative bananas never participate in this bounded pass.
+    // Resolve mixed visibility only on the shell's nearest surface; whole patches use exact volume certificates.
+    // Only uncertain boundary pixels need rays; decorative bananas never join this bounded pass.
     const classifyTile = (x0, y0, x1, y1) => {
       let minInverse = Infinity, maxInverse = 0;
       for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
@@ -168,8 +165,7 @@
           minX = Math.min(minX, wx); minY = Math.min(minY, wy); minZ = Math.min(minZ, wz);
           maxX = Math.max(maxX, wx); maxY = Math.max(maxY, wy); maxZ = Math.max(maxZ, wz);
         }
-        // Certify empty ray bounds as well as solid prop coverage. Most of
-        // a large exposed shell is clear; only mixed boundaries need pixels.
+        // Certify empty ray bounds as well as solid prop coverage; only mixed boundaries need pixels.
         // Exhaustive rock-plane searches remain a whole-shell operation.
         classification = cameraBoundsState(minX, minY, minZ, maxX, maxY, maxZ, true);
       }
@@ -202,13 +198,13 @@
         depthWidth = Math.max(1, Math.ceil(width * scale)); depthHeight = Math.max(1, Math.ceil(height * scale));
         depthScaleX = depthWidth / width; depthScaleY = depthHeight / height; depth.fill(0); expanded.fill(0);
         depthMinX = depthWidth; depthMinY = depthHeight; depthMaxX = depthMaxY = -1;
-        // A changed view needs both outputs from these identical projected
-        // triangles. Emit the silhouette here instead of walking them twice.
+        // A changed view needs both outputs from these identical projected triangles. Emit the silhouette here
+        // instead of walking them twice.
         for (let i = 0; i < ordinary.length; i++) if (ordinaryVisible[i]) mesh(geometryOf(ordinary[i].geometry), ordinary[i].world, !withMask, true);
-        // Carry nearest surface depth into the existing outer rim. This does
-        // not grow the silhouette or draw a new rim along an occluder edge.
+        // Carry nearest surface depth into the existing outer rim.
+        // This does not grow the silhouette or draw a new rim along an occluder edge.
         const pad = Math.max(2, Math.ceil(5 * Math.max(depthScaleX, depthScaleY)));
-        // Outside the rasterised bounds every neighbourhood is empty and stays 0
+        // Outside the rasterised bounds every neighbourhood is empty and stays 0.
         for (let y = Math.max(0, depthMinY - pad); y <= Math.min(depthHeight - 1, depthMaxY + pad); y++) for (let x = Math.max(0, depthMinX - pad); x <= Math.min(depthWidth - 1, depthMaxX + pad); x++) {
           const at = y * depthWidth + x;
           let d = depth[at];

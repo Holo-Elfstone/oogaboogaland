@@ -1,11 +1,10 @@
-// Ooga Orbit parts: the catalog, the stacking rules, the stages a stack splits into and the numbers the builder shows
+// Ooga Orbit parts: catalog, stacking rules, the stages a stack splits into, and the builder's numbers.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const G0 = 0.6;
-  // Heights and radii in world units; masses in tons, fuel counted apart in `fuel`; thrust as force, `ve` the exhaust speed;
-  // `stability` is what fins add against the stack's own wish to flip; `ablate` is a shield's burn reserve; `heatTol`
-  // how much heat a pod's hull takes; prices in bananas, for show: Ooga NASA has no budget
+  // Units: h/r world units, dry mass in tons, fuel counted apart in `fuel`, thrust a force, `ve` exhaust speed.
+  // `stability` is fins against the stack's wish to flip, `ablate` a shield's burn reserve, `heatTol` pod heat.
   const PARTS = [
     { id: "stickpod", kind: "pod", name: "Stick Cone Pod", note: "Sticks lashed in a cone. One Ooga, one leaf chute.", h: 1.9, r: 0.95, dry: 1.1, heatTol: 1, price: 120 },
     { id: "gourdpod", kind: "pod", name: "Gourd Pod", note: "Light and round. Runs hot.", h: 1.6, r: 0.85, dry: 0.7, heatTol: 0.62, price: 90 },
@@ -28,21 +27,21 @@
   const KINDS = ["pod", "shield", "engine", "tank", "sep", "fins"];
   const KIND_NAMES = { pod: "Pods", shield: "Heat shields", engine: "Engines", tank: "Fuel", sep: "Separators", fins: "Fins" };
   const MAX_PARTS = 16;
-  // A stack on its own wants to flip in the air; fins pay that back
+  // FLIP 0.6: the stack's own wish to flip in the air, which fin stability pays back.
   const FLIP = 0.6;
-  // What a climb to the Sky Top costs in speed, for the builder's gauge
+  // TOP_DV 26: the speed a climb to the Sky Top costs, for the builder's gauge.
   const TOP_DV = 26;
-  // Bottom to top; the first is ready to fly
+  // Preset stacks are listed bottom to top; the first preset is ready to fly.
   const PRESETS = [
     { name: "Ooga One", stack: ["jug", "feathers", "bigbarrel", "vine", "pot", "barrel", "vine", "tusk", "coconut", "vine", "mudshield", "stickpod"] },
     { name: "Firecracker", stack: ["bamboo", "leaffins", "vine", "bamboo", "vine", "tusk", "bigbarrel", "vine", "leafshield", "stickpod"] },
     { name: "Hopper", stack: ["pot", "feathers", "barrel", "leafshield", "gourdpod"] }
   ];
   const partOf = (id) => BY_ID.get(id);
-  // Only known ids, no more than fit, from anything storage hands back
+  // Sanitize anything storage hands back: known ids only, capped at MAX_PARTS.
   const sanitize = (list) => Array.isArray(list) ? list.filter((id) => typeof id === "string" && BY_ID.has(id)).slice(0, MAX_PARTS) : null;
-  // The stack cut at its separators, bottom up: each stage owns its parts, the knot on top of it and the fuel its
-  // engine can draw; a solid engine burns only its own powder
+  // Stack cut at its separators, bottom up: each stage owns its parts, the knot on it and its engine's fuel.
+  // A solid engine burns only its own powder.
   const stagesOf = (stack) => {
     const stages = [];
     let from = 0;
@@ -59,7 +58,7 @@
     }
     return stages;
   };
-  // Problems stop a launch; warnings only say what will happen
+  // Problems block a launch; warnings only say what will happen.
   const check = (stack) => {
     const problems = [], warnings = [];
     if (!stack.length) return { ok: false, problems: ["Start with an engine at the bottom."], warnings };
@@ -85,7 +84,6 @@
     }
     return { ok: problems.length === 0, problems: [...new Set(problems)], warnings };
   };
-  // Mass, speed to spend per stage, lift-off push and the banana bill
   const stats = (stack) => {
     const stages = stagesOf(stack);
     let above = 0, dv = 0;

@@ -1,4 +1,3 @@
-// Race HUD: the garage board, the in-race strip, countdown, results, pause, minimap and speed lines
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -119,7 +118,7 @@
         r.note.textContent = b ? `best ${formatTime(b.race)} · lap ${formatTime(b.lap)} · ${t.laps} laps` : `${t.laps} laps · gold under ${formatTime(t.targets.gold)}`;
       }
     };
-    // On touch layouts the minimap sits under the left readout, clear of the stick; measured when the strip shows
+    // On touch the minimap sits under the left readout, clear of the stick; mapTop is measured when the strip shows.
     let mapTop = 0;
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     const measure = () => {
@@ -207,7 +206,7 @@
       li.append(name, value);
       return li;
     };
-    // rows: this race; standings: cup points so far; next: label for the next-race button, or null
+    // rows: this race; standings: cup points so far; next: label for the next-race button, or null.
     const results = (rows, summary, { note = "", standings = null, next = null } = {}) => {
       el.podium.replaceChildren(...rows.map((r) => podiumRow(r, r.finished ? `${r.estimated ? "≈ " : ""}${formatTime(r.time)}` : "DNF")));
       el.cupNote.textContent = note;
@@ -227,7 +226,6 @@
         el.garageCup.textContent = `${cup.medal.toUpperCase()} CUP · ${cup.points} pts`;
       }
     };
-    // Minimap in the top-left, racers as dots, the visitor as a ring
     const minimap = (ctx, track, list, player, w, h) => {
       const size = Math.min(coarse ? 100 : MAP_SIZE, w * 0.28), x0 = MAP_PAD + 8, y0 = coarse ? mapTop : h - size - 30, pts = track.mapPts;
       ctx.save();
@@ -263,7 +261,6 @@
       }
       ctx.restore();
     };
-    // Streaks from the edges when the racer is boosting or flat out
     const speedLines = (ctx, k, w, h, elapsed) => {
       if (k <= 0) return;
       ctx.save();

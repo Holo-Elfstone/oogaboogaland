@@ -21,7 +21,6 @@
   --ink: #2a1a0c;
   --ink-muted: rgba(42, 26, 12, 0.72);
   --ink-faint: rgba(42, 26, 12, 0.5);
-  /* Planks with a dark seam between them, grain drawn across, a nail in each corner */
   --planks: radial-gradient(circle at 9px 9px, var(--nail) 2.5px, transparent 3px), radial-gradient(circle at calc(100% - 9px) 9px, var(--nail) 2.5px, transparent 3px), radial-gradient(circle at 9px calc(100% - 9px), var(--nail) 2.5px, transparent 3px), radial-gradient(circle at calc(100% - 9px) calc(100% - 9px), var(--nail) 2.5px, transparent 3px), repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.05) 0 2px, transparent 2px 11px), repeating-linear-gradient(180deg, var(--plank) 0 34px, var(--wood-edge) 34px 36px, var(--wood) 36px 70px, var(--wood-edge) 70px 72px);
   --tablet: linear-gradient(160deg, var(--stone-lt), var(--stone) 55%, var(--stone-dk));
   --tablet-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -2px 0 rgba(0, 0, 0, 0.35), 0 2px 0 rgba(0, 0, 0, 0.4);
@@ -57,7 +56,6 @@ select {
   color: inherit;
 }
 
-/* Cave-sign lettering: the SVG takes the element's font size as its cap height */
 .sign {
   display: inline-block;
   height: 1em;
@@ -129,7 +127,6 @@ select {
   background: radial-gradient(ellipse at 50% 45%, transparent 58%, rgba(0, 0, 0, 0.5) 100%);
 }
 
-/* Leaf curtain over the stage until the first frame */
 .curtain {
   position: absolute;
   inset: 0;
@@ -141,7 +138,6 @@ select {
   pointer-events: none;
 }
 
-/* Both halves clip one image along a shared seam */
 .curtain-half {
   position: absolute;
   top: 0;
@@ -149,6 +145,7 @@ select {
   width: 100%;
   height: 100%;
   transition: transform 0.9s cubic-bezier(0.7, 0, 0.3, 1);
+  will-change: transform;
 }
 
 .curtain[data-open="true"] .curtain-half.left {
@@ -180,7 +177,6 @@ select {
   text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55);
 }
 
-/* The saying sits on its own stone strip so it reads against the planks */
 #curtain-saying {
   padding: 5px 11px;
   border: 2px solid var(--stone-dk);
@@ -457,12 +453,10 @@ select {
   transition: transform 0.28s ease;
 }
 
-/* Collapsed, leaving only the pull tab on screen */
 .sheet[data-open="false"] {
   transform: translateX(calc(100% + 16px + var(--safe-right)));
 }
 
-/* A wooden pull tab hanging off the panel's edge */
 .sheet-toggle {
   position: absolute;
   top: 61px;
@@ -478,7 +472,6 @@ select {
   box-shadow: 0 4px 0 rgba(0, 0, 0, 0.35);
 }
 
-/* Anchor the banana pull tab at the top of the panel. */
 .sheet-toggle-bananas {
   top: -3px;
   margin-top: 0;
@@ -598,7 +591,6 @@ select {
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4);
 }
 
-/* Feed dialog, opened from the roster panel */
 .feed-open {
   display: block;
   width: 100%;
@@ -615,7 +607,6 @@ select {
   transition: background-color 0.15s ease;
 }
 
-/* Heavier pixels for the call to action */
 .feed-open .sign path {
   stroke: currentColor;
   stroke-width: 0.3;
@@ -698,7 +689,6 @@ select {
   text-transform: uppercase;
 }
 
-/* The roster is carved into one stone tablet */
 .roster {
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) max-content max-content;
@@ -1485,8 +1475,6 @@ select {
   .equipment-hud { left: calc(8px + var(--safe-left)); }
   .weapon-equipment-row { gap: 4px; }
 }
-
-/* Flight sticks for coarse pointers */
 .joysticks {
   display: none;
 }
@@ -1545,7 +1533,6 @@ select {
   transition: none;
 }
 
-/* The caveman's action button on a phone */
 .act {
   position: absolute;
   left: 50%;
@@ -1573,7 +1560,6 @@ select {
   outline: none;
 }
 
-/* ---------- Ooga Rally ---------- */
 .race {
   position: absolute;
   inset: 0;
@@ -1584,7 +1570,6 @@ select {
   pointer-events: auto;
 }
 
-/* The garage: a plank board with three stone columns */
 .garage {
   position: absolute;
   left: 50%;
@@ -1615,7 +1600,6 @@ select {
   margin: 6px 0 0;
 }
 
-/* Help lines on the planks: bright and a size up, so they read at arm's length */
 .garage .help {
   color: var(--paper);
   font-size: 12px;
@@ -1684,7 +1668,6 @@ select {
   outline: none;
 }
 
-/* The picked row is a golden plank card, the way a phone game marks a choice */
 .garage-list button[aria-pressed="true"] {
   background: linear-gradient(#f0b05a, var(--accent));
   color: var(--ink);
@@ -1815,7 +1798,6 @@ select {
   padding: 4px 0;
 }
 
-/* Help lines on the planks sit on their own stone tablet: the results summaries and the feed dialog's note */
 .race-results .help,
 .modal .help {
   margin: 12px 0 0;
@@ -1844,7 +1826,6 @@ select {
   font-size: 18px;
 }
 
-/* In-race readouts in the top corners, under the topbar */
 .race-strip {
   position: absolute;
   inset: 0;
@@ -1979,7 +1960,6 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
-/* Countdown and lap calls in the middle of the screen */
 .race-center {
   position: absolute;
   left: 50%;
@@ -2072,8 +2052,6 @@ select {
   grid-template-columns: 1fr 1fr;
 }
 
-/* ---------- Ooga Drop ---------- */
-/* The board has two columns; its rows are plain label and value pairs, no place numbers */
 .drop-columns {
   grid-template-columns: 1fr 1fr;
 }
@@ -2108,8 +2086,6 @@ select {
   font-weight: 600;
 }
 
-/* ---------- Ooga Orbit ---------- */
-/* The flight log's total, big over the rows */
 .orbit-final {
   display: grid;
   justify-items: center;
@@ -2175,7 +2151,6 @@ select {
   }
 }
 
-/* The builder: parts down the left, the rocket's list and numbers down the right, the pad between them */
 .orbit-panel {
   top: calc(74px + var(--safe-top));
   bottom: calc(16px + var(--safe-bottom));
@@ -2208,7 +2183,6 @@ select {
   margin: 6px 0 0;
 }
 
-/* Part kinds as plank tabs; the one showing is a golden card */
 .orbit-tabs {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2247,7 +2221,6 @@ select {
   box-shadow: var(--tablet-shadow);
 }
 
-/* Part tiles: the rendered part over its name, its key number and a banana price */
 .orbit-tiles {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2354,7 +2327,6 @@ select {
   color: #f5c542;
 }
 
-/* Readiness: speed to spend against orbit (mark at the middle), lift-off push against 1× (mark at a third) */
 .orbit-ready {
   display: grid;
   gap: 8px;
@@ -2449,7 +2421,6 @@ select {
   color: var(--warn);
 }
 
-/* The stack, top down, each stage under its coloured label and a thin divider */
 .orbit-stack {
   flex: 1;
   min-height: 60px;
@@ -2546,7 +2517,6 @@ select {
   font-size: 11px;
 }
 
-/* Ready rockets: golden plank cards with a glow; the one on the pad is ticked and framed brighter */
 .orbit-ready-rockets h4 {
   display: flex;
   align-items: baseline;
@@ -2657,8 +2627,6 @@ select {
   margin: 0;
 }
 
-/* Drag and drop: tiles and rows lift under the pointer; a ghost of the part follows it, a glowing line marks where it
-   goes, and a row dragged off turns the ghost red for removal */
 .orbit-tile,
 .orbit-stack li[data-index] {
   touch-action: pan-y;
@@ -2735,7 +2703,6 @@ body.orbit-dragging #tooltip {
   cursor: not-allowed;
 }
 
-/* In flight two plank cards: the mission down the left, the flight's instruments down the right */
 .orbit-card-panel {
   position: absolute;
   top: calc(74px + var(--safe-top));
@@ -2783,7 +2750,6 @@ body.orbit-dragging #tooltip {
   opacity: 0.7;
 }
 
-/* The checklist: the current step lit with its live detail, done ticked, missed struck */
 .orbit-mission {
   margin: 0;
   padding: 6px 10px;
@@ -2851,8 +2817,6 @@ body.orbit-dragging #tooltip {
   text-decoration: line-through;
 }
 
-/* The flight card: height big, speed and stage beside it, the meters, and the height meter up the right edge with
-   marks at the pad and where the air ends (their heights over the top's 500 are fixed here) */
 .orbit-flight {
   right: calc(70px + var(--safe-right));
   width: 240px;
@@ -2993,7 +2957,6 @@ body.orbit-dragging #tooltip {
   bottom: 8.5%;
 }
 
-/* The notch riding at the current height */
 .orbit-alt-now {
   position: absolute;
   left: -5px;
@@ -3022,7 +2985,6 @@ body.orbit-dragging #tooltip {
   background: linear-gradient(90deg, #d8892b, #ffb13b);
 }
 
-/* The flight's callout: a glassy panel low in the view with an accent edge, keys drawn as key caps, easing in */
 #orbit-notice {
   top: auto;
   bottom: calc(12% + var(--safe-bottom));
@@ -3076,7 +3038,6 @@ body.orbit-dragging #tooltip {
   }
 }
 
-/* The clamp gauge: the needle fills from the left; let go in the green, best in the gold */
 .orbit-gauge {
   position: absolute;
   left: 50%;
@@ -3248,12 +3209,10 @@ body.orbit-dragging #tooltip {
     transition: transform 0.28s ease;
   }
 
-  /* Collapsed, the tab row peeks over the bottom edge under the pull tab */
   .sheet[data-open="false"] {
     transform: translateY(calc(100% - 48px - var(--safe-bottom)));
   }
 
-  /* The open sheet takes the sticks with it */
   .sheet[data-open="true"]~.joysticks,
   .sheet[data-open="true"]~.bottom-hud>.act {
     display: none;
@@ -3485,7 +3444,6 @@ body.orbit-dragging #tooltip {
     top: auto;
   }
 
-  /* Keep the stick and button clear of the docked sheet */
   .joystick {
     bottom: calc(70px + var(--safe-bottom));
     width: 96px;
@@ -3546,7 +3504,6 @@ body.orbit-dragging #tooltip {
   }
 }
 
-/* Ooga Orbit on phones: the two builder panels share the bottom, the pad above them */
 @media (max-width: 720px) {
   .orbit-panel {
     top: auto;
@@ -3598,7 +3555,6 @@ body.orbit-dragging #tooltip {
     font-size: 8.5px;
   }
 
-  /* The rocket panel scrolls on a phone with Launch pinned to its foot */
   .orbit-rocket {
     overflow: auto;
     gap: 6px;
@@ -3657,8 +3613,6 @@ body.orbit-dragging #tooltip {
     padding: 8px 12px;
   }
 
-  /* Phones: both cards shrink under the topbar, the mission shows only the step in hand and the flight
-     card only the height, fuel and heat */
   .orbit-card-panel {
     top: calc(100px + var(--safe-top));
     padding: 5px 6px 6px;

@@ -11,9 +11,9 @@
   const TIER_RANK = { legendary: 0, epic: 1, rare: 2, common: 3 };
   const BANANA_COUNT = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
   const MESSAGE_FADE_MS = 300;
-  // Headings in the cave-sign lettering: one path of pixels per element, scaled by its CSS height
+  // Sign headings: one pixel path per element, scaled by that element's CSS height.
   const SIGN_NS = "http://www.w3.org/2000/svg";
-  // Markup may wrap a sign across lines; the lettering wants one run of words
+  // Collapse whitespace: markup may wrap a sign across lines but the lettering needs one run of words.
   const signText = (raw) => raw.replace(/\s+/g, " ").trim();
   const signLettering = (raw) => {
     const { SIGN_GLYPHS } = BL.hubModels;
@@ -50,10 +50,10 @@
     el.setAttribute("aria-label", text);
     el.replaceChildren(signLettering(text));
   }
-  // The panel shows itself once on load, then folds away unless the visitor is using it
+  // Panel shows itself once on load (INTRO_MS), then folds away unless the visitor is using it.
   const INTRO_MS = 5000;
   let introTimer = 0;
-  // Swag icons drawn once into an offscreen canvas
+  // Icons are rasterized once into an offscreen canvas.
   const ICON_PX = 48;
   const renderIcon = (item) => {
     const canvas = document.createElement("canvas");
@@ -194,7 +194,7 @@
       }
       placeRosterRow(row);
     };
-    // Mutate the text nodes so updates make no DOM
+    // Seed empty text nodes so later updates only mutate text, never the DOM.
     for (const node of [el.meterCount, el.meterForecast, el.worldBananaCount]) if (!node.firstChild) node.append("");
     let shownBananas = -1, shownWidth = "", shownBand = "", shownForecast = null;
     const setMeter = (level, capacity, forecastText) => {
@@ -403,7 +403,6 @@
     const onAction = (fn) => {
       actionHandler = fn;
     };
-    // Open and close the feed dialog
     const openFeed = () => {
       if (!el.feed.open) el.feed.showModal();
     };
@@ -538,7 +537,7 @@
         else selectTab(t.dataset.tab);
       });
     }
-    // Each pull tab opens straight onto its panel, and folds the sheet when that panel is already showing
+    // A pull tab opens its own panel, and folds the sheet when that panel is already showing.
     const pull = (name) => {
       window.clearTimeout(introTimer);
       const showing = el.sheet.dataset.open === "true" && el.tabs.some((t) => t.dataset.tab === name && t.getAttribute("aria-selected") === "true");
@@ -688,7 +687,7 @@
         el.inventory.append(li);
       }
     };
-    // Remove the rows and timers this instance added
+    // dispose removes only the rows and timers this instance added.
     const dispose = () => {
       window.clearTimeout(toastTimer);
       window.clearTimeout(toastHideTimer);

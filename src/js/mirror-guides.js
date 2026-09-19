@@ -1,11 +1,11 @@
-// The mirror entrance shares ordinary object visibility, with one continuous
-// silhouette and a small, plane-bound hint of the code behind the reflection.
+// The mirror entrance shares ordinary object visibility: one continuous silhouette plus a small plane-bound
+// hint of the code behind the reflection.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {}, { mat4, mulberry32, fnv1a } = BL.math;
   const UP = { x: 0, y: 1, z: 0 }, SIZE = 1024;
-  // Match the native cave and world surface streams, in world units. Quality
-  // removes the same column ranks; it never changes rune size or fall speed.
+  // Matches the native cave and world surface streams, in world units; quality removes the same column ranks,
+  // never rune size or fall speed.
   const PITCH = 0.12, GAP = 0.13, GLYPH_HZ = 20, SPEED_MIN = 0.56, SPEED_RANGE = 0.64;
   const TRAIN_MIN = 7, TRAIN_RANGE = 6, TRAIN_GAP_MIN = 2, TRAIN_GAP_RANGE = 5;
   const IVORY = [217, 201, 169], DOORWAY_INSET = 0.015, DOORWAY_OPACITY = 0.18;
@@ -42,8 +42,8 @@
       for (const child of node.children) register(child, interior);
     };
     register(owner);
-    // Reuse the actual cave rune pixels, flattened onto the reflective plane.
-    // This finite atlas and its streams are laid out once, never per frame.
+    // Reuses the actual cave rune pixels flattened onto the reflective plane; this finite atlas and its streams
+    // are laid out once, never per frame.
     for (let variant = 0; variant < 8; variant++) {
       const g = BL.hubModels.matrixGlyph(variant), cells = [], v = g.verts;
       const front = BL.scene.boundsOf(g).max[2];
@@ -58,9 +58,8 @@
         if (flat && minX < maxX && minY < maxY) cells.push(minX, minY, maxX, maxY);
       }
       glyphs.push(new Float64Array(cells));
-      // A cave-side doorway hint uses the same pixels as the overlay, but
-      // native depth-tested faces let nearby walls and Oogas cover it. Flat
-      // pixels avoid carrying the unseen sides of hundreds of tiny voxels.
+      // The cave-side doorway hint uses the overlay's pixels but native depth-tested faces so walls and Oogas cover
+      // it; flat pixels avoid the unseen sides of hundreds of tiny voxels.
       const geometry = { verts: [], faces: [], lines: [], matrixGlyph: true, matrixGlyphOpacity: DOORWAY_OPACITY, castShadow: false };
       for (let n = 0; n < cells.length; n += 4) {
         const at = geometry.verts.length / 3, x0 = cells[n], y0 = cells[n + 1], x1 = cells[n + 2], y1 = cells[n + 3];
@@ -80,8 +79,8 @@
       streams[at + 6] = seed; streams[at + 7] = (column % 8 + 8) % 8;
     }
     const shown = (entry) => {
-      // Outside, the reflective face closes the entrance silhouette. Inside,
-      // leave that plane open so it cannot swallow the button's own contour.
+      // Outside, the reflective face closes the entrance silhouette; inside, leave that plane open so it cannot
+      // swallow the button's own contour.
       if ((!inside && entry.interior) || (inside && entry.node === panel) || !entry.node.parent) return false;
       for (let node = entry.node; node; node = node.parent) if (!node.visible || node.sightHidden) return false;
       return true;
@@ -108,12 +107,11 @@
         screen[n * 2] = x; screen[n * 2 + 1] = y;
         outside &= (x < -4 ? 1 : x > width + 4 ? 2 : 0) | (y < -4 ? 4 : y > height + 4 ? 8 : 0);
       }
-      // Near the mirror most rune pixels lie beyond the viewport. Keep the
-      // four-pixel rim/contrast margin, and reject only polygons wholly beyond
-      // one edge; large faces crossing the view still form a continuous mask.
+      // Near the mirror most rune pixels lie beyond the viewport: keep the four-pixel rim/contrast margin and
+      // reject only polygons wholly beyond one edge, so large crossing faces still form a continuous mask.
       if (outside) return 2;
-      // All faces contribute the same winding to the union mask, including
-      // rear-facing parts, so overlapping triangles cannot cancel each other.
+      // All faces contribute the same winding to the union mask, including rear-facing parts, so overlapping
+      // triangles cannot cancel each other.
       const reverse = (screen[2] - screen[0]) * (screen[5] - screen[1]) - (screen[3] - screen[1]) * (screen[4] - screen[0]) < 0;
       target.moveTo(screen[0], screen[1]);
       for (let n = 1; n < corners; n++) { const at = (reverse ? corners - n : n) * 2; target.lineTo(screen[at], screen[at + 1]); }
@@ -157,8 +155,8 @@
         }
         let count = 3;
         if (heights) {
-          // Keep overhead gate sections out of the custom entrance silhouette
-          // using the same world-space lintel/floor planes as both renderers.
+          // Keep overhead gate sections out of the entrance silhouette using the same world-space lintel/floor planes
+          // as both renderers.
           count = clipHeight(heightPolygon, heightClipped, count, geometry.clipMinY ?? -Infinity, false);
           count = clipHeight(heightClipped, heightPolygon, count, geometry.clipMaxY ?? Infinity, true);
           for (let n = 0; n < count; n++) for (let axis = 0; axis < 3; axis++) polygon[n * 3 + axis] = heightPolygon[n * 4 + axis];
@@ -166,8 +164,8 @@
         const projected = count >= 3 ? projectPolygon(count, maskCtx) : 0;
         if (!projected) continue;
         if (projected === 1) { state.faces++; if (entry.interior) state.standFaces++; }
-        // Preserve the original stroke batches when offscreen triangles are
-        // omitted; changing which visible edges share a fill alters coverage.
+        // Preserve the original stroke batches when offscreen triangles are omitted; changing which visible edges
+        // share a fill alters coverage.
         if (++batch === 16) { maskCtx.fill(); maskCtx.stroke(); maskCtx.beginPath(); batch = 0; }
       }
       if (batch) { maskCtx.fill(); maskCtx.stroke(); }
@@ -217,8 +215,8 @@
         const x = streams[at], travel = time * streams[at + 2] + streams[at + 1], train = streams[at + 3], sequence = train + streams[at + 4];
         const first = Math.ceil((flowMin + travel) / GAP), last = Math.floor((flowMax + travel) / GAP), seed = streams[at + 6];
         const mutation = Math.floor(time * GLYPH_HZ + (seed & 15) / 16);
-        // Repeated trains share each tail position's opacity and one path.
-        // Native pixel quads stay exactly projected, even at grazing angles.
+        // Repeated trains share each tail position's opacity and one path; native pixel quads stay exactly projected
+        // even at grazing angles.
         for (let tail = 0; tail < train; tail++) {
           const start = first + ((tail - first) % sequence + sequence) % sequence;
           if (start > last) continue;
@@ -299,8 +297,8 @@
     const updateDoorway = (camera, enabled, elapsed, density = 1) => {
       if (!live) return;
       const w = panel.world, eye = camera.position;
-      // The selected Ooga owns whether this hint is needed; the real camera
-      // side owns which face can show it. The exterior reflection is untouched.
+      // The selected Ooga owns whether this hint is needed; the real camera side owns which face can show it. The
+      // exterior reflection is untouched.
       const shown = !!enabled && panel.visible && !(panel.mirrorDamage && panel.mirrorDamage.broken)
         && (eye.x - w[12]) * w[8] + (eye.y - w[13]) * w[9] + (eye.z - w[14]) * w[10] < -1e-5;
       state.doorway = shown; state.doorwayGlyphs = 0;
@@ -345,8 +343,8 @@
       mask.width = mask.height = rim.width = rim.height = dark.width = dark.height = light.width = light.height = 1;
       state.width = state.height = state.glyphs = state.glyphCells = state.activeStreams = state.faces = state.standFaces = 0;
     };
-    // The provider contributes no extra geometry to these queries. The
-    // registry still evaluates every real node for proximity and occlusion.
+    // The provider contributes no extra geometry to these queries; the registry still evaluates every real node
+    // for proximity and occlusion.
     return { owner, roots, active: () => live, distance: () => Infinity, perceived: () => false, cameraVisibility: () => 0, inView: () => false,
       clear: () => true, boxClear: () => true, draw, update, updateDoorway, doorwayNodes, dispose, state, get version() { return version; } };
   };

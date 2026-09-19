@@ -1,4 +1,4 @@
-// Ooga Rally: the racing scene behind the 9 o'clock cave
+// Ooga Rally: the racing scene behind the 9 o'clock cave.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -13,9 +13,9 @@
   const CHASE = { dist: 6.4, up: 2.1, ahead: 2.2, lookUp: 1.1, distMin: 3.5, distMax: 11, yawRate: 7, eyeRate: 14, targetRate: 18 };
   const FOV_BASE = 50 * Math.PI / 180, FOV_FAST = 64 * Math.PI / 180;
   const LIGHT_CAPACITY = 10;
-  // The Cup: every track in order, points by finishing place
+  // CUP_POINTS: every track in order, points by finishing place.
   const CUP_POINTS = [10, 8, 6, 5, 4, 3, 2];
-  // Weather: about one race in six runs wet; drops live in a box that follows the camera
+  // RAIN_CHANCE 18 is about one race in six wet; drops live in a box that follows the camera.
   const RAIN_CHANCE = 18, RAIN_CAP = 420, SNOW_CAP = 320, WEATHER_RANGE = 17, WEATHER_HEIGHT = 15;
   const DEBUG = new URLSearchParams(location.search).has("debug");
   const rainParam = DEBUG ? new URLSearchParams(location.search).get("rain") : null;
@@ -42,10 +42,10 @@
     performance.clearMarks(`ooga:${name}`);
     performance.mark(`ooga:${name}`);
   };
-  // The garage remembers the last pick for the page's life
+  // selection persists for the page's life: the garage remembers the last pick across visits.
   const selection = { racer: contributors.activeRoster[0]?.name || null, mount: "kart", track: "bay" };
 
-  // One visit's state, made in enter and dropped in leave
+  // These are one visit's state: created in enter, dropped in leave.
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, hud, rhud, hooks, input, fx, controls, track, racers, items, audio, weather;
   let phase = "garage", countdown = 0, accumulator = 0, sceneTime = 0, finishedAt = 0;
   let meterTimer = 0, stateTimer = 0, hintTimer = 0;
@@ -60,7 +60,6 @@
     }
   };
 
-  // ---------- world ----------
   const buildTrack = (id) => {
     if (track) {
       removeChild(root, track.root);
@@ -95,7 +94,7 @@
     }
     addChild(root, node);
   };
-  // Drops fall through a box ahead of the camera and wrap to the top with a fresh offset
+  // Drops fall through a box ahead of the camera and wrap to the top with a fresh offset.
   const updateWeather = (dt) => {
     if (!weather) return;
     const w = weather, data = w.node.instanceData;
@@ -124,7 +123,6 @@
     return setVec(out, x / track.grid.length, y / track.grid.length, z / track.grid.length);
   };
   const GRID_CENTER = { x: 0, y: 0, z: 0 };
-  // The garage view stands beside the grid, looking across it at the gantry; a drag swings it round the grid
   const garageView = () => {
     gridCenter(GRID_CENTER);
     const g = track.grid[0], i = g.index;
@@ -196,7 +194,6 @@
     buildTrack(selection.track);
     startRace();
   };
-  // Next track: the following round of the cup, or the following track after a podium
   const nextRace = () => {
     if (!racers.player) return;
     if (cup.active) {
@@ -216,7 +213,6 @@
     rows.sort((a, b) => b.points - a.points);
     return rows;
   };
-  // Podium rows: real times for finishers, projected ones for the rest, refreshed as they cross the line
   const resultRows = () => racers.order.map((r) => {
     let time = r.finishTime * 1000, estimated = false;
     if (!r.finished) {
@@ -278,7 +274,6 @@
     }
   };
 
-  // ---------- camera ----------
   const updateCamera = (dt) => {
     const p = racers.player;
     if (!p) return;
@@ -317,7 +312,7 @@
     const fast = clamp((Math.abs(p.speed) - m.top * 0.55) / (m.top * 0.6), 0, 1) + (p.boost > 0 ? 0.35 : 0);
     camera.fov = damp(camera.fov, lerp(FOV_BASE, FOV_FAST, Math.min(1, fast)), 6, dt);
   };
-  // Shadows follow the player and the seven nearest torches become point lights
+  // Shadows follow the player; the seven nearest torches become point lights.
   const updateLighting = () => {
     const opts = track.renderOpts, p = racers.player;
     const cx = p ? p.x : camera.target.x, cz = p ? p.z : camera.target.z, cy = p ? p.y : camera.target.y;
@@ -351,7 +346,6 @@
     opts.lightCount = count;
   };
 
-  // ---------- input ----------
   const readPlayerInput = () => {
     const p = racers.player;
     if (!p || phase !== "racing") return;
@@ -367,7 +361,6 @@
     items.use(p);
   };
 
-  // ---------- reactions ----------
   const wireEvents = () => {
     racers.events.onDrift = (r, tier) => {
       if (tier === 0) peelOut(r, 0.08, 0.4, 3);
@@ -468,11 +461,11 @@
     };
   };
 
-  // The engine follows the visitor's racer; everything goes quiet outside a race
+  // Engine audio follows the visitor's racer; everything goes quiet outside a race.
   const updateAudio = (dt) => {
     const p = racers.player, a = audio.state;
     if (phase !== "racing" && phase !== "countdown" && phase !== "finished") {
-      // setTargetAtTime is idempotent at target, so schedule the fade once
+      // setTargetAtTime is idempotent at target, so schedule the quiet fade once (quieted guard).
       if (!quieted) {
         audio.quiet();
         quieted = true;
@@ -483,7 +476,7 @@
     a.speed = p.speed;
     a.top = p.mount.top;
     a.mount = p.mount.id;
-    // Before the lights a held throttle revs the engine in place, and everyone winds up for the last count
+    // During countdown a held throttle revs in place, and everyone winds up for the last count (<1.4 s).
     a.throttle = phase === "countdown" ? (countdown < 1.4 || controls.read().y > 0.5 ? 1 : 0) : p.throttle;
     a.drifting = p.drift.active && !p.airborne ? 1 : 0;
     a.boosting = p.boost > 0 ? 1 : 0;
@@ -492,7 +485,6 @@
     a.crowd = contributors.solo ? 0 : 1 - clamp(Math.hypot(p.x - g.x, p.z - g.z) / 70, 0, 1);
     a.rain = track.precipitation === "rain" ? 1 : 0;
     if (phase === "racing") {
-      // Hard cornering at speed chirps the tyres now and then, and crew karts do the same when they pass close by
       if (Math.abs(p.steer) > 0.6 && Math.abs(p.speed) > p.mount.top * 0.65 && !p.drift.active && !p.airborne && sceneTime - screechAt > 1.6) peelOut(p, 0.04 + Math.abs(p.steer) * 0.03, 0.3, 2);
       if (sceneTime - crewScreechAt > 2.2) {
         for (const r of racers.racers) {
@@ -507,7 +499,6 @@
     }
     audio.update(dt);
   };
-  // A tyre puff behind a racer near the camera, with a screech when it is the visitor
   let screechAt = -9, crewScreechAt = -9, quieted = false;
   const peelOut = (r, level, dur, puffs = 4) => {
     if ((r.x - camera.position.x) ** 2 + (r.z - camera.position.z) ** 2 < SMOKE_RANGE) fx.burst(r.x - Math.sin(r.heading) * 0.7, r.y + 0.15, r.z - Math.cos(r.heading) * 0.7, puffs, SMOKE, 0.9);
@@ -523,7 +514,6 @@
   };
   const onGesture = () => audio.unlock();
 
-  // ---------- donations ----------
   const onDonation = (donation) => {
     game.recordDonation(donation);
     const bananas = gameMod.bananasFor(donation.sats);
@@ -534,7 +524,7 @@
     fx.showTicker(`THANKS ${donation.handle ? "@" + donation.handle.toUpperCase() : "ANON"} · ${bananas} BANANAS`, 4.5);
     const p = racers.player;
     if (p) fx.burst(p.x, p.y + 1.6, p.z, 20, CONFETTI, 2.2);
-    // Bananas rain back onto the track for everyone
+    // Set taken to 0.01, not 0: race-items' countdown branch must run once to make the banana visible again.
     for (const b of items.bananas) if (b.taken > 0) b.taken = 0.01;
     if (loot) {
       game.addItem({ item: loot.item, tier: loot.tier, donationId: donation.id });
@@ -545,7 +535,6 @@
   };
   const renderLocker = () => hud.renderInventory(game.state.inventory, game.assignedTo, () => null);
 
-  // ---------- per frame ----------
   const updateMeter = () => {
     hud.setMeter(world.level, METER_CAPACITY, phase === "racing" ? `${racers.rankLabel(racers.player.rank)} of ${racers.racers.length}` : "stable");
   };
@@ -623,7 +612,6 @@
   };
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
-  // ---------- actions and keys ----------
   const onLootCleared = () => {
     if (!lootEnabled) return;
     renderLocker();
@@ -650,7 +638,6 @@
   };
   const onBlur = () => pause(true);
 
-  // ---------- scene contract ----------
   const enter = (ctx) => {
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
     camera = createCamera({ fov: 50, near: 0.3, far: 280 });
@@ -679,8 +666,7 @@
     wireEvents();
     controls = controlsMod.create({ move: document.getElementById("joy-move"), look: null, boost: hud.el.act, chord: ctx.canvas });
     audio = raceAudio.create();
-    // sceneTime restarts at 0 on every enter, so stale marks would sit in the
-    // future and silence these cues for the whole of the next visit
+    // sceneTime restarts at 0 on every enter, so reset these marks or stale future marks silence the cues.
     screechAt = crewScreechAt = -9;
     quieted = false;
     rhud.el.mute.setAttribute("aria-pressed", String(audio.muted));

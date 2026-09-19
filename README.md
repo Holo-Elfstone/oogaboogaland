@@ -412,7 +412,7 @@ engine at the bottom and the pod on top: Volcano Jugs and Fire Pots and a Tusk N
 Barrels, Big Coconuts and Nut Pods hold the fuel, a Bamboo Firecracker burns its own powder,
 Vine Knots cut spent stages loose, Feather and Leaf Fins keep the nose pointed, and a Banana
 Leaf, Mud Pack or Flat Stone shield sits under the Stick Cone or Gourd Pod. The board adds up
-height, mass, push, the speed each stage can spend and the banana bill (Ooga NASA has no
+height, mass, push, the speed each stage can spend and the banana bill (there is no
 budget, so the bill is only for show). In flight a checklist down the left keeps
 the whole mission in view (launch, climb and arc, reach low orbit, spacewalk, drop home, shield
 first, chute and land) with the step in hand lit and what it needs right now. **Launch!** counts down, the engines spool a gauge and
@@ -422,16 +422,16 @@ goal, so it tips no more than 40°); **A D** steer it yourself and **G** turns t
 autopilot off for a hand-flown climb; lean too hard in thick air and it tears apart, push too
 hard low down and it cooks. When a stage runs dry **Space** drops it and lights the next. Climb
 to **low orbit**, 500 up (the height meter on the flight card shows how far there is to go), and
-Ooga NASA steadies the rocket over the islands and holds it there, so home is always in view below. **Space** drops the rest of the rocket and keeps the pod. Then the
+the sky hook steadies the rocket over the islands and holds it there, so home is always in view below. **Space** drops the rest of the rocket and keeps the pod. Then the
 mission: **Space** again (or **V**, or the Spacewalk button) and your Ooga climbs out in a bubble
 helmet and jetpack on a tether. **W A S D** fly where you look, **Q E** go down and up, drag to
 look round; fly to the glowing space rock (bump into it and you get nudged gently back off) and **Space** measures it; the tether then reels the Ooga back to
 the hatch and in by itself. One more **Space** leaves orbit: the pod falls shield down toward
 the island by itself (**W A S D** turn it on puffs of air if it tips; shield first it glows and
-survives, sideways it runs hot, nose first it burns up).
-the pad for the big score, anywhere on the islands, or splash down in the sea. **0** puts the
-camera back, **M** mutes, **Escape** returns to the builder. The best flight and your last rocket
-are kept in your browser.
+survives, sideways it runs hot, nose first it burns up). When **CHUTE** shows, **Space** pulls
+the leaf chute and **A D** steer the leaves down onto the pad for the big score, anywhere on
+the islands, or splash down in the sea. **0** puts the camera back, **M** mutes, **Escape**
+returns to the builder. The best flight and your last rocket are kept in your browser.
 
 Keys: **B** add 100 test bananas, **J** toggle a collected jetpack on the controlled Ooga, **L** legendary
 tip, **P** fill the pile, **1** to **9** force a contributor to eating when not controlling an Ooga
@@ -498,8 +498,9 @@ npm test
 Runs a headless Chrome suite over the DevTools protocol: real drags, clicks, and keys
 against the page, with a clean console required. Needs Node 22 or newer and Chrome; the
 driver looks for Chrome at the macOS application path, so on Linux or Windows set the
-`CHROME` environment variable to the binary. There are no npm dependencies. A full run
-takes about nine minutes.
+`CHROME` environment variable to the binary. There are no npm dependencies. `npm test`
+runs the fast lane; the full gate, `npm run test:full`, takes about six minutes across
+eight parallel lanes.
 
 ## Build and deploy
 
@@ -526,6 +527,15 @@ this workflow does not need a repository `CNAME` file.
 No analytics, no external requests, no personal data. The roster lists public
 contributor handles only. The donation handle and message a visitor types are stored in
 their own localStorage and nowhere else.
+
+## License
+
+Ooga Booga Land is released into the public domain under
+[The Ooga Booga License](LICENSE) — a caveman-speak dedication of the software
+to the public domain, with the same meaning as The Unlicense: free to copy,
+modify, publish, use, compile, sell, or distribute, in source or binary form,
+for any purpose and by any means, with no warranty of any kind. Any and all
+copyright interest in the software is dedicated to the public at large.
 
 ## Contributing
 
