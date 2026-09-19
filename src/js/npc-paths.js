@@ -58,8 +58,8 @@
           }
         }
       }
-      // Join curve ends at the ring and at the frontage/pass junctions. Do
-      // not connect parallel curves merely because their path masks overlap.
+      // Join curve ends at the ring and at the frontage/pass junctions.
+      // Do not connect parallel curves merely because their path masks overlap.
       for (let i = 0; i < count; i++) {
         if (!groups[i] || heads[i] < 0 || next[heads[i]] >= 0) continue;
         let closest = -1, best = 0.75 ** 2;
@@ -239,8 +239,8 @@
       state.targetX = x; state.targetZ = z;
     };
     const routeState = createState();
-    // Bed journeys allocate their authored route only at departure. Share
-    // the same surface centerlines before and after the underground portion.
+    // Bed journeys allocate their authored route only at departure.
+    // They share the same surface centerlines before and after the underground portion.
     const route = (from, to) => {
       plan(routeState, from.x, from.z, to.x, to.z);
       const result = [from];

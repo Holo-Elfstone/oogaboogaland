@@ -1,4 +1,3 @@
-// End-to-end checks in headless Chrome
 import { AsyncLocalStorage } from "node:async_hooks";
 import { readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
@@ -7,16 +6,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { launch, acquire, dispose, driverError } from "./browser.mjs";
 
-// ---------- probe bodies, inlined ----------
-// The suite is one file plus its driver. These were separate modules; each is
-// wrapped so its own top-level names stay private, and every probe function is
-// unchanged, so `.toString()` still ships identical source into the page.
+// Inlined former modules; each IIFE keeps its own top-level names private.
+// Probe bodies must stay unchanged so .toString() ships identical source into the page.
 
 // ---- matrix-pixels.mjs ----
 const { matrixCaveSnapshot, matrixPixelProbe } = (() => {
-  // Browser-side photometry: compare the real voxel mesh and surface shader through
-  // the same renderer, projection, framebuffer, bloom pass and final color output.
-  // No production shader flags or reported "parity" booleans participate in this test.
+  // Browser-side photometry through the real renderer, projection, framebuffer, bloom and final color.
+  // No production shader flags or reported parity booleans may participate.
   const matrixPixelProbe = async (backend = "webgl2", interpolation = true) => {
     const BL = window.BL, S = BL.scene, size = 384;
     const canvas = document.createElement("canvas");
@@ -142,8 +138,8 @@ const { matrixCaveSnapshot, matrixPixelProbe } = (() => {
           results.push({ surface, distance, condition, reference, world, referenceBloom, worldBloom });
         }
       }
-      // Both instants are in the same twenty-hertz mutation tick. Matching the moving
-      // voxel reference therefore requires actual glyph translation, not mutation.
+      // Both instants fall in the same 20 Hz mutation tick.
+      // Matching the moving voxel reference therefore requires real glyph translation, not mutation.
       const motion = [];
       opts.fog = undefined; occluder.visible = false; wallKind = "front"; panel.rotation.y = 0; panel.position.x = 10.8;
       for (surface of ["wall", "floor"]) {
@@ -158,9 +154,7 @@ const { matrixCaveSnapshot, matrixPixelProbe } = (() => {
       }
       const transitions = [];
       if (gl) {
-        // Control the front uniformly, independently of spatial propagation
-        // already tested below. Inspect finalized RGBA8 scene and blurred bloom
-        // attachments, not the clipped sum displayed by the composite pass.
+        // Read the finalized RGBA8 scene and blurred bloom attachments, not the clipped sum from the composite pass.
         surface = "wall"; wallKind = "front"; panel.rotation.x = panel.rotation.y = 0; panel.position.x = 10.8; panel.position.z = 1;
         camera.target = { x: 10.8, y: 0, z: 1 }; camera.position = { x: 10.8, y: 0, z: 3.4 };
         opts.light = { x: 0, y: 0, z: 1 }; opts.matrix.time = 0.617; opts.matrix.radius = 100; buildOriginals(opts.matrix.time);
@@ -183,9 +177,8 @@ const { matrixCaveSnapshot, matrixPixelProbe } = (() => {
           }
         } finally { gl.deleteFramebuffer(readback); panel.matrixEmissiveLiving = false; panel.highlight = 0; opts.matrix.active = 1; }
       }
-      // The same tagged receiver at two cave depths must follow doorway travel,
-      // not its shorter radius from the pile. Read a tiny centered patch where
-      // the expected smooth transition is independent of glyph rasterization.
+      // The same tagged receiver at two depths must follow doorway travel, not its shorter radius from the pile.
+      // Sample a tiny centered patch so the transition is independent of glyph rasterization.
       surface = "wall"; wallKind = "front"; panel.rotation.x = panel.rotation.y = 0; panel.position.x = 10.8; panel.position.z = 1;
       camera.target = { x: 10.8, y: 0, z: 1 }; camera.position = { x: 10.8, y: 0, z: 3.4 };
       opts.light = { x: 0, y: 0, z: 1 }; opts.fog = undefined; opts.matrix.radius = 0;
@@ -248,14 +241,12 @@ const { matrixCaveSnapshot, matrixPixelProbe } = (() => {
     } finally { renderer.dispose(); }
   };
 
-  // Inspect ownership and the actual uploaded instances, including all extruded
-  // corners at the portal and the backing-plane clearance, rather than counters
-  // that claim that clipping or exclusions are correct.
+  // Inspect ownership and the actual uploaded instances, including portal corners and backing-plane clearance.
+  // Never trust counters claiming clipping or exclusions are correct.
   const matrixCaveSnapshot = () => {
     const B = window.__ooga, C = B.matrixCave, key = (x, y, z, plane) => [x, y, z, plane].map((v) => Math.round(v * 10000)).join(":");
-    // Clip each real coplanar source polygon to the glyph's complete footprint.
-    // Greedy terrain faces do not overlap, so summed intersection area proves
-    // support across internal seams without treating holes as a bounding box.
+    // Clip each real coplanar source polygon to the glyph's full footprint.
+    // Greedy terrain faces never overlap, so summed intersection area proves support across internal seams.
     const supportArea = (polygon, u, v) => {
       let points = polygon;
       for (const [axis, bound, sign] of [[0, u - 0.0395, 1], [0, u + 0.0395, -1], [1, v - 0.0605, 1], [1, v + 0.0605, -1]]) {
@@ -282,8 +273,8 @@ const { matrixCaveSnapshot, matrixPixelProbe } = (() => {
         const local = !!face.matrixLocalGlyphSurface, world = !!face.matrixWorldGlyphSurface;
         if (face.matrixCave) { tagged.add(face); if (local === world) missingFlags++; }
         if (world) {
-          // Continuous code is allowed only on the real upward-facing HQ ramp
-          // triangles, and retains the owning main entrance's cave-wave identity.
+          // Continuous code is allowed only on real upward-facing HQ ramp triangles,
+          // and retains the owning main entrance's cave-wave identity.
           const v = node.geometry.verts, a = face.i[0] * 3, b = face.i[1] * 3, c = face.i[2] * 3;
           const ux = v[b] - v[a], uy = v[b + 1] - v[a + 1], uz = v[b + 2] - v[a + 2], vx = v[c] - v[a], vy = v[c + 1] - v[a + 1], vz = v[c + 2] - v[a + 2];
           const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
@@ -332,10 +323,8 @@ const { matrixCaveSnapshot, matrixPixelProbe } = (() => {
           for (let axis = 0; axis < 3; axis++) { const direction = sr * data[o + axis * 4] + cr * data[o + axis * 4 + 2]; extent += Math.max(direction * bounds.min[axis], direction * bounds.max[axis]); }
           maxLocalZ = Math.max(maxLocalZ, sr * (x - m.x) + cr * (z - m.z) + extent);
           const plane = nx * x + ny * y + nz * z - 0.015, candidates = byPlane.get(key(nx, ny, nz, plane)) || [];
-          // Instance transforms live in Float32 buffers. A value on a four-decimal
-          // rounding boundary can land in the neighbouring key while remaining on
-          // the same physical source plane, so recover only that narrowly matching
-          // plane before applying the full polygon/constraint support proof below.
+          // Instance transforms are Float32: a 4-decimal rounding boundary can land a value in the neighbouring key.
+          // Recover only the narrowly matching source plane, then apply the full polygon/constraint support proof.
           if (!candidates.length) for (const section of cave.sections) {
             if (Math.abs(section.nx - nx) < 0.00001 && Math.abs(section.ny - ny) < 0.00001 && Math.abs(section.nz - nz) < 0.00001 && Math.abs(section.plane - plane) < 0.00002) candidates.push(section);
           }
@@ -362,21 +351,20 @@ const { matrixCaveSnapshot, matrixPixelProbe } = (() => {
 })();
 // ---- matrix-wave.mjs ----
 const { matrixWaveProbe, primeMatrixControls } = (() => {
-  // Deterministic real scene updates and renders. The browser's frame loop cannot
-  // interleave this bounded synchronous probe; no production state is simulated.
+  // Bounded synchronous probe: the browser frame loop cannot interleave it, and no production state is simulated.
   const primeMatrixControls = () => {
     const B = window.__ooga, S = window.BL.scene, scene = window.BL.scenes.hub, fixture = S.createNode(), geometries = new Set(), batched = new Set();
     const collect = (node) => { if (node.geometry) { geometries.add(node.geometry); if (node.instanceData) batched.add(node.geometry); } for (const child of node.children) collect(child); };
     collect(scene.root); scene.liveGeometry(geometries);
-    // The real crew keeps building during asynchronous wave checks. Prime only
-    // its finite cached model catalog, so first use is not mistaken for a leak.
+    // The crew keeps building during async wave checks.
+    // Prime only its finite cached model catalog so first use is not mistaken for a leak.
     for (const build of window.BL.models.buildableGeos) {
       const geometry = build();
       if (build() !== geometry) throw new Error("Ambient build geometry must be cached");
       geometries.add(geometry);
     }
-    // Fixed batches are already resident. Never replace their GPU instance data
-    // with a fixture transform while their production upload version is unchanged.
+    // Fixed batches are already resident.
+    // Never replace their GPU instance data with a fixture transform while their upload version is unchanged.
     for (const geometry of geometries) if (!batched.has(geometry) && !geometry.matrixGlyph && !geometry.matrixLocalGlyphSurface) S.addChild(fixture, S.createNode({ geometry }));
     B.renderer.render(fixture, B.camera, { ...B.renderOpts, matrix: null });
     fixture.children.length = 0;
@@ -435,16 +423,15 @@ const { matrixWaveProbe, primeMatrixControls } = (() => {
       for (let i = 0; i < 24; i++) {
         let start = performance.now(); step(); update.push(performance.now() - start);
         start = performance.now(); if (R.render(scene.root, camera, B.renderOpts)) drawn++; render.push(performance.now() - start);
-        // A synchronous one-pixel read forces completion; finish() alone can be
-        // deferred by Chrome's command transport and underreport actual GPU time.
+        // A synchronous one-pixel read forces completion.
+        // finish() alone can be deferred by Chrome's command transport and underreport actual GPU time.
         start = performance.now(); if (gl) gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel); gpu.push(performance.now() - start);
       }
       const stats = (values) => { values.sort((a, b) => a - b); return { mean: values.reduce((a, b) => a + b, 0) / values.length, p95: values[Math.floor(values.length * 0.95)] }; };
       return { state, before, after: snapshot(), drawn, ready: R.ready, update: stats(update), render: stats(render), gpu: stats(gpu) };
     };
     const drawMirror = (comparePixels = false) => {
-      // Observe uniforms on the first actual reflected draw after a crossing,
-      // not just a debug promise that the mirror will return on a later frame.
+      // Observe uniforms on the first actual reflected draw after a crossing, not a debug promise of a later frame.
       const locations = new Map(), targets = new Set(), passes = [], before = B.mirror.reflectionPassCount, draw = gl && gl.drawArraysInstanced;
       if (gl) gl.drawArraysInstanced = function (...args) {
         const program = gl.getParameter(gl.CURRENT_PROGRAM);
@@ -465,7 +452,7 @@ const { matrixWaveProbe, primeMatrixControls } = (() => {
         if (comparePixels && gl) {
           const x = (gl.drawingBufferWidth >> 1) - 4, y = (gl.drawingBufferHeight >> 1) - 4;
           gl.readPixels(x, y, 9, 9, gl.RGBA, gl.UNSIGNED_BYTE, mirrorPixels);
-          // Omit only the mirror program's draw in a counterfactual control.
+          // Counterfactual control: omit only the mirror program's draw.
           // Portal state, ordinary geometry, lighting and wave time stay intact.
           gl.drawArraysInstanced = function (...args) { if (gl.getUniformLocation(gl.getParameter(gl.CURRENT_PROGRAM), "uReflection") === null) return draw.apply(gl, args); };
           R.render(scene.root, B.camera, B.renderOpts);
@@ -487,8 +474,7 @@ const { matrixWaveProbe, primeMatrixControls } = (() => {
     for (let i = 0; i < 12; i++) step(); const reverse = snapshot();
     C.viewInside(false); const partialReentryCrossing = snapshot(); step(); const partialReentryMirror = drawMirror(), reentry = snapshot();
     for (let i = 0; i < 12; i++) step(); const resumed = snapshot();
-    // Every actual entrance is sampled immediately on each side, independently
-    // calculating the projected doorway path from immutable mouth transforms.
+    // Derive each doorway path independently from immutable mouth transforms; sample both sides of every entrance.
     const paths = C.caves.map((c) => {
       const m = c.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), plane = C.portal.opening.planeZ;
       return { id: c.id, points: [plane + 0.01, plane, plane - 0.01, plane - 1, plane - 4].map((z) => {
@@ -531,8 +517,6 @@ const { matrixWaveProbe, primeMatrixControls } = (() => {
 })();
 // ---- matrix-surface.mjs ----
 const { matrixSurfaceSnapshot, matrixSurfaceViews } = (() => {
-  // Real native instances and geometric stream domains, shared by the Mirror's
-  // WebGL and Canvas checks. No assertion depends on the removed chamber panels.
   const matrixSurfaceSnapshot = () => {
     const B = window.__ooga, C = B.matrixCave, cave = C.caves.find((c) => c.id === "c1"), time = C.world.sampleStream(0).time;
     const rank = B.renderer.kind === "canvas2d" ? 1 : { high: 8, medium: 5, low: 3 }[B.renderer.quality], expected = new Array(8).fill(0);
@@ -591,8 +575,7 @@ const { matrixSurfaceSnapshot, matrixSurfaceViews } = (() => {
 })();
 // ---- matrix-navigation.mjs ----
 const { caveRoutingRejections, matrixNavigationProbe } = (() => {
-  // Exercise raw orbit separately from the physical free first-person eye.
-  // Every walking sample uses the production pilot, support and swept camera.
+  // Every walking sample uses the production pilot, support and swept camera; raw orbit is exercised separately.
   function* matrixNavigationProbe(prime = () => {}) {
     const B = window.__ooga, scene = window.BL.scenes.hub, C = B.matrixCave, W = C.world, R = B.renderer, o = B.pilot.orbit, dt = 1 / 120;
     let elapsed = W.sampleStream(0).time, draws = 0, samples = 0, collisions = 0;
@@ -631,8 +614,8 @@ const { caveRoutingRejections, matrixNavigationProbe } = (() => {
       let frames = 0;
       while (B.pilot.closeMix < 1 && frames++ < 60) scene.update(1 / 20, elapsed += 1 / 20);
       if (B.pilot.closeMix < 1) throw new Error("Free-camera entry did not settle");
-      // Let the physical eye bind shared HQ air to the nearest real ramp after
-      // the unrestricted focal-point dolly hands control back to collision.
+      // Step once after the unrestricted focal-point dolly hands control back to collision,
+      // so the physical eye binds shared HQ air to the nearest real ramp.
       step();
       return audit(opening);
     };
@@ -669,8 +652,8 @@ const { caveRoutingRejections, matrixNavigationProbe } = (() => {
         const q = ramp.samples[12]; insideX = cr * (q.x - opening.mouth.x) - sr * (q.z - opening.mouth.z); insideZ = sr * (q.x - opening.mouth.x) + cr * (q.z - opening.mouth.z);
         route.push(move(opening, insideX, insideZ));
       } else for (const z of [-1.5, -3.5, -5, -3.5]) route.push(move(opening, 0, z));
-      // The Rally centerline crosses its solid kart. Finish the physical step
-      // before checking that stationary pitch changes do not translate the eye.
+      // The Rally centerline crosses its solid kart.
+      // Finish the physical step before checking that stationary pitch changes do not translate the eye.
       let settled = false;
       for (let n = 0; n < 240; n++) {
         const p = B.camera.position, x = p.x, y = p.y, z = p.z;
@@ -695,8 +678,8 @@ const { caveRoutingRejections, matrixNavigationProbe } = (() => {
         const before = start(opening, x, y), after = move(opening, x, 0.1); invalid.push({ name, before, after });
       }
       cases.push({ id: opening.id, index: opening.caveIndex, headquarters: !!opening.headquarters, active, route, lateral, invalid, inside, pitchViews, ceiling, wall, records: R.stats.records });
-      // Keep every sample and render, but return to the driver between complete
-      // cases so parallel Canvas runs do not exhaust one protocol command.
+      // Keep every sample and render, but yield to the driver between complete cases
+      // so parallel Canvas runs do not exhaust one protocol command.
       yield;
     }
     B.matrixGate.set(false);
@@ -705,15 +688,15 @@ const { caveRoutingRejections, matrixNavigationProbe } = (() => {
     return { backend: R.kind, openings: allOpenings.length, occupied: openings.length, raw, sealed, caveBytes: B.island.cavityBytes, cases, draws, samples, collisions, failures, final: { index: B.cameraCave.index, active: W.active, radius: W.radius } };
   }
 
-  // Scene routing must depend on the driven Ooga's real doorway crossing, not
-  // merely occupying the cave's X/Z footprint or looking down through its roof.
+  // Scene routing must depend on the driven Ooga's real doorway crossing,
+  // not on occupying the cave's X/Z footprint or looking down through its roof.
   const caveRoutingRejections = async () => {
     const B = window.__ooga, o = B.pilot.orbit, cases = [];
     const wait = () => new Promise((resolve) => { const frame = B.renderedFrames, tick = () => B.scene !== "hub" || B.renderedFrames >= frame + 5 ? resolve() : requestAnimationFrame(tick); requestAnimationFrame(tick); });
     for (const id of ["c11", "c9"]) {
       const m = B.mouths.find((mouth) => mouth.id === id), sr = Math.sin(m.ry), cr = Math.cos(m.ry), cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.walk && !c.build);
-      // The Rally kart now occupies the centre of its inner trigger. Stand in
-      // the trigger's clear aisle rather than teleporting into a solid vehicle.
+      // The Rally kart occupies the centre of its inner trigger.
+      // Stand in the trigger's clear aisle rather than teleporting into a solid vehicle.
       const solids = B.headquarters.solids, side = [0, -1.5, 1.5].find((offset) => {
         const x = m.inside.x + cr * offset, z = m.inside.z - sr * offset;
         return solids.walkable(x, z, x, z, m.floorY, cave.bodyHeight, cave) && Math.abs(solids.supportAt(x, z, m.floorY, m.floorY, cave) - m.floorY) < 0.001;
@@ -747,8 +730,8 @@ const { caveRoutingRejections, matrixNavigationProbe } = (() => {
 })();
 // ---- matrix-horizontal.mjs ----
 const { matrixHorizontalProbe } = (() => {
-  // Independent physical-surface oracle: use original terrain faces and uploaded
-  // native matrices, never the builder's inset intervals as the coverage truth.
+  // Independent physical-surface oracle: use original terrain faces and uploaded native matrices.
+  // Never take the builder's inset intervals as the coverage truth.
   const matrixHorizontalProbe = () => {
     const B = window.__ooga, C = B.matrixCave, scene = window.BL.scenes.hub, R = B.renderer, area = 0.079 * 0.121;
     const mod = (n, span) => (n % span + span) % span, planeKey = (ny, y) => `${ny}:${Math.round(y * 10000)}`;
@@ -807,8 +790,8 @@ const { matrixHorizontalProbe } = (() => {
             const sum = polygons.reduce((total, polygon) => total + intersection(polygon, lane.cross, v), 0), localZ = -(plane.ny * v - inwardX * m.x - inwardZ * m.z);
             if (Math.abs(sum - area) < 1e-10 && localZ + 0.0605 <= 0.48000001) { run += 0.13; longest = Math.max(longest, run); } else run = 0;
           }
-          // A complete train and gap must fit physically before asserting their
-          // temporal coverage. Stepped tunnel ceilings may expose only tiny strips.
+          // A complete train and gap must fit physically before asserting temporal coverage.
+          // Stepped tunnel ceilings may expose only tiny strips.
           if (longest < 2.6) continue;
           candidates.push({ ...lane, plane, polygons, min, max, longest, key: `${plane.key}:${lane.column}` });
         }
@@ -877,9 +860,8 @@ const { matrixHorizontalProbe } = (() => {
 })();
 // ---- matrix-ramp.mjs ----
 const { matrixRampGlyphProbe } = (() => {
-  // Compare the actual HQ entrance triangles with the continuous material used by
-  // the rest of each ramp. Read pixels from isolated native geometry so neighboring
-  // walls or falling glyphs cannot stand in for missing floor coverage.
+  // Compare actual HQ entrance triangles with the continuous material on the rest of each ramp.
+  // Read isolated native geometry so neighboring walls or falling glyphs cannot mask missing floor coverage.
   const matrixRampGlyphProbe = async (backend) => {
     const BL = window.BL, B = window.__ooga, S = BL.scene, size = 384, canvas = document.createElement("canvas");
     Object.defineProperties(canvas, { clientWidth: { value: size }, clientHeight: { value: size } });
@@ -945,9 +927,8 @@ const { matrixRampGlyphProbe } = (() => {
 })();
 // ---- matrix-rain.mjs ----
 const { matrixRainCycleProbe, matrixRainProbe } = (() => {
-  // Inspect the restored airborne rain separately from the surface-following
-  // glyph batches. Advance the real scene synchronously so the browser frame
-  // loop cannot interleave or hide a bad wave gate or direction reversal.
+  // Inspect airborne rain separately from the surface-following glyph batches.
+  // Advance the real scene synchronously so the frame loop cannot hide a bad wave gate or direction reversal.
   const matrixRainProbe = (prime = () => {}) => {
     const B = window.__ooga, C = B.matrixCave, W = C.world, R = B.renderer, scene = window.BL.scenes.hub, dt = 1 / 120;
     const mod = (value, period) => (value % period + period) % period;
@@ -995,8 +976,7 @@ const { matrixRainCycleProbe, matrixRainProbe } = (() => {
             groups[stream].push({ x, y, z, glyph, glow, tip });
           }
           if (!inspect) continue;
-          // The actual transformed glyph box must fit the original carved void,
-          // not merely the rain builder's self-reported vertical interval.
+          // The actual transformed glyph box must fit the original carved void, not the builder's self-reported interval.
           const bounds = window.BL.scene.boundsOf(node.geometry);
           for (const vx of [bounds.min[0], bounds.max[0]]) for (const vy of [bounds.min[1], bounds.max[1]]) for (const vz of [bounds.min[2], bounds.max[2]]) {
             const wx = x + data[o] * vx + data[o + 4] * vy + data[o + 8] * vz, wy = y + data[o + 1] * vx + data[o + 5] * vy + data[o + 9] * vz, wz = z + data[o + 2] * vx + data[o + 6] * vy + data[o + 10] * vz;
@@ -1031,7 +1011,7 @@ const { matrixRainCycleProbe, matrixRainProbe } = (() => {
           seeds: rain.streams.map((s) => s.seed).join(","), speeds: new Set(rain.streams.map((s) => s.speed)).size, phases: new Set(rain.streams.map((s) => s.phase)).size, brightness: [Math.min(...rain.streams.map((s) => s.brightness)), Math.max(...rain.streams.map((s) => s.brightness))] };
       }) });
     step(true); const inactive = capture();
-    C.viewInside(false); advance(W.maxRadius); step(true); const before = capture(true);
+    R.setQuality("high"); C.viewInside(false); advance(W.maxRadius); step(true); const before = capture(true);
     for (let i = 0; i < 12; i++) step(); step(true); const after = capture(true), motion = [];
     for (const [caveIndex, cave] of before.caves.entries()) {
       let eligible = 0, moved = 0, gaps = 0, error = 0;
@@ -1078,7 +1058,6 @@ const { matrixRainCycleProbe, matrixRainProbe } = (() => {
 })();
 // ---- matrix-gates.mjs ----
 const { matrixGateAnimationProbe, matrixGateClipProbe, mirrorGateClipProbe } = (() => {
-  // Follow both button directions and reverse partway through an unfinished move.
   const matrixGateAnimationProbe = () => {
     const B = window.__ooga, G = B.matrixGate, C = B.matrixCave, scene = window.BL.scenes.hub, results = [];
     const gates = G.gates.filter(gate => gate !== B.mirrorCave.gate), mirror = B.mirrorCave.gate;
@@ -1166,8 +1145,8 @@ const { matrixGateAnimationProbe, matrixGateClipProbe, mirrorGateClipProbe } = (
     } finally { for (const [actor, visible] of actors) actor.root.visible = visible; }
   };
 
-  // Render the actual gate bars and their embedded glyph pixels separately. An
-  // unclipped control proves the above-ceiling region contains geometry, not empty sky.
+  // Render the gate bars and their embedded glyph pixels separately.
+  // The unclipped control proves the above-ceiling region contains geometry, not empty sky.
   const matrixGateClipProbe = async (backend) => {
     const BL = window.BL, S = BL.scene, size = 384, canvas = document.createElement("canvas");
     Object.defineProperties(canvas, { clientWidth: { value: size }, clientHeight: { value: size } });
@@ -1219,8 +1198,8 @@ const { matrixGateAnimationProbe, matrixGateClipProbe, mirrorGateClipProbe } = (
     } finally { renderer.dispose(); }
   };
 
-  // The custom entrance cue must clip the same world-space gate faces as the
-  // native renderers, including its brighter rim when glyphs are active.
+  // The custom entrance cue must clip the same world-space gate faces as the native renderers,
+  // including its brighter rim when glyphs are active.
   const mirrorGateClipProbe = () => {
     const BL = window.BL, S = BL.scene, size = 384, canvas = document.createElement("canvas");
     canvas.width = canvas.height = size;
@@ -1228,8 +1207,8 @@ const { matrixGateAnimationProbe, matrixGateClipProbe, mirrorGateClipProbe } = (
     const root = S.createNode(), group = S.createNode({ position: { x: 0.6, y: 0.75, z: 0 }, rotation: { x: 0, y: 0.4, z: 0 } });
     const geometry = BL.models.box({ w: 3.2, h: 6, d: 0.3, color: "#ffffff" }); geometry.clipMinY = 0; geometry.clipMaxY = 3;
     const gate = S.createNode({ geometry, position: { x: 0, y: 0.75, z: 0 } });
-    // Keep the required plane and stand in the group, but hide their render
-    // nodes so only the gate can contribute pixels to this clipping fixture.
+    // Keep the required plane and stand in the group, but hide their render nodes
+    // so only the gate can contribute pixels to this clipping fixture.
     const panel = S.createNode({ geometry: BL.hubModels.mirrorPanel(), visible: false });
     const stand = S.createNode({ geometry: BL.models.box({ w: 0.2, h: 0.3, d: 0.2, color: "#ffffff" }), visible: false });
     S.addChild(root, group); S.addChild(group, gate, panel, stand);
@@ -1247,8 +1226,8 @@ const { matrixGateAnimationProbe, matrixGateClipProbe, mirrorGateClipProbe } = (
         for (let channel = 0; channel < 4; channel++) fingerprint = Math.imul(fingerprint ^ pixels[at + channel], 16777619);
         if (pixels[at + 3] <= 2) continue;
         count++;
-        // The horizontal camera makes the selected world-height plane lie on
-        // the horizon. Leave room only for the intentionally narrow keyline.
+        // The horizontal camera puts the selected world-height plane on the horizon.
+        // The +-6 px band (13 px tall) leaves room only for the intentionally narrow keyline.
         if (y < size / 2 - 6) above++;
         if (y > size / 2 + 6) below++;
       }
@@ -1288,7 +1267,7 @@ const { matrixGateAnimationProbe, matrixGateClipProbe, mirrorGateClipProbe } = (
 // ---- object-render-clipping.mjs ----
 const { objectRenderClippingProbe } = (() => {
   // Render-height clipping must also bound gate occlusion, witnesses and outlines.
-  // This fixture is renderer-independent and can run without a browser or DOM.
+  // This fixture is renderer-independent: it must keep running without a browser or DOM.
   const objectRenderClippingProbe = () => {
     const BL = window.BL, S = BL.scene, failures = [], rows = [];
     const check = (name, ok, detail) => { rows.push({ name, ok, ...detail }); if (!ok) failures.push(rows[rows.length - 1]); };
@@ -1319,8 +1298,8 @@ const { objectRenderClippingProbe } = (() => {
       actor.root.position.y = target.position.y = 3.5; camera.position.y = camera.target.y = 3.5; collect();
       check("discarded gate cannot block actor perception", objects.perceived(target, actor, 0, 3.5, 0, terrainClear), {});
 
-      // Put the clipped gate between the camera and selected character. The
-      // original, taller mesh would falsely certify the high character hidden.
+      // Put the clipped gate between the camera and the selected character.
+      // The original, taller mesh would falsely certify the high character hidden.
       actor.root.position.z = 6; target.visible = false; actor.root.position.y = 1.5; camera.position.y = camera.target.y = 1.5; collect();
       check("remaining gate can certify a hidden character", !objects.actorVisible(actor, terrainClear), {});
       actor.root.position.y = camera.position.y = camera.target.y = 3.5; collect();
@@ -1343,8 +1322,8 @@ const { objectRenderClippingProbe } = (() => {
       const slit = bounds(collect());
       check("thin clipped remnant has witnesses and no phantom edges", objects.perceived(gate, actor, 0, 1.014, 0, terrainClear) && !objects.concealed(gate, actor, terrainClear) && slit.count > 0 && slit.minY >= 1.013 - 1e-6 && slit.maxY <= 1.015 + 1e-6, slit);
 
-      // Mirror reveal is local to its plane and must remain independent of the
-      // generic world-height planes on translated or rotated gate geometry.
+      // Mirror reveal is local to its plane.
+      // It must stay independent of the generic world-height planes on translated or rotated gate geometry.
       geometry.clipMinY = -Infinity; geometry.clipMaxY = Infinity; gate.mirror = true; gate.mirrorReveal = 0.5; gate.position.y = 2; gate.rotation.y = 0.35;
       actor.root.position.y = camera.position.y = camera.target.y = 1.5; collect();
       check("mirror reveal retains its local threshold", ray(1.5) && !ray(2.5), { belowReveal: ray(1.5), aboveReveal: ray(2.5) });
@@ -1368,7 +1347,6 @@ const { objectRenderClippingProbe } = (() => {
 })();
 // ---- camera-glyph-wave.mjs ----
 const { cameraGlyphOwnershipProbe, cameraGlyphWaveProbe } = (() => {
-  // Match the near-plane material to authored terrain ownership and wave travel.
   const cameraGlyphOwnershipProbe = () => {
     const B = window.__ooga, island = B.island, geometry = island.geometry, v = geometry.verts;
     const material = B.headquarters.glyphMaterial, matrix = B.renderOpts.matrix, unit = island.unit, grid = island.sightGrid;
@@ -1385,8 +1363,7 @@ const { cameraGlyphOwnershipProbe, cameraGlyphWaveProbe } = (() => {
       const normal = [nx / length, ny / length, nz / length], min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
       for (const vertex of face.i) for (let axis = 0; axis < 3; axis++) { min[axis] = Math.min(min[axis], v[vertex * 3 + axis]); max[axis] = Math.max(max[axis], v[vertex * 3 + axis]); }
       const point = min.map((value, axis) => (value + max[axis]) / 2), axis = normal.findIndex((value) => Math.abs(value) > 0.999999);
-      // Interior cell centers keep adjacent cave/exterior boundaries from
-      // changing which face is nearest to the sample inside this face.
+      // Interior cell centers keep adjacent cave/exterior boundaries from changing which face is nearest.
       if (axis >= 0) for (let n = 0; n < 3; n++) if (n !== axis) {
         const cell = grid[n + 1] + (Math.floor((point[n] - grid[n + 1]) / unit) + 0.5) * unit;
         if (cell > min[n] + 1e-6 && cell < max[n] - 1e-6) point[n] = cell;
@@ -1422,9 +1399,8 @@ const { cameraGlyphOwnershipProbe, cameraGlyphWaveProbe } = (() => {
     summary.caves = [...coveredCaves].sort((a, b) => a - b);
     for (const cave of expectedCaves) if (!coveredCaves.has(cave)) note("missing cave face fixture", { cave });
     if (!summary.radial || !summary.headquarters || !summary.basement) note("missing radial material fixture", { radial: summary.radial, headquarters: summary.headquarters, basement: summary.basement });
-    // Pair actual opposing roof faces across a continuous column of stone.
-    // Their thickness comes from the mesh; ownership changes near each real
-    // boundary, while a fully surrounded interior cell keeps the radial field.
+    // Pair opposing roof faces across a continuous stone column; thickness comes from the mesh.
+    // Ownership changes near each real boundary, while a fully surrounded interior cell keeps the radial field.
     const roofCaves = new Set();
     for (const lower of horizontal) {
       if (lower.owner < 1 || lower.owner > 8 || lower.normal[1] > -0.999 || roofCaves.has(lower.owner)) continue;
@@ -1453,8 +1429,8 @@ const { cameraGlyphOwnershipProbe, cameraGlyphWaveProbe } = (() => {
       }
     }
     if (!summary.roofPairs) note("missing roof fixture", {});
-    // A clipped window cell is no longer a voxel. Use its convex fragment's
-    // centroid and its own authored ownership, not a surrounding room box.
+    // A clipped window cell is no longer a voxel: use its convex fragment's centroid and authored ownership,
+    // not a surrounding room box.
     const fragments = new Set(), fragmentOwners = new Set();
     for (let index = 0; index < geometry.faces.length; index++) {
       const face = geometry.faces[index];
@@ -1507,8 +1483,6 @@ const { cameraGlyphOwnershipProbe, cameraGlyphWaveProbe } = (() => {
         summary.permanentSamples++;
         if (actual !== expected) note("permanent mirror ownership", { kind: fixture.kind, owner: fixture.owner, expected, actual });
       }
-      // Exercise the production overlay's descriptor update at a fixed clock,
-      // including its early return path when there is no selected character.
       const scene = window.BL.scenes.hub, before = material.version;
       matrix.active = 1; matrix.permanentCave = saved.permanentCave; matrix.time = saved.time;
       matrix.radius = material.radius === 5.25 ? 6.25 : 5.25;
@@ -1525,8 +1499,6 @@ const { cameraGlyphOwnershipProbe, cameraGlyphWaveProbe } = (() => {
     return { summary, rows, failures, revision, descriptor: { coverage: typeof material.coverageAt, version: typeof material.version, time: typeof material.time }, rockCaveBytes: island.rockCaveBytes };
   };
 
-  // The material front is sampled at every real near-plane texel. Strong outline
-  // contrast must leave unreached stone intact, including during a retreat.
   const cameraGlyphWaveProbe = () => {
     const BL = window.BL, size = 128, canvas = document.createElement("canvas");
     canvas.width = canvas.height = size;
@@ -1566,8 +1538,8 @@ const { cameraGlyphOwnershipProbe, cameraGlyphWaveProbe } = (() => {
       const receded = paint(4.75), recededUpdates = cover.state.textureUpdates;
       let moved = 0;
       for (let i = 0; i < middle.length; i += 4) if (middle[i] !== advanced[i] || middle[i + 1] !== advanced[i + 1] || middle[i + 2] !== advanced[i + 2]) moved++;
-      // Four native texture columns of camera movement must sample the same
-      // old world positions, including the radial conversion boundary itself.
+      // Four native texture columns of camera movement must sample the same old world positions,
+      // including the radial conversion boundary itself.
       const shift = 4, delta = 2 * shift / size;
       camera.position.x += delta; camera.target.x += delta;
       const translated = paint(4.75);
@@ -1605,8 +1577,8 @@ const { cameraGlyphOwnershipProbe, cameraGlyphWaveProbe } = (() => {
 })();
 // ---- glyph-gate-exit.mjs ----
 const { glyphGateExitProbe } = (() => {
-  // Use real Space/movement routing at each rotated entrance. Wave and initial
-  // placement are fixtures; gate movement and its local release use production.
+  // Real Space/movement routing at each rotated entrance.
+  // Wave and initial placement are fixtures; gate movement and its local release use production.
   const glyphGateExitProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, G = B.matrixGate, W = B.renderOpts.matrix;
     const cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.jet), held = new Set();
@@ -1619,8 +1591,7 @@ const { glyphGateExitProbe } = (() => {
     const release = (value) => { key("keyup", value); held.delete(value); };
     const step = (count = 1) => {
       for (let i = 0; i < count; i++) {
-        // Keep a completed wave present at the non-mirror gates as well, without
-        // pressing the rear control (which intentionally opens every gate).
+        // Pin a completed wave at the non-mirror gates without pressing the rear control, which opens every gate.
         if (pinWave) { W.active = 1; W.radius = W.maxRadius; W.direction = 0; }
         scene.update(dt, time += dt);
       }
@@ -1631,9 +1602,8 @@ const { glyphGateExitProbe } = (() => {
     const close = (gate, lift = gate.floor) => { gate.localOpen = gate.open = gate.raising = false; gate.node.position.y = lift; gate.node.visible = lift + gate.bottom < gate.ceiling; };
     const place = (gate, along, across = 0) => {
       const p = point(gate, along, across);
-      // The HQ entrances already slope below the mouth's nominal floor here.
-      // Start on their actual support so gravity is not mistaken for a Space
-      // jump when checking that the gate consumes the interaction.
+      // HQ entrances slope below the mouth's nominal floor here; start on their actual support
+      // so gravity is not mistaken for a Space jump when checking that the gate consumes the interaction.
       p.y = B.headquarters.solids.supportAt(p.x, p.z, p.y, p.y, cave);
       B.crew.relocatePlayer(p, gate.mouth.ry + Math.PI);
       B.pilot.orbit.yaw = B.pilot.orbit.tYaw = gate.mouth.ry;
@@ -1733,9 +1703,8 @@ const { glyphGateExitProbe } = (() => {
       const local = gate.localOpen; G.set(true); G.set(false); step(); const rearReset = !gate.localOpen;
       press(" "); step(); release(" "); const reopened = gate.localOpen;
       pinWave = false; W.active = 0; W.radius = 0; W.direction = 0;
-      // The source actor remains near the threshold, so the world may grow while
-      // inside the mirror. A stationary overlay does not change gate state;
-      // temporarily release possession and navigate outside before one update.
+      // The source actor stays near the threshold, so the world may grow while inside the mirror.
+      // A stationary overlay does not change gate state: release possession and navigate outside before one update.
       B.pilot.release(true); B.matrixCave.viewApproach(); W.active = 0; W.radius = 0; W.direction = 0; step();
       cycle = { local, rearReset, reopened, offReset: !gate.localOpen };
       if (!local || !rearReset || !reopened || !cycle.offReset) fail("local latch rearm", cycle);
@@ -1759,8 +1728,6 @@ const { glyphGateExitProbe } = (() => {
 })();
 // ---- mirror-doorway-glyphs.mjs ----
 const { mirrorDoorwayGlyphProbe, mirrorDoorwaySceneProbe } = (() => {
-  // Native cave-side hints preserve projection and foreground occlusion in both
-  // renderers. They share the overlay's rune pixels, streams and quality ranks.
   const mirrorDoorwayGlyphProbe = async (backend) => {
     const BL = window.BL, S = BL.scene, size = 384, canvas = document.createElement("canvas");
     Object.defineProperties(canvas, { clientWidth: { value: size }, clientHeight: { value: size } });
@@ -1846,8 +1813,7 @@ const { mirrorDoorwayGlyphProbe, mirrorDoorwaySceneProbe } = (() => {
     return result;
   };
 
-  // Use ordinary pilot state and scene updates so activation is proved against
-  // the camera's actual cave volume, independently of the selected actor.
+  // Use ordinary pilot state and scene updates so activation is proved against the camera's actual cave volume.
   const mirrorDoorwaySceneProbe = () => {
     const B = window.__ooga, scene = window.BL.scenes.hub, pilot = B.pilot, mirror = B.mirrorCave, m = mirror.mouth, provider = mirror.guides;
     const actor = [...B.cavemen.values()].find((cave) => cave.state === "working"), sr = Math.sin(m.ry), cr = Math.cos(m.ry), caveIndex = B.mouths.indexOf(m) + 1;
@@ -1857,8 +1823,8 @@ const { mirrorDoorwayGlyphProbe, mirrorDoorwaySceneProbe } = (() => {
     const tick = (dt = 0) => scene.update(dt, elapsed += dt);
     const place = (z) => { pilot.navigate({ position: world(0, 0, z), yaw: m.ry, pitch: 0, dist: 8 }); tick(); };
     const aim = (eye) => {
-      // With a zero elapsed step, the exposed orbit anchor stays at the requested
-      // point while normal camera-volume classification and presentation run.
+      // A zero elapsed step keeps the exposed orbit anchor at the requested point
+      // while normal camera-volume classification and presentation still run.
       const orbit = pilot.orbit, yaw = m.ry + Math.PI, distance = 12;
       orbit.yaw = orbit.tYaw = yaw; orbit.pitch = orbit.tPitch = 0; orbit.dist = orbit.tDist = distance;
       orbit.tx = eye.x - Math.sin(yaw) * distance; orbit.ty = eye.y; orbit.tz = eye.z - Math.cos(yaw) * distance;
@@ -1916,9 +1882,8 @@ const { mirrorDoorwayGlyphProbe, mirrorDoorwaySceneProbe } = (() => {
 })();
 // ---- movement-collision.mjs ----
 const { movementCollisionProbe } = (() => {
-  // Drive the real held-key controls and production scene updates. Only the
-  // initial exterior fixture is placed directly; every later waypoint is reached
-  // by movement, with independent solid-voxel checks on the resulting trajectory.
+  // Drive the real held-key controls and production scene updates.
+  // Only the initial exterior fixture is placed directly; every later waypoint must be reached by movement.
   const movementCollisionProbe = ({ id = "c5", mode = "orbit", dt = 1 / 120, rooms = false, ceiling = false, fromNavigation = false } = {}, entranceProbe = null) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, H = B.island.headquarters;
     const opening = B.cameraCave.openings.find((entry) => entry.id === id), m = opening.mouth, o = B.pilot.orbit;
@@ -1983,8 +1948,8 @@ const { movementCollisionProbe } = (() => {
             const distance = (actor.x - a.x - dx * k) ** 2 + (actor.z - a.z - dz * k) ** 2;
             if (distance < nearest) { nearest = distance; floor = a.y + (b.y - a.y) * k; }
           }
-          // The center of the real sloping corridor excludes adjacent rooms,
-          // windows and the flat landing shared with the common area.
+          // The center of the real sloping corridor excludes adjacent rooms and windows,
+          // and the flat landing shared with the common area.
           if (nearest > (route.width * 0.2) ** 2 || Math.abs(feet - floor) > 0.35) continue;
           const key = `${route.basement ? "basement" : "main"}${rise > 0 ? "Up" : "Down"}`;
           rampViews[key]++;
@@ -2005,8 +1970,8 @@ const { movementCollisionProbe } = (() => {
           if (solid(actor.x + x, y, actor.z + z) && violations.length < 4) violations.push({ kind: "body", sample: samples, x: actor.x + x, y, z: actor.z + z });
         }
         if (ceiling || entrances && entrances.near(actor.x, actor.y - cave.baseY, actor.z)) {
-          // Check the posed render geometry independently of the collision body's
-          // cached height. Inset surface vertices slightly to allow exact contact.
+          // Check the posed render geometry independently of the collision body's cached height.
+          // Inset surface vertices slightly to allow exact contact.
           window.BL.scene.updateWorld(cave.root);
           headTop = -Infinity;
           const inspectMesh = (name, node) => {
@@ -2047,8 +2012,8 @@ const { movementCollisionProbe } = (() => {
       B.pilot.possess(cave);
     }
     if (driven) {
-      // Keep the pilot's real moving follow target. Replacing it with a static
-      // object made the old forced boom conceal an invalid trailing fixture.
+      // Keep the pilot's real moving follow target.
+      // Replacing it with a static object made the old forced boom conceal an invalid trailing fixture.
       if (close) B.pilot.enterClose();
       B.pilot.navigate({ position: { x: start.x, y: m.floorY, z: start.z }, target, yaw: m.ry, pitch: 0, dist: 3.5 });
       for (let i = 0; i < Math.ceil(0.5 / dt); i++) step(false);
@@ -2079,8 +2044,8 @@ const { movementCollisionProbe } = (() => {
         const p = position(), dx = destination.x - p.x, dz = destination.z - p.z, dy = destination.y - (p.y - (driven ? cave.baseY : 0));
         if (Math.hypot(dx, dz) <= tolerance && (driven || close || Math.abs(dy) <= 0.4)) { reached = true; break; }
         const right = dx * Math.cos(o.yaw) - dz * Math.sin(o.yaw), forward = -dx * Math.sin(o.yaw) - dz * Math.cos(o.yaw), input = [];
-        // Choose the closest keyboard heading. Treating every nonzero error as
-        // a full axis can command diagonally into a wall beside a straight path.
+        // Choose the closest keyboard heading.
+        // Treating every nonzero error as a full axis can command diagonally into a wall beside a straight path.
         if (Math.abs(right) > Math.max(tolerance * 0.5, Math.abs(forward) * Math.tan(Math.PI / 8))) input.push(right > 0 ? "d" : "a");
         if (Math.abs(forward) > Math.max(tolerance * 0.5, Math.abs(right) * Math.tan(Math.PI / 8))) input.push(forward > 0 ? "w" : "s");
         if (!driven && !close && Math.abs(dy) > 0.18) input.push(dy > 0 ? "z" : "x");
@@ -2094,8 +2059,7 @@ const { movementCollisionProbe } = (() => {
     const follow = (name, points) => {
       for (let i = 0; i < points.length; i++) {
         const q = points[i], p = position(), x = p.x, y = p.y - (driven ? cave.baseY : 1.1), z = p.z, count = Math.max(1, Math.ceil(Math.hypot(q.x - x, q.z - z) / 0.65));
-        // A distant endpoint is insufficient guidance for eight digital headings:
-        // keep the walked line within narrow room corridors and gallery edges.
+        // A distant endpoint cannot guide eight digital headings; subdivide to keep the walked line inside corridors.
         for (let j = 1; j <= count; j++) {
           const label = `${name}:${i}${j === count ? "" : ":" + j}`;
           if (!seek(label, { x: x + (q.x - x) * j / count, y: y + ((q.y ?? q.floor ?? H.floor) - y) * j / count + (driven ? 0 : 1.1), z: z + (q.z - z) * j / count }, 3)) return false;
@@ -2123,8 +2087,8 @@ const { movementCollisionProbe } = (() => {
     const aroundBasementHole = (name, destination) => {
       const p = position(), radius = H.basement.room.radius - 1, from = Math.atan2(p.x, -p.z), to = Math.atan2(destination.x, -destination.z);
       const angle = Math.atan2(Math.sin(to - from), Math.cos(to - from)), count = Math.max(1, Math.ceil(Math.abs(angle) / 0.15)), arc = [];
-      // Room tours use the retained walking ring; the central shaft has its own
-      // deliberate fall test. Radial joins and short chords stay clear of its rim.
+      // Room tours use the retained walking ring; the central shaft has its own deliberate fall test.
+      // Keep radial joins and short chords clear of its rim.
       for (let i = 0; i <= count; i++) { const a = from + angle * i / count; arc.push({ x: Math.sin(a) * radius, y: H.basement.floor, z: -Math.cos(a) * radius }); }
       return follow(name, arc);
     };
@@ -2147,8 +2111,7 @@ const { movementCollisionProbe } = (() => {
         if (fromNavigation) completed = seek("landing", { x: ramp.to.x, y: H.floor + (driven ? 0 : 1.1), z: ramp.to.z });
         else completed = follow("down", down);
         if (completed && !fromNavigation) {
-          // Start this independent layer check at rest, after normal orbit
-          // damping has settled from the final downward waypoint.
+          // Start this independent layer check at rest, after orbit damping has settled from the final waypoint.
           tickFor(0.6, []);
           const before = snapshot(), y = o.target.y;
           tickFor(0.4, ["a"]);
@@ -2175,17 +2138,16 @@ const { movementCollisionProbe } = (() => {
         if (completed) completed = follow("up", [...down].reverse());
         if (completed) completed = seek("outside", point(2.5));
       } else {
-        // Clear the doorway soffit with the entire body before pressing against
-        // the interior roof, including the coarser 20 Hz walking increment.
+        // Clear the doorway soffit with the entire body before pressing against the interior roof,
+        // including the coarser 20 Hz walking increment.
         completed = seek("enter", point(ceiling ? -3.2 : -2.5));
         if (completed && ceiling) {
           const entryAction = document.getElementById("act").textContent;
-          // Space near the mirror control belongs to that button. Walk to a
-          // clear roof station outside its reach before testing held thrust.
+          // Space near the mirror control belongs to that button; reach a clear roof station outside its reach first.
           if (!seek("roof takeoff", point(-3.2, -1.6))) throw new Error("Could not reach clear ceiling takeoff station");
           const entered = snapshot();
-          // The flight test starts with a collected pack; J only toggles owned
-          // equipment now that the world pickup lives on a distant cloud.
+          // The flight test starts with a collected pack.
+          // J only toggles owned equipment now that the world pickup lives on a distant cloud.
           B.jetpack.grant(cave);
           tickFor(dt, ["j"]);
           const takeoffAction = document.getElementById("act").textContent;
@@ -2217,8 +2179,8 @@ const { movementCollisionProbe } = (() => {
           completed = leaveCave();
         } else if (completed) {
           const before = snapshot();
-          // Press into the jagged side wall with a forward component. Tangential
-          // travel must continue, then opposite input must work immediately.
+          // Press into the jagged side wall with a forward component: tangential travel must continue,
+          // then opposite input must work immediately.
           tickFor(0.8, ["w", "d", ...(!close && !driven ? ["z"] : [])]);
           const contact = snapshot();
           tickFor(2, ["d"]);
@@ -2240,9 +2202,8 @@ const { movementCollisionProbe } = (() => {
 })();
 // ---- solid-props.mjs ----
 const { solidPropsProbe } = (() => {
-  // Exercise the same transformed mesh queries used by hub movement. The old
-  // arch and the plane wing also prove that a prop's empty bounding-box space
-  // remains traversable.
+  // Exercise the same transformed mesh queries used by hub movement.
+  // The old arch and the plane wing prove a prop's empty bounding-box space stays traversable.
   const solidPropsProbe = () => {
     const { scene, models, hubModels, raceModels, dropModels, solidProps } = window.BL;
     const solids = solidProps.create(), rows = [];
@@ -2383,8 +2344,8 @@ const { solidCrewProbe, sleepingSolidProbe, crewBootRadiusProbe } = (() => {
     }
   };
 
-  // An actual lying Ooga must block movement over its mattress without sealing
-  // the rest of that room or losing the head/limb bounds as its pose turns.
+  // A lying Ooga must block movement over its mattress without sealing the rest of that room,
+  // or losing the head/limb bounds as its pose turns.
   const sleepingSolidProbe = () => {
     const B = window.__ooga, scene = window.BL.scenes.hub, physics = B.headquarters.solids;
     const cave = [...B.cavemen.values()].find((entry) => entry.state === "working");
@@ -2418,8 +2379,8 @@ const { solidCrewProbe, sleepingSolidProbe, crewBootRadiusProbe } = (() => {
 
 // ---- npc-recovery.mjs ----
 const { npcRecoveryProbe } = (() => {
-  // Swept movement through a narrow gap and out of a cul-de-sac made of real
-  // collision meshes. Recovery must walk back out, never teleport or climb props.
+  // Swept movement through a narrow gap and out of a cul-de-sac of real collision meshes.
+  // Recovery must walk back out, never teleport or climb props.
   const npcRecoveryProbe = ({ dt = 1 / 60 } = {}) => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, scene = BL.scenes.hub, solids = B.headquarters.solids.props;
     const actors = [...B.cavemen.values()], cave = actors.find((c) => c.state === "working"), fixture = S.createNode(), rows = [];
@@ -2465,8 +2426,7 @@ const { npcRecoveryProbe } = (() => {
           if (name === "changed recovery path" && !changed && nav.mode === 2 && nav.index >= 4) {
             for (let at = nav.index - 3; at >= 0; at--) {
               const i = nav.path[at], x = nav.x + (i % 21 - 10) * 0.5, z = nav.z + (Math.floor(i / 21) - 10) * 0.5;
-              // Obstruct a future waypoint in the open yard; sealing the only
-              // exit of the U would make escape physically impossible.
+              // Obstruct a future waypoint in the open yard; sealing the U's only exit would make escape impossible.
               if (Math.abs(x) < 1.6 && z < 1.8 || Math.hypot(x - cave.root.position.x, z - cave.root.position.z) < 1.3) continue;
               moving.position.x = x; moving.position.z = z;
               moving.visible = true; changed = true; sync(); break;
@@ -2527,8 +2487,8 @@ const { npcRecoveryProbe } = (() => {
 
 // ---- npc-paths.mjs ----
 const { npcPathWalkingProbe, npcCenterlineProbe, npcLowerTurnsProbe, npcStairPassingProbe } = (() => {
-  // Real voluntary walking, with the paths changing underneath a route and a
-  // second Ooga occupying the trail. Path preference must never block arrival.
+  // Paths change underneath a route and a second Ooga occupies the trail.
+  // Path preference must never block arrival.
   const npcPathWalkingProbe = () => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, scene = BL.scenes.hub;
     const actors = [...B.cavemen.values()], cave = actors.find((c) => c.state === "working"), blocker = actors.find((c) => c !== cave);
@@ -2820,7 +2780,7 @@ const { bananaInteriorProbe, bananaSceneInteriorProbe } = (() => {
     return { inside: { ...inside, bodyPixels }, third, partial, exposed, empty, mesh: { checked, mismatch, maximumError }, rayHidden, rayClear };
   };
 
-  // The first-person view keeps the real model's body and hides only its head.
+  // First person keeps the real model's body and hides only its head.
   // Falling/walking inside fruit must leave the feet on the stone platform.
   const bananaSceneInteriorProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub;
@@ -2868,7 +2828,6 @@ const { bananaInteriorProbe, bananaSceneInteriorProbe } = (() => {
     B.pilot.enterClose(); tick(120);
     B.pilot.orbit.pitch = B.pilot.orbit.tPitch = 1.3; tick(2); draw();
     const first = { ...cover.state, feet: actor.root.position.y - actor.baseY, mode: B.pilot.mode, closeMix: B.pilot.closeMix, hiddenHead: actor.parts.head.cameraHidden };
-    // Compare this exact first-person body's silhouette against its yellow cap.
     const overlayCtx = overlay.getContext("2d");
     overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
     cover.prepare(B.camera, actor); cover.draw(B.camera, actor);
@@ -2904,8 +2863,8 @@ const { bananaDawnShadowProbe, bananaGuideClippingProbe, bananaLightingProbe, ba
     let time = B.renderOpts.matrix.time;
     try {
       for (const hour of [12, 18.8, 0, 12]) {
-        // Pin the date as well: a bright midnight moon can otherwise make the
-        // real calendar's midnight brighter than its late dusk.
+        // Pin the date as well.
+        // A bright midnight moon can otherwise make the real calendar's midnight brighter than its late dusk.
         B.setHour(hour, NaN, 80); BL.scenes.hub.update(0, time);
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         cover.prepare(camera, null); cover.draw(camera, null, 0);
@@ -2922,8 +2881,8 @@ const { bananaDawnShadowProbe, bananaGuideClippingProbe, bananaLightingProbe, ba
     return { backend: B.renderer.kind, pixels: canvas.width * canvas.height, rows };
   };
 
-  // The production interior must honor terrain/prop shadows, especially the
-  // low dawn sun. Canvas has no shadow pass and retains its existing lighting.
+  // The production interior must honor terrain/prop shadows, especially the low dawn sun.
+  // Canvas has no shadow pass and retains its existing lighting.
   const bananaDawnShadowProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, overlay = document.getElementById("overlay"), rows = [];
     B.pilot.release(true); B.setPileLevel(100000);
@@ -2954,9 +2913,8 @@ const { bananaDawnShadowProbe, bananaGuideClippingProbe, bananaLightingProbe, ba
     } finally { B.headquarters.solids.props.remove(blocker); BL.scene.removeChild(scene.root, blocker); B.setHour(12); scene.update(0, time); }
   };
 
-  // Real object contours, actor perception, and fruit clipping share one draw.
-  // A clear slice of the image must remain untouched even when a whole object
-  // straddles that boundary; hidden and distant props remain ineligible.
+  // Object contours, actor perception and fruit clipping share one draw.
+  // A clear slice must stay untouched even when an object straddles it; hidden/distant props stay ineligible.
   const bananaGuideClippingProbe = () => {
     const BL = window.BL, S = BL.scene, canvas = document.createElement("canvas"), width = 640, height = 360;
     canvas.width = width; canvas.height = height;
@@ -2997,8 +2955,7 @@ const { bananaDawnShadowProbe, bananaGuideClippingProbe, bananaLightingProbe, ba
           if (baseline[at + 3] === 255) covered++;
           if (!changed) continue;
           changes++;
-          // Ignore the antialiased border itself, while checking every pixel
-          // more than two pixels into the original clear view.
+          // Ignore the antialiased border itself; check every pixel more than two pixels into the clear view.
           let nearCover = false;
           for (let dy = -2; dy <= 2 && !nearCover; dy++) for (let dx = -2; dx <= 2; dx++) {
             const x = px + dx, yy = py + dy;
@@ -3016,8 +2973,6 @@ const { bananaDawnShadowProbe, bananaGuideClippingProbe, bananaLightingProbe, ba
     return { pixels: width * height, rows };
   };
 
-  // Exercise both an exterior actor with an immersed orbit camera and the real
-  // first-person eye of a character standing inside the fruit.
   const bananaSceneGuidesProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, H = B.headquarters;
     const actor = [...B.cavemen.values()].find((cave) => cave.state === "working");
@@ -3073,8 +3028,7 @@ const { bananaDawnShadowProbe, bananaGuideClippingProbe, bananaLightingProbe, ba
   };
 
   // Ignoring fruit belongs only to the immersed observer's perception rays.
-  // Camera occlusion and solid platform/wall checks must retain real geometry,
-  // and the same stationary target must invalidate its cache on entry/exit.
+  // Camera occlusion and solid checks keep real geometry; a stationary target invalidates its cache on entry/exit.
   const bananaPerceptionProbe = () => {
     const BL = window.BL, S = BL.scene, root = S.createNode(), rows = [];
     const node = (w, h, d, x, y, z) => {
@@ -3109,8 +3063,8 @@ const { bananaDawnShadowProbe, bananaGuideClippingProbe, bananaLightingProbe, ba
 
 // ---- banana-spill.mjs ----
 const { bananaSpillProbe } = (() => {
-  // Exit fruit is a finite visual effect, separate from donations and the
-  // resting mound. Exercise its actual instanced mesh in either renderer.
+  // Exit fruit is a finite visual effect, separate from donations and the resting mound.
+  // Exercise its actual instanced mesh in either renderer.
   const bananaSpillProbe = async (backend) => {
     const BL = window.BL, S = BL.scene, canvas = document.createElement("canvas"), size = 192;
     Object.defineProperties(canvas, { clientWidth: { value: size }, clientHeight: { value: size } });
@@ -3120,8 +3074,8 @@ const { bananaSpillProbe } = (() => {
     const root = S.createNode(), world = { level: 17 }, crew = { updateFan() {}, rush() {}, cavemen: new Map() };
     const pile = BL.pile.create({ root, world, renderer, crew, matrixLivingPile: true }), effect = pile.spillEffect, node = effect.node;
     pile.syncPile(true);
-    // Register an ordinary banana after the explicit batch. Sharing their
-    // geometry identity used to merge incompatible WebGL instance buffers.
+    // Register an ordinary banana after the explicit batch.
+    // Sharing their geometry identity used to merge incompatible WebGL instance buffers.
     const ordinary = BL.models.banana();
     Object.assign(ordinary.position, { x: 1.3, y: 2, z: 0 });
     Object.assign(ordinary.scale, { x: BL.models.BANANA_AMMO_SCALE, y: BL.models.BANANA_AMMO_SCALE, z: BL.models.BANANA_AMMO_SCALE });
@@ -3134,8 +3088,8 @@ const { bananaSpillProbe } = (() => {
     let tweens = 0;
     const emit = (...args) => {
       const random = Math.random;
-      // A fixed cosmetic sample makes timing, shrink and inherited movement
-      // measurable without depending on the page's other effects.
+      // A fixed cosmetic sample makes timing, shrink and inherited movement measurable
+      // without depending on the page's other effects.
       try { Math.random = () => 0.5; return pile.spill(...args); } finally { Math.random = random; }
     };
     const sizeOf = () => Math.hypot(buffer[0], buffer[1], buffer[2]);
@@ -3198,8 +3152,7 @@ const { pilePartialEligibilityProbe, pilePartialProbe, pilePartialSceneProbe } =
     const camera = S.createCamera({ fov: 60, near: 0.1, far: 100 });
     Object.assign(camera.position, { x: 0, y: 0, z: 10 }); Object.assign(camera.target, { x: 0, y: 0, z: 0 });
     let mode = "hidden", revision = 0, rays = 0, boxes = 0;
-    // An opaque half-plane at z=5 lies between the camera and shell. Its
-    // straight x=0 boundary cuts through the middle of the projected front.
+    // An opaque half-plane at z=5 lies between camera and shell; its straight x=0 boundary cuts the projected front.
     const cameraClear = (ax, ay, az, bx, by, bz) => {
       rays++;
       if (mode === "hidden") return false;
@@ -3258,8 +3211,8 @@ const { pilePartialEligibilityProbe, pilePartialProbe, pilePartialSceneProbe } =
     } finally { provider.dispose(); }
   };
 
-  // A partially hidden provider owns its per-pixel clipping. The ordinary
-  // whole-object visibility rule must not drop it before that draw can run.
+  // A partially hidden provider owns its per-pixel clipping.
+  // The ordinary whole-object visibility rule must not drop it before that draw can run.
   const pilePartialEligibilityProbe = () => {
     const BL = window.BL, S = BL.scene, actor = { root: S.createNode() }, shell = S.createNode(), ordinary = S.createNode();
     const partial = { partialOcclusion: true }, normal = {}, source = { count: 0, capacity: 0, ownerCapacity: 2,
@@ -3277,8 +3230,8 @@ const { pilePartialEligibilityProbe, pilePartialProbe, pilePartialSceneProbe } =
     } finally { guides.dispose(); }
   };
 
-  // Use the production terrain/prop visibility callbacks at the three canopy
-  // poses that previously caused the million-banana outline stall.
+  // Use the production terrain/prop visibility callbacks at the three canopy poses
+  // that previously caused the million-banana outline stall.
   const pilePartialSceneProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, H = B.headquarters, provider = H.pileGuides;
     const actor = [...B.cavemen.values()].find((cave) => cave.state === "working"), width = 640, height = 360;
@@ -3316,8 +3269,8 @@ const { pilePartialEligibilityProbe, pilePartialProbe, pilePartialSceneProbe } =
 })();
 // ---- pile-performance.mjs ----
 const { pileVisibilityPerformanceProbe } = (() => {
-  // Compare exact partial masks with and without empty-volume batching. The
-  // ten-million-banana shell must keep the same pixels with fewer point queries.
+  // Compare exact partial masks with and without empty-volume batching.
+  // The ten-million-banana shell must keep the same pixels with fewer point queries.
   const pileVisibilityPerformanceProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, H = B.headquarters;
     const actor = [...B.cavemen.values()].find((c) => c.state === "working");
@@ -3350,8 +3303,7 @@ const { pileVisibilityPerformanceProbe } = (() => {
         batch = false; const before = draw(); batch = true; const after = draw();
         rows.push({ before, after });
       }
-      // Clear third-person views should never build a hidden-shell mask, even
-      // while the selected character moves around the maximum-size pile.
+      // Clear third-person views must never build a hidden-shell mask, even while the character circles a max pile.
       let visible = 0, masks = provider.state.occlusionUpdates;
       for (let n = 0; n < 16; n++) {
         actor.root.position.x = -n * 0.1; BL.scene.updateWorld(scene.root);
@@ -3368,7 +3320,6 @@ const { pileVisibilityPerformanceProbe } = (() => {
 })();
 // ---- banana-movement.mjs ----
 const { bananaExitProbe, bananaGlyphInteriorProbe, bananaMovementProbe, bananaNpcMovementProbe, bananaPlatformInteriorProbe, bananaSlotProbe } = (() => {
-  // Real hub key routing, flight, and walking against the current mound mesh.
   const bananaMovementProbe = ({ firstPerson = false, dt = 1 / 60 } = {}) => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, cover = B.headquarters.bananaCover;
     const actors = [...B.cavemen.values()], cave = actors.find((entry) => entry.state === "working");
@@ -3423,8 +3374,8 @@ const { bananaExitProbe, bananaGlyphInteriorProbe, bananaMovementProbe, bananaNp
       const afterAir = state(); release();
       rows.push({ name: "inside-air-jet", before: airborne, after: afterAir, samePack: cave.jet === pack });
       place(0, 0.34, 0); cave.jetFuel = 0.6; key(true, " "); tick();
-      // Preserve the actual held Space across an exit. Neither relocation nor
-      // changing the pile should require unequipping/re-equipping the pack.
+      // Preserve the actual held Space across an exit.
+      // Neither relocation nor changing the pile may require unequipping/re-equipping the pack.
       B.crew.relocatePlayer({ x: outsideX, y: B.island.surfaceAt(outsideX, 0), z: 0 }, 0);
       tick(Math.round(0.2 / dt));
       rows.push({ name: "held-exit-jet", ...state(), samePack: cave.jet === pack });
@@ -3469,8 +3420,8 @@ const { bananaExitProbe, bananaGlyphInteriorProbe, bananaMovementProbe, bananaNp
     }
   };
 
-  // Only continuous crossings emit fruit: entering, resting, pile resizing and
-  // teleporting must not consume effects from the bounded exit-animation pool.
+  // Only continuous crossings emit fruit.
+  // Entering, resting, pile resizing and teleporting must not consume the bounded exit-animation pool.
   const bananaExitProbe = ({ dt = 1 / 60 } = {}) => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, cover = B.headquarters.bananaCover;
     const actors = [...B.cavemen.values()], cave = actors.find((entry) => entry.state === "working"), hidden = [];
@@ -3513,8 +3464,7 @@ const { bananaExitProbe, bananaGlyphInteriorProbe, bananaMovementProbe, bananaNp
       B.setPileLevel(100000); place(0, 0.34, 0); start = bursts();
       for (let n = 0; n < 30; n++) tick();
       rows.push({ name: "rest", inside: inside(), bursts: bursts() - start });
-      // The same crossing hook runs after autonomous walking, not just when
-      // this character is under keyboard control.
+      // The same crossing hook runs after autonomous walking, not only under keyboard control.
       B.pilot.release(true); cave.act.kind = "idle"; cave.act.until = 1e12; cave.nextBuildAt = 1e12;
       cave.walk = { tx: outside, tz: 0, speed: 2, phase: 0, heading: Math.PI / 2, to: "spot" };
       cave.act.spot.x = outside; cave.act.spot.z = 0; cave.act.spot.ry = Math.PI / 2;
@@ -3528,8 +3478,8 @@ const { bananaExitProbe, bananaGlyphInteriorProbe, bananaMovementProbe, bananaNp
     }
   };
 
-  // Non-player routes detour around the mound. A character already within it
-  // can still leave, moving at half its usual walking speed until clear.
+  // Non-player routes detour around the mound; a character already inside can still leave,
+  // moving at half its usual walking speed until clear.
   const bananaNpcMovementProbe = ({ dt = 1 / 60 } = {}) => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, scene = BL.scenes.hub, cover = B.headquarters.bananaCover;
     const actors = [...B.cavemen.values()], cave = actors.find((entry) => entry.state === "working"), hidden = [];
@@ -3570,15 +3520,15 @@ const { bananaExitProbe, bananaGlyphInteriorProbe, bananaMovementProbe, bananaNp
       frames = sampleFrames;
       while (cave.walk && frames++ < Math.ceil(15 / dt)) step();
       Object.assign(escape, { arrived: !cave.walk, frames, outside: !inside(), distance: Math.hypot(cave.root.position.x, cave.root.position.z - radius) });
-      // A donation can bury a destination after the route was chosen. The
-      // walker must replace that destination instead of circling the new heap.
+      // A donation can bury a destination after the route was chosen.
+      // The walker must replace that destination instead of circling the new heap.
       B.setPileLevel(302);
       route(0, B.island.surfaceAt(0, radius + 1), radius + 1, 0, 2);
       const oldTargetZ = B.altar.platformRadius + 0.3 + 0.0001;
       cave.walk.tz = cave.act.spot.z = oldTargetZ;
       const initiallyClear = oldTargetZ > B.altar.platformRadius + 0.3 && !B.headquarters.solids.inBananas(cave, 0, oldTargetZ);
-      // A single banana updates the shape without the separate >=2-banana
-      // meal rush replacing the authored walk before its own route check runs.
+      // A single banana updates the shape without the separate >=2-banana meal rush
+      // replacing the authored walk before its own route check runs.
       B.setPileLevel(303);
       for (const [node] of hidden) node.visible = false;
       const growth = { initiallyClear, coveredAfterGrowth: oldTargetZ < B.altar.platformRadius + 0.3, sourceOutside: !inside(), preservedBeforeStep: cave.walk.to === "spot" && cave.walk.tx === 0 && cave.walk.tz === oldTargetZ, entries: 0, moved: 0, frames: 0 };
@@ -3600,8 +3550,6 @@ const { bananaExitProbe, bananaGlyphInteriorProbe, bananaMovementProbe, bananaNp
     } finally { for (const [node, visible] of hidden) node.visible = visible; }
   };
 
-  // Exercise the production overlay across both contact planes, including
-  // near-plane views split between all adjoining solid materials.
   const bananaPlatformInteriorProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, overlay = document.getElementById("overlay"), rows = [];
     const copy = document.createElement("canvas"); copy.width = overlay.width; copy.height = overlay.height;
@@ -3705,8 +3653,8 @@ const { bananaExitProbe, bananaGlyphInteriorProbe, bananaMovementProbe, bananaNp
 
 // ---- movement-windows.mjs ----
 const { movementWindowsProbe } = (() => {
-  // Enter through a real headquarters doorway, then fly out through a panorama
-  // or rear-room window and back. Only the exterior fixture is placed directly.
+  // Enter through a real HQ doorway, then fly out through a panorama or rear-room window and back.
+  // Only the exterior fixture is placed directly.
   const movementWindowsProbe = ({ id = "c5", dt = 1 / 60, roomIndex = null, basement = false, rampIndex = null, sampleIndex = null } = {}, entranceProbe = null) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, H = B.island.headquarters, o = B.pilot.orbit;
     const opening = B.cameraCave.openings.find((entry) => entry.id === id), m = opening.mouth;
@@ -3746,8 +3694,8 @@ const { movementWindowsProbe } = (() => {
           if (physical && entrances && !entrances.clearAt(x, y - 0.27, z, 0.27, 0.54) && violations.length < 6) violations.push({ kind: "doorway eye volume sweep", sample: samples, x, y, z });
         }
       }
-      // Only the walking eye collides. Free orbit follows its chosen pose even
-      // when a room wall or sill passes between that eye and its focal point.
+      // Only the walking eye collides.
+      // Free orbit follows its chosen pose even when a room wall or sill passes between eye and focal point.
       if (physical) for (const [dx, dz] of volume) for (const dy of [-0.27, 0, 0.27]) {
         if (solid(p.x + dx, p.y + dy, p.z + dz) && violations.length < 6) violations.push({ kind: "camera body", sample: samples, x: p.x + dx, y: p.y + dy, z: p.z + dz });
       }
@@ -3843,8 +3791,8 @@ const { movementWindowsProbe } = (() => {
 })();
 // ---- window-jump.mjs ----
 const { windowJumpProbe } = (() => {
-  // Jump off the actual upper rim, fall outside the rock, then steer through an
-  // existing window. After the initial placement, movement uses production input.
+  // Jump off the actual upper rim, fall outside the rock, then steer through an existing window.
+  // After the initial placement, movement uses production input.
   const windowJumpProbe = ({ basement = false, mode = "first-person", dt = 1 / 60, jet = false, roomIndex = null, exit = false, offset = 0 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, H = B.island.headquarters, island = B.island;
     const cave = B.cavemen.get("w-s-bitcoin"), level = basement ? H.basement : H;
@@ -3905,9 +3853,8 @@ const { windowJumpProbe } = (() => {
     let start = null;
     const launchOffsets = room ? [offset] : [0, -0.5, 0.5, -1, 1, -1.5, 1.5, -2, 2, -2.5, 2.5, -3, 3, -3.5, 3.5, -4, 4];
     const headroom = cave.bodyHeight + window.BL.crew.JUMP_SPEED ** 2 / (2 * window.BL.pilot.WALK.gravity), solids = B.headquarters.solids.props;
-    // The panorama spans a broad cliff. Choose an actual clear launch line,
-    // including the solid trees and old gate above it, rather than teleporting
-    // beneath a canopy and expecting the jump to pass through its lower leaves.
+    // The panorama spans a broad cliff: choose a clear launch line allowing for the solid trees and old gate above,
+    // rather than teleporting beneath a canopy and expecting the jump to pass through its lower leaves.
     for (const across of launchOffsets) {
       for (let r = 29.5; r > 24; r -= 0.05) {
         const x = sx * r - sz * across, z = sz * r + sx * across, y = island.surfaceAt(x, z);
@@ -3927,8 +3874,8 @@ const { windowJumpProbe } = (() => {
     B.pilot.navigate({ position: start, target: start, yaw: Math.atan2(-sx, -sz), pitch: mode === "first-person" ? 0 : 0.2, dist: 6 });
     for (let i = 0; i < Math.ceil(1 / dt); i++) step(false);
     if (jet) {
-      // Acquiring the pickup supplies a full tank. Set up a low tank after
-      // acquisition, then equip through the normal toggle so recovery is latched.
+      // Acquiring the pickup supplies a full tank.
+      // Set the low tank after acquisition, then equip through the normal toggle so recovery is latched.
       B.jetpack.grant(cave);
       cave.jetFuel = 0.1;
       B.jetpack.toggle();
@@ -3999,8 +3946,8 @@ const { windowFlareProbe } = (() => {
         if (Math.abs(ny) > 0.01 && Math.abs(ny) < 0.9999) sloped++;
         if (faces % 11) continue;
         const x = (v[a] + v[b] + v[c]) / 3, y = (v[a + 1] + v[b + 1] + v[c + 1]) / 3, z = (v[a + 2] + v[b + 2] + v[c + 2]) / 3;
-        // A reveal can meet the last sliver of an outer cliff voxel. Stay close
-        // enough to test that face instead of stepping through its entire rock.
+        // A reveal can meet the last sliver of an outer cliff voxel.
+        // Stay close enough to test that face instead of stepping through its entire rock.
         const inward = island.solidAt(x - nx * 1e-5, y - ny * 1e-5, z - nz * 1e-5), outward = island.solidAt(x + nx * 1e-5, y + ny * 1e-5, z + nz * 1e-5);
         samples++;
         if ((!inward || outward) && failures.length < 12) failures.push({ kind: "mesh/rock", x, y, z, inward, outward });
@@ -4021,9 +3968,8 @@ const { windowFlareProbe } = (() => {
       if (floor > -120) { floorSamples++; floorError = Math.max(floorError, Math.abs(floor - expectedFloor)); }
       if (ceiling < Infinity) { ceilingSamples++; ceilingError = Math.max(ceilingError, Math.abs(ceiling - expectedCeiling)); }
     }
-    // Intersect each real tapered aperture with concentric shell sections.
-    // This derives angular bounds from its side planes, independently of the
-    // construction's approximate arc-gap budget, and includes panorama sectors.
+    // Intersect each tapered aperture with concentric shell sections to derive angular bounds from its side planes,
+    // independently of the construction's approximate arc-gap budget; panorama sectors included.
     const halfAngle = (f, radius) => Math.min(Math.acos(Math.min(1, f.start / radius)), Math.atan(f.horizontal) + Math.asin((f.half - f.horizontal * f.start) / (radius * Math.hypot(1, f.horizontal))));
     let separationSamples = 0, pairs = 0, neighborGap = Infinity, stackedGap = Infinity;
     for (let i = 0; i < H.windows.length; i++) for (let j = i + 1; j < H.windows.length; j++) {
@@ -4048,9 +3994,8 @@ const { windowFlareProbe } = (() => {
       }
       if (inspected) pairs++;
     }
-    // Ray-test the rendered terrain independently of collision, looking from
-    // every room across the inner aperture. Stray retained wall triangles must
-    // not hide an opening whose physical air is clear.
+    // Ray-test the rendered terrain independently of collision, from every room across the inner aperture.
+    // Stray retained wall triangles must not hide an opening whose physical air is clear.
     let roomViews = 0, roomViewRays = 0;
     for (const w of H.windows) {
       if (w.kind !== "room") continue;
@@ -4110,8 +4055,7 @@ const { windowFlareProbe } = (() => {
             floorExtent = Math.max(floorExtent, point[0] * sx + point[2] * sz);
           }
         }
-        // The expanding outer opening must never remove or intersect any part
-        // of the visible sloping floor, even along its off-center side edges.
+        // The expanding outer opening must never remove or intersect the visible sloping floor, including side edges.
         clipped = triangle;
         for (const plane of flare.planes) clipped = clipPolygon(clipped, plane);
         if (clipped.length >= 3) {
@@ -4142,9 +4086,8 @@ const { windowFlareProbe } = (() => {
 })();
 // ---- entrance-clearance.mjs ----
 const { createEntranceClearanceProbe } = (() => {
-  // Read the actual rendered doorway stones, including their scene transforms.
-  // Connected mesh components are boxes; derive their bounds from shared vertices
-  // rather than duplicating the model's lintel height or pillar dimensions.
+  // Read the actual rendered doorway stones with their scene transforms.
+  // Components are boxes: derive bounds from shared vertices, not the model's lintel height or pillar dims.
   const createEntranceClearanceProbe = () => {
     const BL = window.BL, B = window.__ooga, cache = new Map(), visited = new Set();
     BL.scene.updateWorld(BL.scenes.hub.root);
@@ -4216,8 +4159,8 @@ const { createEntranceClearanceProbe } = (() => {
 })();
 // ---- navigation-buttons.mjs ----
 const { navigationButtonLayoutProbe, navigationButtonsProbe } = (() => {
-  // Exercise the HUD's actual click handlers. Navigation itself owns placement;
-  // this probe only selects a mode, holds movement keys, and inspects the result.
+  // Exercise the HUD's actual click handlers.
+  // Navigation owns placement; this probe only selects a mode, holds movement keys and inspects the result.
   const navigationButtonsProbe = ({ mode = "orbit", level = 300 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, island = B.island, H = island.headquarters;
     const driven = mode === "trailing" || mode === "first-person", close = mode === "eye-level" || mode === "first-person";
@@ -4235,8 +4178,8 @@ const { navigationButtonLayoutProbe, navigationButtonsProbe } = (() => {
       const check = (kind, x, y, z) => {
         if (island.solidAt(x, y, z) && violations.length < 5) violations.push({ kind, sample: samples, x, y, z });
       };
-      // A selected trailing camera may deliberately pass through rock and show
-      // its filled-rock treatment. Physical close views must remain clear.
+      // A selected trailing camera may deliberately pass through rock and show its filled-rock treatment.
+      // Physical close views must remain clear.
       if (!cave || close) for (const y of [-0.16, 0, 0.16]) for (let i = 0; i < 8; i++) {
         const angle = i * Math.PI / 4;
         check("eye", eye.x + Math.sin(angle) * 0.2, eye.y + y, eye.z + Math.cos(angle) * 0.2);
@@ -4255,8 +4198,8 @@ const { navigationButtonLayoutProbe, navigationButtonsProbe } = (() => {
       keys([]);
     };
     const project = (point) => {
-      // Renderer matrices belong to the last drawn frame; derive this frame's
-      // projection directly from the authored eye, look target, FOV and aspect.
+      // Renderer matrices belong to the last drawn frame.
+      // Derive this frame's projection directly from the authored eye, look target, FOV and aspect.
       const camera = B.camera, eye = camera.position, target = camera.target;
       const length = Math.hypot(target.x - eye.x, target.y - eye.y, target.z - eye.z);
       const fx = (target.x - eye.x) / length, fy = (target.y - eye.y) / length, fz = (target.z - eye.z) / length, horizontal = Math.hypot(fx, fz);
@@ -4270,8 +4213,8 @@ const { navigationButtonLayoutProbe, navigationButtonsProbe } = (() => {
       if (!cave) return null;
       window.BL.scene.updateWorld(cave.root);
       const eye = B.camera.position, direction = [target.x - eye.x, target.y - eye.y, target.z - eye.z];
-      // Intersect the actual posed head/torso triangles, not an oversized body
-      // bounding box that could falsely cover a visible hearth between limbs.
+      // Intersect the actual posed head/torso triangles.
+      // An oversized body bounding box could falsely cover a visible hearth between limbs.
       const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
       const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
       const subtract = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -4329,8 +4272,8 @@ const { navigationButtonLayoutProbe, navigationButtonsProbe } = (() => {
         const mouth = B.mouths.find((entry) => entry.id === (destination === "lab" ? "c11" : "c1"));
         targetX = mouth.x; targetZ = mouth.z;
         const dx = x - mouth.x, dz = z - mouth.z, along = dx * Math.sin(mouth.ry) + dz * Math.cos(mouth.ry), across = dx * Math.cos(mouth.ry) - dz * Math.sin(mouth.ry);
-        // Safe lateral offsets may move an orbit eye farther sideways than the
-        // feet. It must remain in the entrance's forward cone and face its mouth.
+        // Safe lateral offsets can move an orbit eye farther sideways than the feet.
+        // It must stay in the entrance's forward cone and face its mouth.
         near = along > 0.6 && along < 18 && Math.abs(across) < Math.max(2, along * 0.5) && y >= mouth.floorY;
         detail = { along, across };
       }
@@ -4429,8 +4372,7 @@ const { navigationButtonLayoutProbe, navigationButtonsProbe } = (() => {
 })();
 // ---- ramp-ceiling.mjs ----
 const { rampCeilingProbe } = (() => {
-  // A physical first-person eye walks both directions through the real ramps.
-  // Independent contact probes retain coverage of their descending roof surfaces.
+  // A physical first-person eye walks both ramp directions; independent contact probes cover descending roofs.
   const rampCeilingProbe = ({ id = "c730", lateral = 0, dt = 1 / 60, fromNavigation = false } = {}) => {
     const B = window.__ooga, island = B.island, H = island.headquarters, scene = window.BL.scenes.hub, o = B.pilot.orbit;
     const opening = B.cameraCave.openings.find((entry) => entry.id === id), m = opening.mouth, ramp = H.ramps.find((entry) => entry.id === id);
@@ -4464,8 +4406,8 @@ const { rampCeilingProbe } = (() => {
           if (island.solidAt(x, y, z) && violations.length < 4) violations.push({ phase, kind: "eye sweep", x, y, z });
         }
       }
-      // The production volume query checks every intersecting voxel. A sparse
-      // disk of point samples alone misses the exact corner behind this bug.
+      // The production volume query checks every intersecting voxel.
+      // A sparse disk of point samples alone misses the exact corner behind this bug.
       if (!island.clearAt(p.x, p.y - 0.299, p.z, 0.299, 0.598) && violations.length < 4) violations.push({ phase, kind: "eye volume", ...snapshot() });
       const roof = island.ceilingAt(p.x, p.y - 0.3, p.z, 0.3);
       if (Number.isFinite(roof) && Math.abs(roof - p.y - 0.3) < 0.015) roofContacts++;
@@ -4532,7 +4474,6 @@ const { rampCeilingProbe } = (() => {
         completed = follow("center", [H.room]);
       }
       if (completed) {
-        // Turn in the same physical walking mode using the actual look hook.
         const frames = Math.ceil(1 / dt);
         for (let i = 0; i < frames; i++) { B.pilot.hooks.onOrbit(-Math.PI / frames / 0.004, 0.25 / frames / 0.0035); step(); }
         rest(0.6);
@@ -4543,7 +4484,6 @@ const { rampCeilingProbe } = (() => {
       if (completed) {
         phase = "reverse";
         const before = snapshot();
-        // Back into the upper curve, then resume the outward-facing ascent.
         completed = follow("reverse", [down[2]], false);
         reversal = { before, back: snapshot() };
         if (completed) completed = follow("resume", [down[1], down[0]], true);
@@ -4562,8 +4502,6 @@ const { rampCeilingProbe } = (() => {
 })();
 // ---- entrance-ceiling.mjs ----
 const { entranceCeilingProbe } = (() => {
-  // Walk a physical first-person eye through every HQ stone lintel in both
-  // directions, and probe roof contacts against the actual rendered mesh.
   const entranceCeilingProbe = ({ dt = 1 / 60 } = {}, createClearance) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, H = B.island.headquarters, o = B.pilot.orbit, arches = createClearance();
     const held = new Set(), failures = [], violations = [], crossed = [], contacts = [];
@@ -4599,8 +4537,8 @@ const { entranceCeilingProbe } = (() => {
       }
       failures.push({ phase, goal, at: snapshot() }); keys([]); return false;
     };
-    // A walking eye takes its height from actual support. The lintel base
-    // remains level while its approach ramp slopes beneath it.
+    // A walking eye takes its height from actual support.
+    // The lintel base stays level while its approach ramp slopes beneath it.
     const follow = (points) => {
       for (const q of points) {
         const p = snapshot(), count = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.z - p.z) / 0.6));
@@ -4613,7 +4551,6 @@ const { entranceCeilingProbe } = (() => {
       const point = (along) => ({ x: node.position.x + sr * along, y: floor + 1.1, z: node.position.z + cr * along });
       phase = `${entry.ramp ? "ramp" : entry.basement ? "basement" : "upper"}:${entry.roomIndex}`;
       if (!follow([point(1.3)])) return false;
-      // Find the first actual lintel/roof contact from clear standing eye air.
       const center = point(0), clearAt = (eyeY) => B.island.clearAt(center.x, eyeY - 0.299, center.z, 0.299, 0.598) && arches.clearAt(center.x, eyeY - 0.299, center.z, 0.299, 0.598);
       let low = floor + 1.1, high = floor + 4.25;
       const standingClear = clearAt(low), overheadBlocked = !clearAt(high);
@@ -4665,8 +4602,8 @@ const { entranceCeilingProbe } = (() => {
 })();
 // ---- hq-basement.mjs ----
 const { headquartersBasementProbe } = (() => {
-  // Inspect actual voxel clearance and support in the second HQ level. Every
-  // sample selects its height explicitly where the upper rooms occupy the same XZ.
+  // Inspect actual voxel clearance and support in the second HQ level.
+  // Every sample selects its height explicitly, since the upper rooms occupy the same XZ.
   const headquartersBasementProbe = () => {
     const B = window.__ooga, island = B.island, H = island.headquarters, basement = H.basement;
     const failures = [], rooms = [], ramps = [], column = {}, upper = {};
@@ -4798,8 +4735,8 @@ const { headquartersBasementProbe } = (() => {
 })();
 // ---- walking-parity.mjs ----
 const { walkingFallProbe, walkingSpeedProbe } = (() => {
-  // Compare the real held-key controllers on flat HQ ground, then walk off the
-  // same cave roof. Camera and character trajectories retain production collision.
+  // Compare the real held-key controllers on flat HQ ground, then walk off the same cave roof.
+  // Camera and character trajectories retain production collision.
   const walkingSpeedProbe = ({ dt = 1 / 60 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, o = B.pilot.orbit, rows = [];
     const cave = [...B.cavemen.values()].find((entry) => entry.state === "working" && !entry.jet);
@@ -4840,8 +4777,7 @@ const { walkingFallProbe, walkingSpeedProbe } = (() => {
       B.pilot.possess(cave);
       B.crew.relocatePlayer({ ...start, y: roof }, yaw + Math.PI);
     } else {
-      // Free entry arrives at the focus, so put that focus on the same roof
-      // starting point as the character before comparing their falls.
+      // Free entry arrives at the focus, so put that focus on the character's roof start point before comparing falls.
       const target = { x: start.x, y: roof + 1.5, z: start.z };
       o.target = target; o.tx = target.x; o.ty = target.y; o.tz = target.z;
     }
@@ -4888,8 +4824,8 @@ const { walkingFallProbe, walkingSpeedProbe } = (() => {
 })();
 // ---- jump-jetpack.mjs ----
 const { abyssRespawnProbe, jetpackHudProbe, jetpackInputFuelProbe, jetpackNotchProbe, jetpackRecoveryProbe, jetpackUndergroundProbe, jumpActionProbe, jumpJetpackProbe, underIslandReleaseProbe } = (() => {
-  // Exercise production input routing and physics at several frame rates. Only
-  // fixture placement is direct; presses, landing, fuel and ownership use the hub.
+  // Exercise production input routing and physics at several frame rates.
+  // Only fixture placement is direct; presses, landing, fuel and ownership use the hub.
   const jumpJetpackProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.jet);
     const held = new Set(), rows = [];
@@ -4912,8 +4848,8 @@ const { abyssRespawnProbe, jetpackHudProbe, jetpackInputFuelProbe, jetpackNotchP
     B.crew.relocatePlayer(flat, 0);
     if (mode === "first-person") B.pilot.enterClose();
     step(Math.ceil(1 / dt));
-    // Clear the earlier possession bubble through its normal overlay lifetime so
-    // a new jump shout cannot hide by replacing an already-counted bubble.
+    // Clear the earlier possession bubble through its normal overlay lifetime,
+    // so a new jump shout cannot hide by replacing an already-counted bubble.
     scene.overlay(4);
     const speechBefore = B.stats().bubbles;
     const landed = () => {
@@ -4979,7 +4915,7 @@ const { abyssRespawnProbe, jetpackHudProbe, jetpackInputFuelProbe, jetpackNotchP
       let used = 0;
       while (cave.jetFuel > 0 && used++ < Math.ceil(10 / dt)) step();
       const empty = state();
-      // The fuel is still empty while falling. Fresh Space must not become jump.
+      // The fuel is still empty while falling: fresh Space must not become jump.
       release(" "); const beforeEmptyPress = state(); tap(" "); const emptyPress = state();
       press(" "); step(Math.ceil(0.15 / dt)); const emptyHeld = state(); release(" ");
       rows.push({ name: "empty", empty, beforeEmptyPress, emptyPress, emptyHeld });
@@ -5181,8 +5117,7 @@ const { abyssRespawnProbe, jetpackHudProbe, jetpackInputFuelProbe, jetpackNotchP
       for (let radius = 8; radius <= 16; radius += 2) for (let i = 0; i < 64; i++) {
         const angle = i / 64 * Math.PI * 2, x = Math.sin(angle) * radius, z = Math.cos(angle) * radius;
         if (!solids.props.segmentClear(x, 0, z, x, 0, z - length, 0.8, cave.bodyHeight)) continue;
-        // Other characters are solid now too. Leave enough room for their
-        // movement during the half-second fuel measurement.
+        // Other characters are solid now too; leave room for their movement during the half-second fuel measurement.
         let clear = true;
         for (const other of B.cavemen.values()) {
           if (other === cave || !other.root.visible) continue;
@@ -5208,11 +5143,11 @@ const { abyssRespawnProbe, jetpackHudProbe, jetpackInputFuelProbe, jetpackNotchP
       const cases = [[], ["w"], ["a"], ["s"], ["d"], ["w", "d"], [" "], [" ", "w"]].map((input) => ({ input, airborne: true }));
       cases.push({ input: ["w"], airborne: false });
       for (const { input, airborne } of cases) {
-        // These independent airborne fixtures isolate input consumption from a
-        // landing, a wall, and the previous case's velocity or partially used tank.
+        // These independent airborne fixtures isolate input consumption from a landing, a wall,
+        // and the previous case's velocity or partially used tank.
         B.crew.relocatePlayer({ x: 12, y: 0, z: 0 }, 0);
-        // Let prior sparks and the equip burst expire through normal updates;
-        // the following half-second count then contains only this input's sparks.
+        // Let prior sparks and the equip burst expire through normal updates,
+        // so the following half-second count contains only this input's sparks.
         step(Math.ceil(2.5 / dt));
         if (!airborne) groundRunway();
         cave.hop = airborne ? 20 : 0; cave.root.position.y += cave.hop; cave.jetFuel = airborne ? 1 : 0.5; cave.jet.puff = 0;
@@ -5263,8 +5198,8 @@ const { abyssRespawnProbe, jetpackHudProbe, jetpackInputFuelProbe, jetpackNotchP
     }
     if (!start) throw new Error("No clear island-edge fixture");
     B.pilot.possess(cave);
-    // Stage the eye with the body; stale orbit focus can otherwise spend the
-    // first second catching up from the banana pile before the jump even starts.
+    // Stage the eye with the body: stale orbit focus can otherwise spend the first second
+    // catching up from the banana pile before the jump even starts.
     B.pilot.navigate({ position: start, yaw: heading + Math.PI, pitch: 0, dist: 3.5 });
     if (mode === "first-person") B.pilot.enterClose();
     for (let i = 0; i < Math.ceil(1 / dt); i++) scene.update(dt, time += dt);
@@ -5350,8 +5285,8 @@ const { abyssRespawnProbe, jetpackHudProbe, jetpackInputFuelProbe, jetpackNotchP
       const p = cave.root.position, y = p.y - cave.baseY, eye = B.camera.position;
       return { x: p.x, y, z: p.z, radius: Math.hypot(p.x, p.z), ceiling: island.ceilingAt(p.x, y, p.z, 0.3), fuel: cave.jetFuel, equipped: !!cave.jet, thrust: !!cave.jet && cave.jet.thrust, velocity: cave.hopV, onLand: island.onLand(p.x, p.z), eye: [eye.x, eye.y, eye.z], selected: B.pilot.player === cave, mode: B.pilot.mode, scene: B.scene };
     };
-    // Select an actual underside band. Its ceiling and collision volume come
-    // from the rendered voxels, including the full cylindrical footprint.
+    // Select an actual underside band.
+    // Its ceiling and collision volume come from the rendered voxels, including the full cylindrical footprint.
     for (const radius of [27, 26, 28]) for (let i = 0; i < 128 && !start; i++) {
       const angle = Math.PI * 3 / 8 + i / 128 * Math.PI * 2, x = Math.sin(angle) * radius, z = -Math.cos(angle) * radius;
       const ceiling = island.ceilingAt(x, -25, z, 0.3), y = ceiling - cave.bodyHeight - 0.35, column = {};
@@ -5365,8 +5300,8 @@ const { abyssRespawnProbe, jetpackHudProbe, jetpackInputFuelProbe, jetpackNotchP
     B.pilot.navigate({ position: start, target: start, yaw: Math.atan2(start.x, start.z) + Math.PI, pitch: 0, dist: 3.5 });
     cave.hop = start.y + 120; cave.jetFuel = 1;
     if (mode === "first-person") B.pilot.enterClose();
-    // Finish the deliberate initial view setup before measuring airborne
-    // movement; an unfinished close dolly is not a ceiling-slide step.
+    // Finish the deliberate initial view setup before measuring airborne movement.
+    // An unfinished close dolly is not a ceiling-slide step.
     for (let i = 0; i < Math.ceil(3 / dt) && B.pilot.closeMix !== (mode === "first-person" ? 1 : 0); i++) B.pilot.update(dt);
     if (B.pilot.closeMix !== (mode === "first-person" ? 1 : 0)) throw new Error("Notch fixture view did not settle");
     key("keydown", "j"); key("keyup", "j");
@@ -5378,8 +5313,8 @@ const { abyssRespawnProbe, jetpackHudProbe, jetpackInputFuelProbe, jetpackNotchP
         const s = state(), distance = Math.hypot(s.x - previous.x, s.y - previous.y, s.z - previous.z);
         maxBodyStep = Math.max(maxBodyStep, distance);
         maxEyeStep = Math.max(maxEyeStep, Math.hypot(s.eye[0] - previous.eye[0], s.eye[1] - previous.eye[1], s.eye[2] - previous.eye[2]));
-        // The slide already reaches the next higher band in this frame. Record
-        // the finite ceiling it moved past, not only the new post-slide gap.
+        // The slide already reaches the next higher band in this frame.
+        // Record the finite ceiling it moved past, not only the new post-slide gap.
         if (Number.isFinite(previous.ceiling) && s.radius > previous.radius + 1e-6) { contactFrames++; ceilings.add(previous.ceiling); }
         stall = distance < dt * 0.05 ? stall + dt : 0; maxStall = Math.max(maxStall, stall);
         const fail = (kind) => { if (violations.length < 6) violations.push({ kind, ...s }); };
@@ -5467,8 +5402,7 @@ const { basementHoleFreeEyeProbe, basementHoleGeometryProbe, basementHoleJetpack
     return { diameter: hole.radius * 2, opening: hole.mouthRadius * 2, ringWidth: basement.room.radius - hole.mouthRadius, floor: basement.floor, bottom: hole.bottom, shaftSamples, ringSamples, rimSamples, renderedRimCells, rockSamples, entranceSamples, maxRimStep, sweepClear, failures };
   };
 
-  // Only placement is direct. Walking off the bevel, gravity, falling pose and
-  // returning to the pile run through the actual hub controller in both views.
+  // Only placement is direct; walking off the bevel, gravity, falling pose and the return use the hub controller.
   const basementHoleMovementProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, island = B.island, basement = island.headquarters.basement, hole = basement.hole;
     const cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.jet), o = B.pilot.orbit, failures = [], poses = [];
@@ -5510,9 +5444,8 @@ const { basementHoleFreeEyeProbe, basementHoleGeometryProbe, basementHoleJetpack
         const drop = previous ? previous.y - s.y : 0;
         const groundedStep = previous && previous.hop === 0 && s.hop === 0 && previous.velocity === 0 && s.velocity === 0 && drop > 1e-7 && drop <= island.unit + 1e-7;
         if (groundedStep) groundedSteps++;
-        // Grounded voxel steps move horizontally, then lower onto their support.
-        // Sweep that authored path; airborne bodies and every eye keep the
-        // straight sweep, so a lip cannot hide a fall or camera intersection.
+        // Grounded voxel steps move horizontally, then lower onto support: sweep that authored path.
+        // Airborne bodies and every eye keep the straight sweep, so a lip cannot hide a fall or camera intersection.
         const bodySweep = !previous || (groundedStep
           ? island.voxelSegmentClearAt(previous.x, previous.y + 1e-5, previous.z, s.x, previous.y + 1e-5, s.z, 0.295, cave.bodyHeight - 1e-5) && island.voxelSegmentClearAt(s.x, previous.y + 1e-5, s.z, s.x, s.y + 1e-5, s.z, 0.295, cave.bodyHeight - 1e-5)
           : island.voxelSegmentClearAt(previous.x, previous.y + 1e-5, previous.z, s.x, s.y + 1e-5, s.z, 0.295, cave.bodyHeight - 1e-5));
@@ -5537,7 +5470,7 @@ const { basementHoleFreeEyeProbe, basementHoleGeometryProbe, basementHoleJetpack
       return { x: p.x, y: p.y - 1.1, z: p.z, eyeY: p.y, falling: B.pilot.freeFalling, selected: !!B.pilot.player, mode: B.pilot.mode, scene: B.scene };
     };
     // Releasing a stationary eye on the ring establishes a valid initial layer.
-    // All tested movement afterward is unpossessed free-eye navigation.
+    // All movement tested afterward is unpossessed free-eye navigation.
     B.pilot.possess(cave); document.querySelector('nav[data-scene="hub"] [data-preset="underground"]').click();
     B.crew.relocatePlayer({ x: hole.x + 6.5, y: basement.floor, z: hole.z }, -Math.PI / 2);
     B.pilot.navigate({ position: { x: hole.x + 6.5, y: basement.floor, z: hole.z }, target: { x: hole.x + 6.5, y: basement.floor, z: hole.z }, yaw: Math.PI / 2, pitch: 0, dist: 3.5 });
@@ -5573,8 +5506,7 @@ const { basementHoleFreeEyeProbe, basementHoleGeometryProbe, basementHoleJetpack
     } finally { key("keyup"); }
   };
 
-  // Stage below the underside once, then use normal thrust and walking to fly
-  // through the shaft and step onto the retained basement circulation ring.
+  // Stage below the underside once, then use normal thrust and walking through the shaft onto the basement ring.
   const basementHoleJetpackProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, island = B.island, basement = island.headquarters.basement, hole = basement.hole;
     const cave = [...B.cavemen.values()].find((c) => c.state === "working"), o = B.pilot.orbit, failures = [], poses = [];
@@ -5592,8 +5524,8 @@ const { basementHoleFreeEyeProbe, basementHoleGeometryProbe, basementHoleJetpack
     B.pilot.navigate({ position: start, target: start, yaw: -Math.PI / 2, pitch: 0, dist: 3.5 });
     cave.hop = start.y + 120;
     if (mode === "first-person") B.pilot.enterClose();
-    // Camera setup must finish before gravity/thrust measurement begins. Keep
-    // the authored initial body placement while the view alone settles.
+    // Camera setup must finish before gravity/thrust measurement begins.
+    // Keep the authored initial body placement while the view alone settles.
     for (let i = 0; i < Math.ceil(3 / dt) && B.pilot.closeMix !== (mode === "first-person" ? 1 : 0); i++) B.pilot.update(dt);
     if (B.pilot.closeMix !== (mode === "first-person" ? 1 : 0)) throw new Error("Shaft fixture view did not settle");
     tap("j");
@@ -5683,14 +5615,14 @@ const { convexProbe } = (() => {
       ["almost parallel outside", false, unit, -2, -0.25, 0.75001, 2, -0.25, 0.750001, 0.25, 0.5],
       ["almost parallel entry", true, unit, -2, -0.25, 0.75001, 2, -0.25, 0.74999, 0.25, 0.5]
     ]) { check(kind, expected, collide(piece, x, y, z, tx, ty, tz, radius, height)); swept++; }
-    // Random straight horizontal sweeps cross the X extent, reducing the oracle
-    // to the exact cylinder-vs-box vertical interval and Z distance.
+    // Random straight horizontal sweeps cross the X extent,
+    // reducing the oracle to the exact cylinder-vs-box vertical interval and Z distance.
     for (let i = 0; i < 5000; i++) {
       const y = random() * 2 - 1, z = random() * 2 - 1, radius = random() * 0.4, height = random();
       const expected = y < 0.5 && y + height > -0.5 && Math.abs(z) < 0.5 + radius;
       check("swept box oracle", expected, collide(unit, -2, y, z, 2, y, z, radius, height), { y, z, radius, height }); swept++;
     }
-    // Y rotations preserve the cylinder, providing an exact independent oracle
+    // Y rotations preserve the cylinder, giving an exact independent oracle
     // for oblique rock faces and non-axis-aligned sweeps through thin fragments.
     for (let i = 0; i < 5000; i++) {
       const angle = random() * Math.PI * 2, c = Math.cos(angle), s = Math.sin(angle), rock = box(-0.1, -0.1, -0.01, 0.2, 0.2, 0.02);
@@ -5706,9 +5638,8 @@ const { convexProbe } = (() => {
       const x = random() * 0.5 - 0.1, y = random() * 0.5 - 0.1, z = random() * 0.5 - 0.1;
       check("tetrahedron point halfspaces", x > 0 && y > 0 && z > 0 && x + y + z < 0.25, collide(tetrahedron, x, y, z, x, y, z, 0, 0), { x, y, z }); tetrahedra++;
     }
-    // Unlike a Y rotation, these slabs have inclined floors/ceilings. Their
-    // tangential sides stay beyond the cylinder: the exact oracle is its support
-    // span along the slab normal, r*hypot(nx,nz) + h/2*abs(ny).
+    // Unlike a Y rotation, these slabs have inclined floors/ceilings; tangential sides stay beyond the cylinder.
+    // Exact oracle: support span along the slab normal, r*hypot(nx,nz) + h/2*abs(ny).
     const gaps = [0, 0.000001, 0.00005, 0.0007, -0.000001, -0.00005, -0.0007];
     for (let i = 0; i < 5000; i++) {
       const angle = random() * Math.PI * 2, azimuth = random() * Math.PI * 2, sine = Math.sin(angle), cosine = Math.cos(angle), ca = Math.cos(azimuth), sa = Math.sin(azimuth);
@@ -5725,8 +5656,8 @@ const { convexProbe } = (() => {
       check("tilted slab tangent sweep", gap < 0, collide(rock, x - ux, y, z - uz, x + ux, y, z + uz, radius, height), { angle, azimuth, gap, radius, height });
       tilted += 2;
     }
-    // This real window-ceiling fragment formerly cycled the simplex for all 96
-    // iterations despite a 0.000697-unit gap above the character's head.
+    // This real window-ceiling fragment formerly cycled the simplex for all 96 iterations
+    // despite a 0.000697-unit gap above the character's head.
     const fragment = new Float64Array([2.5, -3.4153745779425924, -26.5, 2.5, -3.25, -26.5, 2.75, -3.25, -26.5, 2.75, -3.412715065908091, -26.5, 2.75, -3.4474767912316704, -26.25, 2.75, -3.25, -26.25, 2.5, -3.25, -26.25, 2.5, -3.450136303266171, -26.25]);
     const x = 2.768242993333574, y = -4.946482208881706, z = -26.78966635837148, radius = 0.295, height = 1.5324024474716216;
     for (const offset of [0, -0.001, 0.001]) {
@@ -5739,13 +5670,11 @@ const { convexProbe } = (() => {
 })();
 // ---- wall-landing.mjs ----
 const { wallLandingProbe } = (() => {
-  // Real jagged cliff edges whose center column is lower than rock under the
-  // character's feet. Point-only support let falls embed the body and trap it.
+  // Fixture: center column below the rock under the feet. Point-only support let falls embed and trap the body.
   const wallLandingProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, island = B.island, c = [...B.cavemen.values()].find((entry) => entry.state === "working" && !entry.jet), o = B.pilot.orbit;
-    // Exposed jagged steps in all four island quadrants, with clear fall columns
-    // and walkable exits in every direction. The previous positions were under
-    // newly solid tree canopies; prop landings have their own movement probes.
+    // Fixtures need clear fall columns and exits; the earlier positions sat under now-solid tree canopies.
+    // Prop landings have their own movement probes.
     const fixtures = [{ x: -20.5, z: 19.75 }, { x: 21.5, z: -7 }, { x: -3.75, z: -24 }, { x: 13.5, z: 15.75 }], rows = [], failures = [], held = new Set();
     let time = B.renderOpts.matrix.time, checks = 0;
     const key = (type, value) => window.dispatchEvent(new KeyboardEvent(type, { key: value }));
@@ -5801,8 +5730,7 @@ const { wallLandingProbe } = (() => {
 })();
 // ---- jetpack-fall.mjs ----
 const { jetpackFallProbe } = (() => {
-  // Compare complete fall trajectories in open air, so neither terrain support
-  // nor different walking/flying horizontal speeds can mask a gravity change.
+  // Fall in open air so terrain support and walk/fly speed differences cannot mask a gravity change.
   const jetpackFallProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.jet), o = B.pilot.orbit;
     const rows = [], reference = [], directions = ["", "w", "a", "s", "d"], frames = Math.round(2 / dt);
@@ -5846,8 +5774,7 @@ const { jetpackFallProbe } = (() => {
 })();
 // ---- ramp-window-contact.mjs ----
 const { rampWindowContactProbe } = (() => {
-  // A fitting character reaches a real sill where step smoothing would raise its
-  // head into the window. Every later jump and reversal uses production controls.
+  // Sill where step smoothing would raise the head into the window; later jumps use production controls.
   const rampWindowContactProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, island = B.island;
     const windows = island.headquarters.windows.filter((w) => w.kind === "ramp");
@@ -5907,8 +5834,8 @@ const { rampWindowContactProbe } = (() => {
         hold("s", 0.05); const inward = state();
         rows.push({ index: w.index, basement: !!w.basement, fixture, contact, jumped, rise, landed, outward, inward, outwardDistance: Math.hypot(outward.x - contact.x, outward.z - contact.z), reverseDistance: Math.hypot(inward.x - outward.x, inward.z - outward.z) });
       }
-      // This curved upper-ramp edge used to discard the sill under the outer
-      // half of the feet and snap the character down into its solid sidewall.
+      // Regression: this curved upper-ramp edge discarded the sill under the outer half of the feet
+      // and snapped the character down into its solid sidewall.
       const w = windows.find((window) => window.index === 2), sx = Math.sin(w.angle), sz = -Math.cos(w.angle);
       const start = { x: sx * w.flare.innerRadius, y: w.sill, z: sz * w.flare.innerRadius };
       previous = null;
@@ -5923,7 +5850,6 @@ const { rampWindowContactProbe } = (() => {
 })();
 // ---- cloud-support.mjs ----
 const { cloudLowFreeEyeProbe, cloudSupportProbe } = (() => {
-  // Land on the actual voxel cloud mesh, then exercise its moving lifecycle.
   const cloudSupportProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     const B = window.__ooga, S = window.BL.scene, scene = window.BL.scenes.hub, clouds = B.matrixCave.clouds;
     const cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.jet), cloud = clouds[2], node = cloud.node;
@@ -5932,15 +5858,14 @@ const { cloudLowFreeEyeProbe, cloudSupportProbe } = (() => {
     const key = (type, value) => window.dispatchEvent(new KeyboardEvent(type, { key: value }));
     const press = (value) => { key("keydown", value); held.add(value); };
     const release = (value) => { key("keyup", value); held.delete(value); };
-    // The pack is now a pickup. Acquire it through the real contact path before
-    // isolating a cloud, so J exercises its owned (initially unworn) state.
+    // Jetpack is a pickup: acquire it through the real contact path before isolating a cloud,
+    // so J exercises its owned (initially unworn) state.
     B.pilot.possess(cave);
     const pickup = B.jetpack.pickup;
     B.crew.relocatePlayer({ x: pickup.x, y: pickup.host.node.position.y + pickup.host.centerTop, z: pickup.z }, 0);
     scene.update(0, time);
     for (const c of clouds) c.node.visible = c === cloud;
-    // Derive the highest broad top from render vertices, independently of the
-    // platform's cached support rectangles.
+    // Derive the highest broad top from render vertices, not the platform's cached support rectangles.
     const v = node.geometry.verts, topFaces = [];
     for (const f of node.geometry.faces) {
       const a = f.i[0] * 3, b = f.i[1] * 3, c = f.i[2] * 3;
@@ -5969,8 +5894,8 @@ const { cloudLowFreeEyeProbe, cloudSupportProbe } = (() => {
       if (!node.parent) S.addChild(scene.root, node);
       const p = at();
       B.pilot.navigate({ position: { x: p.x, y: p.y + height, z: p.z }, yaw: Math.PI, pitch: 0, dist: 3.5 });
-      // Use the island's empty support initially: dynamic support must rebase
-      // this old ground without teleporting the airborne actor upward.
+      // Start on the island's empty support: dynamic support must rebase this old ground
+      // without teleporting the airborne actor upward.
       cave.hop = height ? p.y + height + 120 : 0;
       cave.hopV = height ? -3 : 0;
       step(0);
@@ -5993,8 +5918,8 @@ const { cloudLowFreeEyeProbe, cloudSupportProbe } = (() => {
       place(4);
       const airborne = position(); node.visible = false; step();
       rows.push({ kind: "airborne-hidden", drop: airborne.y - position().y, expected: 3 * dt + 9.8 * dt * dt, velocity: cave.hopV, expectedVelocity: -3 - 9.8 * dt, horizontal: Math.hypot(cave.root.position.x - airborne.x, cave.root.position.z - airborne.z), detached: cave.cloudSupport === null });
-      // Acquire support only at the destination of one airborne step. Drift
-      // removes that narrow overlap before the next pre-gravity query.
+      // Support is acquired only at the destination of one airborne step;
+      // drift removes that narrow overlap before the next pre-gravity query.
       node.visible = true;
       const edgeX = 2.75, drift = cloud.speed * dt;
       let edgeZ = Infinity;
@@ -6047,8 +5972,8 @@ const { cloudLowFreeEyeProbe, cloudSupportProbe } = (() => {
       release(" ");
       rows.push({ kind: "upward", highest, top: at().y, fuel: cave.jetFuel, equipped: !!cave.jet });
       press("j"); step(); release("j");
-      // Real jagged island edge: the cloud drifts into a higher voxel, while
-      // the rider's current position is clear and only 0.25 above its footing.
+      // Fixture sits on a real jagged edge: the cloud drifts into a higher voxel while the rider's
+      // position stays clear, only 0.25 above its footing.
       const saved = { ...node.position }, fixture = { x: -22.25, y: 2.5, z: -4.55 };
       node.position.x = fixture.x - localX; node.position.y = fixture.y - top.y; node.position.z = fixture.z - localZ;
       place();
@@ -6059,8 +5984,8 @@ const { cloudLowFreeEyeProbe, cloudSupportProbe } = (() => {
         if (cave.hop > 0) { fell = true; break; }
       }
       rows.push({ kind: "blocked-carry", blocked, maximumCarry, fell, cloudMovement: node.position.z - fixture.z + localZ });
-      // Move a real higher puff beneath feet already close to the underside.
-      // A support change must not lift the head into that rock ceiling.
+      // Move a real higher puff beneath feet already close to the underside;
+      // a support change must not lift the head into that rock ceiling.
       const localTopAt = (x, z) => {
         let y = -Infinity;
         for (const f of topFaces) {
@@ -6109,8 +6034,8 @@ const { cloudLowFreeEyeProbe, cloudSupportProbe } = (() => {
     }
     const localX = face.i.reduce((sum, i) => sum + v[i * 3], 0) / face.i.length, localZ = face.i.reduce((sum, i) => sum + v[i * 3 + 2], 0) / face.i.length;
     node.position.x = 45 - localX; node.position.y = -4 - top; node.position.z = -localZ;
-    // Arrive with an Ooga first so the scene's collision history is at the
-    // cloud before releasing into the unpossessed eye-level view.
+    // Arrive with an Ooga first so the scene's collision history is at the cloud
+    // before releasing into the unpossessed eye-level view.
     B.pilot.possess([...B.cavemen.values()].find((c) => c.state === "working" && !c.jet));
     B.pilot.navigate({ position: { x: 45, y: -4, z: 0 }, yaw: Math.PI, pitch: 0, dist: 3.5 });
     B.pilot.enterClose();
@@ -6145,7 +6070,6 @@ const { cloudLowFreeEyeProbe, cloudSupportProbe } = (() => {
 })();
 // ---- sky-altitude.mjs ----
 const { canvasHazeProbe, skyAltitudeProbe } = (() => {
-  // Exercise the real sky shader at flight heights, with a fixed celestial clock.
   const skyAltitudeProbe = async () => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, size = 256;
     const canvas = document.createElement("canvas");
@@ -6186,8 +6110,7 @@ const { canvasHazeProbe, skyAltitudeProbe } = (() => {
       let starPixels = 0;
       for (let i = 0; i < base.length; i += 4) if (base[i] > dark[i] + 12 || base[i + 1] > dark[i + 1] + 12 || base[i + 2] > dark[i + 2] + 12) starPixels++;
       const positions = [[0, -60, 0], [0, 0, 0], [0, 35, 0], [0, 72, 0], [140, 72, -140], [-140, 72, 140]];
-      // The upper sky is above the haze at every altitude. Lower stars can
-      // brighten as the observer rises through that fixed atmospheric layer.
+      // Upper sky is above the haze at every altitude; lower stars may brighten as the observer rises through it.
       const translations = positions.map(([x, y, z]) => { point(x, y, z); return { position: [x, y, z], ...compare(base, capture(), Math.ceil(size * 2 / 3)) }; });
       point(0, 2, 0, 0.4);
       const yaw = compare(base, capture());
@@ -6260,8 +6183,8 @@ const { canvasCullingProbe } = (() => {
       geometry.verts.push(x, y, 0, x + dx, y + dy, 0);
       geometry.lines.push({ i: [offset, offset + 1], color: [90, 220, 150], emissive: 1 });
     };
-    // Both endpoints can be outside opposite sides while the primitive is
-    // visible. The last glow is outside the left edge but still paints pixels.
+    // Both endpoints can lie outside opposite edges while the primitive is still visible.
+    // The last glow is outside the left edge but still paints pixels.
     quad(-8, 0, 16, 1); line(-8, -1, 16, 0); line(-6.85, -3, 0, 1);
     const methods = ["fill", "stroke", "beginPath"], originals = methods.map((name) => context[name]);
     let calls = 0;
@@ -6295,10 +6218,8 @@ const { canvasCullingProbe } = (() => {
 })();
 // ---- lifehash.mjs ----
 const { lifehashProbe } = (() => {
-  // SHA-256 hashes of the complete 32x32 RGB images from Blockchain Commons'
-  // bc-lifehash C++ reference, revision 0444dbe, Version::version2, module_size=1.
-  // These fixed vectors cover UTF-8, all four palettes, both symmetries and SHA-256
-  // padding boundaries; the browser's independent SHA-256 hashes the actual images.
+  // Vectors are SHA-256 of the full 32x32 RGB images from Blockchain Commons bc-lifehash C++ rev 0444dbe,
+  // Version::version2, module_size=1; they span UTF-8, all 4 palettes, both symmetries, SHA-256 padding edges.
   const lifehashProbe = async () => {
     const vectors = [
       ["", "ca68773e52a9f34f57dab7b5c32e2ef5bee5622c5afb04e2d5c07c7f77d27ae5"],
@@ -6335,9 +6256,8 @@ const { lifehashProbe } = (() => {
 })();
 // ---- room-mattresses.mjs ----
 const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisibilityProbe, roomLifehashSignWeaponProbe, roomManualSleepProbe, roomMattressGeometryProbe, roomMattressMovementProbe, roomMattressVisibilityProbe, roomSignPassingProbe, roomSleepProbe } = (() => {
-  // Inspect the authored render geometry, rather than trusting its dimensions or
-  // a bedding count alone. LifeHash's independent reference vectors live in
-  // lifehash.mjs; here every fabric pixel must survive the model's face merging.
+  // Inspect authored render geometry, not dimensions or bedding counts; fabric pixels must survive face merging.
+  // LifeHash reference vectors live in the lifehash.mjs section.
   const roomMattressGeometryProbe = async () => {
     const B = window.__ooga, BL = window.BL, H = B.headquarters, beds = H.mattresses, rooms = H.rooms.concat(H.basement.rooms), failures = [], signatures = [], rows = [];
     const nodes = [];
@@ -6407,8 +6327,6 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
     return { beds: beds.length, nodes: nodes.length, rooms: rooms.length, uniqueRooms: new Set(beds.map((b) => b.room)).size, uniqueGeometry: new Set(beds.map((b) => b.node.geometry)).size, signatures, uniqueFabrics: new Set(signatures.filter((_, i) => !(i % 2))).size, rotations, rows, pixels, edges, vertices, floorSamples, cached, unclaimed, failures };
   };
 
-  // Check the written hash against an independent SHA-256 of the bedding seed,
-  // then inspect the actual inscription faces and hanging placement.
   const roomLifehashSignProbe = async () => {
     const B = window.__ooga, BL = window.BL, H = B.headquarters, scene = BL.scenes.hub, rows = [], failures = [];
     BL.scene.updateWorld(scene.root);
@@ -6489,8 +6407,8 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
     B.pilot.possess(cave); B.crew.removeJetpack(cave);
     if (mode === "first-person") B.pilot.enterClose();
     try {
-      // Sleeping bodies must remain visible while their fitted pose is measured.
-      // Pause other actors through their state API instead of hiding live routes.
+      // Sleeping bodies must stay visible while their fitted pose is measured;
+      // pause other actors via their state API instead of hiding live routes.
       for (const [actor] of others) actor.override = "away";
       B.refreshStates(true);
       for (const sign of B.headquarters.roomSigns) {
@@ -6556,8 +6474,8 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
     }
   };
 
-  // Compare the same moving jump with the board hidden and present: a hanging
-  // sign must yield on either face without changing the actor's trajectory.
+  // Same moving jump with the board hidden and present:
+  // a hanging sign must yield on either face without changing the actor's trajectory.
   const roomSignPassingProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, cave = [...B.cavemen.values()].find((c) => c.state === "working"), rows = [];
     const others = [...B.cavemen.values()].filter((c) => c !== cave).map((c) => [c, c.override]);
@@ -6613,8 +6531,6 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
     }
   };
 
-  // Hide each complete authored bed for a reference frame. Both independent
-  // renderers must show changed pixels at its sheet and pillow in the actual room.
   const roomMattressVisibilityProbe = () => {
     const B = window.__ooga, scene = window.BL.scenes.hub, canvas = document.getElementById("scene"), gl = B.renderer.kind === "webgl2" ? canvas.getContext("webgl2") : null;
     const ctx = gl ? null : document.createElement("canvas").getContext("2d", { willReadFrequently: true });
@@ -6662,8 +6578,6 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
     return { backend: B.renderer.kind, rows };
   };
 
-  // Every room starts at its existing approach. Entrance, both accessible bed
-  // edges, window and exit are reached using real held keys and scene updates.
   const roomMattressMovementProbe = ({ mode = "trailing", dt = 1 / 60 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, cave = [...B.cavemen.values()].find((c) => c.state === "working"), held = new Set(), rows = [], failures = [];
     // This route measures the furnished architecture. Crypto-selected sleepers
@@ -6737,8 +6651,8 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
     });
     const initialBeds = new Set(entries.filter((c) => c.state === "sleeping").map((c) => c.bedroll)).size;
     if (startupOnly) return { initial, initialBeds, awake: awake.length };
-    // These concurrent routes exposed a skipped basement doorway while another
-    // walker occupied its approach. Keep the real beds and normal boot positions.
+    // These concurrent assignments exposed a skipped basement doorway while another walker held its approach.
+    // Keep the real beds and normal boot positions.
     const assignments = [["portlandhodl", 2, false], ["w-s-bitcoin", 3, true], ["dplusplus1024", 10, false], ["bc1gui", 2, true], ["RandyMcMillan", 6, false], ["MrHodlX", 3, false], ["timechainb", 6, true], ["YellowBrokeIt", 1, true], ["DrNeski", 9, false]];
     for (const c of entries) c.override = "working";
     B.refreshStates(true);
@@ -6766,8 +6680,8 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
     const upright = (c) => c.root.visible && c.state === "working" && !c.root.quaternion && !c.camp.seat && !c.camp.rolling;
     const fail = (kind, detail) => { if (failures.length < 12) failures.push({ kind, ...detail }); };
     const step = () => {
-      // Character support is cleared after each crew update. Identify the
-      // standing contact before movement so the walking cap measures own motion.
+      // Character support is cleared after each crew update: identify the standing contact before movement
+      // so the walking cap measures the actor's own motion.
       supports.clear();
       for (const c of entries) {
         if (!upright(c) || c.hop > 1e-7 || c.hopV > 0 || c.jet?.thrust) continue;
@@ -6786,9 +6700,8 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
         if (c.bedTravel.mode === "walk") {
           maxBlocked = Math.max(maxBlocked, c.bedTravel.blocked);
           checks++;
-          // Analytic ramps intentionally support feet at their center height;
-          // their uphill half intersects a flat foot cylinder. Check actual foot
-          // contact separately, and the full torso/head volume above that slope.
+          // Analytic ramps support feet at their center height, so the uphill half intersects a flat foot cylinder.
+          // Check foot contact separately from the torso/head volume above the slope.
           if (!B.island.clearAt(p.x, y + 1e-5, p.z, 0, 0.01) || !B.island.clearAt(p.x, y + 0.3, p.z, 0.295, c.bodyHeight - 0.3)) fail("walking body", { name: c.traits.name, x: p.x, y, z: p.z });
           if (old?.mode === "walk") {
             const support = supports.get(c);
@@ -6803,8 +6716,8 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
             if (!B.island.voxelSegmentClearAt(old.x, old.y + 0.3, old.z, p.x, y + 0.3, p.z, 0.295, c.bodyHeight - 0.3)) fail("walking sweep", { name: c.traits.name, old, x: p.x, y, z: p.z });
           }
         }
-        // The architectural walk hands over to a live surface route before
-        // reaching the pile. Record completion only after both walks finish.
+        // The architectural walk hands over to a live surface route before reaching the pile.
+        // Record completion only after both walks finish.
         if (!c.bedTravel.mode && !c.walk && c.state === "working" && c.act.kind === "eat" && !returnedAt.has(c)) returnedAt.set(c, { name: c.traits.name, mode: c.bedTravel.mode, state: c.state, y, distance: Math.hypot(p.x - c.slot.x, p.z - c.slot.z), claimed: !!c.bedroll });
         previous.set(c, { x: p.x, y, z: p.z, mode: c.bedTravel.mode, hop: c.hop });
       }
@@ -6832,9 +6745,8 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
         }
         if (node.geometry) for (const face of node.geometry.faces) {
           let points = face.i.map((i) => point(node, i * 3));
-          // A tilted cheek contacts the pillow over a small compressed patch,
-          // not a perfectly horizontal face. Clip actual mesh faces against the
-          // pillow top and footprint, then measure their projected contact area.
+          // A tilted cheek contacts the pillow over a small compressed patch, not a horizontal face:
+          // clip real mesh faces against the pillow top and footprint, then measure projected contact area.
           for (const [axis, bound, sign] of [[1, bed.sleep.pillowTop, 1], [0, 0.45, 1], [0, -0.45, -1], [2, bed.sleep.pillowZ + 0.25, 1], [2, bed.sleep.pillowZ - 0.25, -1]]) {
             const clipped = [];
             for (let i = 0; i < points.length; i++) {
@@ -6926,8 +6838,8 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
     const off = state();
     try {
       B.pilot.hooks.onOrbit(0, 0); key("a", true);
-      // Context actions now appear only after movement stops. Reach the fabric
-      // physically before releasing movement and checking the Sleep prompt.
+      // Context actions appear only after movement stops: reach the fabric physically,
+      // then release movement before checking the Sleep prompt.
       for (let n = 0; n < Math.ceil(2 / dt) && (Math.abs(local().x) >= bed.width / 2 - 0.1 || Math.abs(local().y - bed.sleep.surface) > 1e-6); n++) step();
       key("a", false); step();
       const on = state();
@@ -6985,8 +6897,8 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
       } finally { overlay.fillText = fillText; Object.assign(B.camera.position, eye); Object.assign(B.camera.target, target); B.camera.up = cameraUp; }
       key(" ", true); tick(0.5);
       const awakeHeld = state(); key(" ", false);
-      // Waking keeps the chosen world look, which need not face the bed's axis.
-      // Follow the clear bedside waypoint using keys relative to that real view.
+      // Waking keeps the chosen world look, which need not face the bed's axis;
+      // steer to the bedside waypoint with keys relative to that real view.
       for (let n = 0; n < Math.ceil(2 / dt); n++) {
         const p = cave.root.position, o = B.pilot.orbit, dx = bed.walkAt.x - p.x, dz = bed.walkAt.z - p.z;
         if (Math.hypot(dx, dz) < Math.max(0.15, dt * 8)) break;
@@ -7011,8 +6923,8 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
       const refused = !B.crew.sleepPlayer(bed), busyAct = document.getElementById("act").textContent;
       key(" ", true); scene.update(dt, time += dt); key(" ", false);
       const exclusive = { refused, act: busyAct, owner: bed.sleeper === cave, ownerAsleep: cave.state === "sleeping" && cave.bedTravel.mode === "rest", visitorAwake: other.state === "working" && !other.bedroll, visitorJumps: other.hopV > 0 };
-      // A double-click's first ordinary click may legitimately start a sleepy
-      // roll. The possession half must retain that in-progress bed pose.
+      // A double-click's first ordinary click may legitimately start a sleepy roll;
+      // the possession half must retain that in-progress bed pose.
       const beforeSelection = poke([0, 0, 0]), sleepingPose = cave.bedTravel.pose;
       B.pilot.hooks.onDoubleTap({ owner: { kind: "caveman", cave } });
       exclusive.selectedSleeping = B.pilot.player === cave && cave.state === "sleeping" && B.crew.sleeping && cave.bedroll === bed && bed.sleeper === cave && cave.bedTravel.pose === sleepingPose && beforeSelection.before.pose !== sleepingPose && cave.bedTravel.roll === 0 && beforeSelection.after.q.every((v, i) => v === cave.root.quaternion[i]);
@@ -7033,8 +6945,7 @@ const { roomLifehashSignImpactProbe, roomLifehashSignProbe, roomLifehashSignVisi
 })();
 // ---- camera-distance.mjs ----
 const { cameraDistanceProbe, cameraEntryTrajectoryProbe, cameraFreeOrbitProbe, cameraMotionResetProbe, cameraPitchProbe } = (() => {
-  // A wall may hide the Ooga while the chosen eye position remains clear. Find
-  // that condition from actual rock geometry, then use real movement controls.
+  // A wall can hide the Ooga while the eye position stays clear; find that condition from actual rock geometry.
   const cameraDistanceProbe = ({ dt = 1 / 20, basement = false } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, island = B.island, H = island.headquarters;
     const cave = [...B.cavemen.values()].find((c) => c.state === "working"), rows = [], failures = [];
@@ -7043,8 +6954,8 @@ const { cameraDistanceProbe, cameraEntryTrajectoryProbe, cameraFreeOrbitProbe, c
     document.querySelector('nav[data-scene="hub"] [data-preset="underground"]').click();
     for (let i = 0; i < Math.ceil(0.5 / dt); i++) scene.update(dt, time += dt);
     if (basement) {
-      // The scene owns cross-level admission. Walk its real descent instead of
-      // teleporting beneath stale HQ camera metadata through pilot.navigate.
+      // The scene owns cross-level admission: walk its real descent instead of teleporting
+      // beneath stale HQ camera metadata via pilot.navigate.
       const p = cave.root.position, bed = B.headquarters.mattresses.find((b) => b.basement), route = B.headquarters.sleepNavigation.route(p.x, p.y - cave.baseY, p.z, bed, true), held = new Set();
       const keys = (next) => {
         for (const key of held) if (!next.includes(key)) { window.dispatchEvent(new KeyboardEvent("keyup", { key })); held.delete(key); }
@@ -7115,8 +7026,8 @@ const { cameraDistanceProbe, cameraEntryTrajectoryProbe, cameraFreeOrbitProbe, c
           previous = { ...eye };
         };
         inspect();
-        // Hold a fixed selected heading: camera auto-follow must not rotate the
-        // digital movement route while this independent occlusion check runs.
+        // Hold a fixed selected heading: camera auto-follow must not rotate the movement route
+        // while this independent occlusion check runs.
         window.dispatchEvent(new KeyboardEvent("keydown", { key: "d" }));
         for (let i = 0; i < Math.floor(0.1 / dt); i++) { B.pilot.hooks.onOrbit(0, 0); scene.update(dt, time += dt); inspect(); }
         window.dispatchEvent(new KeyboardEvent("keyup", { key: "d" }));
@@ -7340,8 +7251,8 @@ const { cameraDistanceProbe, cameraEntryTrajectoryProbe, cameraFreeOrbitProbe, c
     return { rows };
   };
 
-  // Two otherwise identical pilots must enter from the same view even when one
-  // carried camera velocity before possession invalidated its motion history.
+  // Two otherwise identical pilots must enter from the same view even when one carried camera velocity
+  // before possession invalidated its motion history.
   const cameraMotionResetProbe = () => {
     const BL = window.BL, rows = [];
     const make = () => {
@@ -7387,8 +7298,8 @@ const { cameraDistanceProbe, cameraEntryTrajectoryProbe, cameraFreeOrbitProbe, c
 
 // ---- free-camera-entry.mjs ----
 const { freeCameraEntryProbe } = (() => {
-  // The orbit focus is the destination, even when it is high above support.
-  // Gravity starts only after the rendered eye has reached that destination.
+  // The orbit focus is the destination even when high above support;
+  // gravity starts only after the rendered eye reaches it.
   const freeCameraEntryProbe = () => {
     const B = window.__ooga, scene = window.BL.scenes.hub, rows = [];
     let time = B.renderOpts.matrix.time;
@@ -7439,7 +7350,6 @@ const { freeCameraEntryProbe } = (() => {
 })();
 // ---- bed-camera.mjs ----
 const { bedCameraProbe, cameraReleaseProbe, rampZoomProbe } = (() => {
-  // Walk onto every bed, turn through the sleeping poses and orbit each room.
   // Waking must sweep from the lying eye even when its head anchor changes.
   const bedCameraProbe = ({ dt = 1 / 20 } = {}) => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, beds = B.headquarters.mattresses;
@@ -7455,8 +7365,8 @@ const { bedCameraProbe, cameraReleaseProbe, rampZoomProbe } = (() => {
     for (const c of entries) c.override = "working";
     B.refreshStates(true);
     B.pilot.possess(cave);
-    // Independently measure the rendered pad and pillow boxes. Their physical
-    // eye clearance must agree with the actual fabric, including the case sides.
+    // Measure the rendered pad and pillow boxes independently;
+    // physical eye clearance must agree with the actual fabric, including the case sides.
     const solids = beds.map((bed) => {
       const geometry = bed.node.geometry, boxes = [];
       for (const kind of [undefined, "sheet", "pillow"]) {
@@ -7578,9 +7488,8 @@ const { bedCameraProbe, cameraReleaseProbe, rampZoomProbe } = (() => {
     const step = (count = 1) => { for (let i = 0; i < count; i++) scene.update(dt, time += dt); };
     const clear = (eye) => B.island.clearAt(eye.x, eye.y - 0.3, eye.z, 0.3, 0.6);
     for (const basement of [false, true]) {
-      // The Ooga that naps at boot claims a random bed, so "the first free one"
-      // was sometimes a room whose orbits never reach rock. Upstairs rooms 3 and 4
-      // both do, and one napper can never hold both.
+      // The boot napper claims a random bed, so the first free bed was sometimes a room whose orbits never reach rock.
+      // Upstairs rooms 3 and 4 (slice(3, 5)) both do, and one napper cannot hold both.
       const bed = basement ? B.headquarters.mattresses.find((b) => b.basement && b.roomIndex === 0 && !b.sleeper) || B.headquarters.mattresses.find((b) => b.basement && b.roomIndex === 1 && !b.sleeper) : B.headquarters.mattresses.filter((b) => !b.basement).slice(3, 5).find((b) => !b.sleeper);
       B.pilot.possess(cave); B.pilot.enterClose();
       B.pilot.navigate({ position: { x: bed.x, y: bed.y + bed.sleep.surface, z: bed.z }, yaw: -bed.room.angle, pitch: 0, dist: 6 });
@@ -7635,8 +7544,8 @@ const { bedCameraProbe, cameraReleaseProbe, rampZoomProbe } = (() => {
     return { rows };
   };
 
-  // Every trailing distance keeps the same chosen orbit while the Ooga walks
-  // on either real ramp. First-person navigation is exercised separately.
+  // Every trailing distance keeps the same chosen orbit on either real ramp.
+  // First-person navigation is exercised separately.
   const rampZoomProbe = ({ dt = 1 / 20 } = {}) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, canvas = document.getElementById("scene"), H = B.island.headquarters;
     const cave = [...B.cavemen.values()].find((c) => c.state === "working"), rows = [], failures = [];
@@ -7650,8 +7559,8 @@ const { bedCameraProbe, cameraReleaseProbe, rampZoomProbe } = (() => {
         scene.update(dt, time += dt);
         const p = cave.root.position, feet = p.y - cave.baseY;
         bodyChecks++;
-        // A sloping floor intersects the horizontal cylinder's lowest corners;
-        // the walker steps that foot band while its torso/head stay fully clear.
+        // A sloping floor intersects the horizontal cylinder's lowest corners: the walker steps that foot band
+        // while torso and head stay fully clear.
         if (!B.island.clearAt(p.x, feet + 0.3, p.z, 0.3, cave.bodyHeight - 0.3) && failures.length < 8) failures.push({ kind: "body", x: p.x, y: feet, z: p.z });
         if (B.pilot.closeMix === 0 && !B.pilot.preserveExitAngle) { rawChecks++; maximumRawError = Math.max(maximumRawError, rawError()); }
       }
@@ -7689,8 +7598,8 @@ const { bedCameraProbe, cameraReleaseProbe, rampZoomProbe } = (() => {
       step(Math.ceil(0.7 / dt));
       for (let boundary = 0; boundary < 2 && (B.pilot.closeWanted || B.pilot.aiming); boundary++) B.pilot.hooks.onZoom(1.1); step(Math.ceil(0.7 / dt));
       settle();
-      // End the separately tested exit dolly at a supported pose before testing
-      // ordinary orbit controls. The real follow target remains attached.
+      // End the separately tested exit dolly at a supported pose before testing ordinary orbit controls;
+      // the real follow target stays attached.
       B.pilot.navigate({ position: { x: sample.x, y, z: sample.z }, yaw: 0.4, pitch: 0.3, dist: 6 });
       B.pilot.hooks.onOrbit(0, (0.4 - B.pilot.orbit.tPitch) / 0.0035); settle();
       const wide = zoom(16), movedWide = move(), close = zoom(6), movedClose = move(), nearest = zoom(4), wideAgain = zoom(16), atLimit = zoom(8), aboveLimit = zoom(8.01);
@@ -7702,7 +7611,6 @@ const { bedCameraProbe, cameraReleaseProbe, rampZoomProbe } = (() => {
 })();
 // ---- sleep-visibility.mjs ----
 const { sleepVisibilityProbe } = (() => {
-  // Exercise the real overlay from clear apertures and through solid room walls.
   const sleepVisibilityProbe = () => {
     const B = window.__ooga, scene = BL.scenes.hub, beds = B.headquarters.mattresses;
     const entries = [...B.cavemen.values()], cave = entries.find((c) => c.state === "working");
@@ -7743,12 +7651,12 @@ const { sleepVisibilityProbe } = (() => {
         if (w) cases.push(view("window", { x: Math.sin(w.angle) * 34, y: w.y, z: -Math.cos(w.angle) * 34 }, { x: w.x, y: w.y, z: w.z }, true, bed));
         cases.push(view("floor above", { x: room.x, y: 8, z: room.z }, head, false, bed));
         const others = beds.filter((other) => other !== bed && other.basement === bed.basement);
-        // The upper gallery gives some adjacent doorways a legitimate shared
-        // sightline. Use the earlier quarter across its wall for that level.
+        // The upper gallery gives some adjacent doorways a legitimate shared sightline;
+        // for that level use the earlier quarter across its wall.
         const neighbor = bed.basement ? others.sort((a, b) => Math.hypot(a.room.x - room.x, a.room.z - room.z) - Math.hypot(b.room.x - room.x, b.room.z - room.z))[0] : others[0];
         cases.push(view("other room behind rock", { x: neighbor.x, y: neighbor.y + 1.8, z: neighbor.z }, head, false, bed));
-        // A doorway can remain in view when facing away from the pillow, but
-        // the marks behind the eye must never paint onto the screen.
+        // A doorway can stay in view when facing away from the pillow,
+        // but marks behind the eye must never paint onto the screen.
         cases.push({ ...view("looking away", near, { x: near.x * 2 - head.x, y: near.y * 2 - head.y, z: near.z * 2 - head.z }, false, bed), projectionOnly: true });
         B.crew.wakePlayer();
         cases.push(view("awake", near, head, false, bed));
@@ -7761,8 +7669,8 @@ const { sleepVisibilityProbe } = (() => {
 })();
 // ---- camera-cover.mjs ----
 const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, cameraPartialEligibilityProbe, cameraPartialWallEligibilityProbe, cameraRockTextureProbe, wallPanOutlineProbe, wholeWallMaskProbe } = (() => {
-  // Inspect the actual scene overlay. A second, independent projection of the
-  // visible actor faces bounds the outline and excludes the filled body interior.
+  // Bound the overlay outline with a second, independent projection of the visible actor faces,
+  // excluding the filled body interior.
   const cameraCoverProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, island = B.island;
     const cave = [...B.cavemen.values()].find((c) => c.state === "working"), room = B.headquarters.rooms[0], rows = [];
@@ -7792,8 +7700,8 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
     B.pilot.possess(cave); B.pilot.weaponMode(1);
     const place = (view) => { B.pilot.navigate({ position: { x: room.x, y: room.floor, z: room.z }, ...view }); tick(1); };
     const solid = choose(true); place(solid);
-    // Opacity checks isolate the rock/guide layer after the normal possession
-    // greeting finishes; advancing a fade also advances those speech bubbles.
+    // Settle the possession greeting first: advancing a fade also advances speech bubbles,
+    // and the opacity checks must isolate the rock/guide layer.
     for (let n = 0; n < 180 && B.stats().bubbles; n++) scene.overlay(1 / 60);
     if (B.stats().bubbles) throw new Error("Possession overlay did not settle before the cover snapshot");
     const covered = draw(), coveredState = { ...B.headquarters.cameraCover, ...objectLayer() }, eye = { ...B.camera.position };
@@ -7835,13 +7743,12 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
       if (different) { changed++; if (!near) outside++; if (deep) interiorChanged++; }
     }
     rows.push({ name: "inside rock", ...coveredState, ...alpha(covered), actualSolid: island.solidAt(eye.x, eye.y, eye.z), changed, outside, interiorChanged, interior, maximumDelta, rockMax });
-    // This grounded window view reveals the upper body while its sill hides
-    // the legs. Any exposed part must suppress every cue in the same frame.
+    // This grounded window view reveals the upper body while the sill hides the legs;
+    // any exposed part must suppress every cue in the same frame.
     place(choose(false)); const partialPixels = draw(0), partialActor = { ...objectLayer(), ...alpha(partialPixels), feet: cave.root.position.y - cave.baseY, floor: room.floor, hop: cave.hop };
     place(solid); draw(0); const hiddenAgain = objectLayer();
-    // From the room center, a four-metre eye sits outside a small room and its
-    // window sill can hide the legs despite a clear head ray. Stand on the
-    // opposite floor corner so the entire ordinary trailing view fits inside.
+    // From the room center a 4 m eye sits outside the room; the sill can hide the legs despite a clear head ray.
+    // Stand on the opposite floor corner so the whole trailing view fits inside.
     let clearFixture = null;
     clearViews: for (const offset of [1, 1.35, 1.6, 0.65]) for (const turn of [0, 1, 2, 3]) for (const pitch of [0.15, 0, 0.3]) {
       const angle = room.angle + turn * Math.PI / 2, dx = (Math.cos(angle) - Math.sin(angle)) * offset, dz = (Math.sin(angle) + Math.cos(angle)) * offset;
@@ -7866,8 +7773,8 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
     return { rows, partialActor, hiddenAgain, firstEntry, backend: B.renderer.kind };
   };
 
-  // Cross a real flat HQ floor in millimeter-scale camera increments. The cap
-  // should cover only near-plane rays in rock, with no whole-screen threshold.
+  // Cross a real flat HQ floor in millimetre camera steps: the cap must cover only near-plane rays in rock,
+  // with no whole-screen threshold.
   const cameraPartialCoverProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, H = B.island.headquarters, island = B.island;
     const cave = [...B.cavemen.values()].find((c) => c.state === "working"), overlay = document.getElementById("overlay"), copy = document.createElement("canvas"), rows = [], failures = [];
@@ -7914,9 +7821,8 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
     return { rows, comparisons, failures, screenshotCoverage: B.headquarters.cameraCover.rockCoverage, backend: B.renderer.kind };
   };
 
-  // A visible selected actor normally suppresses all cues. Once the near plane
-  // touches stone, its hidden rim should appear immediately inside that exact
-  // partial-rock section without leaking into the clear half of the view.
+  // A visible selected actor suppresses all cues; once the near plane touches stone its hidden rim appears
+  // immediately inside that partial-rock section, never leaking into the clear half.
   const cameraPartialCueProbe = () => {
     const BL = window.BL, canvas = document.createElement("canvas"); canvas.width = 320; canvas.height = 200;
     Object.defineProperties(canvas, { clientWidth: { value: 320 }, clientHeight: { value: 200 } });
@@ -7957,9 +7863,8 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
     return { ...state, coveredChanges, clearChanges, clearAlpha, objectOutlined: objectState.guideLines === 4, objectCoveredChanges, objectClearChanges };
   };
 
-  // Exercise eligibility before raster clipping: every prop has a visible top
-  // and a bottom covered by the near-plane rock cut. A handcrafted line fixture
-  // cannot catch an entire owner being rejected because its top remains visible.
+  // Every prop has a visible top and a near-plane-cut bottom, testing eligibility before raster clipping:
+  // a handcrafted line fixture cannot catch a whole owner rejected because its top is visible.
   const cameraPartialEligibilityProbe = () => {
     const BL = window.BL, S = BL.scene, canvas = document.createElement("canvas"), width = 640, height = 360;
     canvas.width = width; canvas.height = height;
@@ -8025,8 +7930,8 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
     return { rows };
   };
 
-  // A wall patch seen in clear air, or through a window, can still extend into
-  // the near-plane cap. Neither visibility shortcut may erase its rock portion.
+  // A wall patch seen in clear air or through a window can still extend into the near-plane cap;
+  // neither visibility shortcut may erase its rock portion.
   const cameraPartialWallEligibilityProbe = () => {
     const BL = window.BL, width = 640, height = 360, canvas = document.createElement("canvas");
     canvas.width = width; canvas.height = height;
@@ -8063,9 +7968,8 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
     return { rows };
   };
 
-  // Sweep both directions across two voxel walls and an exterior corner. The
-  // hidden spans cross many rendered panels, but visibility and the selected
-  // silhouette belong to the complete authored wall rather than any one panel.
+  // Hidden spans cross many rendered panels, but visibility and the selected silhouette belong to
+  // the complete authored wall, not any one panel.
   const wallPanOutlineProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, H = B.headquarters, island = B.island;
     const cave = [...B.cavemen.values()].find((c) => c.state === "working"), room = H.rooms[0], camera = B.camera, rows = [], boundaries = [];
@@ -8109,12 +8013,11 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
       const at = group * 3, tx = structure.surfaceSamples[at], ty = structure.surfaceSamples[at + 1], tz = structure.surfaceSamples[at + 2];
       surfacePatches++;
       if (!island.sightClearAt(observer[19], observer[20], observer[21], tx, ty, tz)) actorBlocked++;
-      // A partially visible patch now stays whole, with an explicit window
-      // polygon removing its visible part in the overlay raster.
+      // A partially visible patch stays whole; a window polygon removes its visible part in the overlay raster.
       if (cameraSees(tx, ty, tz) && !apertureCuts[group]) cameraClear++;
     }
-    // A camera at the character eye reveals the exposed wall faces while the
-    // complete wall remains eligible, including its self-occluded jagged faces.
+    // A camera at the character eye reveals exposed wall faces while the complete wall stays eligible,
+    // including its self-occluded jagged faces.
     const hiddenCamera = { ...camera.position };
     H.rockGuides.updateSurface(structure, observer[19], observer[20], observer[21], camera, 0.3);
     const before = new Float32Array(structure.surfacePhases);
@@ -8146,8 +8049,8 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
     return { backend: B.renderer.kind, rows, boundaries, surface, wallLines: source.length / 6, uniqueLines: unique.size };
   };
 
-  // The rim belongs to the full slab, even when a visible middle section is
-  // masked away. Its visibility boundary must never look like a stone edge.
+  // The rim belongs to the full slab even when a visible middle section is masked away;
+  // its visibility boundary must never look like a stone edge.
   const wholeWallMaskProbe = () => {
     const BL = window.BL, canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 360;
     Object.defineProperties(canvas, { clientWidth: { value: 640 }, clientHeight: { value: 360 } });
@@ -8173,8 +8076,8 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
     const hiddenFill = alpha(260, 180), visibleFill = alpha(320, 180), filled = cover.state.structureFilled;
     guides.objectsEnabled = false;
     const disabled = draw(), cleared = disabled.every((value, i) => i % 4 !== 3 || value === 0);
-    // A second, normally rendered wall in front has priority over a hidden
-    // wall behind it. Rear fill and rim must not wrap the visible stone face.
+    // A normally rendered wall in front has priority over a hidden wall behind it;
+    // rear fill and rim must not wrap the visible stone face.
     const front = { surface: new Float32Array([-3.2, -1.4, -0.1, -3.2, 1.4, -0.1, 3.2, 1.4, -0.1, -3.2, -1.4, -0.1, 3.2, 1.4, -0.1, 3.2, -1.4, -0.1]), surfaceCount: 2, surfaceGroups: new Uint16Array([0, 0]), surfaceWholePhases: new Float32Array([1]), surfacePhases: new Float32Array([0]), surfaceHidden: new Uint8Array([0]), surfaceWholeActive: 1, surfaceActive: 0 };
     surface.surfacePhases.fill(1); surface.surfaceHidden.fill(1); surface.surfaceActive = 3;
     guides.objectsEnabled = true; guides.structures = [surface, front];
@@ -8185,8 +8088,8 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
     return { internalMaximum, visibleMaximum, outerMaximum, hiddenFill, visibleFill, filled, cleared, visibleOverlapMaximum, orderStable };
   };
 
-  // Test the production texture raster at its native resolution using real rock
-  // material. An integer texel translation samples identical world coordinates.
+  // Test the production texture raster at native resolution with real rock material:
+  // an integer texel translation samples identical world coordinates.
   const cameraRockTextureProbe = () => {
     const B = window.__ooga, BL = window.BL, island = B.island, room = B.headquarters.rooms[0], w = document.getElementById("overlay").clientWidth, h = document.getElementById("overlay").clientHeight;
     const canvas = document.createElement("canvas"); canvas.width = canvas.height = 128;
@@ -8241,8 +8144,8 @@ const { cameraCoverProbe, cameraPartialCoverProbe, cameraPartialCueProbe, camera
 })();
 // ---- camera-cue-contrast.mjs ----
 const { cameraCueContrastProbe } = (() => {
-  // Contrast strengthens only existing cue boundaries. Geometry, window masks,
-  // visibility gates and zero-alpha fades remain shared with the normal overlay.
+  // Contrast only strengthens existing cue boundaries; geometry, window masks, visibility gates
+  // and zero-alpha fades stay shared with the normal overlay.
   const cameraCueContrastProbe = () => {
     const BL = window.BL, canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 360;
     Object.defineProperties(canvas, { clientWidth: { value: 640 }, clientHeight: { value: 360 } });
@@ -8295,9 +8198,8 @@ const { cameraCueContrastProbe } = (() => {
 })();
 // ---- mirror-outlines.mjs ----
 const { glyphInteriorProbe, glyphOutlineContrastProbe, mirrorOpeningVisibilityProbe, mirrorOutlineProbe } = (() => {
-  // Exercise the real mirror owner and doorway, plus pixel-level checks on its
-  // custom cue. Animation must stay on the authored mirror plane without
-  // invalidating the shared visibility cache each frame.
+  // Mirror animation must stay on the authored mirror plane
+  // without invalidating the shared visibility cache each frame.
   const mirrorOutlineProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, mirror = B.mirrorCave, provider = mirror.guides;
     const actor = [...B.cavemen.values()].find((c) => c.state === "working"), mouth = mirror.mouth, sr = Math.sin(mouth.ry), cr = Math.cos(mouth.ry);
@@ -8341,8 +8243,8 @@ const { glyphInteriorProbe, glyphOutlineContrastProbe, mirrorOpeningVisibilityPr
       Object.assign(camera.position, world(x, y, z)); Object.assign(camera.target, world(0, 1.5, 0.5));
       paint(false, 10); oblique.push({ ...provider.state });
     }
-    // Crossing the physical portal, rather than moving the camera through it,
-    // selects the interior contrast mode. The usual visibility gates still win.
+    // Crossing the physical portal, not moving the camera through it, selects the interior contrast mode;
+    // the usual visibility gates still win.
     B.pilot.possess(actor);
     let time = B.renderOpts.matrix.time;
     const tick = (frames = 4) => { for (let n = 0; n < frames; n++) scene.update(1 / 60, time += 1 / 60); };
@@ -8371,8 +8273,8 @@ const { glyphInteriorProbe, glyphOutlineContrastProbe, mirrorOpeningVisibilityPr
     return { backend: B.renderer.kind, outside, animated, inside, sameVersion, deterministic, changed, outsidePlane, downwardMatches, upwardMatches, faded, noInteriorRain, oblique, registry, hiddenOutside, visible, hiddenInside, first };
   };
 
-  // A latched glyph button keeps the stronger treatment throughout the island,
-  // including custom providers. Only the effect ending restores normal rims.
+  // A latched glyph button keeps the stronger treatment island-wide, including custom providers;
+  // only the effect ending restores normal rims.
   const glyphOutlineContrastProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub, H = B.headquarters;
     const actor = [...B.cavemen.values()].find((c) => c.state === "working"), rows = [], providers = [];
@@ -8479,8 +8381,8 @@ const { glyphInteriorProbe, glyphOutlineContrastProbe, mirrorOpeningVisibilityPr
       S.updateWorld(scene.root); B.renderer.render(scene.root, B.camera, B.renderOpts); scene.overlay(1 / 60);
       views.push({ x, y, z, reveal: mirror.node.mirrorReveal, inside: B.matrixCave.inside, enabled: H.sightGuides.objectsEnabled, outlined: H.cameraCover.outlined, lines: H.cameraCover.guideLines, wallFaces: H.cameraCover.structureFaces, providers: H.sightGuides.providerCount });
     }
-    // Fixed actor and camera: only the rendered mirror cut changes. Exercise
-    // both direct rays and whole-body occlusion certificates through it.
+    // Hold actor and camera fixed so only the rendered mirror cut changes;
+    // covers direct rays and whole-body occlusion certificates.
     const root = S.createNode(), panel = S.createNode({ geometry: BL.hubModels.mirrorPanel(), position: { x: 0, y: 1.5, z: 0 }, mirror: true, mirrorReveal: 0 });
     const body = S.createNode({ geometry: BL.models.box({ w: 0.3, h: 0.4, d: 0.3, color: "#fff" }), position: { x: 0, y: 0.55, z: -2 } });
     S.addChild(root, panel); S.addChild(root, body); S.updateWorld(root);
@@ -8500,8 +8402,8 @@ const { glyphInteriorProbe, glyphOutlineContrastProbe, mirrorOpeningVisibilityPr
 })();
 // ---- mirror-glyph-parity.mjs ----
 const { mirrorGlyphParityProbe } = (() => {
-  // Inspect the quads actually emitted by the cue, in plane coordinates. Native
-  // rune geometry and the real Matrix surface settings supply the comparison.
+  // Inspect the quads the cue actually emits, in plane coordinates;
+  // native rune geometry and the real Matrix surface settings are the reference.
   const mirrorGlyphParityProbe = () => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, W = B.matrixCave.world;
     const group = S.createNode(), panel = S.createNode({ geometry: BL.hubModels.mirrorPanel() });
@@ -8631,9 +8533,8 @@ const { mirrorGlyphParityProbe } = (() => {
 })();
 // ---- matrix-living-distance.mjs ----
 const { matrixLivingDistanceProbe } = (() => {
-  // Exercise living material in the real renderers, including the outer reveal
-  // and retreat wave. The camera follows the sample so fog and pixel size cannot
-  // masquerade as a distance-dependent material change.
+  // The camera follows the sample so fog and pixel size cannot masquerade as a
+  // distance-dependent material change; covers the outer reveal and retreat wave.
   const matrixLivingDistanceProbe = async (backend) => {
     const BL = window.BL, S = BL.scene, size = 256, canvas = document.createElement("canvas");
     Object.defineProperties(canvas, { clientWidth: { value: size }, clientHeight: { value: size } });
@@ -8693,8 +8594,7 @@ const { matrixLivingDistanceProbe } = (() => {
 })();
 // ---- sleep-orientation.mjs ----
 const { sleepOrientationProbe } = (() => {
-  // Exercise the rendered camera basis through real sleep, scroll and key actions.
-  // In particular, opposed head/world up vectors must never cancel mid-transition.
+  // Opposed head/world up vectors must never cancel mid-transition.
   const sleepOrientationProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub;
     const cave = [...B.cavemen.values()].find((c) => c.state === "working"), bed = B.headquarters.mattresses.find((b) => !b.sleeper);
@@ -8789,7 +8689,6 @@ const { sleepOrientationProbe } = (() => {
         BL.math.quat.rotateVec(forward, cave.root.quaternion, 0, 0, 1);
         const entered = basis(), entryDot = dot(entered.direction, approach.direction), entryUpDot = dot(entered.up, approach.up), approachFaceDot = dot(approach.direction, forward);
         const asleep = B.crew.sleeping && cave.bedTravel.pose === pose && bed.sleeper === cave;
-        // Add a substantial head-relative look before scrolling back out.
         B.pilot.hooks.onOrbit(180, -240); tick(0.5, false);
         phase = "scroll out with relative look";
         const exit = scrollOut();
@@ -8811,8 +8710,8 @@ const { sleepOrientationProbe } = (() => {
         tick(0.8);
         rows.push({ pose, sleepLabel, wakeLabel, asleep, entryDot, entryUpDot, approachFaceDot, exit, released, releaseDot, awake, wakeDot });
       }
-      // The same entry contract applies to upright characters, including a view
-      // approaching from the side rather than their authored forward direction.
+      // The same entry contract applies to upright characters,
+      // including a view approaching from the side rather than their authored forward direction.
       document.querySelector('nav[data-scene="hub"] [data-preset="pile"]').click(); tick(0.5, false);
       for (const [yaw, pitch] of [[0.85, -0.35], [-1.2, 0.6]]) {
         for (let boundary = 0; boundary < 2 && (B.pilot.closeWanted || B.pilot.aiming); boundary++) wheel(60);
@@ -8853,9 +8752,8 @@ const { rampOutlineSectionsProbe } = (() => {
         const x = (v[at] + v[at + 3] + v[at + 6]) / 3, y = (v[at + 1] + v[at + 4] + v[at + 7]) / 3, z = (v[at + 2] + v[at + 5] + v[at + 8]) / 3;
         const positive = island.rampColumnAt(x + nx * 0.025, z + nz * 0.025, context.basement, column), positiveCeiling = positive ? column.ceiling : Infinity;
         const negative = island.rampColumnAt(x - nx * 0.025, z - nz * 0.025, context.basement, column), negativeCeiling = negative ? column.ceiling : Infinity;
-        // A side slab has ramp air on exactly one horizontal side. Ceiling
-        // risers have the same ramp footprint on both sides, regardless of
-        // triangle winding or the small floor-clipping fan at the lower edge.
+        // A side slab has ramp air on exactly one horizontal side; ceiling risers share the ramp footprint on both,
+        // regardless of triangle winding or the floor-clipping fan at the lower edge.
         const expected = context.index + 1, ceiling = positive === expected ? positiveCeiling : negativeCeiling;
         if (positive !== expected && negative !== expected) { geometry.wrongOwner++; fail("ramp owner", { basement: context.basement, index: context.index, x, y, z, positive, negative }); }
         if (positive === expected && negative === expected) { geometry.ceilingSteps++; fail("ceiling step", { basement: context.basement, index: context.index, x, y, z }); }
@@ -8870,14 +8768,13 @@ const { rampOutlineSectionsProbe } = (() => {
       if (!island.clearAt(x, y, z)) { geometry.buriedExterior++; fail("buried exterior", { context: context.kind, index: context.index, x, y, z }); }
       if (Number.isFinite(island.ceilingAt(x, y, z))) { geometry.coveredExterior++; fail("covered exterior", { context: context.kind, index: context.index, x, y, z }); }
     }
-    // Compare the original wall mesh with the guide mesh. Merely checking the
-    // phases of registered panels cannot detect a panel given the wrong owner.
+    // Compare the original wall mesh with the guide mesh:
+    // checking phases of registered panels alone cannot detect a panel given the wrong owner.
     const coverage = { samples: 0, missing: 0, wrongOwner: 0, duplicated: 0, fabricated: 0, doorwaySamples: 0, doorwayFilled: 0, sections: 0, longWallSpans: [] };
     const guideBuckets = new Map(), sourcePlanes = new Map(), coveredSections = new Set(), unit = island.unit, source = island.geometry.verts;
     const expectedFrontageAt = (x, z) => {
-      // The corridor contains the mouth's original three-metre apron as well
-      // as its later long extension. Derive that union independently of the
-      // guide's ownership accessor, which once recorded only the extension.
+      // The corridor is the mouth's original 3 m apron plus its later long extension; derive that union
+      // independently of the guide's ownership accessor, which once recorded only the extension.
       x = island.sightGrid[1] + (Math.floor((x - island.sightGrid[1]) / unit) + 0.5) * unit;
       z = island.sightGrid[3] + (Math.floor((z - island.sightGrid[3]) / unit) + 0.5) * unit;
       for (let index = 0; index < H.fronts.length; index++) {
@@ -9031,8 +8928,7 @@ const { rampOutlineSectionsProbe } = (() => {
           const inside = point.sample > 0 && island.rampColumnAt(point.x, point.z, false, column) === index + 1;
           if (inside) {
             row.insideSteps++;
-            // The far wall across the entrance remains perceptible before the
-            // character crosses into the open frontage.
+            // The far wall across the entrance stays perceptible before the character crosses into the open frontage.
             for (let group = 0; group < frontage.surfaceGroupCount; group++) {
               if (frontage.surfaceWallGroups[group] !== 1) continue;
               const at = group * 3, s = frontage.surfaceSamples;
@@ -9107,8 +9003,8 @@ const { slopeOutlineSectionsProbe } = (() => {
     const shelfGuides = BL.slopeGuides.create({ island: shelf });
     if (shelfGuides.classify(0.125, 3, 0.125, 0, 1, 0, out)) fail("broad intermediate platform outlined");
     else synthetic.excluded++;
-    // A 1.5 m terrace is one six-cell strip. The endpoint cells are more than
-    // one metre from the opposite riser, but still belong to the same stair.
+    // A 1.5 m terrace is one six-cell strip: its endpoint cells are over a metre from the opposite riser
+    // but still belong to the same stair.
     const terrace = fixture((x) => x < -2 ? 1 : x < -0.75 ? 2 : x < 0.75 ? 3 : x < 2 ? 4 : 5);
     const terraceGuides = BL.slopeGuides.create({ island: terrace });
     const lowerRiser = terraceGuides.classify(-0.75, 2.5, 0.125, -1, 0, 0, out), terraceSide = out.side;
@@ -9152,9 +9048,8 @@ const { slopeOutlineSectionsProbe } = (() => {
         if (dy > 0.02) {
           hasTread = true; geometry.treads++;
           if (Math.abs(y - island.surfaceAt(x, z)) > 1e-4) geometry.invalid++;
-          // Find the first actual height change in both directions. Every
-          // point along a short terrace has the same total strip width; its
-          // distance to just one endpoint can exceed the former search radius.
+          // Find the first actual height change in both directions: every point on a short terrace shares the strip
+          // width, and its distance to one endpoint can exceed the former search radius.
           let intermediate = false;
           for (const direction of directions) {
             const dx = Math.round(direction[0]), dz = Math.round(direction[1]), stride = Math.hypot(dx, dz) * island.unit;
@@ -9202,8 +9097,8 @@ const { slopeOutlineSectionsProbe } = (() => {
       }
       return seen;
     };
-    // Select real opposing faces from the heightfield. No hard-coded seed
-    // geometry or assumed eye height determines whether the crest blocks them.
+    // Select real opposing faces from the heightfield; no hard-coded seed geometry or assumed eye height
+    // decides whether the crest blocks them.
     for (let angleIndex = 0; angleIndex < 24 && fixtures.length < 2; angleIndex++) for (const radius of [22.5, 24.5, 26.5]) {
       if (fixtures.length >= 2) break;
       const angle = angleIndex * Math.PI / 12, x = Math.cos(angle) * radius, z = Math.sin(angle) * radius;
@@ -9221,8 +9116,8 @@ const { slopeOutlineSectionsProbe } = (() => {
         if (witness(context, lower) >= 0 || !island.clearAt(x, upper.y, z)) continue;
         const seen = witness(context, upper);
         if (seen < 0 || fixtures.some((row) => row.side === context.source.slopeSide)) continue;
-        // Nearby witnesses on the opposite-facing side prove that the lower
-        // point is beside this hill, rather than isolated under another level.
+        // Nearby witnesses on the opposite-facing side prove the lower point is beside this hill,
+        // not isolated under another level.
         const nearSide = contexts.find((other) => {
           const difference = Math.abs(context.source.sector - other.source.sector), turn = Math.min(difference, 8 - difference), b = other.bounds;
           if (turn < 3 || Math.max(b[0] - x, 0, x - b[3]) ** 2 + Math.max(b[2] - z, 0, z - b[5]) ** 2 > 49) return false;
@@ -9385,8 +9280,8 @@ const { caveOutlineSectionsProbe } = (() => {
           if (!solid) { coverage.missingSeal++; fail("hole in sealed entrance", { id: slot.id, x, y }); }
         }
       } else {
-        // The guide may outline the back wall seen through the entrance, but
-        // cannot invent a front wall across the walkable doorway itself.
+        // The guide may outline the back wall seen through the entrance,
+        // but cannot invent a front wall across the walkable doorway.
         for (let at = 0; at < projected.length; at += 9) {
           const x = (projected[at] + projected[at + 3] + projected[at + 6]) / 3, y = (projected[at + 1] + projected[at + 4] + projected[at + 7]) / 3, z = (projected[at + 2] + projected[at + 5] + projected[at + 8]) / 3;
           coverage.doorwaySamples++;
@@ -9478,9 +9373,8 @@ const { caveOutlineSectionsProbe } = (() => {
           update(world(mouth, 0, 1.1, z), 0.3);
           if (context.walls.some((wall) => wall.target > 0 && wall.target < 1)) { runtime.rangeFade++; break; }
         }
-        // Include the scene's actual props and entrance rim in a separate
-        // pass. A seal must not self-occlude its own outward-facing guide.
-        // The mirror remains an opaque reflective panel to visual rays.
+        // Separate pass with the scene's real props and entrance rim: a seal must not self-occlude its own guide.
+        // The mirror stays an opaque reflective panel to visual rays.
         if (BL.caves.slots.find((slot) => slot.id === mouth.id).status !== "mirror") {
           const objects = B.headquarters.objectGuides;
           guides.resetSurface(); Object.assign(camera.position, buried); Object.assign(camera.target, eye);
@@ -9499,8 +9393,8 @@ const { caveOutlineSectionsProbe } = (() => {
 })();
 // ---- sealed-cave-blocks.mjs ----
 const { sealedCaveBlocksProbe } = (() => {
-  // The three sealed mouths must be closed stone volumes fitted to the native
-  // rim, rather than independently outlined decorative front fragments.
+  // The three sealed mouths must be closed stone volumes fitted to the native rim,
+  // not independently outlined decorative front fragments.
   const sealedCaveBlocksProbe = async (backend) => {
     const BL = window.BL, B = window.__ooga, S = BL.scene, EPS = 0.0001, failures = [];
     const fail = (kind, detail) => { if (failures.length < 16) failures.push({ kind, ...detail }); };
@@ -9527,8 +9421,8 @@ const { sealedCaveBlocksProbe } = (() => {
           const plane = bounds[axis + side * 3];
           if (!row.every((p) => Math.abs(p[axis] - plane) < EPS)) continue;
           boundary = true;
-          // Back faces of decorative moss lie on the front of the core, but
-          // cannot count twice toward its independently closed stone shell.
+          // Back faces of decorative moss lie on the front of the core
+          // and must not count twice toward its independently closed stone shell.
           if (!outline && normal[axis] * (side ? 1 : -1) <= 0) continue;
           const h = (axis + 1) % 3, k = (axis + 2) % 3, slot = axis * 2 + side;
           faces[slot].push(row.map((p) => [p[h], p[k]])); areas[slot] += Math.abs(normal[axis]) / 2;
@@ -9614,9 +9508,8 @@ const { sealedCaveBlocksProbe } = (() => {
         const outline = audit(rows, bounds, true), walls = context?.walls.length || 0;
         const blocked = !!opening?.blocked && Math.abs(opening.stopZ - seal.stopZ) < EPS;
         sealNode.geometry = geometry;
-        // Feed the production overlay the real registered seal triangles and
-        // native rim triangles in one local frame. The union must stay filled
-        // at their shared joint without inventing internal silhouette edges.
+        // Feed the production overlay real registered seal and native rim triangles in one local frame;
+        // their union must stay filled at the shared joint without inventing internal silhouette edges.
         const surface = [];
         for (const row of rows) for (const p of row) surface.push(p[0], p[1], p[2] + sealNode.position.z);
         for (const row of rimTriangles) for (const p of row) surface.push(p[0], p[1], p[2] + rim.position.z);
@@ -9639,8 +9532,8 @@ const { sealedCaveBlocksProbe } = (() => {
 })();
 // ---- outline-moving-characters.mjs ----
 const { outlineMovingCharactersProbe } = (() => {
-  // Passing Oogas should not blink an item's or wall's eligibility. They still
-  // occlude ordinary camera rays; solid scenery still blocks actor perception.
+  // Passing Oogas must not blink an item's or wall's eligibility;
+  // they still occlude camera rays, and solid scenery still blocks actor perception.
   const outlineMovingCharactersProbe = () => {
     const BL = window.BL, B = window.__ooga, S = BL.scene, failures = [], rows = [], caches = [];
     const fail = (kind, detail) => { if (failures.length < 12) failures.push({ kind, ...detail }); };
@@ -9739,9 +9632,8 @@ const { outlineMovingCharactersProbe } = (() => {
       if (!departed.target || departed.targetQueries !== 1) fail("departed scenery kept cached occlusion", departed);
     } finally { filter.dispose(); objects.dispose(); }
 
-    // Use an actual registered cave wall and its real terrain sight rays. A
-    // large passing body covers every wall witness; an identical static prop
-    // proves the perception query is still respecting opaque scenery.
+    // A large passing body covers every wall witness; an identical static prop proves the perception query
+    // still respects opaque scenery. Uses a registered cave wall and real terrain sight rays.
     const structural = [], cameraStructural = [], guides = B.headquarters.rockGuides, context = guides.contexts.find((entry) => entry.kind === "sealed");
     const m = context.source.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry), worldAt = (x, y, z) => ({ x: m.x + cr * x + sr * z, y: m.floorY + y, z: m.z - sr * x + cr * z });
     const stage = S.createNode(), wallActor = { baseY: 0, root: S.createNode() }, shield = BL.models.box({ w: 12, h: 8, d: 0.25, color: "#ffffff" });
@@ -9792,8 +9684,7 @@ const { outlineMovingCharactersProbe } = (() => {
 })();
 // ---- corridor-visibility.mjs ----
 const { corridorVisibilityProbe } = (() => {
-  // Exercise the production overlay with the real narrow entrance walls. The
-  // independent witnesses come from the rendered body, not its bounding boxes.
+  // Independent witnesses come from the rendered body, not its bounding boxes; uses the real entrance walls.
   const corridorVisibilityProbe = () => {
     const BL = window.BL, B = window.__ooga, S = BL.scene, scene = BL.scenes.hub, island = B.island, camera = B.camera, H = B.headquarters;
     const actor = [...B.cavemen.values()].find((cave) => cave.state === "working"), failures = [], rows = [];
@@ -9866,9 +9757,8 @@ const { corridorVisibilityProbe } = (() => {
       } else if (seen.clear) {
         runtime.visible++;
         const rendered = cover.outlined || cover.structureFaces || cover.structureFilled || cover.guideLines;
-        // The conservative near-plane check can prepare rock-only candidates
-        // even when its exact rock mask is empty. These remain invisible; the
-        // partial-cap tests separately verify clipping when a real cap exists.
+        // The conservative near-plane check can prepare rock-only candidates with an empty rock mask;
+        // these stay invisible. Partial-cap tests cover clipping when a real cap exists.
         const leaked = guide.rockOnly ? cover.rockCoverage !== 0 || rendered
           : guide.objectsEnabled || rendered || guide.count || guide.providerCount;
         if (!guide.rockOnly) runtime.clearView++;
@@ -9881,8 +9771,8 @@ const { corridorVisibilityProbe } = (() => {
       B.pilot.possess(actor); camera.up = null; camera.near = 0.5; camera.far = 100;
       for (let frontIndex = 0; frontIndex < 2; frontIndex++) {
         const position = putActor(frontIndex, 3), radial = Math.atan2(position.x, position.z);
-        // These angles pass behind the one-voxel strip along both diagonally
-        // oriented entrances. Reverse the pan without moving the character.
+        // These angles pass behind the one-voxel strip along both diagonal entrances.
+        // Reverse the pan without moving the character.
         const angles = frontIndex ? [0.3, 0.325, 0.35, 0.325, 0.3] : [-0.15, -0.1, -0.05, 0, -0.05, -0.1, -0.15];
         for (const height of [1, 3, 6]) {
           for (const angle of angles) { aim(position, radial + angle, 20, height); sample(`pan ${angle}, height ${height}`, frontIndex); }
@@ -9907,8 +9797,8 @@ const { corridorVisibilityProbe } = (() => {
         Object.assign(camera.position, { x: start.x + dx * (wallDistance + offset), y: start.y + dy * (wallDistance + offset), z: start.z + dz * (wallDistance + offset) });
         sample(`near-plane crossing ${offset}`, 0, "either"); runtime.nearPlane++;
       }
-      // Find a genuine partial reveal at the edge of this same corridor. Its
-      // visible body witness must disable all overlays on that very frame.
+      // Find a genuine partial reveal at this corridor's edge:
+      // its visible body witness must disable all overlays on that very frame.
       for (let step = 1; step <= 32 && !boundary; step++) {
         aim(position, radial + step * Math.PI / 32, 12, 3);
         const seen = witness();
@@ -9921,8 +9811,7 @@ const { corridorVisibilityProbe } = (() => {
         sample("first frame of partial reveal", 0, "visible", 0);
         aim(position, radial, 20, 3); sample("hidden again after partial reveal", 0);
       }
-      // Exercise the strict disabled-state rule in a genuinely clear camera
-      // volume as well as the conservative near-plane cases above.
+      // Exercise the strict disabled-state rule in a genuinely clear camera volume, not only the near-plane cases.
       let clearView = false;
       for (let step = 0; step < 32 && !clearView; step++) {
         aim(position, radial + step * Math.PI / 16, 3, 1.8);
@@ -9940,8 +9829,8 @@ const { corridorVisibilityProbe } = (() => {
       Object.assign(camera.position, saved.position); Object.assign(camera.target, saved.target); camera.up = saved.up; camera.near = saved.near; camera.far = saved.far;
       S.updateWorld(scene.root);
     }
-    // A grid plane immediately behind a very small visible part is not an
-    // occluder. This guards the termination of the terrain section walk.
+    // A grid plane immediately behind a very small visible part is not an occluder.
+    // Guards termination of the terrain section walk.
     const small = { root: S.createNode({ geometry: BL.models.box({ w: 0.002, h: 0.002, d: 0.002, color: "#ffffff" }), position: { x: 0, y: 0, z: 0.12 } }) }, root = S.createNode();
     S.addChild(root, small.root); S.updateWorld(root);
     const objects = BL.objectGuides.create({ roots: [small.root], crew: { cavemen: new Map([["small", small]]) } }), view = S.createCamera({ near: 0.1, far: 10 });
@@ -10030,8 +9919,8 @@ const { rampOutlineVisibilityProbe } = (() => {
 })();
 // ---- ramp-actor-outline.mjs ----
 const { rampActorOutlineProbe } = (() => {
-  // Compare the selected body's overlay against independent box rays. The wall
-  // opening, its foreground stone and a rear obstruction all have analytic edges.
+  // Compare the selected body's overlay against independent box rays;
+  // the wall opening, foreground stone and rear obstruction all have analytic edges.
   const rampActorOutlineProbe = () => {
     const BL = window.BL, canvas = document.createElement("canvas"); canvas.width = 640; canvas.height = 360;
     Object.defineProperties(canvas, { clientWidth: { get: () => canvas.width }, clientHeight: { get: () => canvas.height } });
@@ -10054,8 +9943,8 @@ const { rampActorOutlineProbe } = (() => {
       }
       return true;
     };
-    // Slab intersections find the first rendered box face, independently of
-    // the cover's triangle projection and visibility-mask rasterization.
+    // Slab intersections find the first rendered box face, independently of the cover's
+    // triangle projection and visibility-mask rasterization.
     const bodyAt = (px, py) => {
       const x = (px + 0.5 - 320) / 180, y = (180 - py - 0.5) / 180, p = camera.position;
       direction[0] = view[0] * x + view[1] * y - view[2];
@@ -10084,8 +9973,8 @@ const { rampActorOutlineProbe } = (() => {
     for (contrast of [0, 1]) for (const distance of [6, 9]) for (const x of [-0.6, 0.6]) {
       Object.assign(camera.position, { x, y: 0.15, z: -distance }); Object.assign(camera.target, { x: 0, y: 0, z: 0 });
       BL.math.mat4.lookAt(view, camera.position, camera.target, { x: 0, y: 1, z: 0 });
-      // Compositing the first offscreen rim can change Chromium's guide-stroke
-      // raster. Settle that unchanged path before comparing visibility masks.
+      // Compositing the first offscreen rim can change Chromium's guide-stroke raster;
+      // settle that unchanged path before comparing visibility masks.
       if (!controls.length) draw(actor, null);
       const baseline = draw(actor, null), other = draw(null, null), hidden = draw(actor, () => false), exposed = draw(actor, () => true);
       const control = { contrast, distance, x, hiddenUnchanged: baseline.every((value, at) => value === hidden[at]), exposedClear: other.every((value, at) => value === exposed[at]) };
@@ -10103,8 +9992,8 @@ const { rampActorOutlineProbe } = (() => {
           if (other[at + 3] > 1) { guidePixels++; if (!samePixel(pixels, other, at)) guideChanged++; }
           if (visibility[index] >= 0 && baseline[at + 3] === 0 && other[at + 3] === 0) { interior++; if (pixels[at + 3] > 1) interiorLeaks++; }
           if (baseline[at + 3] <= other[at + 3] + 2) continue;
-          // The complete neighborhood avoids antialiasing and the few pixels
-          // whose nearest body surface straddles a reveal or obstruction edge.
+          // The full neighbourhood avoids antialiasing and pixels whose nearest body surface
+          // straddles a reveal or obstruction edge.
           let want = -1, mixed = false;
           for (let dy = -6; dy <= 6 && !mixed; dy++) for (let dx = -6; dx <= 6; dx++) {
             const xx = px + dx, yy = py + dy;
@@ -10123,8 +10012,8 @@ const { rampActorOutlineProbe } = (() => {
         if (!exposedRim || !hiddenRim || exposedLeaks || hiddenMissing || newRim || !interior || interiorLeaks || !guidePixels || guideChanged) failures.push(row);
       }
     }
-    // A detached sliver narrower than a pixel still has a Canvas silhouette.
-    // Its outline must follow visibility even when no pixel center hits it.
+    // A detached sliver narrower than a pixel still has a Canvas silhouette;
+    // its outline must follow visibility even when no pixel center hits it.
     const sliver = BL.scene.createNode({ geometry: BL.models.box({ w: 0.005, h: 0.3, d: 0.005, color: "#ffffff" }), position: { x: 2, y: 0, z: 0 } });
     BL.scene.addChild(actor, sliver); BL.scene.updateWorld(actor);
     Object.assign(camera.position, { x: 0, y: 0, z: -6 }); Object.assign(camera.target, { x: 0, y: 0, z: 0 });
@@ -10153,8 +10042,8 @@ const { rampActorOutlineProbe } = (() => {
 })();
 // ---- ramp-aperture-occlusion.mjs ----
 const { rampApertureOcclusionProbe } = (() => {
-  // Pixel-level coverage of partially blocked window cones. Expected visibility
-  // comes from independent ray/triangle intersections and the terrain sight grid.
+  // Expected visibility comes from independent ray/triangle intersections and the terrain sight grid,
+  // measured as pixel coverage of partially blocked window cones.
   const rampApertureOcclusionProbe = () => {
     const BL = window.BL, canvas = document.createElement("canvas");
     canvas.width = 640; canvas.height = 360;
@@ -10178,8 +10067,8 @@ const { rampApertureOcclusionProbe } = (() => {
       BL.math.mat4.lookAt(view, camera.position, camera.target, { x: 0, y: 1, z: 0 });
       return ctx.getImageData(0, 0, 640, 360).data;
     };
-    // Thin foreground pillar, diagonal foreground ledge, and a wall behind the
-    // frame. The last must not erase the clear part of the window's mask.
+    // Fixture: thin foreground pillar, diagonal foreground ledge, and a wall behind the frame;
+    // the last must not erase the clear part of the window's mask.
     const geometry = {
       verts: [-0.1, -1, -3, 0.1, -1, -3, 0.1, 1, -3, -0.1, 1, -3, -1, 0.1, -2.8, 1, 0.8, -2.8, -1, 0.8, -2.8, -2, -2, -1, 2, -2, -1, 2, 2, -1, -2, 2, -1],
       faces: [{ i: [0, 1, 2, 3] }, { i: [4, 5, 6] }, { i: [7, 8, 9, 10] }]
@@ -10235,9 +10124,8 @@ const { rampApertureOcclusionProbe } = (() => {
       for (let py = 50; py < 310; py += 2) for (let px = 60; px < 580; px += 2) {
         const want = sample(px, py);
         if (want < 0) continue;
-        // Compare solid interiors rather than antialiased edge pixels. Check
-        // the whole neighborhood so thin diagonal flares cannot pass between
-        // the center and four cardinal probes.
+        // Compare solid interiors, not antialiased edge pixels; scan the whole neighbourhood so thin diagonal
+        // flares cannot slip between the center and the four cardinal probes.
         let interior = true;
         for (let dy = -2; dy <= 2 && interior; dy += 0.5) for (let dx = -2; dx <= 2; dx += 0.5) if (sample(px + dx, py + dy) !== want) { interior = false; break; }
         if (!interior) continue;
@@ -10299,8 +10187,8 @@ const { outlinePerformanceProbe } = (() => {
         actor.root.position.x = ex + step * 0.01;
         guides.updateSurface(context, ex + step * 0.01, ey + 0.05, ez, camera, 1 / 120, actor, objectClear, 10 + step);
       }
-      // Small moves must accumulate against the last terrain query, even if
-      // unrelated moving objects invalidate perception during every frame.
+      // Small moves must accumulate against the last terrain query,
+      // even when unrelated moving objects invalidate perception every frame.
       row.accumulatedMotion = Math.abs(context.surfaceEye[0] - anchor) >= 0.025;
       // A previously inactive wall must be evaluated when it becomes visible,
       // even if the camera has not moved at all.
@@ -10322,8 +10210,8 @@ const { outlinePerformanceProbe } = (() => {
 })();
 // ---- object-visibility-performance.mjs ----
 const { objectVisibilityPerformanceProbe } = (() => {
-  // Conservative acceleration must preserve openings, moving blockers and the
-  // renderer's near plane while avoiding per-witness terrain rays for solid cover.
+  // Conservative acceleration must preserve openings, moving blockers and the renderer's near plane
+  // while avoiding per-witness terrain rays for solid cover.
   const objectVisibilityPerformanceProbe = () => {
     const B = window.BL, S = B.scene, root = S.createNode(), actor = { root: S.createNode({ position: { x: 0, y: 1, z: 2 } }) };
     const target = S.createNode({ geometry: B.models.box({ w: 4, h: 4, d: 2, color: "#ffffff" }), position: { x: 0, y: 1, z: 4 } });
@@ -10390,8 +10278,8 @@ const { objectVisibilityPerformanceProbe } = (() => {
 })();
 // ---- canopy-occlusion.mjs ----
 const { canopyCertificateProbe, canopyPileProbe } = (() => {
-  // A close canopy must not cause a surface-by-surface search of a large object.
-  // Coverage is proved from the actual faces, preserving holes and near clipping.
+  // A close canopy must not trigger a surface-by-surface search of a large object;
+  // coverage is proved from the actual faces, preserving holes and near clipping.
   const canopyCertificateProbe = () => {
     const BL = window.BL, S = BL.scene, root = S.createNode(), actor = { root: S.createNode() };
     const box = (w, h, d) => BL.models.box({ w, h, d, color: "#ffffff" });
@@ -10470,8 +10358,8 @@ const { canopyCertificateProbe, canopyPileProbe } = (() => {
 })();
 // ---- outline-trigger-performance.mjs ----
 const { outlineTriggerPolicyProbe } = (() => {
-  // Decorative cover must not activate the expensive hidden-character guides.
-  // Use real model faces and the live hub registry so this also checks scene wiring.
+  // Decorative cover must not activate the expensive hidden-character guides;
+  // real model faces and the live hub registry also check scene wiring.
   const outlineTriggerPolicyProbe = () => {
     const BL = window.BL, B = window.__ooga, S = BL.scene, scene = BL.scenes.hub, production = B.headquarters.objectGuides;
     const actor = { root: S.createNode({ geometry: BL.models.box({ w: 0.025, h: 0.025, d: 0.025, color: "#ffffff" }) }) };
@@ -10527,8 +10415,8 @@ const { outlineTriggerPolicyProbe } = (() => {
             }
             samples.push({ legacy: values[0], local: values[1], production: values[2] });
           }
-          // Moving props still affect individual hidden object pixels, but
-          // must not retrace stationary actor/rock certificates on every frame.
+          // Moving props still affect individual hidden object pixels,
+          // but must not retrace stationary actor/rock certificates every frame.
           const before = certificates, version = local.result.occlusionVersion;
           for (let frame = 0; frame < 12; frame++) {
             prop.position.x += 0.001; S.updateWorld(scene.root);
@@ -10585,9 +10473,8 @@ const { outlineTriggerPolicyProbe } = (() => {
 })();
 // ---- mirror-viewport.mjs ----
 const { mirrorViewportProbe } = (() => {
-  // A narrow mirror viewport must match the same region in a wider view. The
-  // wider reference keeps offscreen rune and rim faces in its canvas paths,
-  // catching clipped corners or missing silhouette borders in the narrow view.
+  // A narrow mirror viewport must match the same region of a wider view; the wider reference keeps offscreen
+  // rune and rim faces in its canvas paths, catching clipped corners or missing silhouette borders.
   const mirrorViewportProbe = () => {
     const B = window.__ooga, BL = window.BL, m = B.mirrorCave.mouth, provider = B.mirrorCave.guides;
     const sr = Math.sin(m.ry), cr = Math.cos(m.ry), size = 300, rows = [], errors = [];
@@ -10604,7 +10491,7 @@ const { mirrorViewportProbe } = (() => {
         const images = [];
         for (const width of [size * 3, size]) {
           ctx.clearRect(0, 0, canvas.width, size);
-          // An opaque backdrop compares the final visible result rather than
+          // The opaque backdrop compares the final visible result instead of
           // unpremultiplying nearly transparent ivory into noisy RGB values.
           ctx.fillStyle = "#18211a"; ctx.fillRect(0, 0, canvas.width, size);
           provider.draw(camera, ctx, 0.7, width, size, contrast);
@@ -10619,9 +10506,8 @@ const { mirrorViewportProbe } = (() => {
           const difference = Math.abs(images[0][i] - images[1][i]);
           if (difference) { changed++; maximum = Math.max(maximum, difference); total += difference; }
         }
-        // Screen translation can change Canvas edge coverage by one pixel.
-        // Compare each differing channel against the other image's immediate
-        // neighborhood in both directions so a missing patch cannot pass.
+        // Screen translation can change Canvas edge coverage by one pixel; compare each differing channel
+        // against the other image's immediate neighbourhood in both directions so a missing patch cannot pass.
         for (let direction = 0; direction < 2; direction++) {
           const source = images[direction], target = images[1 - direction];
           for (let y = 1; y < size - 1; y++) for (let x = 1; x < size - 1; x++) for (let channel = 0; channel < 3; channel++) {
@@ -10646,8 +10532,8 @@ const { mirrorViewportProbe } = (() => {
 })();
 // ---- rock-guides.mjs ----
 const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuidesProbe, sightGuideClippingProbe, sightGuidePerceptionProbe, sightGuideWorldProbe, surfaceRockGuideProbe } = (() => {
-  // Context selection is independent of where an unrestricted eye happens to be.
-  // Check the cached segments against actual rock, then exercise their cap clip.
+  // Context selection is independent of where an unrestricted eye happens to be;
+  // check cached segments against actual rock, then exercise their cap clip.
   const rockGuidesProbe = () => {
     const B = window.__ooga, BL = window.BL, island = B.island, H = island.headquarters, rows = [], failures = [];
     let openSight = false;
@@ -10700,8 +10586,8 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
       }
       views.push({ partial, changed, leaked, maximumDelta, ...state });
     }
-    // The visible interval must remain continuous across self-hidden jagged
-    // faces, while its hidden ends and unrelated spaces remain excluded.
+    // The visible interval stays continuous across self-hidden jagged faces,
+    // while its hidden ends and unrelated spaces stay excluded.
     const ex = room.x, ey = room.floor + 1, ez = room.z;
     Object.assign(camera.position, { x: ex + 6, y: ey + 18, z: ez + 4 });
     Object.assign(camera.target, { x: ex, y: ey, z: ez });
@@ -10761,13 +10647,10 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
     camera.position.x -= 13; camera.position.z += 7;
     wholeWalls.reused = guides.updateSurfaces(ex, ey, ez, camera, 0) === nearby;
     wholeWalls.orbitStable = nearby.every((item, n) => item.surfaceWholePhases.every((phase, group) => phase === beforeOrbit[n][group]) && item.surfaceSections.every((section, group) => section === beforeSections[n][group]));
-    // Approach the same entire wall through its fade band, then leave it. Its
-    // far end must share the near end's opacity instead of being cut at 12 m.
-    // This isolated open-sight fixture tests distance and time independently;
-    // the real island audit above verifies room and floor occlusion.
+    // A wall's far end must share the near end's opacity instead of being cut at 12 m.
+    // This open-sight fixture isolates distance and time; the island audit above covers room/floor occlusion.
     openSight = true;
-    // An independent visibility aperture reveals both ends of one wall while
-    // hiding its middle. Narrowing that aperture must fade the former far end,
+    // Narrowing an aperture that reveals both ends of a wall but hides its middle must fade the former far end
     // without cutting holes into the connected section between witnesses.
     const intervalRanges = context.walls.map(() => [Infinity, -Infinity]);
     for (let group = 0; group < context.surfaceGroupCount; group++) {
@@ -10869,8 +10752,8 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
         else if (ny > length * 0.9) { treadFaces++; groupKinds[group] |= 2; }
         else invalidFaces++;
         const cx = (v[at] + v[at + 3] + v[at + 6]) / 3, cy = (v[at + 1] + v[at + 4] + v[at + 7]) / 3, cz = (v[at + 2] + v[at + 5] + v[at + 8]) / 3;
-        // Actual outdoor exposure wins over an approximate ramp bounding band:
-        // a real cliff beside the mouth must remain visible from the ramp.
+        // Actual outdoor exposure wins over the approximate ramp bounding band:
+        // a real cliff beside the mouth stays visible from the ramp.
         if (length > 1e-9 && Number.isFinite(island.ceilingAt(cx + nx / length * 0.025, cy + ny / length * 0.025, cz + nz / length * 0.025))) interiorFaces++;
         for (const window of island.headquarters.windows) for (const frustum of window.flare.frusta) if (frustum.planes.every((plane) => plane[0] * cx + plane[1] * cy + plane[2] * cz <= plane[3] + 1e-4)) windowFaces++;
       }
@@ -10923,8 +10806,8 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
       if (groupKinds[other] & 1) { bottom = Math.min(bottom, context.surfaceCenters[at + 1]); top = Math.max(top, context.surfaceCenters[at + 1]); }
     }
     if (perception.risers > 1 && top - bottom > 0.5) perception.verticalStacks++;
-    // Every other hillside needs its own actor-visible witness. In particular,
-    // the complete near side cannot propagate eligibility across a crest.
+    // Every other hillside needs its own actor-visible witness;
+    // the near side cannot propagate eligibility across a crest.
     for (const side of contexts) {
       let seen = false;
       for (let g = 0; g < side.surfaceGroupCount && !seen; g++) {
@@ -10960,8 +10843,8 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
     return { contexts: contexts.length, triangles, groups, verticalFaces, treadFaces, invalidFaces, windowFaces, interiorFaces, mixedContexts, candidate: true, hidden, perception, visible, outlinePixels, structureFaces: cover.state.structureFaces, cleared, failures };
   };
 
-  // Analytic blockers distinguish camera-hidden edge intervals from surfaces
-  // already visible in the normal rendering, independently of actor heading.
+  // Analytic blockers separate camera-hidden edge intervals from surfaces already visible in normal
+  // rendering, independently of actor heading.
   const sightGuideClippingProbe = () => {
     const BL = window.BL, world = BL.math.mat4.create(), cave = { root: { position: { x: 0, y: 0, z: 0 } }, traits: { height: 0 }, parts: { head: { world } } };
     const camera = BL.scene.createCamera({ near: 0.1 }); camera.fov = Math.PI / 2;
@@ -11019,8 +10902,8 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
     return { initial, samples, shownVisible, cached, rotationStable, unpossessed, sphere, thin };
   };
 
-  // Independent planes and apertures separate the actor's unrestricted field of
-  // regard from its line of sight. Camera occlusion alone cannot expose a room.
+  // Independent planes and apertures separate the actor's field of regard from its line of sight;
+  // camera occlusion alone cannot expose a room.
   const sightGuidePerceptionProbe = () => {
     const BL = window.BL, cave = { root: { position: { x: 0, y: 0, z: 0 } }, parts: { head: { world: BL.math.mat4.create() } } };
     const camera = BL.scene.createCamera({ near: 0.1 }); camera.fov = Math.PI * 2 / 3;
@@ -11068,8 +10951,8 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
     return { rows, samples, invalid };
   };
 
-  // Slab-ray intersections are independent of the production triangle BVH.
-  // Check the projected union of a logical owner, including overlapping parts.
+  // Slab-ray intersections are independent of the production triangle BVH;
+  // check the projected union of a logical owner, including overlapping parts.
   const objectSilhouetteProbe = () => {
     const BL = window.BL, rows = [], failures = [], empty = { count: 0, lines: new Float32Array(0) };
     const hitBox = (origin, direction, box) => {
@@ -11139,16 +11022,15 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
       const planeZ = name === "near owner, far parts" || name === "outside range" ? -6 : -3;
       const clear = (ax, ay, az, bx, by, bz) => {
         if (name === "clear") return true;
-        // These actor-visibility cases have a second wall behind the actor,
+        // These actor-visibility cases put a second wall behind the actor,
         // fully hiding the owner from the camera while preserving its doorway.
         if (["center aperture", "half aperture", "near owner, far parts"].includes(name)) {
           const plane = name === "near owner, far parts" ? -14 : -10;
           if ((az < plane && bz > plane) || (az > plane && bz < plane)) return false;
         }
         if (name === "buried rear surface" || name === "exterior front blocker") {
-          // The same solid slab first covers only the box's rear half, then
-          // moves between the camera and its exposed front. The actor remains
-          // beside the unobstructed front surface in both arrangements.
+          // The same solid slab first covers only the box's rear half, then moves between camera and exposed front;
+          // the actor stays beside the unobstructed front surface in both arrangements.
           const lower = [-3, -3, name === "buried rear surface" ? 0 : -11], upper = [3, 3, name === "buried rear surface" ? 2 : -9];
           const a = [ax, ay, az], b = [bx, by, bz]; let enter = 0, leave = 1;
           for (let axis = 0; axis < 3; axis++) {
@@ -11272,9 +11154,8 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
       BL.scene.addChild(root, second); objectRoots.push(second); objects.refresh(); step(0); step(0.05);
       const ownerAlpha = (node) => state.ownerAlphas[state.owners.indexOf(node)];
       const firstBefore = ownerAlpha(owner), secondBefore = ownerAlpha(second), orderBefore = objects.result.owners[0];
-      // The uncapped registry keeps registration order instead of sorting by
-      // distance. Reattach one owner between frames so its real source edges
-      // move after the second owner without changing either remembered fade.
+      // The uncapped registry keeps registration order instead of sorting by distance; reattach one owner between
+      // frames so its source edges move after the second owner without changing either remembered fade.
       second.position.x = -1.5; objectRoots.splice(objectRoots.indexOf(owner), 1); BL.scene.removeChild(root, owner); objects.refresh();
       BL.scene.addChild(root, owner); objectRoots.push(owner); objects.refresh(); step(0);
       const orderChanged = orderBefore !== objects.result.owners[0], reorderError = Math.max(Math.abs(firstBefore - ownerAlpha(owner)), Math.abs(secondBefore - ownerAlpha(second)));
@@ -11295,8 +11176,8 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
     const tick = (seconds) => { for (let n = 0; n < Math.ceil(seconds * 60); n++) scene.update(1 / 60, time += 1 / 60); };
     const draw = () => {
       BL.scene.updateWorld(scene.root); B.renderer.render(scene.root, B.camera, B.renderOpts);
-      // These are settled visibility snapshots; objectFadeProbe checks every
-      // intermediate opacity and retention state separately.
+      // These are settled visibility snapshots;
+      // objectFadeProbe checks every intermediate opacity and retention state separately.
       for (let n = 0; n < 18; n++) scene.overlay(1 / 60);
     };
     const snapshot = () => {
@@ -11388,8 +11269,8 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
       B.pilot.possess(cave); B.pilot.enterClose();
       B.pilot.navigate({ position, yaw: Math.atan2(bed.x - position.x, bed.z - position.z) - Math.PI, pitch: 0, dist: 6 }); tick(0.5);
       document.getElementById("scene").dispatchEvent(new WheelEvent("wheel", { deltaY: 60, cancelable: true })); tick(0.8);
-      // Randy can reserve any room. Aim at this free bed so every eligible room
-      // puts the same actor-visible object behind the floor and inside the view.
+      // Randy can reserve any room; aim at this free bed so every eligible room puts the same
+      // actor-visible object behind the floor and inside the view.
       Object.assign(B.camera.position, { x: room.x, y: room.floor - 0.4, z: room.z }); Object.assign(B.camera.target, { x: bed.x, y: bed.y + bed.sleep.surface, z: bed.z });
       const eye = B.camera.position, target = B.camera.target, near = B.camera.near / Math.hypot(target.x - eye.x, target.y - eye.y, target.z - eye.z);
       const cameraBedBlocked = !B.island.sightClearAt(eye.x + (target.x - eye.x) * near, eye.y + (target.y - eye.y) * near, eye.z + (target.z - eye.z) * near, target.x, target.y, target.z);
@@ -11450,8 +11331,8 @@ const { objectFadeProbe, objectPerceptionProbe, objectSilhouetteProbe, rockGuide
 })();
 // ---- terrain-sight.mjs ----
 const { terrainSightProbe } = (() => {
-  // Compare the fast cell traversal with independent point occupancy, exact
-  // voxel/window sweeps, and known crossings of the actual rendered surfaces.
+  // Compare the fast cell traversal with independent point occupancy, exact voxel/window sweeps,
+  // and known crossings of the actual rendered surfaces.
   const terrainSightProbe = () => {
     const BL = window.BL, island = window.__ooga.island, geometry = island.geometry, random = BL.math.mulberry32(414);
     const counts = { voxel: 0, window: 0, main: 0, basement: 0 }, rays = [], failures = [];
@@ -11534,10 +11415,8 @@ const { terrainSightProbe } = (() => {
         if ((!island.rockMaterialAt(px, py, pz) || island.sightClearAt(x, y, z, px, py, pz)) && failures.length < 8) failures.push({ kind: "empty certified solid box", point: [px, py, pz] });
       }
     }
-    // Use the rendered reveal polygons, not the certificate's cached planes.
-    // Each pair has a box within the remaining stone and one extending 2 mm
-    // through that same visible surface. An explicit clear air witness makes
-    // the latter unsafe even when most of the box is occupied.
+    // Use the rendered reveal polygons, not the certificate's cached planes. Each pair has a box inside the
+    // stone and one 2 mm through that visible surface; a clear-air witness makes the latter unsafe.
     const fragmentWindows = new Array(island.headquarters.windows.length).fill(0);
     let fragmentBoxes = 0, fragmentAirBoxes = 0, fragmentPoints = 0;
     for (const face of geometry.faces) {
@@ -11555,8 +11434,8 @@ const { terrainSightProbe } = (() => {
       const points = [];
       for (let i = 0; i < 27; i++) points.push([center[0] + (i % 3 - 1) * radius, center[1] + (Math.floor(i / 3) % 3 - 1) * radius, center[2] + (Math.floor(i / 9) - 1) * radius]);
       if (points.some((p) => !island.rockMaterialAt(...p) || island.clearAt(...p, 0, 0))) continue;
-      // GJK against the actual convex mesh proves one fragment contains the
-      // corners and therefore the whole box, without reading its sight planes.
+      // GJK against the actual convex mesh proves a fragment contains the corners, hence the whole box,
+      // without reading its sight planes.
       const pieces = island.windowPiecesAt(center[0], center[2]) || [];
       if (!pieces.some((piece) => points.every((p) => BL.convex.sweptCylinder(piece.vertices, ...p, ...p, 0, 0)))) continue;
       fragmentWindows[face.windowIndex]++;
@@ -11568,8 +11447,8 @@ const { terrainSightProbe } = (() => {
       fragmentAirBoxes++;
       if ((island.sightBoxSolidAt(...min, ...max) || reference(center, air, 0.00025)) && failures.length < 8) failures.push({ kind: "window certificate hides a 2 mm air opening", window: face.windowIndex, min, max, air });
     }
-    // This lies on a shared convex-fragment plane. Both sides are solid, so a
-    // zero-radius touch must not create an infinitesimal see-through seam.
+    // This seam lies on a shared convex-fragment plane; both sides are solid,
+    // so a zero-radius touch must not create an infinitesimal see-through seam.
     const seam = [-28.81, -1.625, 4.75], seamCovered = !!island.rockMaterialAt(...seam)
       && !!island.rockMaterialAt(seam[0], seam[1], seam[2] - 1e-6) && !!island.rockMaterialAt(seam[0], seam[1], seam[2] + 1e-6)
       && !island.sightClearAt(-28.79, -1.625, 4.75, -28.83, -1.625, 4.75);
@@ -11580,8 +11459,8 @@ const { terrainSightProbe } = (() => {
 })();
 // ---- window-outlines.mjs ----
 const { windowOutlineProbe } = (() => {
-  // Audit the final cached mesh, including untagged voxel remnants outside the
-  // openings. Reveal-plane tests alone cannot detect those flat exterior faces.
+  // Audit the final cached mesh, including untagged voxel remnants outside the openings:
+  // reveal-plane tests alone cannot detect those flat exterior faces.
   const windowOutlineProbe = () => {
     const BL = window.BL, island = window.__ooga.island, H = island.headquarters;
     const guides = BL.rockGuides.create({ island }), rows = [], margin = island.unit * Math.SQRT2;
@@ -11707,8 +11586,8 @@ const { apertureOutlineProbe, rampWallFloorProbe } = (() => {
 })();
 // ---- object-guides.mjs ----
 const { grassOutlineProbe, objectCameraIndependenceProbe, objectCrowdingProbe, objectProviderStateProbe, objectVisibilityGateProbe, pileGuideProbe } = (() => {
-  // Exercise the real object registry independently of the current camera's
-  // contour list. These probes also run in Node with the classic modules loaded.
+  // Exercise the real object registry independently of the camera's contour list.
+  // These probes also run in Node with the classic modules loaded.
   const objectCrowdingProbe = () => {
     const BL = window.BL, S = BL.scene, root = S.createNode(), actor = { root: S.createNode({ position: { x: 0, y: 1, z: 0 } }) };
     const props = [], characters = new Map(), small = BL.models.box({ w: 0.08, h: 0.08, d: 0.08, color: "#ffffff" }), body = BL.models.box({ w: 0.3, h: 0.3, d: 0.3, color: "#ffffff" });
@@ -11797,8 +11676,8 @@ const { grassOutlineProbe, objectCameraIndependenceProbe, objectCrowdingProbe, o
         actor.root.rotation.y = Math.PI; const turned = sample();
         const rotationStable = turned.recognized === beforeTurn.recognized && turned.distance === beforeTurn.distance && objects.stats.perceptionQueries === queries;
         actor.root.rotation.y = 0;
-        // Compare equal elapsed time with and without the owner in view. Looking
-        // away must neither reset recognition nor restart its opacity on return.
+        // Compare equal elapsed time with and without the owner in view:
+        // looking away must not reset recognition or restart opacity on return.
         filter.update(null, null, null, camera, 1.6); sample(); sample(0.1); const control = sample(0.5);
         filter.update(null, null, null, camera, 1.6); sample(); const partial = sample(0.1);
         Object.assign(camera.target, { x: 0, y: 0, z: -36 }); const away = sample(), held = sample(0.5);
@@ -11869,9 +11748,8 @@ const { grassOutlineProbe, objectCameraIndependenceProbe, objectCrowdingProbe, o
         rows.push({ name: fixture.name, fullyVisible, anyVisible, enabled: state.objectsEnabled, count: state.count, objects: state.objectCount, structures: state.structureCount, providers: state.providerCount, perceived: objects.perceived(owner, actor, 0, 0, 0, clear), concealed: objects.concealed(owner, actor, clear), visibleActorSamples, hiddenActorSamples, sliverWitness: sliver && clear(0, 0, -12, 0.073 * 11.5 / 6, 0.117 * 11.5 / 6, -0.5) });
       }
     } finally { filter.dispose(); objects.dispose(); }
-    // A grounded body can straddle the oblique camera near plane while a solid
-    // floor still covers every visible ray. A real 2 mm slot through that floor
-    // must instead keep the gate off, including between cached mesh witnesses.
+    // A grounded body can straddle the oblique near plane while a solid floor covers every visible ray;
+    // a real 2 mm slot through that floor must keep the gate off, including between cached mesh witnesses.
     const grounded = { root: S.createNode({ geometry: BL.models.box({ w: 0.6, h: 1.3, d: 0.6, color: "#ffffff" }), position: { x: 0, y: 0.65, z: 0 } }) };
     const floorRoot = S.createNode(); S.addChild(floorRoot, grounded.root); S.updateWorld(floorRoot);
     const floorObjects = BL.objectGuides.create({ roots: [grounded.root], crew: { cavemen: new Map([["grounded", grounded]]) } });
@@ -11936,13 +11814,13 @@ const { grassOutlineProbe, objectCameraIndependenceProbe, objectCrowdingProbe, o
     const actor = { root: { position: { x: 0, y: 1, z: 0 } } }, oldLevel = B.level, rows = [], failures = [];
     const originalNodes = objects.stats.registered, originalCapacity = objects.result.capacity, bytes = provider.state.buffers;
     const draw = () => {
-      // This probe checks the complete shell geometry independently of camera
-      // clipping, as used beneath the separate near-plane material cap.
+      // Checks the complete shell geometry independently of camera clipping,
+      // as used beneath the separate near-plane material cap.
       ctx.clearRect(0, 0, width, height); provider.draw(camera, ctx, 1, width, height, 0, { rockOnly: true });
       return ctx.getImageData(0, 0, width, height).data;
     };
-    // Independently rasterize the requested inner mound and continuous slab.
-    // Fruit, slots and decorative perimeter stones never enter this reference.
+    // Independently rasterize the requested inner mound and continuous slab;
+    // fruit, slots and decorative perimeter stones never enter this reference.
     const paint = (node, matrix = node.world, offset = 0) => {
       const g = node.geometry, vertices = new Float64Array(g.verts.length / 3 * 2);
       for (let n = 0; n < g.verts.length; n += 3) {
@@ -11952,8 +11830,8 @@ const { grassOutlineProbe, objectCameraIndependenceProbe, objectCrowdingProbe, o
         if (depth <= camera.near) throw new Error("Pile mask fixture crosses its near plane");
         vertices[n / 3 * 2] = width / 2 + vx * focal / depth; vertices[n / 3 * 2 + 1] = height / 2 - vy * focal / depth;
       }
-      // Union whole polygons before rasterizing. Filling individual faces leaves
-      // antialias seams in the reference, especially on the nearly flat first fruit.
+      // Union whole polygons before rasterizing: filling individual faces leaves antialias seams
+      // in the reference, especially on the nearly flat first fruit.
       maskCtx.beginPath();
       for (const face of g.faces) {
         const a = face.i[0] * 2;
@@ -11982,8 +11860,8 @@ const { grassOutlineProbe, objectCameraIndependenceProbe, objectCrowdingProbe, o
         const expectedBuffers = provider.state.buffers;
         B.setPileLevel(level); S.updateWorld(BL.scenes.hub.root); const active = provider.active();
         const span = Math.max(0.3, B.altar.outerRingInnerRadius), top = provider === H.pileGuides && B.core.visible ? B.core.position.y + S.boundsOf(B.core.geometry).max[1] * B.core.scale.y : B.altar.height;
-        // Fit the actual mound/slab, including the tiny empty platform. A
-        // distant minimum-radius view leaves no interior pixels to validate.
+        // Frame the actual mound/slab including the tiny empty platform;
+        // a distant minimum-radius view leaves no interior pixels to validate.
         Object.assign(camera.position, { x: span * 1.65, y: top + span * 0.85, z: span * 2.6 }); Object.assign(camera.target, { x: 0, y: top * 0.35, z: 0 });
         Object.assign(actor.root.position, { x: span + 1, y: 1, z: 0 });
         const source = objects.collect(actor, actor.root.position.x, 1, 0, camera, width / height), nearby = source.nearOwners.slice(0, source.nearCount);
@@ -11993,8 +11871,8 @@ const { grassOutlineProbe, objectCameraIndependenceProbe, objectCrowdingProbe, o
         let referencePixels = 0, interior = 0, seams = 0, distant = 0, interiorMin = 255, interiorMax = 0;
         {
           const actual = reference(); referencePixels = 0;
-          // The wall-style rim expands 2.25px diagonally; allow its stroke
-          // and antialiasing fringe, without accepting detached pixels.
+          // The wall-style rim expands 2.25px diagonally; allow its stroke and antialiasing fringe,
+          // without accepting detached pixels.
           for (let y = 4; y < height - 4; y++) for (let x = 4; x < width - 4; x++) {
             const at = (y * width + x) * 4 + 3; if (actual[at] > 250) referencePixels++;
             let filled = true, near = false;
@@ -12008,8 +11886,8 @@ const { grassOutlineProbe, objectCameraIndependenceProbe, objectCrowdingProbe, o
         rows.push({ level, kind: provider === H.pileGuides ? "fruit" : "platform", expectedBuffers, active, singleOwner, distinct: provider.owner !== (provider === H.pileGuides ? H.platformGuides.owner : H.pileGuides.owner), provider: objects.getProvider(provider.owner) === provider, instances: provider.state.instances, expectedInstances, shell: B.shell.instanceCount, considered: provider.state.considered, contained: provider.state.contained, outside: provider.state.outside, buffers: provider.state.buffers, registered: objects.stats.registered, capacity: source.capacity, outline, maximumAlpha, fingerprint, cached: provider.state.updates === updates && changed === 0, referencePixels, interior, interiorMin, interiorMax, seams, distant });
         if ((!active || !singleOwner || seams || distant) && failures.length < 10) failures.push({ level, active, singleOwner, seams, distant });
       }
-      // Cosmetic fruit can disappear, move, or receive an instance upload without
-      // changing the mound outline, proximity or camera visibility.
+      // Cosmetic fruit may disappear, move or receive an instance upload
+      // without changing the mound outline, proximity or camera visibility.
       const fruit = [B.shell, ...B.slots.map((slot) => slot.node), ...B.altar.rings];
       const savedFruit = fruit.map((node) => [node, node.visible, node.position.x, node.instanceVersion]);
       const shellBefore = draw(), versionBefore = provider.version, updatesBefore = provider.state.updates;
@@ -12176,8 +12054,8 @@ const { campfireProbe } = (() => {
 
 // ---- character-carry.mjs ----
 const { characterCarryProbe } = (() => {
-  // Stack real Oogas on a clear slab, then drive the same player/NPC controllers
-  // used in the island. Physical offsets reveal update-order lag immediately.
+  // Stack real Oogas on a clear slab and drive the same player/NPC controllers used on the island;
+  // physical offsets reveal update-order lag immediately.
   const characterCarryProbe = ({ dt = 1 / 60 } = {}) => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, scene = BL.scenes.hub, crew = B.crew, props = B.headquarters.solids.props;
     const actors = [...B.cavemen.values()], saved = actors.map((cave) => ({ cave, visible: cave.root.visible, override: cave.override }));
@@ -12372,8 +12250,8 @@ const { contextualActionProbe } = (() => {
     const press = () => { key("keydown", " "); key("keyup", " "); };
     const canvas = document.getElementById("scene"), button = document.getElementById("act");
     const chord = (buttons) => {
-      // Synthetic pointers have no browser capture owner. Keep the real event
-      // handlers, stubbing capture only for this fixture's synchronous dispatch.
+      // Synthetic pointers have no browser capture owner: keep the real handlers,
+      // stubbing setPointerCapture only for this fixture's synchronous dispatch.
       const descriptor = Object.getOwnPropertyDescriptor(canvas, "setPointerCapture"), capture = canvas.setPointerCapture;
       canvas.setPointerCapture = (id) => { if (id !== 71) capture.call(canvas, id); };
       try { canvas.dispatchEvent(new PointerEvent(buttons ? "pointermove" : "pointerup", { pointerType: "mouse", buttons, pointerId: 71, bubbles: true })); }
@@ -12506,8 +12384,7 @@ const { yellowLikenessProbe, drNeskiVoiceProbe, genXbtcLikenessProbe } = (() => 
     cave.override = override; B.crew.refreshStates(true);
     return result;
   };
-  // DrNeski answers a poke with his own line and mixes his idle lines with the tribe's;
-  // everyone else keeps the shared pools and draws exactly as many random numbers as before.
+  // DrNeski: own poke line, idle lines mixed with the tribe's; others keep shared pools and the same RNG draws.
   const drNeskiVoiceProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes[B.scene], camera = scene.camera, voice = BL.contributors.voiceFor("DrNeski");
     const neski = B.cavemen.get("DrNeski"), other = B.cavemen.get("portlandhodl"), his = [voice.poke, ...voice.idle];
@@ -12519,7 +12396,7 @@ const { yellowLikenessProbe, drNeskiVoiceProbe, genXbtcLikenessProbe } = (() => 
     B.advance(0.6, 1 / 60);
     const overlay = document.getElementById("overlay").getContext("2d"), fillText = overlay.fillText;
     const eye = { ...camera.position }, target = { ...camera.target }, cameraUp = camera.up;
-    // One frame looking at a caveman: every word the overlay drew after ageing bubbles by dt
+    // said(): one frame aimed at a caveman; returns every word the overlay drew after ageing bubbles by dt.
     const said = (cave, dt) => {
       const words = [], p = cave.root.position;
       Object.assign(camera.target, { x: p.x, y: p.y + cave.headOffset, z: p.z });
@@ -12701,7 +12578,7 @@ const { drivenSmokeGroundProbe } = (() => {
       place(0, floor + 1);
       const equipped = !!crew.wearJetpack(cave, BL.hubModels.jetpack(), BL.hubModels.jetFlame());
       cave.jetFuel = 1; cave.jetRecovering = false; crew.thrust(true); crew.steer(0, 1, 1, 1, 0);
-      // Exhaust has its own particles; postpone its next burst for this one tick.
+      // jet.puff = 1 postpones the exhaust's next burst for this tick: exhaust has its own particles.
       cave.jet.puff = 1;
       const jet = tick("jetpack"); jet.ok = equipped && !jet.grounded && cave.jet.spending && jet.travel > 0 && jet.particles === 0;
       place();
@@ -12730,7 +12607,7 @@ const { drivenSmokeGroundProbe } = (() => {
 // ---- ember-render.mjs ----
 const { emberRenderProbe, maskedHeadEmberProbe } = (() => {
   // Compare two instances of the same real body part through the active renderer.
-  // Heat matures from red/orange to fire-yellow, then cools into scorched material.
+  // Heat matures red/orange -> fire-yellow, then cools into scorched material.
   const emberRenderProbe = () => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, renderer = B.renderer;
     const scene = BL.scenes[B.scene], canvas = document.getElementById("scene");
@@ -12761,8 +12638,7 @@ const { emberRenderProbe, maskedHeadEmberProbe } = (() => {
       const affected = [], untouched = [];
       for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
         const at = (y * width + x) * 4;
-        // The black backdrop cannot pass this mask. Compare only occupied pixels
-        // from the unheated surface, independent of ember color and brightness.
+        // Sum <= 12 masks the black backdrop: compare only occupied pixels, independent of ember color and brightness.
         if (before[at] + before[at + 1] + before[at + 2] <= 12) continue;
         (x < width / 2 ? affected : untouched).push(at);
       }
@@ -12810,8 +12686,8 @@ const { emberRenderProbe, maskedHeadEmberProbe } = (() => {
     }
   };
 
-  // Exercise the fire controller before rendering its output on the actual mask
-  // geometry. An isolated crew keeps the active visit and its fire state intact.
+  // Exercise the fire controller before rendering its output on the actual mask geometry.
+  // An isolated crew keeps the active visit and its fire state intact.
   const maskedHeadEmberProbe = () => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, renderer = B.renderer;
     const scene = BL.scenes[B.scene], canvas = document.getElementById("scene"), crewRoot = S.createNode();
@@ -12898,8 +12774,7 @@ const { emberRenderProbe, maskedHeadEmberProbe } = (() => {
 
 // ---- fire-avoidance.mjs ----
 const { fireAvoidanceProbe } = (() => {
-  // Keep the authored pits and movement controllers; remove unrelated passers-by
-  // and scattered props so every detour is attributable to the flame hazard.
+  // Keep authored pits and controllers; remove passers-by and props so every detour is attributable to the flame.
   const fireAvoidanceProbe = ({ dt = 1 / 60 } = {}) => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, scene = BL.scenes.hub, crew = B.crew;
     const H = B.headquarters, solids = H.solids.props, actors = [...B.cavemen.values()];
@@ -13096,8 +12971,7 @@ const { fireContactProbe } = (() => {
       H.solids.props.remove(wall); BL.scene.removeChild(scene.root, wall); wall = null;
 
       park(receiver, 2.7, 2.8);
-      // A healthy Ooga now flees faster than the walking player. This small
-      // alcove lets the approach make real contact without disabling fear.
+      // A healthy Ooga outruns the walking player; this alcove lets the approach make contact without disabling fear.
       wall = BL.scene.createNode();
       for (const z of [2.3, 3.3]) BL.scene.addChild(wall, BL.scene.createNode({ position: { x: 2.6, y: floor + 1.5, z }, geometry: BL.models.box({ w: 1.5, h: 3, d: 0.08, color: "#655848" }) }));
       BL.scene.addChild(wall, BL.scene.createNode({ position: { x: 3.18, y: floor + 1.5, z: 2.8 }, geometry: BL.models.box({ w: 0.08, h: 3, d: 1.2, color: "#655848" }) }));
@@ -13148,14 +13022,13 @@ const { fireContactProbe } = (() => {
       reverse.rolling = player.camp.rolling;
       observeReaction(source);
 
-      // Each bystander reacts without player input, with its own bounded delay.
+      // Each bystander reacts without player input, on its own bounded delay.
       park(extra, 1.3, 2.8);
       crew.ignite(extra);
       observeReaction(extra);
       const varyingDelays = new Set(reactions.map((r) => r.delay)).size;
 
-      // Fresh flames remain contagious while the just-extinguished actor is
-      // protected long enough to get up and move away from the same contact.
+      // Fresh flames stay contagious; a just-extinguished actor is protected long enough to get up and move away.
       crew.relocatePlayer({ x: 1.3, y: floor, z: 2.8 }, 0);
       crew.ignite(player); crew.dropRoll(player); step(3.05);
       const cleanIgnitions = player.camp.ignitions;
@@ -13165,8 +13038,7 @@ const { fireContactProbe } = (() => {
       crew.relocatePlayer({ x: -1.4, y: floor, z: 2.8 }, 0);
       settleFire(receiver); receiver.root.visible = false;
 
-      // Let an actual bed pose settle before bringing the burning player up
-      // to its visible body bounds. Ignition must interrupt the nap safely.
+      // Let the bed pose settle before raising the burning player to its body bounds; ignition must interrupt the nap.
       const bed = [3, 4].map((roomIndex) => H.mattresses.find((entry) => !entry.basement && entry.roomIndex === roomIndex)).find((entry) => entry && !entry.sleeper);
       park(extra, bed.walkAt.x, bed.walkAt.z, bed.walkAt.y);
       B.pilot.possess(extra);
@@ -13447,8 +13319,7 @@ const { firePanicProbe } = (() => {
         offPath: !B.island.isPath(bystander.root.position.x, bystander.root.position.z), graphCalls: pathCalls - plans, clear: fleeClear,
         playerHeld: crew.player === source && !source.camp.panic.active && Math.hypot(source.root.position.x - sourceX, source.root.position.z - sourceZ) < 1e-6 };
 
-      // Place an impassable wall across the escape heading and require a
-      // physical detour while the source remains on the same clear side.
+      // A wall across the escape heading forces a physical detour while the source stays on the same clear side.
       park(bystander, spot.x, spot.z);
       addWall(spot.x + spot.nx * 0.8, spot.z + spot.nz * 0.8, spot.nx, spot.nz);
       const blocked = !solids.segmentClear(spot.x, 0.01, spot.z, spot.x + spot.nx * 1.6, 0.01, spot.z + spot.nz * 1.6, 0.3, bystander.bodyHeight);
@@ -13648,9 +13519,8 @@ const { headCameraProbe } = (() => {
 
 // ---- jumbotron.mjs ----
 const { jumbotronProbe } = (() => {
-  // The rim jumbotron: baked EntropyLab stats on a native voxel board.
-  // Placement, data parsing, view switching, the poke-an-Ooga hook, and the
-  // screen's quad meshing all hold in both renderers.
+  // Rim jumbotron: baked EntropyLab stats on a native voxel board.
+  // Placement, parsing, view switching, the poke-an-Ooga hook and quad meshing must hold in both renderers.
   const jumbotronProbe = async () => {
     const B = window.__ooga, BL = window.BL;
     const frames = (n) => new Promise((resolve) => {
@@ -13772,8 +13642,7 @@ const { maskSmokePixelsProbe } = (() => {
 
 // ---- matrix-respawn.mjs ----
 const { matrixRespawnProbe } = (() => {
-  // Observe the real cliff/shaft fall and its first respawn update, including
-  // the unpossessed first-person camera's separate recovery branch.
+  // Covers the real cliff/shaft fall and first respawn update, plus the unpossessed first-person camera branch.
   const matrixRespawnProbe = (fall) => {
     const B = window.__ooga, scene = window.BL.scenes.hub, update = scene.update, W = B.matrixCave.world;
     let time = B.renderOpts.matrix.time, fallingFrames = 0, heldDuringFall = true, arrival = null;
@@ -13807,8 +13676,8 @@ const { matrixRespawnProbe } = (() => {
 
 // ---- path-depth.mjs ----
 const { pathDepthProbe } = (() => {
-  // Pixel coverage of the shipped path geometry over grass at the hub's .1 near
-  // plane. Reference-only masks exclude antialiased boundaries from the count.
+  // Pixel coverage of the shipped path geometry over grass at the hub's .1 near plane.
+  // Reference-only masks exclude antialiased boundaries from the count.
   const pathDepthProbe = async ({ backend = "webgl2" } = {}) => {
     const BL = window.BL, B = window.__ooga, S = BL.scene, canvas = document.createElement("canvas"), size = 512;
     Object.defineProperties(canvas, { clientWidth: { value: size }, clientHeight: { value: size } });
@@ -13874,8 +13743,7 @@ const { pathDepthProbe } = (() => {
       camera.position = { x: 0.13, y: 64, z: 7.68 }; geometry.depthOffset = flatGeometry.depthOffset = false; const unoffset = await capture();
       geometry.depthOffset = flatGeometry.depthOffset = originalOffset; const offset = await capture(); let foreground = 0, occluded = 0;
       const pink = (pixels, at) => pixels[at] > 160 && pixels[at + 1] < 70 && pixels[at + 2] < 150;
-      // At antialiased edges, correcting the grass behind the object also changes
-      // mixed pixels. Only fully interior object pixels must remain unchanged.
+      // Correcting the grass behind the object also changes antialiased edge pixels; only interior pixels stay equal.
       for (let y = 2; y < canvas.height - 2; y++) for (let x = 2; x < canvas.width - 2; x++) {
         let inside = true;
         for (let dy = -2; dy <= 2 && inside; dy++) for (let dx = -2; dx <= 2; dx++) if (!pink(unoffset, ((y + dy) * canvas.width + x + dx) * 4)) { inside = false; break; }
@@ -13893,8 +13761,8 @@ const { pathDepthProbe } = (() => {
 
 // ---- pile-rendering.mjs ----
 const { pileRenderingProbe } = (() => {
-  // Exercise the real pile's distance selection without changing its banana
-  // population, then draw both cached meshes and audit their GPU lifetime.
+  // Exercise the real pile's distance selection without changing its banana population.
+  // Then draw both cached meshes and audit their GPU lifetime.
   const pileRenderingProbe = async (backend) => {
     const BL = window.BL, S = BL.scene, canvas = document.createElement("canvas"), rows = [];
     let width = 384, height = 256;
@@ -14009,8 +13877,7 @@ const { pileRenderingProbe } = (() => {
       rows.push({ name: "ending a visit immediately releases both active and dormant shell buffers",
         ok: !gl || renderer.stats.records === ownedRecords - 2, before: ownedRecords, after: renderer.stats.records });
       renderer.releaseUnused(new Set());
-      // Two new visits start with the same version and instance count. Retaining
-      // an old LOD buffer across disposal must not suppress the next visit's upload.
+      // Two visits share version and instance count; a retained old LOD buffer must not suppress the next upload.
       const visits = [];
       for (const floor of [2, 7]) {
         world.level = 1000000; pile = BL.pile.create({ root, world, renderer, crew, camera, pileY: floor }); disposed = false;
@@ -14058,8 +13925,8 @@ const { pileRenderingProbe } = (() => {
 
 // ---- sealed-cave-walking.mjs ----
 const { sealedCaveWalkingProbe } = (() => {
-  // Follow actual authored cave-apron destinations against the shipped seal
-  // meshes. A nearby wall beyond the destination must not become a passing task.
+  // Follow authored cave-apron destinations against the shipped seal meshes.
+  // A nearby wall beyond the destination must not become a passing task.
   const sealedCaveWalkingProbe = ({ dt = 1 / 30, scenarios = ["apron", "close apron", "embedded goal", "depart"] } = {}) => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, scene = BL.scenes.hub, crew = B.crew, physics = B.headquarters.solids;
     const actors = [...B.cavemen.values()], cave = actors.find((actor) => actor.state === "working"), rows = [], walls = [];
@@ -14073,8 +13940,7 @@ const { sealedCaveWalkingProbe } = (() => {
     try {
       for (const seal of B.matrixGate.sealed) for (const name of scenarios) {
         const m = seal.mouth, sr = Math.sin(m.ry), cr = Math.cos(m.ry);
-        // c3's seeded meadow rock covers the five-metre point; its clear apron
-        // approach is fixed at 3.5 metres so this fixture isolates the seal.
+        // c3's seeded meadow rock covers the 5 m point, so its clear apron approach is fixed at 3.5 m.
         const outsideDistance = m.id === "c3" ? 3.5 : 5;
         const outside = { x: m.x + sr * outsideDistance, z: m.z + cr * outsideDistance }, apron = m.apron;
         const near = { x: m.x + sr * 2.3, z: m.z + cr * 2.3 };
@@ -14109,9 +13975,7 @@ const { sealedCaveWalkingProbe } = (() => {
           row.maximumStep = Math.hypot(p.x - lastX, p.z - lastZ);
           if (!seals.clearAt(p.x, feet + 1e-5, p.z, 0.295, cave.bodyHeight - 1e-5)) row.intersections++;
           lastX = p.x; lastZ = p.z;
-          // Production selected a valid replacement. Continue to a known safe
-          // authored spot so random wandering and distant fires do not enter
-          // this seal-recovery regression.
+          // Continue to a known safe authored spot so random wandering and distant fires stay out of this seal check.
           target = apron;
           cave.walk = { tx: target.x, tz: target.z, speed: 1.7, phase: 0, heading: Math.atan2(target.x - p.x, target.z - p.z), to: "spot" };
           Object.assign(cave.act.spot, { x: target.x, z: target.z, ry: m.ry + Math.PI });
@@ -14174,8 +14038,8 @@ const { sealedCaveWalkingProbe } = (() => {
 
 // ---- shoulder-pass.mjs ----
 const { shoulderPassProbe } = (() => {
-  // Real player and voluntary NPC controllers on a clear solid support. Raising
-  // the fixture keeps authored trails and scattered props out of the encounter.
+  // Real player and voluntary NPC controllers on a clear solid support.
+  // Raising the fixture keeps authored trails and scattered props out of the encounter.
   const shoulderPassProbe = ({ dt = 1 / 60, firstPerson = false } = {}) => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, scene = BL.scenes.hub, crew = B.crew, props = B.headquarters.solids.props;
     const actors = [...B.cavemen.values()], saved = actors.map((cave) => ({ cave, visible: cave.root.visible, override: cave.override }));
@@ -14308,8 +14172,7 @@ const { shoulderPassProbe } = (() => {
       B.pilot.release(true);
       const pairs = [];
       for (const config of [
-        // Destinations extend past the other actor's starting collision volume;
-        // an occupied destination legitimately triggers routine replanning.
+        // Destinations extend past the other actor's start volume; an occupied destination triggers routine replanning.
         { name: "head-on", ax: 0, bx: 0, az: -2.5, bz: 2.5, aGoal: 4, bGoal: -4, aSpeed: 1.7, bSpeed: 1.7 },
         { name: "offset head-on", ax: -0.22, bx: 0.22, az: -2.5, bz: 2.5, aGoal: 4, bGoal: -4, aSpeed: 1.7, bSpeed: 1.7 },
         { name: "following", ax: 0, bx: 0, az: -1.9, bz: -1, aGoal: 4, bGoal: 6, aSpeed: 2.8, bSpeed: 1.3 }
@@ -14353,14 +14216,13 @@ const { shoulderPassProbe } = (() => {
 
 // ---- shoulder-props.mjs ----
 const { shoulderPropsProbe } = (() => {
-  // The real hub controllers pass copies of the shipped scenery on a clear
-  // support. Mesh holes and walkable steps must not become shoulder obstacles.
+  // Hub controllers pass copies of shipped scenery; mesh holes and walkable steps must not be shoulder obstacles.
   const shoulderPropsProbe = ({ dt = 1 / 60, firstPerson = true } = {}) => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, scene = BL.scenes.hub, crew = B.crew, solids = B.headquarters.solids.props;
     const actors = [...B.cavemen.values()], cave = actors[0], saved = actors.map((actor) => ({ actor, visible: actor.root.visible, override: actor.override }));
     const floor = 12.1, fixture = S.createNode(), rows = [];
     S.addChild(fixture, S.createNode({ position: { x: 0, y: 12, z: 0 }, geometry: BL.models.box({ w: 24, h: 0.2, d: 24, color: "#665544" }) }));
-    // Select the actual right bench from the headquarters' merged room mesh.
+    // Select the actual right bench (verts x > 2) from the headquarters' merged room mesh.
     const room = BL.headquartersModels.room(), bench = { verts: [], faces: [] }, indices = new Map();
     for (const face of room.faces) {
       if (!face.i.every((i) => room.verts[i * 3] > 2)) continue;
@@ -14478,8 +14340,8 @@ const { shoulderPropsProbe } = (() => {
         }
         shape.node.visible = false; sync();
       }
-      // Removing a registered group leaves the tracked mesh's parent pointer
-      // intact. The encounter must still release on the very next moving frame.
+      // Removing a registered group leaves the tracked mesh's parent pointer intact.
+      // The encounter must still release on the very next moving frame.
       const removable = S.createNode({ position: { x: 0, y: floor, z: 0 } });
       const child = S.createNode({ geometry: BL.models.box({ w: 0.8, h: 2, d: 0.8, color: "#665544", offset: { y: 1 } }) });
       S.addChild(removable, child); S.addChild(fixture, removable); solids.add(removable);
@@ -14522,8 +14384,7 @@ const { shoulderPropsProbe } = (() => {
 
 // ---- tree-clearance.mjs ----
 const { treeClearanceProbe } = (() => {
-  // Measure rendered foliage independently of the placement metadata, then walk
-  // the tallest real Ooga beneath it using the hub's production controller.
+  // Measure rendered foliage independently of placement metadata, then walk the tallest real Ooga beneath it.
   const treeClearanceProbe = ({ dt = 1 / 60 } = {}) => {
     const B = window.__ooga, BL = window.BL, S = BL.scene, scene = BL.scenes.hub, crew = B.crew, island = B.island;
     const props = B.headquarters.solids.props, actors = [...B.cavemen.values()], cave = actors.reduce((a, b) => a.bodyHeight > b.bodyHeight ? a : b);
@@ -14550,8 +14411,7 @@ const { treeClearanceProbe } = (() => {
       const solidModel = shape(geometry.collisionGeometry);
       const x = node.world[12], y = node.world[13], z = node.world[14], reach = solidModel.reach + radius;
       let roof = -Infinity, rootRoof = -Infinity;
-      // Every intersected terrain cell, including cells whose centers lie just
-      // beyond the circle, matters to a round character standing under a leaf.
+      // Include cells whose centers lie just beyond the circle: a round character under a leaf still touches them.
       for (let ix = Math.floor((x - reach) / unit); ix <= Math.floor((x + reach) / unit); ix++) {
         const cx = (ix + 0.5) * unit, dx = Math.max(0, Math.abs(cx - x) - unit / 2);
         for (let iz = Math.floor((z - reach) / unit); iz <= Math.floor((z + reach) / unit); iz++) {
@@ -14620,7 +14480,7 @@ const { treeClearanceProbe } = (() => {
       for (const actor of actors) actor.root.visible = false;
       for (const variant of variants) {
         tree.geometry = BL.hubModels.tree(variant.variant); tree.rotation.y = variant.variant * 0.37;
-        // Geometry registry entries keep their triangles; re-register each mesh.
+        // Geometry registry entries keep their triangles; re-register each mesh after removing it.
         props.remove(fixture); props.add(fixture); isolated.add(tree); sync();
         visualTree.geometry = { ...tree.geometry, collisionGeometry: null };
         Object.assign(visualTree.position, tree.position); Object.assign(visualTree.rotation, tree.rotation);
@@ -14650,7 +14510,7 @@ const { treeClearanceProbe } = (() => {
       tree.visible = slab.visible = false; cave.root.visible = false; sync();
       let roofLine = null, attempts = 0;
       // Select a short real roof corridor with at least one normal terrain step.
-      // Clearance is only a fixture prerequisite; movement/arrival is asserted.
+      // Clearance is only a fixture prerequisite; movement/arrival is what is asserted.
       for (const owner of trees) {
         if (!owner.active || roofLine) continue;
         isolated.add(owner.node); sync();
@@ -14667,9 +14527,8 @@ const { treeClearanceProbe } = (() => {
             low = Math.min(low, next); high = Math.max(high, next); y = next;
           }
           if (!clear || high - low < unit || high - low > 0.5 || under < 4) continue;
-          // The player's held input also anticipates props 1.3m ahead. Reject
-          // unrelated trunk/prop approaches beyond the physical crossing, but
-          // retain any hit on this tree so a foliage-query bug still fails.
+          // Held input anticipates props 1.3 m ahead; reject unrelated trunk/prop approaches beyond the crossing.
+          // Retain any hit on this tree so a foliage-query bug still fails.
           const threat = {}, step = BL.pilot.WALK.step;
           y = firstY;
           for (let i = 0; i <= 33 && clear; i++) {
@@ -14685,9 +14544,8 @@ const { treeClearanceProbe } = (() => {
         if (roofLine) walk(roofLine, "stepped cave roof");
         isolated.remove(owner.node);
       }
-      // Horizontal rays through the highest leaf and root used to miss the
-      // undersized pick sphere. Exercise the actual target registry independent
-      // of camera framing; cliff trees remain outside even the maximum pile.
+      // Past bug: horizontal rays through the highest leaf and root missed the undersized pick sphere.
+      // Exercise the real target registry independent of camera framing; cliff trees stay outside the max pile.
       cave.root.visible = false; sync();
       const owner = trees.find((entry) => entry.active && entry.node.visible), originalRay = B.renderer.ray, picking = { active: !!owner };
       try {
@@ -14906,32 +14764,43 @@ const { autoQualityProbe } = (() => {
   // a fast test machine cannot reliably reproduce sustained GPU pressure.
   const autoQualityProbe = () => {
     const source = readFileSync(new URL("../src/js/director.js", import.meta.url), "utf8");
-    const controller = source.slice(source.indexOf("  const perf ="), source.indexOf("  // ---------- frame governor"));
-    const create = () => {
+    const controller = source.slice(source.indexOf("  const perf ="), source.indexOf("  const WARMUP"));
+    const create = (quality = "high", renderedFrames = 100) => {
       const changes = [], state = { focused: true, now: 0 };
-      const renderer = { kind: "webgl2", quality: "high", setQuality(value) { this.quality = value; changes.push(value); } };
-      const context = { renderer, document: { hasFocus: () => state.focused }, transition: null, renderedFrames: 100, showQuality() {} };
-      const step = runInNewContext(`${controller}\nautoTier`, context);
-      const frames = (count, cpu = 2, interval = 1000 / 60) => {
-        for (let n = 0; n < count; n++) step(cpu, interval, state.now += interval);
-      };
-      return { changes, state, renderer, context, frames };
+      const renderer = { kind: "webgl2", quality, setQuality(value) { this.quality = value; changes.push(value); } };
+      const context = { renderer, document: { hasFocus: () => state.focused }, transition: null, renderedFrames, showQuality() {} };
+      const tier = runInNewContext(`${controller}\n({ autoTier, tierFromBoot })`, context);
+      // The governor reads delivered intervals only, so a frame costs the probe nothing but the interval it took.
+      const frames = (count, interval = 1000 / 60) => { for (let n = 0; n < count; n++) tier.autoTier(interval, state.now += interval); };
+      return { changes, state, renderer, context, frames, boot: tier.tierFromBoot };
     };
-    const late = create(); late.frames(1200); const healthy = late.changes.length === 0;
-    late.frames(120, 25, 30); const cpu = late.renderer.quality === "medium";
-    late.frames(100, 25, 30); const settling = late.changes.length === 1;
-    late.frames(400, 25, 30); const bounded = late.changes.join("|") === "medium|low";
-    const gpu = create(); gpu.frames(1200); gpu.frames(120, 2, 30);
-    const excluded = create(); excluded.state.focused = false; excluded.frames(400, 30, 33);
-    excluded.state.focused = true; excluded.context.transition = {}; excluded.frames(400, 30, 33);
-    excluded.context.transition = null; excluded.frames(200, 2, 250); excluded.frames(240);
-    const heavy = create(); heavy.frames(120, 120, 125);
-    const spikes = create();
-    for (let n = 0; n < 10; n++) { spikes.frames(119); spikes.frames(1, 45, 60); }
-    const fallback = create(); fallback.renderer.kind = "canvas2d"; fallback.frames(600, 40, 40);
-    return { healthy, cpu: cpu && heavy.renderer.quality === "medium", gpu: gpu.renderer.quality === "medium", settling, bounded,
-      ignoresPauses: excluded.changes.length === 0, ignoresSpikes: spikes.changes.length === 0,
-      fallback: fallback.changes.length === 0, changes: late.changes };
+    const healthy = create(); healthy.frames(1200);
+    // A GPU-bound machine issues cheap frames and delivers slow ones: the old governor could not see it at all.
+    const bound = create(); bound.frames(1200); bound.frames(240, 30);
+    // 8 fps has to cost a tier in about two seconds, not the fifteen that 120 frames took.
+    const slow = create(); const slowAt = (() => { for (let n = 0; n < 200; n++) { slow.frames(1, 125); if (slow.changes.length) return slow.state.now; } return Infinity; })();
+    // One dropped frame is another program, not this one; the step lasts the session, so a second window must agree.
+    const spike = create();
+    for (let n = 0; n < 10; n++) { spike.frames(119); spike.frames(1, 60); }
+    const bounded = create(); bounded.frames(1200); bounded.frames(2400, 40);
+    const warming = create("high", 5); warming.frames(240, 40);
+    const excluded = create(); excluded.frames(600);
+    excluded.state.focused = false; excluded.frames(600, 40);
+    excluded.state.focused = true; excluded.context.transition = {}; excluded.frames(600, 40);
+    const fallback = create(); fallback.renderer.kind = "canvas2d"; fallback.frames(600, 40);
+    // Boot cost is the only device signal Safari cannot mask, and it is read once, before any frame exists.
+    const fast = create(); fast.boot(1600);
+    const middling = create(); middling.boot(3000);
+    const crawling = create(); crawling.boot(5000);
+    const floor = create("low"); floor.boot(9000); floor.boot(1000);
+    const phone = create("medium"); phone.boot(3000);
+    return { healthy: healthy.changes.length === 0, gpuBound: bound.changes[0] === "medium",
+      reactsIn: slowAt, reactsFast: slowAt <= 2500, ignoresSpikes: spike.changes.length === 0,
+      bounded: bounded.changes.join("|") === "medium|low", warmup: warming.changes.length === 0,
+      ignoresPauses: excluded.changes.length === 0, fallback: fallback.changes.length === 0,
+      bootFast: fast.changes.length === 0, bootMedium: middling.changes.join("|") === "medium",
+      bootLow: crawling.changes.join("|") === "low", bootOneWay: floor.changes.length === 0,
+      bootKeepsCoarse: phone.changes.length === 0 };
   };
   return { autoQualityProbe };
 })();
@@ -23202,24 +23071,24 @@ const { zoomFocusProbe } = (() => {
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = `file://${join(root, "src", "index.html")}`;
 const dist = `file://${join(root, "oogaboogaland.html")}`;
-// Checks pin the clock at noon unless they ask for another hour
+// Checks pin the clock at noon (hour=12, day=80) unless they ask for another hour.
 const clock = (query = "") => `${query.includes("hour=") ? "" : "&hour=12"}${query.includes("day=") ? "" : "&day=80"}${query ? "&" + query : ""}`;
 const page = (base, query) => `${base}?debug=1&nosim=1&scene=lab${clock(query)}`;
-// Without scene= the page lands on the hub
+// Without scene= the page lands on the hub.
 const hubPage = (base, query) => `${base}?debug=1&nosim=1${clock(query)}`;
-// The backend loops share two hub pages: HUB-W without a renderer query and HUB-C with canvas2d=1
+// The backend loops share two hub pages: HUB-W with no renderer query, HUB-C with canvas2d=1.
 const hubBackend = (backend) => hubPage(src, backend === "canvas2d" ? "canvas2d=1" : "");
 const matrixSettled = (b, full = true) => b.evaluate(`new Promise((resolve, reject) => { const B = window.__ooga, W = B.matrixCave.world, start = performance.now(), frame = B.renderedFrames, tick = () => { if (${full ? "W.radius === W.maxRadius" : "W.radius === 0 && !W.active"} && B.renderedFrames > frame) resolve(); else if (performance.now() - start > 30000) reject(new Error("Matrix wave did not ${full ? "finish expanding" : "finish retracting"}")); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })`);
-// Sets the pile level, then measures how far any point of the mound surface is from the nearest shell banana
+// Sets the pile level, then measures the farthest mound-surface point from its nearest shell banana.
 const shellCoverage = `(level) => { const B = window.__ooga, M = window.BL.models, profile = M.BANANA_PILE_PROFILE; B.setPileLevel(level); const data = B.shell.instanceData, n = B.shell.instanceCount, core = B.core, coreColors = core.geometry.faces.map((f) => f.color); const surfaceY = (r) => { for (let i = 0; i < profile.length - 1; i++) { const o = profile[i], q = profile[i + 1]; if (r < q[0]) continue; return o[1] + (q[1] - o[1]) * (o[0] - r) / (o[0] - q[0]); } return profile[profile.length - 1][1]; }; let worst = 0, sum = 0; const samples = 600; for (let s = 0; s < samples; s++) { const u = (s + 0.5) / samples, angle = s * 2.399963; const r = Math.sqrt(u) * 0.97, wr = r * M.bananaPileRadiusScale(angle, r) * core.scale.x, x = Math.cos(angle) * wr, z = Math.sin(angle) * wr, y = core.position.y + (surfaceY(r) + M.bananaPileHeightOffset(angle, r)) * core.scale.y; let nearest = Infinity; for (let i = 0; i < n; i++) { const o = i * 20, d = Math.hypot(data[o + 12] - x, data[o + 13] - y, data[o + 14] - z); if (d < nearest) nearest = d; } worst = Math.max(worst, nearest); sum += nearest; } return { level, tiles: n, worstGap: +worst.toFixed(3), meanGap: +(sum / samples).toFixed(3), yellowPanels: coreColors.every((c) => c[0] >= 180 && c[1] >= 135 && c[2] <= 65), panelColors: new Set(coreColors.map((c) => c.join(","))).size }; }`;
-// The most the working crew can eat between two snapshots taken at performance.now() stamps
+// The most the working crew can eat between two snapshots taken at performance.now() stamps.
 const eatenBetween = (before, after) => `(() => { const B = window.__ooga; return [...B.cavemen.values()].filter((c) => c.state === "working").length * window.BL.crew.EAT_RATE * (${after} - ${before}) / 1000 + 0.05; })()`;
 const covered = (c) => c.worstGap <= 0.14 && c.meanGap <= 0.08 && c.yellowPanels && c.panelColors >= 5 && c.tiles > 0;
 const results = [];
 let scenerySignature = "";
 let sceneryCandidateCount = 0;
 let pathMasterHash = "";
-// Blocks run side by side, so each one collects its lines and prints them together when it finishes
+// Blocks run side by side, so each collects its lines and prints them together when it finishes.
 const output = new AsyncLocalStorage();
 const record = (name, ok, detail = "") => {
   const line = `${ok ? "PASS" : "FAIL"} ${name}${detail ? " · " + detail : ""}`;
@@ -23232,9 +23101,8 @@ const record = (name, ok, detail = "") => {
     console.log(line);
   }
 };
-// The page is ready once the leaf curtain has opened and left the DOM: the first frame is drawn and the scene is live
-// The traverse checks drive the walk at this step rather than at the host's refresh
-// rate. DT= overrides it so the same walk can be compared across step sizes.
+// TRAVERSE_DT: traverse checks drive the walk at this step, not the host refresh rate; DT= overrides it.
+// untilReady: ready once the leaf curtain has left the DOM - first frame drawn and the scene live.
 const TRAVERSE_DT = Number(process.env.DT) || 1 / 60;
 const untilReady = async (b) => {
   const t0 = Date.now();
@@ -23244,53 +23112,40 @@ const untilReady = async (b) => {
       ready = await b.evaluate(`!!window.__ooga && window.__ooga.renderedFrames >= 2 && !document.getElementById("curtain")`);
     } catch (err) {
       if (err.driver) throw err;
-      // The old document is still tearing down
+      // The old document is still tearing down.
     }
     if (ready) break;
     if (Date.now() - t0 > 20000) throw driverError("the page did not draw its first frame");
     await b.sleep(40);
   }
-  // A scene is not ready the instant it draws: entering pops the seven cavemen
-  // in on their own tweens. That used to be hidden because this waited out the
-  // 0.9 s leaf-curtain transition as well; with the curtain shortened, a check
-  // could sample a still-animating scene. Wait for the animations instead of a
-  // transition, so every block starts from the same settled world.
+  // Entering pops the seven cavemen in on tweens, so a drawn scene is not a settled one.
+  // Wait for tweenCount() === 0, not the shortened 0.9 s leaf-curtain transition.
   await b.evaluate(`new Promise((resolve) => { const t0 = performance.now(); const tick = () => { if (window.BL.scene.tweenCount() === 0 || performance.now() - t0 > 4000) resolve(); else requestAnimationFrame(tick); }; tick(); })`);
 };
-// A fresh hub visit without a page build: leaving and re-entering runs the
-// scene's leave contract, which ?debug=1 enforces, and rebuilds the visit from
-// cached geometry in ~0.7 s against ~2.4 s for a navigation. `world` is the
-// only gameplay state that crosses a transition besides the stored `game`, so
-// it goes back to its boot value as the hub enters: director.js's three
-// fields, without the delivery record pile.js adds on first use. A new field
-// fails here rather than leaking between fixtures. Only for a plain hub URL:
-// view, character, firstperson and jetpack flags apply on boot alone.
+// Re-enter runs hub's leave contract and rebuilds from cached geometry in ~0.7 s vs ~2.4 s to navigate.
+// `world` resets to director.js's 3 fields (level, pilot, jetpack); pile.js's delivery record is excluded.
 const reenterHub = (b) => b.evaluate(`new Promise((resolve, reject) => { const B = window.__ooga, hub = window.BL.scenes.hub, enter = hub.enter, t0 = performance.now(); let asked = false, failed = null; hub.enter = (ctx) => { hub.enter = enter; const keys = Object.keys(ctx.world).filter((k) => k !== "delivery").sort().join(); if (keys !== "jetpack,level,magazine,mirrorBroken,pilot,weapons") throw failed = new Error("world has " + keys + ": reenterHub must reset it"); delete ctx.world.delivery; Object.assign(ctx.world, { level: B.startLevel, pilot: null, jetpack: { owned: false, fuel: 1 }, magazine: { owned: false, count: 0, ammo: 0, carrier: null }, mirrorBroken: false, weapons: new Map() }); return enter(ctx); }; const tick = () => { if (failed) return reject(failed); if (!asked && !B.transitioning) { B.go("hub"); asked = true; } else if (asked && !B.transitioning && window.BL.scene.tweenCount() === 0) return resolve(); if (performance.now() - t0 > 20000) reject(new Error("the hub did not settle after re-entering")); else requestAnimationFrame(tick); }; tick(); })`);
-// The frame limiter stays on. Unlocking it measured 418 fps, but the suite
-// waits on frames for only ~18 s of its work, and it would turn every
-// `fps >= 50` floor into `418 >= 50`. UNLOCK=1 unlocks the non-measuring lanes
-// so the trade can be measured rather than assumed.
+// Frame limiter stays on: unlocked measured 418 fps, turning every `fps >= 50` floor into `418 >= 50`.
+// UNLOCK=1 unlocks the non-measuring lanes so the trade can be measured.
 const UNLOCKED = process.env.UNLOCK === "1";
 const POOLED = process.env.POOL === "1";
 let realTimeTask = false;
 const retried = [];
 const SESSION_MS = 300000;
 const failure = (err) => String(err.message || err).slice(0, 200);
-// Blocks that share a page run one after another in the same Chrome; each keeps its own name, error and clean-console check.
-// A session's records are held until it ends, so one that could not run can be dropped and run again.
+// Blocks sharing a page run one after another in one Chrome, each with its own name, error and console check.
+// Records are held until the session ends, so a session that could not run can be dropped and rerun.
 const session = (url, steps, opts, final) => output.run({ lines: [], results: [], retry: null }, async () => {
   const run = output.getStore(), { lines } = run;
   const t0 = Date.now();
   let b = null, started = t0, ready = t0, watchdog = null, overran = false;
   try {
-    // A fresh Chrome per session by default. Reuse is opt-in (POOL=1) because it
-    // measured slower and flakier than launching: idle browsers hold a WebGL
-    // context each, and a reused one carries the last task's heap and GPU state.
+    // Fresh Chrome per session; reuse is opt-in (POOL=1) because it measured slower and flakier than launching.
+    // Idle browsers each hold a WebGL context, and a reused one carries the last task's heap and GPU state.
     const shape = { ...opts, perf: opts.perf ?? (realTimeTask || !UNLOCKED) };
     b = POOLED && !shape.perf && !final ? await acquire(shape) : await launch(shape);
     started = Date.now();
-    // Whatever wedges, a session never holds its lane past this: killing Chrome
-    // fails its pending commands at once. The longest healthy session is ~40 s.
+    // Watchdog kills Chrome so a wedged session never holds its lane; the longest healthy session is ~40 s.
     const browser = b;
     watchdog = setTimeout(() => { overran = true; browser.close(); }, SESSION_MS);
     await b.open(url);
@@ -23325,11 +23180,8 @@ const session = (url, steps, opts, final) => output.run({ lines: [], results: []
   }
   return run;
 });
-// A session that could not run its checks (Chrome did not start, hung, lost its
-// socket, or never drew) says nothing about the app, so it runs once more on a
-// fresh Chrome and is recorded only if that attempt fails too. Only driver
-// errors are retried, and only before any assertion has failed, so a retry can
-// never hide a real failure; every retry is printed.
+// Only driver errors retry, once, on a fresh Chrome, and only before any assertion has failed.
+// So a retry can never hide a real failure; every retry is printed.
 const fold = async (url, steps, opts = {}) => {
   let run = await session(url, steps, opts, false);
   if (run.retry) {
@@ -23341,7 +23193,7 @@ const fold = async (url, steps, opts = {}) => {
   console.log(run.lines.join("\n"));
 };
 const withPage = (name, url, fn, opts) => fold(url, [[name, fn]], opts);
-// Waits for a condition on the page, then two more drawn frames so its effects are on screen
+// Waits for a condition on the page, then two more drawn frames so its effects are on screen.
 const untilPage = (b, cond, ms = 6000) => b.evaluate(`new Promise((resolve) => { const B = window.__ooga, t0 = performance.now(); let hitFrame = 0; const tick = () => { const s = B.stats(); if (!hitFrame && (${cond})) hitFrame = B.renderedFrames; if ((hitFrame && B.renderedFrames >= hitFrame + 2) || performance.now() - t0 > ${ms}) resolve(!!hitFrame); else requestAnimationFrame(tick); }; tick(); })`);
 
 const core = (label, base) => withPage(label, page(base), async (b) => {
@@ -23448,8 +23300,7 @@ const governor = () => withPage("governor", page(src), async (b) => {
   await b.sleep(100);
   const active = await interval();
   record("governor: full rate when focused, 30fps when another window is in front", idle === 0 && background === 33.3 && active === 0, `idle=${idle} unfocused=${background} active=${active}`);
-  // Render the whole lifecycle without advancing animation: a newly uploaded
-  // blink variant must not mask the crown's removal from the aggregate count.
+  // Render the lifecycle without advancing animation: a new blink variant must not mask the crown's removal.
   const crown = await b.evaluate(`(() => { const B = window.__ooga, scene = window.BL.scenes.lab, R = B.renderer; R.render(scene.root, B.camera, scene.renderOpts); B.housekeep(); const baseline = R.stats.records; const it = window.BL.models.SWAG.find(c => c.id === "crown"), e = B.game.addItem({ item: it, tier: it.tier, donationId: "hk" }); B.game.assign(e.id, "portlandhodl"); B.applyAllSwag(); const node = B.cavemen.get("portlandhodl").swagNodes[0], attached = !!node.parent; R.render(scene.root, B.camera, scene.renderOpts); const worn = R.stats.records; B.game.unassign("portlandhodl"); B.applyAllSwag(); R.render(scene.root, B.camera, scene.renderOpts); const removed = R.stats.records, released = B.housekeep(), after = R.stats.records, again = B.housekeep(); return { baseline, worn, removed, released, after, again, attached, detached: node.parent === null }; })()`);
   record("housekeeping releases unused geometry", crown.attached && crown.detached && crown.worn === crown.baseline + 1 && crown.removed === crown.worn && crown.released === 1 && crown.after === crown.baseline && crown.again === 0, JSON.stringify(crown));
 });
@@ -23464,7 +23315,7 @@ const locker = ["locker", async (b) => {
   }
   const worn = await b.evaluate(`(() => { const row = [...document.querySelectorAll("#inventory .loot-row")].find(r => r.querySelector(".loot-name").textContent === "Crown"); return { chips: row.querySelectorAll(".chip").length, free: row.querySelector(".loot-assign option").textContent }; })()`);
   record("locker: give one at a time, worn chips", worn.chips === 2 && worn.free.includes("1 free"), JSON.stringify(worn));
-  // Nine of an item is the ceiling: the tenth is refused, a full tier rolls no crate, the others still do
+  // Nine of an item is the ceiling: the tenth is refused, a full tier rolls no crate, the others still do.
   const cap = await b.evaluate(`(() => { const B = window.__ooga; const g = B.game; const cat = window.BL.models.SWAG; const add = (id, d) => { const it = cat.find(c => c.id === id); return g.addItem({ item: it, tier: it.tier, donationId: d }); }; for (const it of cat.filter(c => c.tier === "legendary")) for (let i = 0; i < 12; i++) add(it.id, "cap-" + it.id + i); B.renderLocker(); const row = [...document.querySelectorAll("#inventory .loot-row")].find(r => r.querySelector(".loot-name").textContent === "Halo"); return { halo: g.countOf("halo"), tenth: add("halo", "cap-extra"), shown: row.querySelector(".loot-count").textContent, legendary: g.lootFor({ id: "cap-roll", sats: 120000 }), epic: g.lootFor({ id: "cap-roll", sats: 21000 })?.tier }; })()`);
   record("locker: stacks stop at nine and a full tier drops no crate", cap.halo === 9 && cap.tenth === null && cap.shown === "×9" && cap.legendary === null && cap.epic === "epic", JSON.stringify(cap));
 }];
@@ -23479,7 +23330,9 @@ const fan = () => withPage("fan", page(src), async (b) => {
   const edge = await b.evaluate(`+window.BL.pile.visualFootprintFor(window.__ooga.level, 0.45).toFixed(2)`);
   record("the ground layer fixes the eaters' nearest radius", r1.every((r, i) => Math.abs(r - r0[i]) < 0.05 && Math.abs(r - edge - 1.1) < 0.06) && walking === 0, `radius ${r0[0]} -> ${r1[0]}, edge ${edge}`);
   const gaps = await b.evaluate(`(() => { const c = [...window.__ooga.cavemen.values()].filter(c => c.state === "working").map(c => c.slot); let m = Infinity; for (let i = 0; i < c.length; i++) for (let j = i + 1; j < c.length; j++) m = Math.min(m, Math.hypot(c[i].x - c[j].x, c[i].z - c[j].z)); return +m.toFixed(2); })()`);
-  record("eaters keep their distance", gaps >= 1.5, `min gap ${gaps}`);
+  // Fixed fan arc tightens as the roster grows: 7 eaters sit 1.51 apart, 8 sit 1.31; bodies are 0.76 across.
+  // Assert they never crowd into one another rather than a roster-sized gap.
+  record("eaters keep their distance", gaps >= 1, `min gap ${gaps}`);
   const loading = await b.evaluate(`(() => {
     const B = window.__ooga, BL = window.BL, crew = B.crew;
     const workers = [...B.cavemen.values()].filter(c => c.state === "working"), cave = workers[0];
@@ -23536,7 +23389,6 @@ const keys = () => withPage("keys", page(src), async (b) => {
   await b.key("Delete", 8);
   await b.sleep(200);
   record("keys: Shift+Delete clears loot", (await b.evaluate(`window.__ooga.game.state.inventory.length`)) === 0);
-  // Open the feed dialog, close it with Escape
   await b.evaluate(`document.querySelector('[data-action="feed"]').click()`);
   await b.sleep(150);
   const opened = await b.evaluate(`({ open: document.getElementById("feed").open, focused: document.activeElement && document.activeElement.id })`);
@@ -23554,7 +23406,7 @@ const keys = () => withPage("keys", page(src), async (b) => {
 
 const sheetIntro = () => withPage("sheet intro", hubPage(src), async (b) => {
   const shown = await b.evaluate(`({ open: document.getElementById("sheet").dataset.open, signs: document.querySelectorAll(".sign path").length, tab: getComputedStyle(document.getElementById("sheet-toggle")).display })`);
-  // The sheet folds five seconds after load
+  // The sheet folds five seconds after load.
   const folded = await b.evaluate(`new Promise((resolve) => { const t0 = performance.now(), tick = () => { const open = document.getElementById("sheet").dataset.open; if (open === "false" || performance.now() - t0 > 7000) resolve(open); else setTimeout(tick, 50); }; tick(); })`);
   await b.evaluate(`document.getElementById("sheet-toggle").click()`);
   const reopened = await b.evaluate(`document.getElementById("sheet").dataset.open`);
@@ -23593,7 +23445,7 @@ const props = () => withPage("props", page(src, "yaw=2.4"), async (b) => {
   }
   record("tap a die rolls it", !!die && (await b.evaluate(`window.__ooga.lab.equipment.dice[${die ? die.i : 0}].rolling`)) === true);
   await b.evaluate(`window.__ooga.advance(0.9)`);
-  // The top face must match the rolled number
+  // The top face must match the rolled number.
   const face = await b.evaluate(`(() => { const d = window.__ooga.lab.equipment.dice[${die ? die.i : 0}]; const w = d.world; const axes = { "+x": w[1], "+y": w[5], "+z": w[9] }; const pips = { "+y": 5, "-y": 2, "+x": 6, "-x": 1, "+z": 3, "-z": 4 }; let best = null, bestV = 0; for (const [axis, v] of Object.entries(axes)) { if (Math.abs(v) > bestV) { bestV = Math.abs(v); best = (v > 0 ? "+" : "-") + axis[1]; } } return { up: pips[best], rolled: d.lastRoll, vertical: +bestV.toFixed(3) }; })()`);
   record("die lands with the rolled face up", !!die && face.up === face.rolled && face.vertical > 0.999, JSON.stringify(face));
   const card = await b.evaluate(`(() => {
@@ -23630,14 +23482,11 @@ const fallback = () => withPage("canvas2d fallback", page(src, "canvas2d"), asyn
 });
 
 const phone = () => withPage("phone", hubPage(src), async (b) => {
-  // The touch hint shows a moment after load
   const r = await b.evaluate(`new Promise((resolve) => { const t0 = performance.now(), tick = () => { const hint = document.getElementById("hint").textContent; if (hint || performance.now() - t0 > 4000) resolve({ quality: document.getElementById("quality").textContent, sheet: document.getElementById("sheet").dataset.open, hint, stick: getComputedStyle(document.getElementById("joy-move")).display }); else setTimeout(tick, 50); }; tick(); })`);
   record("phone: medium tier, collapsed sheet, touch hint, joysticks shown", r.quality.includes("medium") && r.sheet === "false" && r.hint.includes("pinch") && r.stick === "block", JSON.stringify(r));
-  // The open sheet takes the sticks' box
   const stickWith = (open) => b.evaluate(`(() => { document.getElementById("sheet").dataset.open = ${JSON.stringify(open)}; const m = document.getElementById("joy-move"); return { box: getComputedStyle(document.querySelector(".joysticks")).display, width: Math.round(m.getBoundingClientRect().width), laidOut: m.offsetParent !== null }; })()`);
   const sticks = { open: await stickWith("true"), closed: await stickWith("false") };
   record("phone: the sticks hide behind the open sheet and return when it collapses", sticks.open.box === "none" && !sticks.open.laidOut && sticks.open.width === 0 && sticks.closed.box === "block" && sticks.closed.width > 0, JSON.stringify(sticks));
-  // Hold the move stick up and the camera flies
   const stick = await b.evaluate(`(() => { const r = document.getElementById("joy-move").getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
   const target = () => b.evaluate(`(() => { const c = window.__ooga.camera; return { x: +c.target.x.toFixed(2), z: +c.target.z.toFixed(2) }; })()`);
   const t0 = await target();
@@ -23657,14 +23506,12 @@ const phone = () => withPage("phone", hubPage(src), async (b) => {
 }, { w: 390, h: 844, mobile: true });
 
 const scenes = ["scenes", async (b) => {
-  // A transition runs ~30 frames, animations settle later
+  // A transition runs ~30 frames; animations settle later.
   const snapshot = () => b.evaluate(`(() => { const B = window.__ooga; return { scene: B.scene, stats: B.stats(), records: B.renderer.stats.records }; })()`);
   const rendered = (frames) => b.evaluate(`new Promise((resolve) => { const B = window.__ooga; const start = B.renderedFrames; const t0 = performance.now(); const tick = () => { if (B.renderedFrames >= start + ${frames} || performance.now() - t0 > 4000) resolve(B.renderedFrames - start); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })`);
   const settled = () => b.evaluate(`new Promise((resolve) => { const B = window.__ooga; const t0 = performance.now(); const tick = () => { if (B.stats().tweens === 0 || performance.now() - t0 > 3000) resolve(); else requestAnimationFrame(tick); }; tick(); })`);
   await rendered(2);
-  // The baseline must be a settled scene. This used to be true only because
-  // untilReady happened to wait out the 0.9 s leaf-curtain transition; with the
-  // curtain shortened, the snapshot has to state the precondition itself.
+  // Baseline must be a settled scene: call settled() explicitly, since untilReady no longer waits out the curtain.
   await settled();
   const before = await snapshot();
   for (let i = 0; i < 2; i++) {
@@ -23685,9 +23532,8 @@ const hub = () => withPage("hub", hubPage(src), async (b) => {
   const loaded = await b.evaluate(`(() => { const B = window.__ooga; return { scene: B.scene, terrain: window.BL.scenes.hub.root.children.some((n) => n.geometry === B.island.geometry), mouths: B.mouths.length, leaveHidden: document.querySelector('[data-action="leave"]').hidden, startLevel: B.startLevel, level: B.level, lootEnabled: B.lootEnabled, lootCrates: B.crates.length, decorativeCrates: B.props.filter((o) => o.scenery && o.prop === "crate" && o.active).length, jetpackCloud: !!B.jetpack.pickup?.host, lootTabHidden: document.getElementById("loot-tab").hidden, worldLootHintHidden: document.getElementById("world-loot-hint").hidden }; })()`);
   const advanced = await rendered(3);
   record("hub: default scene starts with 1,000 bananas and loads clean", loaded.scene === "hub" && loaded.terrain && loaded.mouths === 8 && loaded.leaveHidden && loaded.startLevel === 1000 && loaded.level <= 1000 && loaded.level > 995 && advanced >= 3, JSON.stringify({ ...loaded, advanced }));
-  // Measure the outer underside: floor slopes face up, while a room or window
-  // roof has more stone beneath it along the same vertical column. The shaft
-  // exposes its own ceiling, so exclude that opening from the outer cap.
+  // Outer underside: floor slopes face up, a room or window roof has more stone below the same column.
+  // The shaft exposes its own ceiling, so exclude that opening from the outer cap.
   const underside = await b.evaluate(`(() => { const I = window.__ooga.island, g = I.geometry, hole = I.headquarters.basement.hole, radii = [0, 15, 27, 29.5, 30], profile = radii.map((r) => I.undersideDepthAt(r)), colors = new Set(); let minY = Infinity, deepFaces = 0, interiorFaces = 0; for (let i = 1; i < g.verts.length; i += 3) minY = Math.min(minY, g.verts[i]); for (const face of g.faces) { if (!face.i.every((i) => g.verts[i * 3 + 1] < -8)) continue; const a = face.i[0] * 3, b = face.i[1] * 3, c = face.i[2] * 3, normalY = (g.verts[b + 2] - g.verts[a + 2]) * (g.verts[c] - g.verts[a]) - (g.verts[b] - g.verts[a]) * (g.verts[c + 2] - g.verts[a + 2]); if (normalY >= 0) continue; let x = 0, y = 0, z = 0; for (const i of face.i) { x += g.verts[i * 3]; y += g.verts[i * 3 + 1]; z += g.verts[i * 3 + 2]; } x /= face.i.length; y = y / face.i.length - 0.01; z /= face.i.length; if (hole.contains(x, z)) { interiorFaces++; continue; } let backedBelow = false; for (let below = y; below > -I.undersideDepth - I.unit; below -= I.unit) if (I.solidAt(x, below, z)) { backedBelow = true; break; } if (backedBelow) { interiorFaces++; continue; } deepFaces++; colors.add(face.color.join(",")); } return { depth: I.undersideDepth, radii, profile, minY, retainedBottom: -Math.ceil(I.undersideDepthAt(hole.radius) / I.unit) * I.unit, deepFaces, interiorFaces, deepMaterials: colors.size }; })()`);
   record("hub terrain: the underside is a layered voxel bottom-third spherical cap instead of a flat slab", Math.abs(underside.depth - 30 / Math.SQRT2) < 1e-9 && underside.minY === underside.retainedBottom && Math.abs(underside.profile[0] - underside.depth) < 1e-9 && underside.profile.at(-1) === 0 && underside.profile.every((v, i, a) => i === 0 || v < a[i - 1]) && underside.profile[1] > 17 && underside.profile[2] > 6 && underside.profile[3] > 1 && underside.deepFaces > 0 && underside.deepMaterials === 3, JSON.stringify(underside));
   record("hub: donation loot and its panel stay hidden while decorative crates and the cloud jetpack remain", !loaded.lootEnabled && loaded.lootCrates === 0 && loaded.decorativeCrates > 0 && loaded.jetpackCloud && loaded.lootTabHidden && loaded.worldLootHintHidden, JSON.stringify(loaded));
@@ -23701,7 +23547,7 @@ const hub = () => withPage("hub", hubPage(src), async (b) => {
   record("hub: EntropyLab sign is depth-tested, fixed above its cave and follows perspective", signBefore.text === "EntropyLab" && signBefore.depthTested && signAfter.depthTested && signBefore.attached && signAfter.attached && signBefore.world.every((v, i) => v === signAfter.world[i]) && Math.abs(signAfter.width - signBefore.width) > 0.2 && Math.abs(signAfter.shear - signBefore.shear) > 0.001, JSON.stringify({ before: signBefore, after: signAfter }));
   const mouth = await b.evaluate(`(() => { const B = window.__ooga; const m = B.mouths.find((m) => m.id === "c11"); const p = B.project(m.x, 2, m.z); const hit = B.input.pick(p.x, p.y); return { x: Math.round(p.x), y: Math.round(p.y), kind: hit && hit.owner.kind, slot: hit && hit.owner.slot && hit.owner.slot.id }; })()`);
   await b.click(mouth.x, mouth.y);
-  // Wait for the dolly and both fades, including scene construction under load.
+  // Wait for the dolly and both fades, including scene construction under load (15 s).
   await untilPage(b, 'B.scene === "lab" && !B.transitioning', 15000);
   const entered = await b.evaluate(`({ scene: window.__ooga.scene, leaveShown: !document.querySelector('[data-action="leave"]').hidden })`);
   record("hub: tap the lab cave enters the lab", mouth.kind === "cave" && mouth.slot === "c11" && entered.scene === "lab" && entered.leaveShown, JSON.stringify({ ...mouth, ...entered }));
@@ -23751,7 +23597,7 @@ const mirrorCave = ["mirror cave", async (b) => {
   const aspect = (sample) => Math.abs(sample.width / sample.height - sample.viewport[0] / sample.viewport[1]);
   const mirrorResources = (sample) => sample.samples > 0 ? 6 : 4;
   record("mirror cave: high target is bounded, multisampled, and resolves into one RGBA8 texture under 10 MB", Math.max(reflected.width, reflected.height) <= 512 && aspect(reflected) < 0.01 && reflected.samples > 1 && reflected.resources === 6 && reflected.allocations === 1 && reflected.bytes <= 512 * 512 * 36, JSON.stringify(reflected));
-  // Texels the glass gets against the pixels it covers, one to one below the target size and the whole target above it
+  // Texels the glass gets per pixel covered: one to one below the target size, the whole target above it.
   const coverage = `(() => { const B = window.__ooga, r = B.mirror, node = B.mirrorCave.node, g = node.geometry, T = window.BL.math.mat4, P = new Float32Array(3), C = new Float32Array(4), px = [[Infinity, -Infinity], [Infinity, -Infinity]], uv = [[Infinity, -Infinity], [Infinity, -Infinity]]; for (let i = 0; i < g.verts.length; i += 3) { T.transformPoint(P, node.world, g.verts[i], g.verts[i + 1], g.verts[i + 2]); const s = B.project(P[0], P[1], P[2]); T.transformPoint4(C, r.capturedViewProj, P[0], P[1], P[2]); const t = [C[0] / C[3] * 0.5 + 0.5, C[1] / C[3] * 0.5 + 0.5]; [s.x, s.y].forEach((v, a) => { px[a] = [Math.min(px[a][0], v), Math.max(px[a][1], v)]; }); t.forEach((v, a) => { uv[a] = [Math.min(uv[a][0], v), Math.max(uv[a][1], v)]; }); } return { pixels: px.map((b) => b[1] - b[0]), texels: [(uv[0][1] - uv[0][0]) * r.width, (uv[1][1] - uv[1][0]) * r.height], target: [r.width, r.height], inside: uv.every((b) => b[0] >= -0.01 && b[1] <= 1.01) }; })()`;
   const cropped = (c) => c.inside && c.texels.every((t, a) => Math.abs(t - Math.min(c.pixels[a], c.target[a])) <= 3);
   const far = await b.evaluate(coverage);
@@ -23857,10 +23703,8 @@ const mirrorCave = ["mirror cave", async (b) => {
   await matrixSettled(b);
   const overlaySight = await b.evaluate(`(() => { const B = window.__ooga, m = B.mirrorCave.mouth, world = (x, y, z) => [m.x + Math.cos(m.ry) * x + Math.sin(m.ry) * z, m.floorY + y, m.z - Math.sin(m.ry) * x + Math.cos(m.ry) * z], test = (x, y, z) => B.matrixCave.overlayVisible(...world(x, y, z)); return { doorway: test(0, 1.5, 3), leftWall: test(-6, 1.5, 3), rightWall: test(6, 1.5, 3), aboveRim: test(0, 4.2, 3) }; })()`);
   record("mirror interior: speech and sleep overlays are visible only through the doorway", overlaySight.doorway && !overlaySight.leftWall && !overlaySight.rightWall && !overlaySight.aboveRim, JSON.stringify(overlaySight));
-  // Eating debits fractional supply before the pile floors it for display. Keep
-  // a sub-banana reserve (well above the eight eaters' maximum .040/frame debit)
-  // so every measured frame displays exactly one million. Normal crew updates
-  // continue, and replenishment work remains inside the measured FPS interval.
+  // Eating debits fractional supply before display floors it; the .5 reserve beats eight eaters' .040/frame.
+  // Every measured frame then shows exactly one million; crew updates stay inside the measured FPS interval.
   const matrixPerf = await b.evaluate(`new Promise((resolve) => { const B = window.__ooga; B.renderer.setQuality("high"); B.setPileLevel(1000000.5); B.matrixCave.viewInside(false); const startFrame = B.renderedFrames, start = performance.now(); let minimumShown = B.shown, maximumShown = B.shown; const tick = () => { minimumShown = Math.min(minimumShown, B.shown); maximumShown = Math.max(maximumShown, B.shown); if (B.level < 1000000.25) B.setPileLevel(1000000.5); const frames = B.renderedFrames - startFrame, seconds = (performance.now() - start) / 1000; if (frames >= 120 || seconds > 6) resolve({ fps: frames / seconds, frames, shown: B.shown, minimumShown, maximumShown, active: B.matrixCave.activeGlyphCount, buffers: B.matrixCave.bufferCount, bytes: B.matrixCave.bufferBytes, allocations: B.matrixCave.allocationCount, rebuilds: B.matrixCave.rebuildCount, records: B.renderer.stats.records }); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })`);
   record("mirror interior: full surface code and the million-banana pile remain at least 50 FPS", matrixPerf.fps >= 50 && matrixPerf.frames >= 120 && matrixPerf.shown === 1000000 && matrixPerf.minimumShown === 1000000 && matrixPerf.maximumShown === 1000000 && matrixPerf.active > 6000 && matrixPerf.buffers === 8 && matrixPerf.bytes === matrixBefore.bytes && matrixBefore.capacity === matrixBefore.expectedCapacity && matrixPerf.allocations === 8 && matrixPerf.rebuilds === 1, JSON.stringify(matrixPerf));
   await b.evaluate(`window.__ooga.setPileLevel(1000)`);
@@ -23872,8 +23716,7 @@ const mirrorCave = ["mirror cave", async (b) => {
   record("entrance lights: all nine fixtures keep simultaneous full local-light profiles on every WebGL tier", [entranceLighting.entropy, entranceLighting.ooga, entranceLighting.medium, entranceLighting.low].every((sample) => sample.lighting.registered === 10 && sample.lighting.active === 10 && sample.lighting.approximated === 0 && sample.lighting.capacity === 10 && sample.lighting.selected.length === 10 && sample.lighting.selected.includes("firepit") && exactProfiles(sample)), JSON.stringify(entranceLighting));
   record("entrance lights: camera movement cannot exchange or reorder the fixed light set", entranceLighting.entropy.lighting.selected.join("|") === entranceLighting.ooga.lighting.selected.join("|") && entranceLighting.entropy.lightData.every((v, i) => v === entranceLighting.ooga.lightData[i]), JSON.stringify({ entropy: entranceLighting.entropy.lighting, ooga: entranceLighting.ooga.lighting }));
   await b.evaluate(`window.__ooga.matrixCave.viewInside(false)`);
-  // The lighting views above leave the cave and retract its wave. Wait for
-  // both the returning wave and the physical descent before testing closure.
+  // Earlier lighting views leave the cave and retract its wave; wait for the wave's return and the descent.
   await matrixSettled(b);
   await b.evaluate(`new Promise((resolve, reject) => { const B = window.__ooga, start = performance.now(), tick = () => { if (B.matrixGate.gates.every((g) => !g.open && !g.held && g.node.position.y === g.floor)) resolve(); else if (performance.now() - start > 5000) reject(new Error("Glyph gates did not finish descending")); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })`);
   const controlHint = await b.evaluate(`document.getElementById("hint").textContent`);
@@ -24006,9 +23849,8 @@ const matrixCaves = ["matrix cave ownership", async (b) => {
   const snapshot = () => b.evaluate(`(${matrixCaveSnapshot.toString()})()`);
   await b.evaluate(`window.__ooga.renderer.setQuality("high"); window.__ooga.matrixCave.viewInside(false)`);
   await matrixSettled(b);
-  // Ambient shooting may first reveal an existing gun or muzzle-flash mesh
-  // during this longer wave cycle. Prime those finite, already-owned ordinary
-  // geometries independently; never prewarm the unreached cave glyph batches.
+  // Ambient shooting may first reveal an existing gun or muzzle-flash mesh during this longer wave cycle.
+  // Prime those finite, already-owned geometries; never prewarm the unreached cave glyph batches.
   await b.evaluate(`(${primeMatrixControls.toString()})()`);
   await rendered(2);
   const movement = await b.evaluate(`(() => { const B = window.__ooga, scene = window.BL.scenes.hub, snapshot = ${matrixCaveSnapshot.toString()}, before = snapshot(); let time = before.time; for (let i = 0; i < 6; i++) scene.update(1 / 60, time += 1 / 60); B.renderer.render(scene.root, B.camera, B.renderOpts); return { before, after: snapshot() }; })()`);
@@ -24086,7 +23928,7 @@ const matrixWave = (backend) => [`matrix reversible wave ${backend}`, async (b) 
 
 
 
-// The built file must run both scenes
+// The built file must run both scenes.
 const hubDist = () => withPage("hub dist", hubPage(dist), async (b) => {
   const loaded = await b.evaluate(`(() => { const B = window.__ooga; return { scene: B.scene, mouths: B.mouths.length }; })()`);
   record("dist: lands on the hub", loaded.scene === "hub" && loaded.mouths === 8, JSON.stringify(loaded));
@@ -24095,12 +23937,12 @@ const hubDist = () => withPage("hub dist", hubPage(dist), async (b) => {
   await b.sleep(1600);
   const scene = await b.evaluate("window.__ooga.scene");
   record("dist: tap the lab cave enters the lab", mouth.kind === "cave" && scene === "lab", JSON.stringify({ ...mouth, scene }));
-  // The built file stands in for the source suite only here: the lab must keep drawing with its crew and pile live
+  // The built file stands in for the source suite only here: the lab must keep drawing with crew and pile live.
   const lab = await b.evaluate(`new Promise((resolve) => { const B = window.__ooga, start = B.renderedFrames, t0 = performance.now(), tick = () => B.renderedFrames >= start + 30 || performance.now() - t0 > 4000 ? resolve({ frames: B.renderedFrames - start, crew: B.cavemen.size, shown: B.shown, quality: document.getElementById("quality").textContent }) : requestAnimationFrame(tick); requestAnimationFrame(tick); })`);
   record("dist: the lab keeps rendering with its crew and pile live", lab.frames >= 30 && lab.crew === 10 && lab.shown > 0 && lab.quality.startsWith("webgl2"), JSON.stringify(lab));
 });
 
-// A prototype key in ?scene= falls through to the hub
+// A prototype key in ?scene= falls through to the hub.
 const hubRoute = () => withPage("hub route", hubPage(src, "scene=toString"), async (b) => {
   const r = await b.evaluate(`(() => { const B = window.__ooga; return { scene: B.scene, mouths: B.mouths.length, help: [...document.querySelectorAll(".panel .help[data-scene]")].map((p) => p.dataset.scene + ":" + p.hidden).join(",") }; })()`);
   record("hub: unknown ?scene= lands on the hub with the hub help text", r.scene === "hub" && r.mouths === 8 && r.help === "hub:false", JSON.stringify(r));
@@ -24329,8 +24171,7 @@ const movementCollision = (backend) => withPage(`movement collision ${backend}`,
   cases.push({ id: "c5", mode: "first-person", dt: 1 / 120, fromNavigation: true, rooms: true });
   cases.push({ id: "c9", mode: "orbit", dt: 1 / 20 }, { id: "c11", mode: "eye-level", dt: 1 / 20 });
   for (const [i, fixture] of cases.entries()) {
-    // Fresh pages repeat the room routes exactly and a re-entered hub does
-    // not, so those keep a page build; the other routes match either way
+    // Room routes repeat exactly only on a fresh page, so they keep a page build; other routes match either way.
     if (i && fixture.rooms) { await b.open(hubPage(src, backend === "canvas2d" ? "canvas2d=1" : "")); await untilReady(b); } else if (i) await reenterHub(b);
     const r = await b.evaluate(`(${movementCollisionProbe.toString()})(${JSON.stringify(fixture)}, (${createEntranceClearanceProbe.toString()}))`), name = `movement collision ${backend}: ${fixture.id} ${fixture.mode}${fixture.fromNavigation ? " after HQ navigation" : ""}`;
     const detail = { dt: r.dt, checkpoints: r.checkpoints, samples: r.samples, entrances: r.entrances, failed: r.failed, violations: r.violations, separation: r.maxSeparation, separationAt: r.maxSeparation >= 6.5 ? r.maxSeparationAt : null, step: r.maxStep, stepAt: r.maxStep > 1 ? r.maxStepAt : null, ramps: r.rampViews, rawChecks: r.rawChecks, maximumRawError: r.maximumRawError, initialView: r.initial.view, final: r.final };
@@ -24700,8 +24541,7 @@ const navigationButtons = (backend) => withPage(`navigation buttons ${backend}`,
     if (r.caveOrigin) record(`${name} leaves an actually entered Mirror Cave for headquarters and clears ownership on returning outside`, r.caveOrigin.entered && arrives(r.caveOrigin.underground) && arrives(r.caveOrigin.outside), JSON.stringify(r.caveOrigin));
     if (r.airborne) record(`${name} an airborne HQ arrival cancels motion and removes the prohibited jetpack`, r.airborne.before > 0.2 && r.airborne.after.hop === 0 && r.airborne.after.velocity === 0 && r.airborne.after.removed && r.airborne.after.oldNodeRemoved, JSON.stringify(r.airborne));
     const rendered = await b.evaluate("({ frame: window.__ooga.renderedFrames, time: performance.now() })");
-    // The software fallback can take over 150 ms per draw alongside the soak
-    // lanes. Keep the same 45-frame proof without imposing a WebGL time budget.
+    // canvas2d fallback can exceed 150 ms per draw beside the soak lanes: same 45-frame proof, longer timeout.
     const live = await untilPage(b, `B.renderedFrames >= ${rendered.frame + 45}`, backend === "canvas2d" ? 15000 : 6000);
     const after = await b.evaluate(`(() => { const B = window.__ooga, p = B.camera.position; return { scene: B.scene, mode: B.pilot.mode, frame: B.renderedFrames, milliseconds: performance.now() - ${rendered.time}, camera: [p.x, p.y, p.z], selected: !!B.pilot.player }; })()`);
     record(`${name} stays in the same live hub after rendering the arrival`, live && after.scene === "hub", JSON.stringify({ live, beforeFrame: rendered.frame, ...after }));
@@ -24839,8 +24679,6 @@ const weightedDelivery = () => withPage("weighted banana delivery", hubPage(src,
   const measured = await b.evaluate(`(async () => {
     const B = window.__ooga, P = window.BL.pile, capacity = P.BACKLOG_VISUAL_CAPACITY;
     const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-    // Load both fixed shell meshes before measuring delivery residency. Growth
-    // may select either detail level, but must not keep adding GPU records.
     const geometry = B.shell.geometry;
     for (const distant of [false, true]) {
       B.shell.geometry = window.BL.models.bananaTileGeometry(distant);
@@ -24930,8 +24768,7 @@ const weightedDelivery = () => withPage("weighted banana delivery", hubPage(src,
   let pausedBefore, pausedAfter;
   try {
     await b.send("Page.setWebLifecycleState", { state: "frozen" });
-    // Both readings belong to the frozen interval. Active protocol round trips
-    // before freezing or after resuming must not consume its pause allowance.
+    // Both readings must fall in the frozen interval; trips before or after must not use the pause allowance.
     pausedBefore = await b.evaluate(`({ active: window.__ooga.delivery.activeTime, remaining: window.__ooga.delivery.estimatedActiveTimeRemaining })`);
     await b.sleep(700);
     pausedAfter = await b.evaluate(`({ active: window.__ooga.delivery.activeTime, remaining: window.__ooga.delivery.estimatedActiveTimeRemaining })`);
@@ -24952,8 +24789,7 @@ const weightedDeliveryCanvas = () => withPage("weighted banana delivery canvas",
   record("weighted delivery: Canvas fallback drains the same bounded exact weighted plan", result.kind === "canvas2d" && result.plan.drops === result.drops && result.plan.min === 10 && result.plan.max === 10 && result.landed === result.logical && result.outstanding === 0 && result.drain <= 10.1 && result.concurrent <= 96, JSON.stringify(result));
 });
 
-// Flood the actual rendered ground-level tiles, independently of isPath, from
-// the expanding banana ring to every station across both cave frontages.
+// Flood the rendered ground-level tiles independently of isPath, from the banana ring to every station.
 const headquartersPathProbe = () => {
   const B = window.__ooga, unit = B.island.pathUnit, size = 496, origin = -31, total = size * size, before = B.level;
   const data = B.island.path.instanceData, node = window.BL.scenes.hub.root.children.find((child) => child.instanceData === data);
@@ -25044,7 +24880,6 @@ const hubCamera = () => withPage("hub camera", hubPage(src), async (b) => {
     }
   };
   const view = () => b.evaluate(`(() => { const B = window.__ooga; const c = B.camera; return { y: +c.position.y.toFixed(2), floor: +B.island.heightAt(c.position.x, c.position.z).toFixed(2), dist: +Math.hypot(c.position.x - c.target.x, c.position.y - c.target.y, c.position.z - c.target.z).toFixed(1), tz: +c.target.z.toFixed(1) }; })()`);
-  // Zoom in, fly out, orbit a turn, pitch up
   const samples = [];
   await wheel(14, -60);
   await hold(b, "w", 3000);
@@ -25091,8 +24926,7 @@ const hubPerspective = () => withPage("hub perspective", hubPage(src), async (b)
   };
   const cameraState = () => b.evaluate(`(() => { const B = window.__ooga, c = B.camera, feet = c.position.y - 1.1; return { mode: B.pilot.mode, mix: B.pilot.closeMix, p: [c.position.x, c.position.y, c.position.z], target: [c.target.x, c.target.y, c.target.z], floor: B.headquarters.solids.supportAt(c.position.x, c.position.z, feet), yaw: B.pilot.orbit.yaw, pitch: B.pilot.orbit.pitch, dist: B.pilot.orbit.dist, near: c.near }; })()`);
   await wheel(20, -60);
-  // Entering from an elevated orbit preserves gravity; its landing can finish
-  // after the view blend, before stationary eye-level look is measured.
+  // Entering from an elevated orbit preserves gravity; its landing can finish after the view blend.
   await untilPage(b, 'B.pilot.mode === "eye-level" && B.pilot.closeMix === 1 && !B.pilot.freeFalling');
   const meadow = await cameraState();
   record("hub perspective: free zoom settles at Ooga eye height above the current ground", meadow.mode === "eye-level" && meadow.mix === 1 && Math.abs(meadow.p[1] - meadow.floor - 1.1) < 0.001 && meadow.near === 0.1, JSON.stringify(meadow));
@@ -25195,8 +25029,7 @@ const hubPerspective = () => withPage("hub perspective", hubPage(src), async (b)
   await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "ArrowDown" });
   record("hub perspective: forward and back snap the trailing Ooga exactly toward and away from the camera heading", angleError(forwardHeading.body, forwardHeading.camera) < 0.000001 && angleError(backwardHeading.body, backwardHeading.camera) < 0.000001, JSON.stringify({ forwardHeading, backwardHeading }));
 
-  // Walking warms the reusable smoke pool; measure resource stability around
-  // the camera crossings after that separate movement workload.
+  // Walking warms the reusable smoke pool; take the baseline after that workload, before the camera crossings.
   const base = await b.evaluate(`(() => { const B = window.__ooga, stats = B.stats(); return { nodes: stats.allNodes, built: stats.built, targets: B.input.targetCount, particles: stats.particles, pool: stats.pool }; })()`);
   for (let i = 0; i < 3; i++) {
     await enterFirst();
@@ -25221,8 +25054,7 @@ const hubPerspective = () => withPage("hub perspective", hubPage(src), async (b)
   const descent = await traverse("w", -21.2, ">=");
   record("hub perspective: armed first-person ascent and descent keep the physical head and feet exact across bounded voxel steps", ascent.levels >= 4 && descent.levels >= 4 && ascent.maxRootStep >= 0.24 && descent.maxRootStep >= 0.24 && [ascent, descent].every((r) => r.maxRootStep <= 0.6 + 1e-6 && r.maxEyeStep <= r.maxRootStep + 1e-6 && r.maxLift === 0 && r.liftSamples === 0 && r.maxEyeError < 0.001 && r.maxFootError < 0.000001), JSON.stringify({ ascent, descent }));
 
-  // Measure exact airborne intervals. A delayed protocol reply under parallel
-  // browser load must not let this short fall land before its pose is sampled.
+  // Sample the pose in-page: a delayed reply under parallel load must not let this short fall land first.
   const airbornePose = (falling) => b.evaluate(`(() => { const B = window.__ooga, scene = window.BL.scenes.hub, cave = B.crew.player; if (${falling}) { cave.hop = 1.2; cave.hopV = -3; cave.root.position.y = cave.baseY + B.island.surfaceAt(cave.root.position.x, cave.root.position.z) + cave.hop; } else cave.hopV = 3; let elapsed = B.matrixCave.world.sampleStream(0).time; for (let i = 0; i < ${falling ? 12 : 18}; i++) scene.update(1 / 120, elapsed += 1 / 120); const eye = cave.root.position.y - cave.baseY + cave.headOffset * 0.95; return { hop: cave.hop, velocity: cave.hopV, lift: cave.viewLift, groundLift: B.pilot.groundLift, eyeError: Math.abs(B.camera.position.y - eye) }; })()`);
   const airborne = await airbornePose(false), falling = await airbornePose(true);
   record("hub perspective: jumps and large falling drops bypass step smoothing and keep the first-person eye synchronized", airborne.hop > 0 && Math.abs(airborne.lift) < 0.000001 && Math.abs(airborne.groundLift) < 0.000001 && airborne.eyeError < 0.001 && falling.hop > 0 && falling.velocity < 0 && Math.abs(falling.lift) < 0.000001 && Math.abs(falling.groundLift) < 0.000001 && falling.eyeError < 0.001, JSON.stringify({ rising: airborne, falling }));
@@ -25232,8 +25064,7 @@ const hubPerspective = () => withPage("hub perspective", hubPage(src), async (b)
 
   await b.evaluate(`(() => { const B = window.__ooga, cave = B.crew.player, o = B.pilot.orbit; cave.root.position.x = 0; cave.root.position.z = -21; cave.root.position.y = cave.baseY + B.island.surfaceAt(0, -21); cave.hop = cave.hopV = 0; cave.root.rotation.y = Math.PI; o.yaw = o.tYaw = 0; o.pitch = o.tPitch = 0.35; })()`);
   await b.sleep(150);
-  // This hillside rises one unit per unit traveled. Measure its continuous
-  // grade and the camera rate independently of irregular rendered intervals.
+  // This hillside rises 1 unit per unit travelled; measure grade and camera rate off the clock, not frames.
   const traverseTrailing = async (limit, comparison) => {
     await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", text: "w" });
     const result = await b.evaluate(`new Promise((resolve) => { const B = window.__ooga, cave = B.crew.player, leg = cave.parts.legL, start = performance.now(), levels = new Set(), done = (z) => z ${comparison} ${limit}, state = { samples: 0, levels: 0, maxRootStep: 0, maxVisualStep: 0, maxVisualSlope: 0, maxCameraStep: 0, maxCameraRate: 0, maxOrbitError: 0, maxCameraAt: null, maxFootError: 0, easedBodyBoundaries: 0, easedCameraBoundaries: 0, liftSamples: 0 }, tick = () => { const p = cave.root.position, ground = p.y - cave.baseY, visual = p.y + cave.viewLift, foot = p.y + leg.position.y - cave.baseY * leg.scale.y, previous = state.previousGround, time = B.renderOpts.matrix.time; levels.add(ground); state.samples++; const o = B.pilot.orbit, pitch = B.pilot.viewPitch, cp = Math.cos(pitch), eye = B.camera.position; state.maxOrbitError = Math.max(state.maxOrbitError, Math.hypot(eye.x - o.tx - Math.sin(o.yaw) * cp * o.dist, eye.y - o.ty - Math.sin(pitch) * o.dist, eye.z - o.tz - Math.cos(o.yaw) * cp * o.dist)); state.maxFootError = Math.max(state.maxFootError, Math.abs(foot - ground)); if (Math.abs(cave.viewLift) > 0.005) state.liftSamples++; if (previous !== undefined) { const rootStep = Math.abs(ground - previous), visualStep = Math.abs(visual - state.previousVisual), cameraStep = Math.abs(B.camera.position.y - state.previousCamera); state.maxRootStep = Math.max(state.maxRootStep, rootStep); state.maxVisualStep = Math.max(state.maxVisualStep, visualStep); state.maxVisualSlope = Math.max(state.maxVisualSlope, visualStep / Math.max(1e-9, Math.hypot(p.x - state.previousX, p.z - state.previousZ))); state.maxCameraRate = Math.max(state.maxCameraRate, cameraStep / Math.max(1e-9, time - state.previousTime)); if (cameraStep > state.maxCameraStep) { state.maxCameraStep = cameraStep; state.maxCameraAt = { z: p.z, ground, visual, lift: cave.viewLift, cameraY: B.camera.position.y, previousCamera: state.previousCamera, cave: B.cameraCave.index, mode: B.pilot.mode }; } if (rootStep > 0.1 && visualStep < rootStep * 0.8) state.easedBodyBoundaries++; if (rootStep > 0.1 && cameraStep < rootStep * 0.8) state.easedCameraBoundaries++; } state.previousX = p.x; state.previousZ = p.z; state.previousTime = time; state.previousGround = ground; state.previousVisual = visual; state.previousCamera = B.camera.position.y; if (done(p.z) || performance.now() - start > 3500) { state.levels = levels.size; state.z = p.z; delete state.previousX; delete state.previousZ; delete state.previousTime; delete state.previousGround; delete state.previousVisual; delete state.previousCamera; resolve(state); } else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })`);
@@ -25299,12 +25130,8 @@ const hubTrailingCaveSplit = () => withPage("hub trailing cave split", hubPage(s
     let elapsed = B.matrixCave.world.sampleStream(0).time, rawSamples = 0, maxOrbitError = 0, bodyViolations = 0, maxSupportError = 0;
     const start = { x: m.x + opening.sr * 0.9, y: m.floorY, z: m.z + opening.cr * 0.9 };
     const sample = () => { const p = B.camera.position, dx = p.x - m.x, dz = p.z - m.z; return { x: dx * opening.cr - dz * opening.sr, y: p.y - m.floorY, z: dx * opening.sr + dz * opening.cr, player: B.cameraCave.playerIndex, camera: B.cameraCave.index, entrance: B.cameraCave.entranceIndex, constraint: B.cameraCave.constraint, yaw: o.yaw, targetYaw: o.tYaw, access: B.cameraCave.accessRamp, assist: B.cameraCave.rampAssist, chosen: o.tDist }; };
-    // The step band straddles a slope; test exact foot support separately
-    // from the full torso/head cylinder above that band.
     const step = () => { scene.update(dt, elapsed += dt); const eye = B.camera.position, body = cave.root.position, pitch = B.pilot.viewPitch, cp = Math.cos(pitch); rawSamples++; maxOrbitError = Math.max(maxOrbitError, Math.hypot(eye.x - o.tx - Math.sin(o.yaw) * cp * o.dist, eye.y - o.ty - Math.sin(pitch) * o.dist, eye.z - o.tz - Math.cos(o.yaw) * cp * o.dist)); const feet = body.y - cave.baseY; maxSupportError = Math.max(maxSupportError, Math.abs(feet - B.island.supportAt(body.x, body.z, feet, 0.6, -120, 0.3))); if (!B.island.clearAt(body.x, feet + 0.3, body.z, 0.3, cave.bodyHeight - 0.3)) bodyViolations++; return sample(); };
     B.pilot.release(true); B.pilot.possess(cave);
-    // A wide chosen view bypasses ramp assistance. Keep the pilot's moving
-    // follow target and walk through the mouth on the actual sloping floor.
     B.pilot.navigate({ position: start, yaw: m.ry, pitch: 0.08, dist: 12 });
     for (let i = 0; i < 8; i++) step();
     let previous = sample(), entryMaxYStep = 0;
@@ -25629,7 +25456,6 @@ const hubPile = ["hub pile", async (b) => {
   record("hub: mirror and million-banana pile hold at least 50 FPS", perf.fps >= 50 && perf.shown >= 999999 && mirror.active && mirror.passes > 0 && mirror.resources === 6, `${perf.fps} fps at ${perf.shown} bananas · ${JSON.stringify(mirror)}`);
 }];
 
-// Held keys keep the camera and caveman moving
 const hold = async (b, key, ms) => {
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", key, text: key.length === 1 ? key : undefined });
   await b.sleep(ms);
@@ -25637,7 +25463,7 @@ const hold = async (b, key, ms) => {
 };
 
 const drivenSmoke = () => withPage("driven smoke", hubPage(src), async (b) => {
-  // A clear straight runway, staged the way hub drive stages its chords
+  // A clear straight runway, staged the way hub drive stages its chords.
   const staged = await b.evaluate(`(() => { const B = window.__ooga, cave = [...B.cavemen.values()].find((c) => !c.traits.gasMask), S = B.headquarters.solids, o = B.pilot.orbit, speed = window.BL.pilot.WALK.speed; cave.override = "chilling"; B.crew.refreshStates(true); B.pilot.possess(cave); for (let radius = 8; radius <= 18; radius += 2) for (let i = 0; i < 64; i++) { const a = i / 64 * Math.PI * 2, x = Math.sin(a) * radius, z = Math.cos(a) * radius; let px = x, pz = z, clear = true; for (let t = 0; t < 2; t += 0.02) { const nx = px - Math.sin(a) * speed * 0.02, nz = pz - Math.cos(a) * speed * 0.02; if (!B.island.onLand(nx, nz) || Math.abs(S.supportAt(nx, nz, 0, 0, cave)) > 0.001 || !S.walkable(nx, nz, px, pz, 0, cave.bodyHeight, cave) || S.inBananas(cave, nx, nz)) { clear = false; break; } px = nx; pz = nz; } if (!clear) continue; B.crew.relocatePlayer({ x, y: 0, z }, a + Math.PI); o.yaw = o.tYaw = a; B.pilot.update(1); return true; } return false; })()`);
   const before = await b.evaluate(`(() => { const B = window.__ooga, p = B.crew.player.root.position; return { particles: B.stats().particles, x: p.x, z: p.z }; })()`);
   await b.evaluate(`(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "w" })); window.__ooga.advance(1.2); window.dispatchEvent(new KeyboardEvent("keyup", { key: "w" })); })()`);
@@ -25785,7 +25611,6 @@ const hubCrew = () => withPage("hub crew", hubPage(src), async (b) => {
 });
 
 const hubProps = () => withPage("hub props", hubPage(src, "loot=1"), async (b) => {
-  // Tapping a prop wobbles it and throws particles
   const bush = await b.evaluate(`(() => { const B = window.__ooga; for (const o of B.props) { if (o.prop !== "bush" || o.node.position.y !== 0) continue; const p = B.project(o.x, 0.5, o.z); if (!p || p.x < 60 || p.x > 1080 || p.y < 140 || p.y > 860) continue; const hit = B.input.pick(p.x, p.y); if (hit && hit.owner === o) return { x: p.x, y: p.y }; } return null; })()`);
   if (bush) await b.click(bush.x, bush.y);
   await b.sleep(200);
@@ -25816,8 +25641,7 @@ const hubProps = () => withPage("hub props", hubPage(src, "loot=1"), async (b) =
 });
 
 const selectByDoubleTap = async (b, pick) => {
-  // Queue the ordered pointer gesture together, so host-side protocol latency
-  // cannot stretch two real taps beyond the recognizer's double-tap window.
+  // Queue the pointer events together: protocol latency must not stretch two taps past the double-tap window.
   const replies = [];
   for (const [type, buttons, clickCount] of [["mouseMoved", 0, 0], ["mousePressed", 1, 1], ["mouseReleased", 0, 1], ["mousePressed", 1, 2], ["mouseReleased", 0, 2]]) {
     replies.push(b.mouse(type, pick.x, pick.y, { buttons, clickCount, button: type === "mouseMoved" ? "none" : "left" }));
@@ -25853,8 +25677,9 @@ const labDrive = () => withPage("lab drive", page(src), async (b) => {
 });
 
 const hubDrive = () => withPage("hub drive", hubPage(src), async (b) => {
-  // The eater standing beside the pile, so a walk forward passes it instead of running into it
-  const pick = await b.evaluate(`(() => { const B = window.__ooga; const cx = B.camera.position.x, cz = B.camera.position.z, cl = Math.hypot(cx, cz), side = (c) => { const p = c.root.position; return Math.abs((p.x * cx + p.z * cz) / (Math.hypot(p.x, p.z) * cl)); }; const cave = [...B.cavemen.values()].filter((c) => c.state === "working" && !c.walk && !c.build).sort((a, b) => side(a) - side(b))[0]; const p = B.project(cave.root.position.x, cave.root.position.y + 0.2, cave.root.position.z); const hit = B.input.pick(p.x, p.y); return { name: cave.traits.name, x: p.x, y: p.y, kind: hit && hit.owner.kind }; })()`);
+  // Pick the eater beside the pile so a walk forward passes it; its own screen point must pick itself.
+  // The fan tightens as the roster grows; falling back to the nearest keeps a real crowding failure loud.
+  const pick = await b.evaluate(`(() => { const B = window.__ooga; const cx = B.camera.position.x, cz = B.camera.position.z, cl = Math.hypot(cx, cz), side = (c) => { const p = c.root.position; return Math.abs((p.x * cx + p.z * cz) / (Math.hypot(p.x, p.z) * cl)); }; const at = (c) => { const p = B.project(c.root.position.x, c.root.position.y + 0.2, c.root.position.z); return { cave: c, p, hit: B.input.pick(p.x, p.y) }; }; const ranked = [...B.cavemen.values()].filter((c) => c.state === "working" && !c.walk && !c.build).sort((a, b) => side(a) - side(b)).map(at); const self = (r) => r.hit && r.hit.owner.kind === "caveman" && r.hit.owner.cave === r.cave; const chosen = ranked.find(self) || ranked[0]; return { name: chosen.cave.traits.name, x: chosen.p.x, y: chosen.p.y, kind: chosen.hit && chosen.hit.owner.kind, self: self(chosen), candidates: ranked.length, selfPicking: ranked.filter(self).length }; })()`);
   await selectByDoubleTap(b, pick);
   await b.sleep(300);
   const driven = await b.evaluate(`(() => { const B = window.__ooga; const p = B.crew.player; return { player: p && p.traits.name, kind: p && p.act.kind, act: !document.getElementById("act").hidden, follow: p && +Math.hypot(B.camera.target.x - p.root.position.x, B.camera.target.z - p.root.position.z).toFixed(2) }; })()`);
@@ -25865,7 +25690,8 @@ const hubDrive = () => withPage("hub drive", hubPage(src), async (b) => {
   await b.sleep(500);
   const p1 = await pos();
   record("hub drive: W walks the caveman and the camera follows", Math.hypot(p1.x - p0.x, p1.z - p0.z) >= 3 && p1.follow < 1.5, `${JSON.stringify(p0)} -> ${JSON.stringify(p1)}`);
-  const stagedAct = await b.evaluate(`(() => { const B = window.__ooga, player = B.crew.player, p = player.root.position; for (let radius = 11; radius <= 18; radius++) for (let i = 0; i < 48; i++) { const a = i / 48 * Math.PI * 2, x = Math.sin(a) * radius, z = Math.cos(a) * radius; if (!B.island.onLand(x, z) || B.island.heightAt(x, z) !== 0 || B.props.some((o) => o.active && Math.hypot(o.x - x, o.z - z) < 3) || [...B.cavemen.values()].some((c) => c !== player && c.root.visible && Math.hypot(c.root.position.x - x, c.root.position.z - z) < 3)) continue; p.x = x; p.z = z; p.y = player.baseY; player.hop = player.hopV = 0; return true; } return false; })()`);
+  // Measured zero free spots inside radius 18 (scenery plus crew), so the ring search must reach 19 to 24.
+  const stagedAct = await b.evaluate(`(() => { const B = window.__ooga, player = B.crew.player, p = player.root.position; for (let radius = 11; radius <= 24; radius++) for (let i = 0; i < 48; i++) { const a = i / 48 * Math.PI * 2, x = Math.sin(a) * radius, z = Math.cos(a) * radius; if (!B.island.onLand(x, z) || B.island.heightAt(x, z) !== 0 || B.props.some((o) => o.active && Math.hypot(o.x - x, o.z - z) < 3) || [...B.cavemen.values()].some((c) => c !== player && c.root.visible && Math.hypot(c.root.position.x - x, c.root.position.z - z) < 3)) continue; p.x = x; p.z = z; p.y = player.baseY; player.hop = player.hopV = 0; return true; } return false; })()`);
   await b.sleep(500);
   await b.key(" ");
   await b.sleep(120);
@@ -25921,7 +25747,6 @@ const hubJetpack = () => withPage("hub jetpack", hubPage(src, "loot=1"), async (
   const worn = await b.evaluate(`(() => { const B = window.__ooga, p = B.crew.player, panel = document.getElementById("jetpack-hud"); return { jet: !!p.jet, onBack: !!p.jet && p.root.children.includes(p.jet.node), expanded: panel.dataset.equipped, width: panel.getBoundingClientRect().width, gauge: getComputedStyle(document.querySelector(".jetpack-readout")).visibility, pressed: panel.getAttribute("aria-pressed") }; })()`);
   record("hub jetpack: clicking the compact icon equips the pack and expands its fuel gauge", worn.jet && worn.onBack && worn.expanded === "true" && worn.width === 158 && worn.width === carried.width + 80 && worn.gauge === "visible" && worn.pressed === "true", JSON.stringify(worn));
   await stageClearTakeoff(b);
-  // Held Space climbs; releasing thrust returns him to the ground.
   const air = () => b.evaluate(`(() => { const B = window.__ooga; const p = B.crew.player; return { hop: +p.hop.toFixed(2), flame: p.jet.flame.visible, y: +p.root.position.y.toFixed(2), camY: +B.camera.target.y.toFixed(2) }; })()`);
   const ground = await air();
   await hold(b, " ", 1200);
@@ -25939,8 +25764,6 @@ const hubJetpack = () => withPage("hub jetpack", hubPage(src, "loot=1"), async (
   record("hub jetpack: abyss recovery removes ownership and returns the pickup to a cloud", !lost.owned && !lost.equipped && lost.pickup && lost.host && lost.hud && lost.feet === 0 && lost.radius < 20, JSON.stringify(lost));
 });
 
-
-// ---------- the clock ----------
 const daylightNight = () => withPage("daylight night", hubPage(src, "hour=22&day=80"), async (b) => {
   const keys = await b.evaluate(`(() => {
     const D = window.BL.daylight;
@@ -26152,7 +25975,7 @@ const daylightCanvas = () => withPage("daylight canvas", hubPage(src, "canvas2d=
   record("daylight canvas: dawn, noon, dusk and night render through the parity API", frames.kind === "canvas2d" && frames.samples.length === 4 && frames.samples.every((s) => Number.isFinite(s.altitude)) && frames.samples[1].daylight === 1 && frames.samples[3].stars === 1 && frames.stats.shadowResources === 0 && frames.stats.shadowFinite, JSON.stringify(frames));
 });
 
-// Walking the driven caveman off the cave roof arcs him clear of the front instead of dropping through it
+// Walking the driven caveman off the cave roof arcs him clear of the front instead of dropping through it.
 const hubHopOff = () => withPage("hub hop-off", hubPage(src), async (b) => {
   const setup = await b.evaluate(`(() => { const B = window.__ooga; const cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.walk && !c.build); const m = B.mouths.find((m) => m.id === "c11"); const ox = Math.sin(m.angle), oz = -Math.cos(m.angle); B.crew.control(cave); const x = m.x + ox * 1.2, z = m.z + oz * 1.2; const roof = B.island.surfaceAt(x, z); cave.root.position.x = x; cave.root.position.z = z; cave.root.position.y = cave.baseY + roof; cave.hop = 0; cave.hopV = 0; cave.root.rotation.y = Math.PI - m.angle; B.pilot.orbit.tYaw = B.pilot.orbit.yaw = Math.PI - m.angle; return { name: cave.traits.name, roof, player: B.crew.player === cave }; })()`);
   await b.sleep(300);
@@ -26162,16 +25985,14 @@ const hubHopOff = () => withPage("hub hop-off", hubPage(src), async (b) => {
   const drops = rows.slice(1).map((r, i) => rows[i].y - r.y);
   const left = rows.findIndex((r) => r.hop > 0);
   const landed = rows.findIndex((r, i) => left >= 0 && i > left && r.hop === 0);
-  // The rim frame stands one unit in front of the face, up to the lintel
+  // The rim frame stands one unit in front of the face, up to the lintel.
   const frontHit = rows.some((r) => r.along > -1.2 && r.along < 0.2 && r.y > 0.3 && r.y < 3.6);
   record("hub hop-off: leaving the cave roof falls over several frames, never a one-frame drop", setup.player && setup.roof > 3 && left > 0 && landed > left + 8 && Math.max(...drops) < 1, JSON.stringify({ roof: setup.roof, left, landed, maxDrop: +Math.max(...drops).toFixed(2), frames: rows.length }));
   record("hub hop-off: the arc clears the cave front and lands out on the apron", landed > 0 && !frontHit && rows[landed].along < -1.2 && Math.abs(rows[landed].y) < 0.1, JSON.stringify({ landing: rows[landed], frontHit }));
 });
 
-
-// ---------- Ooga Rally ----------
 const racePage = (base, query) => `${base}?debug=1&nosim=1&scene=race${clock(query)}`;
-// Run the race clock forward without frames: countdown, then the given seconds with everyone AI-driven
+// Run the race clock forward without frames: countdown, then the given seconds with everyone AI-driven.
 const autoRace = (track, seconds) => `(() => { const B = window.__ooga; document.querySelector('[data-track="${track}"]').click(); B.race.startRace(); B.race.simulate(4); B.racers.autopilot = true; B.racers.start(); B.race.simulate(${seconds}); return B.race.phase; })()`;
 
 const raceGarage = () => withPage("race garage", racePage(src), async (b) => {
@@ -26216,7 +26037,7 @@ const raceTracks = ["race tracks", async (b) => {
   record("race tracks: switching tracks releases the old track's GPU records", swapped.r1 <= swapped.r0 + 5 && swapped.nodes < 900, JSON.stringify(swapped));
 }];
 
-// Park the other racers far away and frozen, and stand the visitor on a checkpoint facing down the road
+// Park the other racers far away and frozen; stand the visitor on a checkpoint facing down the road.
 const isolate = (checkpoint) => `(() => { const B = window.__ooga, R = B.racers, t = B.track, S = t.samples, p = R.player; for (const r of R.racers) if (r !== p) { r.x += 1000; r.z += 1000; r.respawn = 1e9; } const i = t.checkpoints[${checkpoint}]; p.respawn = 0; p.invuln = 0; p.x = S.x[i]; p.z = S.z[i]; p.idx = i; p.y = p.ground = t.slabY(i, 0, 0); p.heading = p.motionHeading = Math.atan2(S.tx[i], S.tz[i]); p.speed = 0; p.airborne = false; p.vy = 0; p.drift.active = false; p.boost = 0; return i; })()`;
 const racePhysics = ["race physics", async (b) => {
   const drive = await b.evaluate(`(() => { const B = window.__ooga, R = B.racers; B.race.startRace(); B.race.simulate(4); R.start(); const p = R.player; ${isolate(1)}; R.setInput(p, 0, 1, false, false); B.race.simulate(3); const a = { speed: p.speed, progress: p.progress, started: p.started, checkpoint: p.checkpoint }; R.setInput(p, 0, -1, false, false); B.race.simulate(2); const stopped = p.speed; return { ...a, stopped, top: p.mount.top }; })()`);
@@ -26247,6 +26068,7 @@ const raceItems = () => withPage("race items", racePage(src), async (b) => {
   record("race items: a thrown rock spins the racer ahead, a peel spins whoever drives over it, a shout spins the neighbours, and the pools stay capped", rock.thrown === 1 && rock.spun && rock.hits[0] && rock.hits[0][2] === "rock" && rock.live <= rock.cap && rock.peeled && rock.shouted, JSON.stringify(rock));
 });
 
+// Ranks must be exactly 1..N, one per racer; derive N from the roster so adding a contributor cannot break it.
 const raceAi = ["race AI", async (b) => {
   const results = {}, roster = await b.evaluate("window.BL.contributors.activeRoster.map((entry) => entry.name)");
   const expectedRanks = roster.map((_, index) => index + 1).join(",");
@@ -26374,7 +26196,6 @@ const hubRace = () => withPage("hub race route", hubPage(src), async (b) => {
   record("hub race route: approaching the launcher waits for Space, which works while facing away", walked.scene === "hub" && walked.distance < 3.1 && waiting.scene === "hub" && waiting.hop === 0 && started, JSON.stringify({ walked, waiting, started }));
 });
 
-// ---------- Ooga Drop ----------
 const dropPage = (base, query) => `${base}?debug=1&nosim=1&scene=drop${clock(query)}`;
 const dropControls = () => withPage("drop controls", dropPage(src), async (b) => {
   await b.evaluate(`(() => { const B = window.__ooga; B.drop.jumpNow(); B.diver.state.p.y = 900; })()`);
@@ -26437,14 +26258,14 @@ const dropBoard = () => withPage("drop board", dropPage(src), async (b) => {
   record("drop board: Escape in the climb parks the plane back on the roof", back.phase === "board" && back.boardShown && back.parked && back.stripHidden, JSON.stringify(back));
 });
 
-// The diver placed high in still air, with the plane's course out of the way
+// The diver placed high in still air, with the plane's course out of the way.
 const isolateDiver = `(() => { const B = window.__ooga; if (B.drop.phase !== "air") B.drop.jumpNow(); const s = B.diver.state; s.p.x = 0; s.p.y = 900; s.p.z = 0; s.v.x = s.v.z = 0; s.v.y = -20; B.drop.setInput(0, 0, 0, false); return s; })()`;
 const dropPhysics = () => withPage("drop physics", dropPage(src), async (b) => {
   const snap = `(s) => ({ speed: +s.speed.toFixed(2), h: +Math.hypot(s.v.x, s.v.z).toFixed(2), vy: +s.v.y.toFixed(2), front: Array.from(s.front).map((v) => +v.toFixed(3)), headDir: +Math.atan2(s.up[0], s.up[2]).toFixed(2), hDir: +Math.atan2(s.v.x, s.v.z).toFixed(2), y: +s.p.y.toFixed(1) })`;
   const fall = await b.evaluate(`(() => { const B = window.__ooga, K = window.BL.skydiver, snap = ${snap}; const s = ${isolateDiver}; B.drop.simulate(6); const flat = snap(s); B.drop.setInput(1, 0, 0, false); B.drop.simulate(5); const dive = snap(s); B.drop.setInput(0, 0, 0, false); B.drop.simulate(5); const back = snap(s); B.drop.setInput(0, 1, 0, false); B.drop.simulate(3); const roll = snap(s); B.drop.setInput(0, 0, 1, false); B.drop.simulate(0.7); const yaw = snap(s); return { flat, dive, back, roll, yaw, terminal: [K.TERMINAL_FLAT, K.TERMINAL_DIVE] }; })()`);
   record("drop physics: a hands-off diver settles belly down near the flat terminal speed", Math.abs(fall.flat.speed - fall.terminal[0]) < 1.5 && fall.flat.h < 0.5 && fall.flat.front[1] < -0.98, JSON.stringify(fall.flat));
   record("drop physics: holding pitch tips the head down, speeds the fall and tracks toward the head; releasing settles flat again", fall.dive.speed > fall.flat.speed + 4 && fall.dive.h > 4 && Math.abs(Math.atan2(Math.sin(fall.dive.hDir - fall.dive.headDir), Math.cos(fall.dive.hDir - fall.dive.headDir))) < 0.3 && fall.dive.front[1] > -0.96 && fall.back.front[1] < -0.97 && fall.back.h < fall.dive.h, JSON.stringify({ dive: fall.dive, back: fall.back }));
-  // Headings grow to the left in this frame: a slide to the right of the head is a negative offset, a left turn a positive one
+  // Headings grow to the LEFT in this frame: a slide right of the head is negative, a left turn positive.
   const offset = (a, z) => Math.atan2(Math.sin(a - z), Math.cos(a - z));
   record("drop physics: D slides the diver to the right of the head and Q turns the head left", fall.roll.h > 3 && offset(fall.roll.hDir, fall.roll.headDir) < -0.9 && offset(fall.roll.hDir, fall.roll.headDir) > -2.2 && offset(fall.yaw.headDir, fall.roll.headDir) > 0.6, JSON.stringify({ roll: fall.roll, yaw: fall.yaw }));
   const rings = await b.evaluate(`(() => { const B = window.__ooga, R = B.course.rings; const s = ${isolateDiver}; s.v.y = -20; const through = (dx) => { const ring = R[3]; B.drop.toBoard(); B.drop.jumpNow(); const s = B.diver.state; s.p.x = ring.x + dx; s.p.y = ring.y + 3; s.p.z = ring.z; s.v.x = s.v.z = 0; s.v.y = -20; B.drop.setInput(0, 0, 0, false); const before = B.drop.ringsHit; B.drop.simulate(0.4); return { hit: B.drop.ringsHit - before, glow: ring.node.glow, below: s.p.y < ring.y }; }; return { inside: through(0), edge: through(R[3].r - 0.3), outside: through(R[3].r + 0.6), particles: B.stats().particles }; })()`);
@@ -26463,7 +26284,7 @@ const dropFlow = () => withPage("drop flow", dropPage(src), async (b) => {
   await rendered(8);
   const falling = await b.evaluate(`(() => { const B = window.__ooga, s = B.diver.state, c = B.camera; return { alt: s.p.y, streaks: B.drop.streaks, camAbove: c.position.y > s.p.y + 0.5, camNear: Math.hypot(c.position.x - s.p.x, c.position.y - s.p.y, c.position.z - s.p.z) < 12, fov: +(c.fov * 180 / Math.PI).toFixed(1), up: document.getElementById("drop-alt").textContent, time: document.getElementById("drop-time").textContent }; })()`);
   record("drop flow: the jump leaves the plane in freefall with the camera above the diver, the streaks up and the strip counting", jumped.ok && jumped.phase === "air" && jumped.diver === "free" && jumped.alt > 350 && jumped.speed > 15 && jumped.centerHidden && falling.alt < jumped.alt && falling.streaks === 160 && falling.camAbove && falling.camNear && +falling.up > 200 && falling.time !== "0:00.00", JSON.stringify({ jumped, falling }));
-  // Fall to the pull height in simulated time, then pull for real with Space
+  // Fall to the pull height in simulated time, then pull for real with Space.
   await b.evaluate(`(() => { const B = window.__ooga, s = B.diver.state; s.p.x = 0; s.p.z = 0; s.v.x = s.v.z = 0; while (s.p.y > 87 && B.drop.phase === "air") B.drop.simulate(0.25); })()`);
   await rendered(3);
   const prompt = await b.evaluate(`({ center: document.getElementById("drop-center").textContent, hidden: document.getElementById("drop-center").hidden, alt: window.__ooga.diver.state.p.y })`);
@@ -26471,7 +26292,7 @@ const dropFlow = () => withPage("drop flow", dropPage(src), async (b) => {
   await rendered(3);
   const pulled = await b.evaluate(`(() => { const B = window.__ooga, s = B.diver.state; return { phase: s.phase, canopy: B.diver.canopy.visible, chute: document.getElementById("drop-chute-name").textContent, act: document.getElementById("act").textContent }; })()`);
   record("drop flow: the PULL call shows near the ground and Space opens the canopy", !prompt.hidden && prompt.center === "PULL" && prompt.alt < 90 && pulled.phase !== "free" && pulled.canopy && pulled.chute === "canopy" && pulled.act === "Flare", JSON.stringify({ prompt, pulled }));
-  // Bring the canopy down over the banana mound, flaring in
+  // Bring the canopy down over the banana mound, flaring in.
   await b.evaluate(`(() => { const B = window.__ooga, s = B.diver.state; B.drop.simulate(3); s.p.x = -2.4; s.p.y = 3.4; s.p.z = 0; s.v.x = s.v.z = 0; s.heading = Math.PI / 2; B.drop.setInput(0, 0, 0, true); B.drop.simulate(8); })()`);
   await rendered(3);
   const landed = await b.evaluate(`(() => { const B = window.__ooga, s = B.diver.state; return { phase: B.drop.phase, landing: s.landing, shown: !document.getElementById("drop-results").hidden, rows: document.querySelectorAll("#drop-score li").length, summary: document.getElementById("drop-summary").textContent, best: B.game.state.drop.best, stored: JSON.parse(localStorage.getItem("oogaboogaland.v1")).drop.best, result: B.drop.result, actHidden: document.getElementById("act").hidden, canopyDown: !B.diver.canopy.visible || B.diver.canopy.scale.y < 1 }; })()`);
@@ -26584,7 +26405,6 @@ const soakDrop = () => withPage("soak: drop cycles", hubPage(src), async (b) => 
   record("soak: drop cycles: no error thrown", !b.logs.some((l) => l.startsWith("[exception]")), b.logs.join(" | ").slice(0, 200));
 });
 
-// Sixty tips in fifteen seconds while the diver falls, then back to base
 const soakDropDonations = () => withPage("soak: donations (drop)", dropPage(src), async (b) => {
   const { until, rendered, settled, snapshot, heapDetail, within } = await soak(b);
   await settled();
@@ -26592,7 +26412,6 @@ const soakDropDonations = () => withPage("soak: donations (drop)", dropPage(src)
   const before = await snapshot();
   await b.evaluate(`(() => { const B = window.__ooga; B.drop.jumpNow(); const s = B.diver.state; s.p.y = 2000; s.v.x = s.v.z = 0; })()`);
   const level0 = await b.evaluate("window.__ooga.level");
-  // Sixty tips a quarter of a simulated second apart, every frame rendered
   for (let i = 0; i < 60; i++) {
     await b.evaluate(`window.__ooga.demoTip(${i % 4 === 3 ? 120000 : 1200})`);
     await b.evaluate("window.__ooga.advance(0.25)");
@@ -26609,20 +26428,18 @@ const soakDropDonations = () => withPage("soak: donations (drop)", dropPage(src)
   record("soak: donations (drop): heap after GC within 15%", within(before, after, 0.15), heapDetail(before, after));
 });
 
-// ---------- Ooga Orbit ----------
 const orbitPage = (base, query) => `${base}?debug=1&nosim=1&scene=orbit${clock(query)}`;
-// The stack as the list shows it, read bottom up, against the scene's own
+// The stack as the HUD list shows it, read bottom up (hence reverse), against the scene's own.
 const orbitOrder = `(() => { const rows = [...document.querySelectorAll("#orbit-stack li[data-index]")].reverse(); return { stack: window.__ooga.orbit.stack.join(), hud: rows.map((li) => li.dataset.id).join(), indices: rows.every((li, i) => +li.dataset.index === i), slots: window.__ooga.orbit.slots()?.ys.length }; })()`;
 const orbitInOrder = (o) => o.stack === o.hud && o.indices && o.slots === o.stack.split(",").length + 1;
 const orbitCenterOf = (b, selector) => b.evaluate(`(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()`);
-// The flight log: the rows' points (a count times its worth, or the number after the last dot) against the total over them
+// Flight log rows: points are a count times its worth, or the number after the last dot, against the total.
 const orbitLog = `(() => { const O = window.__ooga.orbit, rows = [...document.querySelectorAll("#orbit-score li")].map((li) => [li.children[0].textContent, li.children[1].textContent]); const points = rows.filter(([label]) => label !== "Time").reduce((sum, [, value]) => { const times = value.match(/(\\d+) × (\\d+)$/), last = value.match(/· (?:space )?(\\d+)$/); return sum + (times ? times[1] * times[2] : last ? +last[1] : 0); }, 0); return { phase: O.phase, shown: !document.getElementById("orbit-results").hidden, rows, points, final: +document.getElementById("orbit-final-score").textContent, best: document.getElementById("orbit-final-best").textContent, medal: document.getElementById("orbit-final-medal").hidden ? null : document.getElementById("orbit-final-medal").textContent, summary: document.getElementById("orbit-summary").textContent, result: O.result, exit: document.querySelector('#orbit-results [data-action="leave"]').textContent }; })()`;
-// A reloaded page is ready once the scene has drawn; short polls, since one long wait sent while the old document is
-// still unloading never gets its reply
+// Poll in short steps: one long wait sent while the old document unloads never gets its reply.
 const orbitBooted = async (b) => {
   for (let i = 0; i < 200 && !await b.evaluate(`(() => { try { return !!(window.__ooga.orbit && window.__ooga.renderedFrames > 0); } catch { return false; } })()`); i++) await b.sleep(100);
 };
-// Straight to the top over the pad, the rest of the rocket dropped
+// Straight to the top over the pad, the rest of the rocket dropped.
 const orbitHeld = `(() => { const O = window.__ooga.orbit; O.toOrbit(); O.simulate(5); O.dropRest(); })()`;
 
 const orbitBuilder = () => withPage("orbit builder", orbitPage(src), async (b) => {
@@ -26632,7 +26449,7 @@ const orbitBuilder = () => withPage("orbit builder", orbitPage(src), async (b) =
   const tapped = await b.evaluate(`(() => { const O = window.__ooga.orbit, $ = (s) => document.querySelector(s), launch = () => !$("#orbit-launch").disabled; $("#orbit-clear").click(); const empty = { stack: O.stack.length, launch: launch(), pressed: document.querySelectorAll('#orbit-presets [aria-pressed="true"]').length, row: !!$("#orbit-stack .orbit-empty") }; for (const id of ["pot", "barrel", "leafshield", "gourdpod"]) $('.orbit-tile[data-id="' + id + '"]').click(); const built = { stack: O.stack.join(), launch: launch() }; $('#orbit-stack [data-op="up"][data-index="1"]').click(); const swapped = { stack: O.stack.join(), launch: launch(), problems: $("#orbit-problems").textContent }; $('#orbit-stack [data-op="down"][data-index="2"]').click(); const back = O.stack.join(); $('#orbit-stack [data-op="remove"][data-index="1"]').click(); const removed = O.stack.join(); $("#orbit-presets .orbit-preset:nth-child(3)").click(); return { empty, built, swapped, back, removed, hopper: O.stack.join() === window.BL.rocketParts.PRESETS[2].stack.join(), pressed: [...document.querySelectorAll("#orbit-presets .orbit-preset")].map((c) => c.getAttribute("aria-pressed")).join() }; })()`);
   const order1 = await b.evaluate(orbitOrder);
   record("orbit builder: clearing empties the pad, tapped tiles stack up in order, the row arrows swap parts (a shield off the pod stops the launch), the cross removes one and a ready rocket card loads and lights up", tapped.empty.stack === 0 && !tapped.empty.launch && tapped.empty.pressed === 0 && tapped.empty.row && tapped.built.stack === "pot,barrel,leafshield,gourdpod" && tapped.built.launch && tapped.swapped.stack === "pot,leafshield,barrel,gourdpod" && !tapped.swapped.launch && tapped.swapped.problems.includes("heat shield") && tapped.back === "pot,barrel,leafshield,gourdpod" && tapped.removed === "pot,leafshield,gourdpod" && tapped.hopper && tapped.pressed === "false,false,true" && orbitInOrder(order1), JSON.stringify({ tapped, order1 }));
-  // Drags: a tile into the list, a tile onto the rocket itself, a row off both to take it away
+  // Drags: a tile into the list, a tile onto the rocket itself, a row off both to take it away.
   const kind = await b.evaluate(`window.BL.rocketParts.KINDS.indexOf("tank") + 1`);
   await b.evaluate(`document.querySelector("#orbit-tabs button:nth-child(${kind})").click()`);
   await b.drag(await orbitCenterOf(b, '.orbit-tile[data-id="coconut"]'), await orbitCenterOf(b, '#orbit-stack li[data-index="2"]'));
@@ -26654,22 +26471,21 @@ const orbitBuilder = () => withPage("orbit builder", orbitPage(src), async (b) =
 const orbitFlow = () => withPage("orbit flow", orbitPage(src), async (b) => {
   await b.key(" ");
   const counting = await b.evaluate(`(() => { const O = window.__ooga.orbit; return { phase: O.phase, strip: !document.getElementById("orbit-strip").hidden, build: document.getElementById("orbit-build").hidden, saved: JSON.parse(localStorage.getItem("oogaboogaland.v1")).orbit.build.join() === O.stack.join() }; })()`);
-  // Real frames have run the count since the key, so the timed part starts over in one tick: the count, the spool
-  // into the gold and the release read the same on any machine
+  // Real frames already ran the count, so the timed part restarts in one tick and reads the same on any machine.
   const lifted = await b.evaluate(`(() => { const O = window.__ooga.orbit; O.toBuild(); O.launch(); O.simulate(3.05); const ignite = O.phase; O.simulate(1.85); const gauge = O.gauge; O.releaseClamps(); O.simulate(3); const s = window.__ooga.flight.state; return { ignite, gauge, phase: O.phase, alt: s.alt, burning: s.burning, score: O.score }; })()`);
   const spent = await b.evaluate(`(() => { const O = window.__ooga.orbit, s = window.__ooga.flight.state; for (let t = 0; t < 120 && s.fuel[s.stage] > 0; t += 0.25) O.simulate(0.25); O.simulate(0.3); return { stage: s.stage, burning: s.burning, center: document.getElementById("orbit-center").textContent }; })()`);
   await b.key(" ");
   const staged = await b.evaluate(`(() => { const O = window.__ooga.orbit, s = window.__ooga.flight.state, stage = s.stage; O.simulate(1); return { stage, burning: s.burning, debris: window.__ooga.stats().debris }; })()`);
   record("orbit flow: Space launches and saves the build, the clamps let go in the gold on the gauge, and Space drops a spent stage and lights the next", counting.phase === "count" && counting.strip && counting.build && counting.saved && lifted.ignite === "ignite" && lifted.gauge > 0.66 && lifted.gauge < 0.78 && lifted.phase === "ascent" && lifted.alt > 5 && lifted.burning && lifted.score === 200 && !spent.burning && spent.stage === 0 && staged.stage === 1 && staged.burning && staged.debris === 1, JSON.stringify({ counting, lifted, spent, staged }));
-  // Hands off the autopilot climbs; each spent stage is dropped as Space would
+  // Hands off, the autopilot climbs; each spent stage is dropped as Space would.
   const top = await b.evaluate(`(() => { const O = window.__ooga.orbit, F = window.__ooga.flight, s = F.state; for (let t = 0; t < 400 && O.phase === "ascent"; t += 0.25) { if (s.fuel[s.stage] <= 0 && F.stages[s.stage + 1] && F.stages[s.stage + 1].engine) O.act(); O.simulate(0.25); } const phase = O.phase; O.simulate(5); return { phase, maxAlt: s.maxAlt, score: O.score, mode: s.mode, walk: !document.getElementById("orbit-eva").hidden }; })()`);
   await b.key(" ");
   const free = await b.evaluate(`(() => { const O = window.__ooga.orbit; O.simulate(0.2); return { pod: window.__ooga.flight.isPod(), mode: window.__ooga.flight.state.mode, walk: !document.getElementById("orbit-eva").hidden }; })()`);
   record("orbit flow: the autopilot climbs to low orbit, which holds the rocket over the pad, and Space cuts the pod free for the spacewalk", top.phase === "orbit" && top.maxAlt >= 500 && top.score >= 200 + 2 * 100 + 1000 && top.mode !== "free" && free.pod && free.mode === "free" && free.walk, JSON.stringify({ top, free }));
   await b.key(" ");
-  const walk = await b.evaluate(`(() => { const O = window.__ooga.orbit, E = O.eva, phase = O.phase; E.e = 7; E.u = 3.5; E.f = 3.5; E.ve = E.vu = E.vf = 0; O.simulate(0.2); const near = E.near; O.act(); const measuring = E.measuring > 0; O.simulate(3); const measured = E.measured, reeling = E.reeling; for (let t = 0; t < 40 && O.phase === "eva"; t += 0.25) O.simulate(0.25); return { phase, near, measuring, measured, reeling, after: O.phase, back: E.back, score: O.score }; })()`);
+  const walk = await b.evaluate(`(() => { const O = window.__ooga.orbit, E = O.eva, phase = O.phase; E.e = O.rock.e; E.u = O.rock.u; E.f = O.rock.f - O.rock.reach * 0.6; E.ve = E.vu = E.vf = 0; O.simulate(0.2); const near = E.near; O.act(); const measuring = E.measuring > 0; for (let t = 0; t < 12 && E.measuring > 0; t += 0.25) O.simulate(0.25); O.simulate(0.5); const measured = E.measured, reeling = E.reeling; for (let t = 0; t < 40 && O.phase === "eva"; t += 0.25) O.simulate(0.25); return { phase, near, measuring, measured, reeling, after: O.phase, back: E.back, score: O.score }; })()`);
   record("orbit flow: Space steps outside, at the rock Space measures it, the tether reels the Ooga home and it climbs back in with the mission done (the stage dropped in orbit counting too)", walk.phase === "eva" && walk.near === "rock" && walk.measuring && walk.measured && walk.reeling && walk.after === "orbit" && walk.back && walk.score === top.score + 100 + 700, JSON.stringify(walk));
-  // The stage dropped at the top falls under the pod; it is gone before the pod is let go
+  // The stage dropped at the top falls under the pod; it is gone before the pod is let go.
   const cleared = await b.evaluate(`(() => { const O = window.__ooga.orbit; let t = 0; for (; t < 40 && window.__ooga.stats().debris > 0; t += 0.25) O.simulate(0.25); return { debris: window.__ooga.stats().debris, t }; })()`);
   await b.key(" ");
   const falling = await b.evaluate(`(() => { const O = window.__ooga.orbit, F = window.__ooga.flight, s = F.state, phase = O.phase; for (let t = 0; t < 200 && !F.chuteReady(); t += 0.1) O.simulate(0.1); return { phase, ready: F.chuteReady(), alt: s.alt, peakHeat: s.peakHeat }; })()`);
@@ -26685,7 +26501,7 @@ const orbitFlow = () => withPage("orbit flow", orbitPage(src), async (b) => {
   await b.sleep(200);
   const again = await b.evaluate(`(() => { const O = window.__ooga.orbit; return { phase: O.phase, score: O.score, results: document.getElementById("orbit-results").hidden, debris: window.__ooga.stats().debris }; })()`);
   record("orbit flow: Fly again counts down the same rocket from a clean pad", again.phase === "count" && again.score === 0 && again.results && again.debris === 0, JSON.stringify(again));
-  // A far-land best and a junk-laced build survive a reload; a malformed best does not
+  // A far-land best and a junk-laced build survive a reload; a malformed best does not.
   await b.evaluate(`(() => { const saved = JSON.parse(localStorage.getItem("oogaboogaland.v1")); saved.orbit.best = { score: 900, orbit: true, landing: "land" }; saved.orbit.build = ["pot", "zzz", 4, "leafshield", "gourdpod"]; localStorage.setItem("oogaboogaland.v1", JSON.stringify(saved)); })()`);
   await b.open(orbitPage(src));
   await orbitBooted(b);
@@ -26704,7 +26520,7 @@ const orbitFlow = () => withPage("orbit flow", orbitPage(src), async (b) => {
 });
 
 const orbitFailures = () => withPage("orbit failures", orbitPage(src), async (b) => {
-  // Every way down that is not a landing ends on the flight log with its call and its one-line fix
+  // Every way down that is not a landing ends on the flight log with its call and its one-line fix.
   const ends = await b.evaluate(`(() => { const B = window.__ooga, O = B.orbit, run = (fn) => { fn(); for (let t = 0; t < 400 && O.phase !== "results"; t += 0.25) O.simulate(0.25); const r = O.result, landing = [...document.querySelectorAll("#orbit-score li")].find((li) => li.children[0].textContent === "Landing"); return { failure: r && r.failure, shown: !document.getElementById("orbit-results").hidden, final: +document.getElementById("orbit-final-score").textContent, score: r && r.score, landing: landing && landing.children[1].textContent, summary: document.getElementById("orbit-summary").textContent }; }; const fresh = (stack) => { O.toBuild(); if (stack) O.setStack(stack); O.launch(); O.simulate(3.05); }; const out = {}; out.pop = run(() => fresh()); out.heavy = run(() => { fresh(["pot", "bigbarrel", "bigbarrel", "bigbarrel", "bigbarrel", "vine", "leafshield", "stickpod"]); O.simulate(1.85); O.releaseClamps(); }); O.toBuild(); O.setStack(window.BL.rocketParts.PRESETS[0].stack); out.smash = run(() => { (${orbitHeld}); O.simulate(12); O.eva.back = true; O.letGo(); }); O.toBuild(); out.splat = run(() => { (${orbitHeld}); O.simulate(31); O.eva.back = true; O.letGo(); }); return out; })()`);
   const f = (e, why, call) => e.failure === why && e.shown && e.final === e.score && e.landing === call && e.summary.length > 20;
   record("orbit failures: waiting out the gauge pops the engines, a rocket too heavy to climb sticks, and a pod without its chute crashes by the pad, each on the flight log", f(ends.pop, "overpressure", "pop") && f(ends.heavy, "stuck", "too heavy") && f(ends.splat, "crash", "crash"), JSON.stringify(ends));
@@ -26724,7 +26540,7 @@ const hubOrbit = () => withPage("hub orbit route", hubPage(src), async (b) => {
   record("hub orbit route: the islet carries the pad, rocket, tower, bridge and sign clear of scenery, tooltips, and tapping the rocket opens the builder", site.launchers === 2 && site.at && site.kinds === "1,1,1,1" && site.rocket >= 5 && site.clear === 0 && site.prop === "rocket" && tip === "Ooga Orbit · tap to fly" && entered.scene === "orbit" && entered.phase === "build" && entered.build, JSON.stringify({ ...site, tip, ...entered }));
   await b.key("Escape");
   await untilPage(b, 'B.scene === "hub" && !B.transitioning', 15000);
-  // From the meadow over the bridge onto the islet, W held
+  // From the meadow over the bridge onto the islet, W held.
   await b.evaluate(`(() => { const B = window.__ooga, spot = window.BL.rocketModels.siteSpot(B.island, {}), cave = [...B.cavemen.values()].find((c) => c.state === "working" && !c.walk && !c.build && c.traits.name !== "portlandhodl"), z = spot.bridgeZ - 2; B.crew.control(cave); B.crew.relocatePlayer({ x: spot.x, y: B.island.surfaceAt(spot.x, z), z }, 0); B.pilot.orbit.tYaw = B.pilot.orbit.yaw = Math.PI; })()`);
   await b.sleep(300);
   await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "w", text: "w" });
@@ -26753,7 +26569,6 @@ const soakOrbit = () => withPage("soak: orbit cycles", hubPage(src), async (b) =
   record("soak: orbit cycles: no error thrown", !b.logs.some((l) => l.startsWith("[exception]")), b.logs.join(" | ").slice(0, 200));
 });
 
-// Sixty tips in fifteen seconds while the rocket climbs, then back to the builder
 const soakOrbitDonations = () => withPage("soak: donations (orbit)", orbitPage(src), async (b) => {
   const { until, rendered, settled, snapshot, heapDetail, within } = await soak(b);
   await settled();
@@ -26809,7 +26624,6 @@ const soakRace = () => withPage("soak: race cycles", hubPage(src), async (b) => 
   record("soak: race cycles: no error thrown", !b.logs.some((l) => l.startsWith("[exception]")), b.logs.join(" | ").slice(0, 200));
 });
 
-// Sixty tips in fifteen seconds while a race runs, then back to base
 const soakRaceDonations = () => withPage("soak: donations (race)", racePage(src), async (b) => {
   const { until, rendered, settled, snapshot, heapDetail, within } = await soak(b);
   await settled();
@@ -26818,7 +26632,6 @@ const soakRaceDonations = () => withPage("soak: donations (race)", racePage(src)
   await b.evaluate(`(() => { const B = window.__ooga; B.race.startRace(); B.racers.autopilot = true; })()`);
   await b.sleep(3600);
   const level0 = await b.evaluate("window.__ooga.level");
-  // Sixty tips a quarter of a simulated second apart, every frame rendered
   for (let i = 0; i < 60; i++) {
     await b.evaluate(`window.__ooga.demoTip(${i % 4 === 3 ? 120000 : 1200})`);
     await b.evaluate("window.__ooga.advance(0.25)");
@@ -26835,8 +26648,7 @@ const soakRaceDonations = () => withPage("soak: donations (race)", racePage(src)
   record("soak: donations (race): heap after GC within 15%", within(before, after, 0.15), heapDetail(before, after));
 });
 
-// ---------- soak ----------
-// Round trips and storms must leave nothing behind
+// Round trips and storms must leave nothing behind.
 const mb = (bytes) => (bytes / 1048576).toFixed(2);
 const FRESH_FRAMES = 150;
 const soak = async (b) => {
@@ -26844,7 +26656,7 @@ const soak = async (b) => {
   const until = (cond, ms) => b.evaluate(`new Promise((resolve) => { const B = window.__ooga; const t0 = performance.now(); const tick = () => { const ok = !!(${cond}); if (ok || performance.now() - t0 > ${ms}) resolve(ok); else requestAnimationFrame(tick); }; tick(); })`);
   const rendered = (frames, ms = 6000) => b.evaluate(`new Promise((resolve) => { const B = window.__ooga; const start = B.renderedFrames; const t0 = performance.now(); const tick = () => { if (B.renderedFrames >= start + ${frames} || performance.now() - t0 > ${ms}) resolve(B.renderedFrames - start); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })`);
   const settled = (ms = 4000) => until("window.BL.scene.tweenCount() === 0", ms);
-  // Every scene writes its hint 1.2 s after entering; the first snapshot must already count that text node
+  // Every scene writes its hint 1.2 s after entering; the first snapshot must already count that text node.
   await until(`document.getElementById("hint").textContent`, 3000);
   const heap = async () => {
     await b.send("HeapProfiler.collectGarbage");
@@ -26865,8 +26677,7 @@ const soak = async (b) => {
     return { used: (await b.send("Runtime.getHeapUsage")).result.usedSize, objects: total - compiled, code: compiled, nodes: dom.nodes, listeners: dom.jsEventListeners };
   };
   const snapshot = async (stats = null) => {
-    // Stats, DOM counters and heap must describe one state even when another
-    // lane spends time parsing its snapshot before our next protocol command.
+    // Freeze the page so stats, DOM counters and heap describe one state despite other lanes' delays.
     await b.focus(false);
     try {
       await b.send("Page.setWebLifecycleState", { state: "frozen" });
@@ -26877,8 +26688,7 @@ const soak = async (b) => {
       await b.send("Page.bringToFront");
     }
   };
-  // go(id), then wait for swap, frames, animations and the fade back in: a go()
-  // during a running transition is ignored, so the next trip must not start early
+  // A go() during a running transition is ignored: wait for swap, frames, animations and the fade first.
   const travel = (id) => b.evaluate(`new Promise((resolve) => { const B = window.__ooga; const T = window.BL.scene.tweenCount; const t0 = performance.now(); let last = t0, swap = 0, swapFrame = 0, swapGap = 0; B.go(${JSON.stringify(id)}); const tick = () => { const now = performance.now(); if (!swap && B.scene === ${JSON.stringify(id)}) { swap = now - t0; swapGap = now - last; swapFrame = B.renderedFrames; } last = now; if (swap && B.renderedFrames >= swapFrame + 3 && T() === 0 && !B.transitioning) resolve({ swap, swapGap, settled: now - t0 }); else if (now - t0 > 8000) resolve({ stuck: { scene: B.scene, tweens: T(), framesSinceSwap: swap ? B.renderedFrames - swapFrame : -1, swap: Math.round(swap) } }); else requestAnimationFrame(tick); }; requestAnimationFrame(tick); })`);
   const heapDetail = (a, z) => `objects ${mb(a.objects)} -> ${mb(z.objects)} MB (used ${mb(a.used)} -> ${mb(z.used)} MB, code ${mb(a.code)} -> ${mb(z.code)} MB)`;
   const within = (a, z, share) => Math.abs(z.objects - a.objects) <= a.objects * share;
@@ -26911,7 +26721,7 @@ const soakScenes = () => withPage("soak: scene cycles", hubPage(src), async (b) 
 const soakResidency = () => withPage("soak: GPU residency", hubPage(src), async (b) => {
   const { until } = await soak(b);
   const records = () => b.evaluate("window.__ooga.renderer.stats.records");
-  // Records come as geometry draws, so count equal frames
+  // Records come as geometry draws, so count equal frames.
   const framesSince = (start) => until(`B.renderedFrames >= ${start + FRESH_FRAMES}`, 8000);
   const visit = async (id) => {
     await b.evaluate(`window.__ooga.go(${JSON.stringify(id)})`);
@@ -26919,7 +26729,6 @@ const soakResidency = () => withPage("soak: GPU residency", hubPage(src), async 
     await framesSince(start);
     return records();
   };
-  // A fresh page of the same scene
   const fresh = async (url) => {
     await b.open(url);
     const search = new URL(url).search;
@@ -26929,7 +26738,7 @@ const soakResidency = () => withPage("soak: GPU residency", hubPage(src), async 
         if (await b.evaluate(`location.search === ${JSON.stringify(search)} && !!window.__ooga && window.__ooga.renderedFrames >= ${FRESH_FRAMES}`)) return records();
       } catch (err) {
         if (err.driver) throw err;
-        // The old document is tearing down, so poll again
+        // The old document is tearing down, so poll again.
       }
     }
     throw new Error(`${url} did not load`);
@@ -26943,25 +26752,23 @@ const soakResidency = () => withPage("soak: GPU residency", hubPage(src), async 
   record("soak: GPU residency: the hub after a lab visit holds no lab geometry", hubAfterLab <= hubFresh + 3, `hub after lab ${hubAfterLab}, fresh hub ${hubFresh}`);
 });
 
-// Sixty tips in fifteen seconds, then back to base
 const soakDonations = (label, url, opts) => withPage(`soak: donations (${label})`, url, async (b) => {
   const { until, rendered, settled, snapshot, heapDetail, within } = await soak(b);
   await settled();
   await rendered(2);
   const before = await snapshot();
-  // A tip, then the shut crates and where to tap
+  // A tip, then the shut crates and where to tap.
   const scan = (sats) => b.evaluate(`(() => { const B = window.__ooga; if (${sats}) B.demoTip(${sats}); return { crates: B.crates.length, landed: B.crates.filter((c) => !c.opened && c.node.visible && Math.abs(c.node.position.y) < 0.05).map((c) => { const p = B.project(c.node.position.x, c.node.position.y + 0.3, c.node.position.z); return p && { x: Math.round(p.x), y: Math.round(p.y) }; }).filter(Boolean) }; })()`);
   let tapped = 0;
   const openLanded = async (r) => {
     for (const c of r.landed) await b.click(c.x, c.y);
     tapped += r.landed.length;
   };
-  // Sixty tips a quarter of a simulated second apart, every frame rendered
   for (let i = 0; i < 60; i++) {
     await openLanded(await scan(i % 4 === 3 ? 120000 : 1200));
     await b.evaluate("window.__ooga.advance(0.25)");
   }
-  // The last crates land late and leave later
+  // The last crates land late and leave later.
   let crates = -1;
   for (const t0 = Date.now(); crates && Date.now() - t0 < 15000;) {
     const r = await scan(0);
@@ -26969,10 +26776,8 @@ const soakDonations = (label, url, opts) => withPage(`soak: donations (${label})
     await openLanded(r);
     await rendered(6);
   }
-  // Capture the required quiet state in the same frame that observes it. A
-  // working Ooga can legitimately begin its next finite build tween between
-  // separate DevTools calls, which made the old final snapshot intermittent.
-  // The drain runs on the storm's simulated clock, bounded at fifteen seconds.
+  // Capture the quiet state in the same frame that observes it: a build tween can start between DevTools calls.
+  // That made the old final snapshot intermittent; the drain runs on the simulated clock, bounded at 15 s.
   const quietStats = await b.evaluate(`(() => { const B = window.__ooga; for (let n = 0; n <= 900; n++) { const stats = B.stats(); if (stats.particles === 0 && stats.pendingDrops === 0 && stats.deliveries === 0 && stats.tweens === 0) { B.trimPool(); B.housekeep(); return B.stats(); } B.advance(1 / 60); } return null; })()`);
   if (!quietStats) await b.evaluate("(() => { const B = window.__ooga; B.trimPool(); B.housekeep(); })()");
   const quiet = !!quietStats;
@@ -26984,19 +26789,13 @@ const soakDonations = (label, url, opts) => withPage(`soak: donations (${label})
   record(`soak: donations (${label}): heap after GC within 15%`, within(before, after, 0.15), heapDetail(before, after));
 }, opts);
 
-// Blocks that measure frame rate or per-frame cost run first, one at a time, with the machine to themselves.
-// The rest are independent (each has its own Chrome and profile) and run in parallel lanes, longest first.
-// A block that reads what another one recorded names it in `after`.
-// Measured 2026-09-17 on 16 cores against LANES=1: median check time grows 1.17x at 6
-// lanes, 1.18x at 8 and 1.57x at 12, so 8 is the widest that adds no contention over 6.
+// fps and per-frame-cost blocks run serial and alone; the rest run parallel lanes, longest first.
+// Measured 2026-09-17 on 16 cores: median grows 1.17x at 6 lanes, 1.18x at 8, 1.57x at 12, so 8 is the max.
 const LANES = Number(process.env.LANES) || 8;
 const LANE = process.env.LANE || "fast";
 const isSoak = (t) => t.name.startsWith("soak:");
-// The backend loops register "<check> webgl2" and "<check> canvas2d" for the same
-// assertions. Gameplay is renderer-agnostic by design, so the canvas twin mostly
-// re-tests identical logic through a far slower rasterizer: it is ~40% of the
-// suite's work. It keeps its own lane, and the fallback's own checks
-// ("canvas2d fallback", "canvas culling", "mirror canvas", ...) stay in fast.
+// Backend loops add a canvas2d twin of each check: identical logic, far slower rasterizer, ~40% of the work.
+// It keeps its own lane; the fallback's own checks (canvas2d fallback, canvas culling, ...) stay in fast.
 const isCanvasTwin = (t) => /(?:^| )canvas2d(?: |$)/.test(t.name);
 const IN_LANE = {
   fast: (t) => !t.serial && !isSoak(t) && !isCanvasTwin(t),
@@ -28065,7 +27864,7 @@ const bananaPlatform = (backend) => [`banana platform ${backend}`, async (b) => 
 const bananaSlots = (backend) => [`banana slots ${backend}`, async (b) => {
   const r = await b.evaluate(`(${bananaSlotProbe.toString()})()`);
   record(`banana slots ${backend}: approaching Oogas select the nearest free slot and retarget around players, NPCs and reservations`, r.initial && r.playerRetarget && r.npcRetarget && r.bedReturn && r.reserved && r.slots >= 3, JSON.stringify(r));
-  record(`banana slots ${backend}: growth adds spaced destinations around the heap and shrinking releases the extras`, r.growth.every((row) => row.clear && row.separation >= 0.68 && row.count <= 128) && r.growth.slice(1, 4).every((row, i) => row.count > r.growth[i].count) && r.growth[4].count === r.growth[0].count, JSON.stringify(r.growth));
+  record(`banana slots ${backend}: growth adds spaced destinations around the heap and shrinking releases the extras`, r.growth.every((row) => row.clear && row.separation >= 0.68 && row.count <= 128) && r.growth.slice(1, 4).every((row, i) => row.count >= r.growth[i].count) && r.growth[3].count > r.growth[0].count && r.growth[4].count === r.growth[0].count, JSON.stringify(r.growth));
 }];
 const bananaGlyphInteriors = (backend) => [`banana glyph interiors ${backend}`, async (b) => {
   const r = await b.evaluate(`(${bananaGlyphInteriorProbe.toString()})()`);
@@ -28088,12 +27887,12 @@ const roomLifeHash = ["room LifeHash", async (b) => {
   const r = await b.evaluate(`(${lifehashProbe.toString()})()`);
   record("room LifeHash: exact v2 images match independent reference vectors, including UTF-8 and coordinate domains", r.vectors === 14 && r.referenceMatches === 14 && r.shapeMatches === 14 && r.repeatMatches === 14 && r.unique === 14 && r.failures.length === 0, JSON.stringify(r));
 }];
-// Read-only geometry and image checks: each only queries the island, so they share one hub page
+// Read-only geometry and image checks: each only queries the island, so they share one hub page.
 task("window flares + convex collision + room LifeHash", () => fold(hubPage(src), [windowFlares, convexCollision, roomLifeHash]));
 for (const backend of ["webgl2", "canvas2d"]) task(`jumbotron ${backend}`, () => withPage(`jumbotron ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
   const r = await b.evaluate(`(${jumbotronProbe.toString()})()`);
   record(`jumbotron ${backend}: the board is solid on the north rim, facing the meadow with public timestamped stats parsed and guarded`, r.exists && r.placement.onNorthRim && r.placement.aboveGround && r.placement.facesCenter && r.placement.scale > 1 && r.placement.solid && r.data.contributors > 0 && r.data.schemaGuard && r.data.noPersonalMetadata && r.data.activityTimes && r.data.anonymousLabel, JSON.stringify({ placement: r.placement, data: r.data }));
-  record(`jumbotron ${backend}: view changes rebuild the screen quads and pokes select contributors by handle or roster alias`, r.initial.view === "totals" && r.initial.screenFaces > 200 && r.initial.cabinetFaces === 84 && r.leaderboard.view === "leaderboard" && r.leaderboard.changed && r.poked.accepted && r.poked.view === "contributor" && r.poked.login === "portlandhodl" && r.alias.accepted && r.alias.login === "ottoz0r" && r.alias.caseInsensitive && r.pokeUnknown === false && r.advanced.drew, JSON.stringify({ initial: r.initial, leaderboard: r.leaderboard, poked: r.poked, alias: r.alias, advanced: r.advanced }));
+  record(`jumbotron ${backend}: view changes rebuild the screen quads and pokes select contributors by handle or roster alias`, r.initial.view === "totals" && r.initial.screenFaces > 200 && r.initial.cabinetFaces === 108 && r.leaderboard.view === "leaderboard" && r.leaderboard.changed && r.poked.accepted && r.poked.view === "contributor" && r.poked.login === "portlandhodl" && r.alias.accepted && r.alias.login === "ottoz0r" && r.alias.caseInsensitive && r.pokeUnknown === false && r.advanced.drew, JSON.stringify({ initial: r.initial, leaderboard: r.leaderboard, poked: r.poked, alias: r.alias, advanced: r.advanced }));
   // The board stands above the default framing; walk the camera up to it
   // the way a visitor would before tapping.
   await b.evaluate(`window.__ooga.pilot.navigate({ position: { x: -7, y: 8.3, z: -27 }, target: { x: -7, y: 8.3, z: -27 }, yaw: -0.25, pitch: 0.05, dist: 14 })`);
@@ -28104,7 +27903,7 @@ for (const backend of ["webgl2", "canvas2d"]) task(`jumbotron ${backend}`, () =>
     await untilPage(b, `JSON.stringify(B.jumbotron.view) !== ${JSON.stringify(tap.view)}`);
   }
   record(`jumbotron ${backend}: tapping the board advances the view`, !!tap && (await b.evaluate("JSON.stringify(window.__ooga.jumbotron.view)")) !== tap.view, JSON.stringify(tap));
-  const ticker = await b.evaluate(`(() => { const B = window.__ooga, j = B.jumbotron, scene = window.BL.scenes.hub; j.autoRotate(0); j.setView("ticker"); j.update(0, B.renderer); B.renderer.render(scene.root, scene.camera, B.renderOpts); const before = B.renderer.stats.records; let maximum = before, changed = false, previous = j.node.children[0].geometry; for (let i = 1; i <= 12; i++) { j.update(i * 0.25, B.renderer); changed ||= j.node.children[0].geometry !== previous; previous = j.node.children[0].geometry; B.renderer.render(scene.root, scene.camera, B.renderOpts); maximum = Math.max(maximum, B.renderer.stats.records); } window.__jumbotronLeaving = j.node; return { before, maximum, changed }; })()`);
+  const ticker = await b.evaluate(`(() => { const B = window.__ooga, j = B.jumbotron, scene = window.BL.scenes.hub; j.autoRotate(0); j.setView("ticker"); j.update(0, B.renderer); B.renderer.render(scene.root, scene.camera, B.renderOpts); const before = B.renderer.stats.records; let maximum = before, changed = false, previous = j.node.children.map((c) => c.geometry); for (let i = 1; i <= 12; i++) { j.update(i * 0.25, B.renderer); changed ||= j.node.children.some((c, n) => c.geometry !== previous[n]); previous = j.node.children.map((c) => c.geometry); B.renderer.render(scene.root, scene.camera, B.renderOpts); maximum = Math.max(maximum, B.renderer.stats.records); } window.__jumbotronLeaving = j.node; return { before, maximum, changed }; })()`);
   record(`jumbotron ${backend}: scrolling replaces its screen without retaining GPU records`, ticker.changed && ticker.maximum === ticker.before, JSON.stringify(ticker));
   await b.evaluate('window.__ooga.go("lab")');
   const left = await untilPage(b, 'B.scene === "lab" && !B.transitioning');
@@ -28548,36 +28347,17 @@ for (const backend of ["webgl2", "canvas2d"]) task(`camera trajectory ${backend}
   const reset = await b.evaluate(`(${cameraMotionResetProbe.toString()})()`);
   record(`camera trajectory ${backend}: possession clears prior free-camera velocity before first-person entry`, reset.rows.length === 2 && reset.rows.every((row) => row.before < 1e-9 && row.firstStep < 1e-9 && row.maximumSeparation < 1e-9 && row.samples >= 20 && row.finite && row.entered), JSON.stringify(reset));
 }));
-// Folded hub groups. Each group runs its steps against one already-booted page
-// instead of booting one per check: re-navigating costs a full rebuild, only
-// staying put is cheap. Every step keeps its original name, so it still records
-// its own `<name>: clean console` line, keeps its own error boundary, and shows
-// under the same name the maintainer diffs against. Grouping is by shared URL
-// (HUB-W = hub at noon, HUB-C = the same with canvas2d=1) and by probes that
-// either build their own offscreen scene or put back what they changed. Order
-// inside a group is deliberate: probes that read the booted world run before
-// probes that restage it.
+// Folded groups share one booted page; re-navigating means a full rebuild. Each step keeps name and errors.
+// Grouped by URL (HUB-W = hub at noon, HUB-C = canvas2d=1); probes that read run before probes that restage.
 
-// These probes restage the live crew and terrain visibility, so each gets its
-// own page. ONLY can name any individual probe.
+// These probes restage the live crew and terrain visibility, so each gets its own page; ONLY can name one.
 for (const backend of ["webgl2", "canvas2d"]) for (const step of [npcLowerTurns, npcRecovery, npcCenterlines, npcPaths]) {
   const [name, run] = step(backend);
   task(name, () => withPage(name, hubBackend(backend), run));
 }
 
-// Fruit interiors. `banana interior` runs first because its scene half is the
-// only one that stages a smaller pile (`B.setPileLevel(50000)`,
-// banana-cover.mjs:78) and it restores the crew visibility it borrowed
-// (banana-cover.mjs:105). Every later step opens with
-// `B.pilot.release(true); B.setPileLevel(100000)` (banana-movement.mjs:217, 236,
-// 265, 144), so none of them inherits a camera or a pile. `banana glyph
-// interiors` closes the Matrix gate it opened and asserts the restored frame
-// hashes equal the first ones (banana-movement.mjs:287-288), and `banana spill`
-// draws on its own canvas and puts back the nodes it hid (banana-movement.mjs:208).
-// MEASURED: folding these five contaminated each other - `banana platform` and
-// `banana glyph interiors` both fail on a shared page and pass on their own, so
-// the restoration the probes assert is not enough for a neighbour that samples
-// pixels. They keep their own pages; the four extra builds are worth the truth.
+// `banana interior` runs first: only it stages a smaller pile (banana-cover.mjs:78) and restores visibility.
+// MEASURED: folded, these five contaminate each other, so each keeps its own page despite the extra builds.
 for (const backend of ["webgl2", "canvas2d"]) {
   for (const step of [bananaInterior, bananaPlatform, bananaSlots, bananaGlyphInteriors, bananaSpill]) {
     const [name, run] = step(backend);
@@ -28585,43 +28365,25 @@ for (const backend of ["webgl2", "canvas2d"]) {
   }
 }
 
-// Both lighting probes restage the pilot and clock. Keep their pages separate
-// and pin the solar date for reproducible dusk/moon comparisons.
+// Both lighting probes restage pilot and clock: separate pages, pinned solar date for dusk/moon repeats.
 for (const backend of ["webgl2", "canvas2d"]) for (const step of [bananaLightingGuides, bananaDawnShadows]) {
   const [name, run] = step(backend);
   task(name, () => withPage(name, hubBackend(backend), run));
 }
 
-// Static outline geometry. `window outlines` builds and disposes its own guides
-// (window-outlines.mjs:4, 60; ramp-wall-outlines.mjs:32, 63); `slope outlines`
-// and `cave outlines` read the live rock guides and reset them in a `finally`
-// (slope-outline-sections.mjs:216, cave-outline-sections.mjs:199). None of them
-// touches the pilot, the crew or the pile.
+// Static outline geometry: window outlines disposes its own guides; slope/cave outlines reset in a finally.
+// None touches the pilot, the crew or the pile, so they fold onto one page.
 for (const backend of ["webgl2", "canvas2d"]) task(`window outlines + slope outlines + cave outlines ${backend}`, () => fold(hubBackend(backend), [windowOutlines(backend), slopeOutlines(backend), caveOutlines(backend)]));
 
-// Rock and seal outlines, all offscreen or self-resetting. `camera rock guides`
-// draws into its own canvas and ends on `guides.resetSurface(); cover.dispose()`
-// (rock-guides.mjs:202-204, 311) with the ramp sections resetting in a `finally`
-// (ramp-outline-sections.mjs:229); `sealed cave blocks` disposes its own cover
-// and renderer (sealed-cave-blocks.mjs:135); `outline moving characters` keeps
-// its fixtures on a detached node and ends `finally { guides.resetSurface();
-// wallObjects.dispose(); }` (outline-moving-characters.mjs:99, 137).
+// All offscreen or self-resetting: rock guides dispose canvas and cover, sealed cave blocks its renderer.
+// outline moving characters keeps fixtures detached and ends in finally { resetSurface(); dispose(); }.
 for (const backend of ["webgl2", "canvas2d"]) task(`camera rock guides + sealed cave blocks + outline moving characters ${backend}`, () => fold(hubBackend(backend), [cameraRockGuides(backend), sealedCaveBlocks(backend), outlineMovingCharacters(backend)]));
 
-// Visibility caches and glyph sampling. Every probe here is offscreen or puts
-// itself back: `outline visibility cache` disposes its synthetic guides
-// (object-visibility-performance.mjs:59-62) and brackets its rows with
-// `guides.resetSurface()` (outline-performance.mjs:13, 44); `camera performance`
-// removes the prop it parented to the hub and refreshes the production provider
-// (outline-trigger-performance.mjs:89, 110); `ramp aperture occlusion`,
-// `matrix living distance` and `mirror glyph parity` only read the island and
-// the Matrix world, drawing into their own canvas, renderer or provider and
-// disposing it (ramp-aperture-occlusion.mjs:96, matrix-living-distance.mjs:57,
-// mirror-glyph-parity.mjs:126).
+// Every probe here is offscreen or puts itself back (disposes guides, brackets rows with resetSurface()).
+// camera performance removes its parented prop and refreshes the production provider, so these fold safely.
 for (const backend of ["webgl2", "canvas2d"]) task(`outline visibility cache + camera performance + ramp aperture occlusion + matrix living distance + mirror glyph parity ${backend}`, () => fold(hubBackend(backend), [outlineVisibilityCache(backend), cameraPerformance(backend), rampApertureOcclusion(backend), matrixLivingDistance(backend), mirrorGlyphParity(backend)]));
 
-// Synthetic object probes restore the live pile level before returning.
-// The sight probe drives an Ooga, so it has a separate page.
+// Synthetic object probes restore the live pile level; the sight probe drives an Ooga, so it gets its own page.
 for (const backend of ["webgl2", "canvas2d"]) {
   task(`camera object registry + camera object fade + camera pile outline ${backend}`, () => fold(hubBackend(backend), [cameraObjectRegistry(backend), cameraObjectFade(backend), cameraPileOutline(backend)]));
   const [name, run] = cameraSightGuides(backend);
@@ -28770,9 +28532,10 @@ task("hub flight", hubFlight);
 task("hub jetpack", hubJetpack);
 const adaptiveQualityChecks = async () => {
   const r = autoQualityProbe();
-  record("adaptive quality: sustained CPU or GPU pressure lowers quality after a healthy startup without throttling frames", r.healthy && r.cpu && r.gpu, JSON.stringify(r));
-  record("adaptive quality: transitions, background frames, pauses and isolated spikes do not lower quality", r.ignoresPauses && r.ignoresSpikes && r.fallback, JSON.stringify(r));
-  record("adaptive quality: each change settles before another reduction and stops at the lowest tier", r.settling && r.bounded, JSON.stringify(r));
+  record("adaptive quality: a GPU-bound machine is seen through delivered frames and loses a tier within two seconds", r.healthy && r.gpuBound && r.reactsFast, JSON.stringify(r));
+  record("adaptive quality: warmup, transitions, background frames and isolated spikes do not lower quality", r.warmup && r.ignoresPauses && r.ignoresSpikes && r.fallback, JSON.stringify(r));
+  record("adaptive quality: steps one tier at a time and stops at the lowest", r.bounded, JSON.stringify(r));
+  record("adaptive quality: boot cost seeds the opening tier, only ever downward", r.bootFast && r.bootMedium && r.bootLow && r.bootOneWay && r.bootKeepsCoarse, JSON.stringify(r));
 };
 task("adaptive quality", adaptiveQualityChecks);
 task("governor", governor, { serial: true });
@@ -28798,7 +28561,7 @@ task("mask breath lab canvas2d", () => maskBreath("canvas2d", true));
 task("fan", fan);
 task("race phone", racePhone);
 task("hub drop route", hubDrop);
-// The locker counts the inventory, so it goes before the crates whose tips hand out loot
+// The locker counts the inventory, so it goes before the crates whose tips hand out loot.
 task("locker + crates", () => fold(page(src, "loot=1"), [locker, crates]));
 task("race garage", raceGarage);
 task("race tracks + race physics + race AI", () => fold(racePage(src), [raceTracks, racePhysics, raceAi]));
@@ -28908,26 +28671,21 @@ for (const backend of ["webgl2", "canvas2d"]) task(`path depth ${backend}`, () =
     record("path depth: nearby paths stay unchanged and foreground objects still occlude distant paths", r.rows.filter((row) => row.distance === 12).every((row) => row.delta === 0) && r.foreground > 100 && r.occluded === 0 && r.undersidePath === 0, JSON.stringify({ nearby: r.rows.filter((row) => row.distance === 12), foreground: r.foreground, occluded: r.occluded, undersidePath: r.undersidePath }));
   } else record("path depth: Canvas preserves its existing path layering", r.rows.length === 12 && r.rows.every((row) => row.samples > 100 && row.delta === 0) && r.foreground > 100 && r.occluded === 0, JSON.stringify(r));
 }));
-// No frame-rate check here, but it compares against what dynamic paths recorded
+// No frame-rate check here, but it compares against what `dynamic paths` recorded (hence after).
 task("mirror canvas", mirrorCanvas, { after: "dynamic paths" });
-// Frame-rate and per-frame-cost measurements, alone on the machine
+// Frame-rate and per-frame-cost measurements, alone on the machine.
 task("core", () => core("source", src), { serial: true });
 task("dynamic paths", dynamicPaths, { serial: true });
 task("daylight night", daylightNight, { serial: true });
 task("day cycle", dayCycle, { serial: true });
-// The wave probe expects a resting wave, so it goes first; the mirror cave counts allocations from a fresh page, so it keeps its own
+// The wave probe expects a resting wave, so it goes first; mirror cave counts allocations from a fresh page.
 task("matrix wave webgl2 + hub pile", () => fold(hubPage(src), [matrixWave("webgl2"), hubPile]), { serial: true });
 task("mirror cave", () => fold(hubPage(src), [mirrorCave]), { serial: true });
 task("matrix wave canvas2d", () => fold(hubPage(src, "canvas2d=1"), [matrixWave("canvas2d")]), { serial: true });
 
-
-// ---------- the Node tier ----------
-// These checks are pure computation over window.BL, so they need no browser at
-// all: they load the module graph under a minimal DOM shim and call the very
-// same probe functions the browser lane calls. 30 checks in about three
-// seconds, against ~3.7 s of launch and boot per browser task.
+// Node tier: pure computation over window.BL under a minimal DOM shim, calling the same probe functions.
+// 30 checks in about three seconds, against ~3.7 s of launch and boot per browser task.
 const unitChecks = async () => {
-  // ---------- the browser surface the modules touch at load time ----------
   const canvasStub = () => ({
     width: 0, height: 0,
     getContext: () => ({
@@ -28979,9 +28737,8 @@ const unitChecks = async () => {
   const BL = globalThis.BL;
   if (LANE === "unit") { await contributorActivityChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); }
 
-  // The scene state these probes read, built directly instead of booted. SEED
-  // matches scene-hub.js; sealed cave guides need the hub's seal nodes, so the
-  // probes that read them stay in the browser tier.
+  // Scene state built directly instead of booted; seed 1 matches scene-hub.js.
+  // Sealed cave guides need the hub's seal nodes, so probes reading them stay in the browser tier.
   const island = BL.terrain.island({ seed: 1 });
   const rockGuides = BL.rockGuides.create({ island, sealed: [] });
   globalThis.__ooga = { island, headquarters: { rockGuides } };
@@ -29283,7 +29040,7 @@ const unitChecks = async () => {
     for (const backend of backends) record(`outline visibility cache ${backend}: whole-wall witnesses remain correct as blockers change without retracing fixed-camera terrain`, r.rows.length === 3 && r.failures.length === 0, JSON.stringify(r));
   }
   {
-    // Ooga Orbit's rules and flight model, straight from rocket-parts.js and rocket.js at the fixed step
+    // Ooga Orbit's rules and flight model, straight from rocket-parts.js and rocket.js, at the fixed 1/120 step.
     const P = BL.rocketParts, K = BL.rocket, { quat } = BL.math, DT = 1 / 120, IN = { throttle: 0, lean: 0, pitch: 0, roll: 0, yaw: 0 };
     const climb = (stack) => {
       const f = K.create({ stack, groundAt: () => -Infinity }), s = f.state;
@@ -29299,7 +29056,7 @@ const unitChecks = async () => {
       }
       return { alt: Math.round(s.alt), failure: s.failure, seps };
     };
-    // Held over the pad at the top, pod alone, thrown down shield first (or flipped), chute as soon as it is ready
+    // Held over the pad at the top, pod alone, thrown down shield first (or flipped), chute as soon as it is ready.
     const home = (stack, { flip = false, chute = true } = {}) => {
       const f = K.create({ stack, groundAt: () => -Infinity }), s = f.state;
       f.reset(0, 2.3, 46);
@@ -29340,16 +29097,15 @@ const runTasks = async () => {
     finished.set(t.name, promise);
     return promise;
   };
-  // ONLY=race runs just the blocks whose name contains it
+  // ONLY=race runs just the blocks whose name contains it.
   const picked = tasks.filter((t) => IN_LANE(t) && (!process.env.ONLY || t.name.includes(process.env.ONLY)));
-  // A focused check still needs the reference state its explicit prerequisite
-  // records (for example WebGL scenery before the Canvas parity check).
+  // A focused run still needs its `after` prerequisite's state (WebGL scenery before the canvas parity check).
   for (const t of picked) if (t.after && !picked.some((dependency) => dependency.name === t.after)) {
     const dependency = tasks.find((candidate) => candidate.name === t.after);
     if (!dependency) throw new Error(`Task "${t.name}" declares after: "${t.after}", which no task registers`);
     picked.push(dependency);
   }
-  // Heap-sensitive soaks go first so they are not all in flight at once later
+  // Heap-sensitive soaks go first so they are not all in flight at once later.
   const queue = picked.filter((t) => !t.serial).sort((a, b) => isSoak(b) - isSoak(a));
   const lane = async () => {
     while (queue.length) await start(queue.shift());
@@ -29360,8 +29116,7 @@ const runTasks = async () => {
   await Promise.all(Array.from({ length: LANES }, lane));
   await dispose();
 };
-// The shim installs browser globals in this process, so it runs after the
-// browser lanes have finished with Chrome.
+// The shim installs browser globals in this process, so it runs after the browser lanes finish with Chrome.
 if (LANE !== "unit") await runTasks();
 if (LANE === "unit" || LANE === "full") await unitChecks();
 

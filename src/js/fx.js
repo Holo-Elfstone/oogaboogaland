@@ -3,7 +3,7 @@
   const BL = window.BL = window.BL || {};
   const { models } = BL;
   const { createNode, addChild, removeChild } = BL.scene;
-  // Pooled particle nodes housekeeping keeps
+  // Housekeeping trims the idle particle-node pool back to this many nodes.
   const POOL_KEEP = 32;
   const setVec = (v, x, y, z) => {
     v.x = x;
@@ -14,7 +14,7 @@
   const CONFETTI = ["#d8892b", "#22c55e", "#6f9fca", "#f3efe4", "#f5c542"].map((c) => models.particleGeometry(c, 0.09, 0.6));
   const SMOKE_TRAIL = models.particleGeometry("#c9cbce", 0.09, 0.15);
   const SCREEN = { x: 0, y: 0, depth: 0 };
-  // Sleep marks grow from 11px to 23px, so the whole range is a fixed table
+  // Sleep marks span 11px to 23px, so the whole font range is a fixed table instead of per-frame strings.
   const ZZZ_FONTS = [];
   for (let size = 11; size <= 23; size++) ZZZ_FONTS[size] = `${size}px ui-monospace, monospace`;
   const drawBubble = (ctx, text, x, y, alpha, topSpace = 0) => {
@@ -46,7 +46,6 @@
     ctx.globalAlpha = 1;
     return by;
   };
-  // Particles, bubbles, sleep marks and the ticker
   const create = ({ root, renderer, camera, overlay, tickerAt, hud = null, overlayVisible = null, zzzVisible = null, characterOccluded = null }) => {
     const overlayCtx = overlay.getContext("2d");
     const visibility = BL.characterVisibility.create({ root, renderer, camera, occluded: characterOccluded });
@@ -96,7 +95,6 @@
           continue;
         }
         if (p.smoke) {
-          // A puff drifts up and out as it spreads, then shrinks away
           const drag = Math.max(0, 1 - 1.6 * dt);
           p.vx *= drag;
           p.vz *= drag;
@@ -172,7 +170,7 @@
       const top = drawBubble(ctx, text, x, y, alpha, hud ? hud.tooltip.speechSpace(cave) : 0);
       if (hud) hud.tooltip.aboveSpeech(cave, top);
     };
-    // drawExtra paints between the bubbles and the ticker
+    // drawExtra paints between the bubbles and the ticker.
     const drawOverlay = (dt, drawExtra) => {
       visibility.begin();
       if (hud) hud.tooltip.beginFrame();

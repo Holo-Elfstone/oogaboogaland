@@ -13,16 +13,13 @@
     v.z = z;
     return v;
   };
-  // Loot crates for one scene
   const create = (ctx) => {
     const { root, input, hud, game, camera } = ctx;
     const crates = [];
-    // Twelve landing slots, 30 degrees apart
     const CRATE_SLOTS = Array.from({ length: 12 }, (_, i) => {
       const angle = i / 12 * Math.PI * 2;
       return { angle, x: 0, z: 0, taken: false };
     });
-    // Free slot nearest the camera
     const claimCrateSlot = () => {
       const toCamera = Math.atan2(camera.position.z, camera.position.x);
       let best = null;

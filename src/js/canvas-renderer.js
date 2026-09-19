@@ -37,15 +37,11 @@
     let matrixActive = 0, matrixRadius = 0, matrixTime = 0, matrixDensity = 0, matrixOriginX = 0, matrixOriginZ = 0, matrixSurfaces = 0, matrixLivingSurfaces = 0, matrixArea = 0, matrixSamples = 0, matrixSampleStep = 1, matrixCulled = 0;
     let matrixCaves = null, matrixCaveBounds = null, matrixCaveNear = Infinity, matrixPermanentCave = 0, matrixPermanentPlane = null, matrixAperture = DEFAULT_MATRIX_APERTURE, matrixLivingGlobal = 1, matrixPointX = 0, matrixPointY = 0;
     const MATRIX_MASKS = new Int32Array([630678, 497559, 988959, 495513, 1009263, 288049, 456438, 616809]);
-    // Most terrain receivers occupy only a few samples. A smaller scratch
-    // canvas avoids copying a 64 KB image for each tiny clipped face; the
-    // sampling budget and spacing remain unchanged across tile boundaries.
+    // 32px scratch tile avoids copying a 64 KB image per tiny clipped face; sampling budget/spacing unchanged.
     const MATRIX_TILE_SIZE = 32, MATRIX_SAMPLE_BUDGET = 524288;
     const matrixTile = document.createElement("canvas");
     matrixTile.width = matrixTile.height = transparent ? 1 : MATRIX_TILE_SIZE;
-    // This scratch surface is overwritten from CPU pixels for every receiver.
-    // Keep it CPU-backed: a GPU tile read by drawImage otherwise synchronizes its
-    // previous upload on every putImageData, dwarfing the bounded sampling work.
+    // Keep this scratch canvas CPU-backed via willReadFrequently: a GPU tile syncs its last upload per putImageData.
     const matrixCtx = matrixTile.getContext("2d", { willReadFrequently: true });
     const matrixImage = matrixCtx.createImageData(matrixTile.width, matrixTile.height);
     const matrixPixels = matrixImage.data;
@@ -179,7 +175,7 @@
     let eye = { x: 0, y: 0, z: 0 }, near = 0.2;
     const lightDir = new Float32Array([0, 1, 0]);
     let directStrength = 1, ambientFloor = 0.3, diffuseFloor = 0, skyLuma = 0.5, groundLuma = 0.2;
-    // Distance fog toward a colour, off until a frame passes one
+    // Fog toward a colour; fogNear/fogFar start at 1e8/1e8+1 so it stays off until a frame sets one.
     const fogRgb = [0, 0, 0];
     let fogNear = 1e8, fogFar = 1e8 + 1;
     const smooth = (value) => {
@@ -333,9 +329,8 @@
             let radiusSquared = 0;
             for (let k = 0; k < count; k++) radiusSquared = Math.max(radiusSquared, (V[k][0] - centerX) ** 2 + (V[k][2] - centerZ) ** 2);
             const distance = matrixCloud ? Math.min(matrixTravel(centerX, centerZ, cave), 36) : matrixTravel(centerX, centerZ, cave), margin = Math.sqrt(radiusSquared) * (cave && matrixCaves ? Math.SQRT2 : 1);
-            // Cap the entire living face's travel interval, not its centre:
-            // distant occupants share the clouds' wave without losing their
-            // partial reveal pixels. Cave paths keep their entrance distance.
+            // Cap the whole living face's travel interval, not its centre, so distant occupants keep partial reveal pixels.
+            // Cave paths keep their entrance distance.
             const livingOutside = matrixLiving && !cave;
             minimumFront = Math.max(minimumFront, matrixFront(livingOutside ? Math.min(distance + margin, 36) : distance + margin));
             maximumFront = Math.max(maximumFront, matrixFront(livingOutside ? Math.min(Math.max(0, distance - margin), 36) : Math.max(0, distance - margin)));
@@ -377,7 +372,7 @@
               if (surfaceCount < 3) continue;
             }
             const minimumY = Math.max(clipMinimumY, mirrorMinimumY);
-            // Only clipped geometry needs its face copied into the clip buffers
+            // Only clipped geometry needs its face copied into the clip buffers.
             if (!surface && (minimumY > -Infinity || clipMaximumY < Infinity)) {
               surface = MIRROR_CLIP_IN;
               for (let k = 0; k < count; k++) {
@@ -403,8 +398,7 @@
               CLIP_IN[k * 3 + 1] = V[k][1];
               CLIP_IN[k * 3 + 2] = V[k][2];
             }
-            // A just-closed doorway must cover the view even inside the camera's
-            // normal near plane. Keep its real projection and depth sorting.
+            // A just-closed doorway must cover the view inside the near plane: mirrorFace clips at 1e-7, real depth kept.
             const clipped = clipNear(CLIP_IN, surfaceCount, mirrorFace ? 1e-7 : near, CLIP_OUT);
             if (clipped < 3) continue;
             const rec = acquire();
@@ -453,9 +447,7 @@
               if (matrixLiving) matrixLivingSurfaces++;
               else matrixSurfaces++;
             }
-            // Offscreen receivers still register their plane depth for visible
-            // glyphs, but need no shading or draw record. Preserve the face stroke
-            // and antialias margin, including polygons crossing the whole view.
+            // Offscreen receivers still register plane depth for visible glyphs; skip only shading and the draw record.
             if (maxX < -2 || minX > width + 2 || maxY < -2 || minY > height + 2) { rec.mirrorNode = null; poolUsed--; continue; }
             if (node.mirrorShard && !shardDrawn) { mirrorDebug.shardsDrawn++; shardDrawn = true; }
             const emissive = Math.max((face.emissive || 0) * materialGlow, ember * 0.9);
@@ -581,8 +573,7 @@
           const cx = view[0] * x + view[4] * y + view[8] * z + view[12];
           const cy = view[1] * x + view[5] * y + view[9] * z + view[13];
           const depth = -(view[2] * x + view[6] * y + view[10] * z + view[14]);
-          // The .079 by .121 by .01 voxel glyph fits within a .08-radius
-          // sphere. Its instance basis is orthogonal, including on cave props.
+          // The .079 x .121 x .01 voxel glyph fits a .08-radius sphere; the instance basis is orthogonal, caves included.
           const radius = 0.08 * Math.sqrt(Math.max(
             data[offset] ** 2 + data[offset + 1] ** 2 + data[offset + 2] ** 2,
             data[offset + 4] ** 2 + data[offset + 5] ** 2 + data[offset + 6] ** 2,
@@ -592,9 +583,7 @@
           if (matrixCaves && cave && cave !== matrixPermanentCave) {
             const travel = matrixTravel(x, z, cave);
             if (!matrixActive || travel - radius * Math.SQRT2 >= matrixRadius) { matrixCulled++; continue; }
-            // A face's center is within one sphere radius and its own radius
-            // within two. Cave travel is sqrt(2)-Lipschitz; five radii safely
-            // bound every existing face-front test, including float rounding.
+            // Cave travel is sqrt(2)-Lipschitz; five radii bound every face-front test, float rounding included.
             if (matrixActive === 1 && travel + radius * 5 <= matrixRadius - 1.5) BATCH_NODE.matrixFullCave = cave;
           }
         }
@@ -608,8 +597,7 @@
         shadeNode(BATCH_NODE);
       }
     };
-    // Integrate each voxel face over the sample footprint. This retains small,
-    // distant pixels instead of dropping whole glyphs at a screen-size cutoff.
+    // Integrate each voxel face over the sample footprint: keeps small distant pixels, no screen-size cutoff.
     const matrixCoverage = (mask, cross, travel, halfX, halfY, shiftX, shiftY, blockX, blockY) => {
       const loX = cross - halfX - shiftX, hiX = cross + halfX - shiftX;
       const loY = travel - halfY - shiftY, hiY = travel + halfY - shiftY;
@@ -753,7 +741,7 @@
             }
           }
           if (!painted) continue;
-          // Empty samples change no pixels and need no Canvas clipping state.
+          // Empty samples change no pixels and need no Canvas clipping state, so clip lazily.
           if (!clipped) { ctx.save(); ctx.clip(); clipped = true; }
           matrixCtx.putImageData(matrixImage, 0, 0, 0, 0, cols, rows);
           ctx.drawImage(matrixTile, 0, 0, cols, rows, tx, ty, cols * step, rows * step);
@@ -763,8 +751,7 @@
     };
     const matrixPolygonCoverage = (rec, x, y, step) => {
       let count = rec.n, src = matrixClipA, dst = matrixClipB;
-      // Distant voxel faces often fit inside one sample. Clipping would copy
-      // their unchanged vertices four times; retain the same area and centroid.
+      // Distant faces often fit one sample; clipping copies unchanged vertices 4x - keep the same area and centroid.
       const maxX = x + step, maxY = y + step;
       let contained = true, area = 0, centerX = 0, centerY = 0;
       for (let i = 0; i < count; i++) {
@@ -808,8 +795,7 @@
     };
     const drawMatrixGlyph = (rec) => {
       const step = matrixSampleStep;
-      // Visible faces partition a voxel's silhouette. Sum their area-weighted
-      // contributions; source-over would attenuate shared antialiased pixels twice.
+      // Faces partition a voxel silhouette; sum area-weighted. source-over would attenuate shared AA pixels twice.
       ctx.fillStyle = rec.style;
       for (let y = rec.matrixMinY; y < rec.matrixMaxY; y += step) for (let x = rec.matrixMinX; x < rec.matrixMaxX; x += step) {
         let coverage = matrixPolygonCoverage(rec, x, y, step);
@@ -1161,7 +1147,7 @@
         clearRef = clear;
         clearStyle = clear ? `rgb(${Math.round(clear[0] * 255)},${Math.round(clear[1] * 255)},${Math.round(clear[2] * 255)})` : "";
       }
-      // The faux tint follows the sky, rebuilt only when a channel moves
+      // The faux tint follows the sky; rebuilt only when a channel moves.
       const mr = Math.round((sky[0] * 0.55 + ground[0] * 0.25 + 0.12) * 255), mg = Math.round((sky[1] * 0.55 + ground[1] * 0.25 + 0.14) * 255), mb = Math.round((sky[2] * 0.55 + ground[2] * 0.25 + 0.17) * 255);
       if (mr !== mirrorInts[0] || mg !== mirrorInts[1] || mb !== mirrorInts[2]) {
         mirrorInts[0] = mr;
@@ -1233,8 +1219,7 @@
       }
       for (let i = 0; i < poolUsed; i++) {
         const rec = pool[i];
-        // A large backing polygon must precede all of its own voxel faces, even
-        // when its centre is nearer than glyphs at its far edge in an oblique view.
+        // A large backing polygon must precede its own voxel faces, even when its centre is nearer in an oblique view.
         if (rec.matrixGlyph && !rec.line) {
           let plane = matrixPlaneSlot(rec.matrixNx, rec.matrixNy, rec.matrixNz, rec.matrixPlane - 0.015, false, 0);
           if (plane < 0) plane = matrixPlaneSlot(rec.matrixNx, rec.matrixNy, rec.matrixNz, rec.matrixPlane + 0.015, false, 0);
@@ -1257,8 +1242,7 @@
       else {
         ctx.fillStyle = gradientSky ? skyGradient : clear ? clearStyle : backdrop;
         const hazeShift = gradientSky ? BL.daylight.hazeDropAt(eye.y) * lastF : 0;
-        // Move the cached haze gradient, keeping its colors and allocation
-        // lifetime independent of camera movement.
+        // Translate the cached haze gradient instead of rebuilding: colors and allocation stay camera-independent.
         ctx.translate(0, hazeShift);
         ctx.fillRect(0, -hazeShift, width, height);
         ctx.translate(0, -hazeShift);
@@ -1266,8 +1250,7 @@
       ctx.lineJoin = "round";
       let glyphBlend = false, glyphComposite = "";
       for (const rec of active) {
-        // Glyphs paint sampled rectangles, never the polygon path. Keep their
-        // additive state across consecutive records without changing draw order.
+        // Glyphs paint sampled rects, never the polygon path; keep additive state across records without reordering.
         if (rec.matrixGlyph && !rec.line) {
           const composite = rec.matrixGlyphOpacity < 1 ? "source-over" : "lighter";
           if (!glyphBlend || glyphComposite !== composite) { ctx.globalCompositeOperation = glyphComposite = composite; glyphBlend = true; }

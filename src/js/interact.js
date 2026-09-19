@@ -5,7 +5,6 @@
   const TAP_PX = 7;
   const TAP_MS = 420;
   const LONG_PRESS_MS = 320;
-  // Double-tap window on one target
   const DOUBLE_MS = 380;
   const DOUBLE_PX = 24;
   const WHEEL_GAP_MS = 220;
@@ -22,7 +21,7 @@
     let zoomGesture = 0, wheelAt = -Infinity, wheelDirection = 0;
     let longPressTimer = 0;
     const lastTap = { at: -Infinity, node: null, owner: null, x: 0, y: 0 };
-    // Every body part of one caveman is the same target, so a poke hop cannot break a double tap
+    // Every body part of one caveman is the same target, so a poke hop cannot break a double tap.
     const sameTarget = (hit) => hit ? hit.node === lastTap.node || (!!hit.owner.cave && !!lastTap.owner && hit.owner.cave === lastTap.owner.cave) : lastTap.node === null;
     const call = (name, a, b, c, d) => hooks[name] ? hooks[name](a, b, c, d) : undefined;
     const add = (node, owner, { radius = 0 } = {}) => {
@@ -55,6 +54,7 @@
       for (const t of targets) {
         const { node } = t;
         if (!node.geometry || !nodeShown(node) || ignoreCave && t.owner.cave === ignoreCave) continue;
+        // A caveman swaps its head geometry, so key the bounds memo on the geometry, not the node.
         if (t.geometry !== node.geometry) {
           t.geometry = node.geometry;
           t.bounds = boundsOf(node.geometry);
@@ -136,7 +136,7 @@
       out.z = ray.oz + ray.dz * t;
       return out;
     };
-    // The two live pointers, without materialising the map's values
+    // The two live pointers, without materialising the map's values.
     const PINCH = { d: 0, x: 0, y: 0 };
     const pinchSpan = (out) => {
       let ax = 0, ay = 0, n = 0;
@@ -205,8 +205,8 @@
         hoverY = p.y;
         hoverDirty = true;
       }
-      // Both mouse buttons make a walk that drags to turn: no tap on release, no grab in hand. Pressed
-      // together they arrive as one move with no pointerdown at all, so the chord registers its own pointer
+      // Both mouse buttons = a walk that drags to turn: no tap on release, no grab in hand.
+      // Pressed together they arrive as one move with no pointerdown, so the chord registers its own pointer.
       if (e.pointerType === "mouse" && (e.buttons & 3) === 3 && (!gesture || (gesture.pointerId === e.pointerId && gesture.mode !== "chord"))) {
         clearLongPress();
         if (gesture && gesture.mode === "grab") call("onGrabEnd", gesture.hit, p, null, true);
@@ -353,7 +353,7 @@
       add, remove, pick, aimPoint, weaponTargets, groundPoint, update, reset, dispose, get targetCount() {
         return targets.length;
       },
-      // A drag is still held, even if it has paused
+      // A drag is still held, even if it has paused.
       get orbiting() {
         return !!gesture && (gesture.mode === "orbit" || gesture.mode === "chord");
       }

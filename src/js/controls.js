@@ -1,4 +1,3 @@
-// Free-flight input from keys and two joysticks
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -8,7 +7,7 @@
     z: "up", " ": "up", x: "down", arrowup: "forward", arrowdown: "back", arrowleft: "left", arrowright: "right", shift: "sprint"
   };
   const KNOB = 18;
-  // One joystick, knob tracking the pointer in -1..1
+  // Joystick state x/y track the pointer normalized to -1..1.
   const joystick = (el) => {
     const knob = el.firstElementChild;
     const s = { x: 0, y: 0, id: null };
@@ -54,7 +53,6 @@
     };
     return s;
   };
-  // Joystick bases, a hold-to-climb button, a canvas whose mouse chord walks, and a Space handler
   const create = ({ move = null, look = null, boost = null, chord = null, onAction = null, pressActions = false, shooter = () => false } = {}) => {
     const held = { forward: 0, back: 0, left: 0, right: 0, yawLeft: 0, yawRight: 0, pitchDown: 0, pitchUp: 0, up: 0, space: 0, down: 0, boost: 0, chord: 0, sprint: 0 };
     const axes = { x: 0, y: 0, up: 0, yaw: 0, pitch: 0, sprint: 0 };
@@ -88,8 +86,8 @@
     window.addEventListener("blur", onBlur);
     const moveStick = move ? joystick(move) : null;
     const lookStick = look ? joystick(look) : null;
-    // A pointer press has the same action/thrust priority as Space. Consume its
-    // later click so a tap never performs an action twice or jumps on landing.
+    // A pointer press has the same action/thrust priority as Space.
+    // Consume its later click so a tap never acts twice or jumps on landing.
     const onBoostDown = (e) => {
       if (!pressActions) { held.boost = 1; return; }
       if (boostPointer !== null) return;
@@ -114,7 +112,7 @@
       boost.addEventListener("pointerleave", onBoostUp);
       if (pressActions) boost.addEventListener("click", onBoostClick, true);
     }
-    // Both mouse buttons down is forward, as W; a chorded press arrives as a move
+    // Both mouse buttons down means forward (as W); a chorded press arrives as a move event.
     const onChord = (e) => {
       if (e.pointerType === "mouse") held.chord = (e.buttons & 3) === 3 ? 1 : 0;
     };
@@ -124,7 +122,7 @@
       chord.addEventListener("pointerup", onChord);
       chord.addEventListener("pointercancel", onChord);
     }
-    // Yaw positive left, pitch positive down
+    // Sign convention: yaw positive is left, pitch positive is down.
     const read = () => {
       axes.x = clamp(held.right - held.left + (moveStick ? moveStick.x : 0), -1, 1);
       axes.y = clamp(held.forward - held.back + (shooter() ? 0 : held.chord) + (moveStick ? moveStick.y : 0), -1, 1);

@@ -1,6 +1,4 @@
-// Ooga Orbit: build a rocket on the pad off the south rim, release the clamps in the green, stage it up to the Sky Top
-// over a round world, where the sky hook holds it above the islands for a spacewalk to the space rock, then let go and
-// fall home shield first, and glide the pod down to the sea or the pad
+// Build on the pad, release clamps, stage to the Sky Top, sky-hook hold, spacewalk, fall home shield first.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -9,7 +7,7 @@
   const { createNode, addChild, removeChild, createCamera, addTween, stepTweens, tweenCount, traverseVisible } = BL.scene;
   const { CONFETTI } = fxMod;
   const { R, CY, GM, SEA, SPACE_ALT, ORBIT_ALT } = rocketMod;
-  // The goal of a flight: up to the Sky Top
+  // TOP is the Sky Top (ORBIT_ALT) - the goal of a flight, not true orbit.
   const TOP = ORBIT_ALT;
   const params = new URLSearchParams(location.search);
   const DEBUG = params.has("debug");
@@ -23,31 +21,22 @@
   const SEED = 1;
   const METER_CAPACITY = 60;
   const FIXED = 1 / 120, MAX_SUBSTEPS = 4;
-  // The launch: a short count, then the engines spool up a gauge; Space in the green lets go of the clamps, in the
-  // gold it is perfect, early the stack staggers off, late it strains, full it pops
+  // Space in GREEN [.55,.86] frees the clamps, GOLD [.66,.78] is perfect; early staggers, late strains, full pops.
   const COUNT_T = 3, SPOOL_T = 2.6, GREEN = [0.55, 0.86], GOLD = [0.66, 0.78], EARLY = { boost: 0.55, t: 2.2, kick: -0.3 }, LATE_HEAT = 0.3;
   const STAGE_DELAY = 0.45, STUCK_T = 4;
-  // The Sky Top: Ooga NASA's sky hook reels the flight over the pad at the top's height and holds it still there, so
-  // the islands stay in view below; once the spacewalk is done it lets go and throws the pod down shield first at
-  // THROW. Air puffs from the pod's rim while it turns, this often
+  // The sky hook reels the flight over the pad at TOP and holds it still so the islands stay in view.
+  // After the spacewalk it lets go and throws the pod down shield first at THROW.
   const REEL_T = 4, THROW = 12, PUFF_EVERY = 0.05;
-  // The spacewalk: the space rock floats beside the pod in the pod's own frame (to the side, up, ahead), then the
-  // tether's length, how near counts at the rock and at the hatch, the jetpack's push, top speed and settling, how long
-  // a measurement takes, and the eye's distance behind the Ooga
-  // The spacewalker is drawn a little over the pod's Ooga so it reads against the dark
-  // Bumping into the rock or the pod nudges the Ooga gently back off (no air, nothing to slow it, so it keeps a little
-  // of the speed), the jetpack's steadying off for a beat and a small wobble: its radius, the rock's, the pod's,
-  // restitution, the beat
-  const EVA = { size: 0.85, rockE: 7, rockU: 3.5, rockF: 5, tether: 15, reach: 2.8, hatch: 3, accel: 4, max: 3.2, settle: 2.4, measure: 2.2, eye: 5.5, body: 0.45, rockR: 1.05, podR: 1, bounce: 0.12, drift: 0.35 };
-  // Scores and the distances a landing is judged by
+  // EVA rock offsets (e, u, f) are in the pod's own frame: side, up, ahead.
+  // Bumps push the Ooga back at the restitution and keep some speed (no air); steadying pauses for EVA.drift.
+  const EVA = { size: 0.85, rockE: 9, rockU: 4.5, rockF: 6.5, tether: 18, reach: 2.8, hatch: 3, accel: 4, max: 3.2, settle: 2.4, measure: 3.6, eye: 5.5, body: 0.45, rockR: 1.05, podR: 1, bounce: 0.12, drift: 0.35 };
   const SCORE = { perfect: 200, good: 100, space: 300, orbit: 1000, stage: 100, home: 500, cool: 300, pad: 1500, islet: 1000, island: 700, land: 400, sea: 300, near: 500, nearRange: 600, eva: 700 };
   const LANDED_T = 2.6, BOOM_T = 3;
-  // Dropped stages: how long one falls before it is gone, and the pod's radius when one falls into it
+  // DEBRIS.life = seconds a dropped stage falls before it is gone; DEBRIS.pod = the pod's radius for stage hits.
   const DEBRIS = { life: 30, pod: 1.1 };
   const AXIS = new Float32Array(3);
   const SMOKE = 220, PLASMA = 90, PLASMA_BOX = 14, FIREBALLS = 4;
   const CLOUDS = 70;
-  // Camera distances and elevations by phase
   const CHASE = { side: 16, sideElevation: 0.12, orbitDist: 16, orbitElevation: 0.9, orbitYaw: 0.5, podDist: 16, podElevation: 0.85, chuteDist: 17, chuteElevation: 0.22, eyeRate: 6, targetRate: 12, orbitRate: 2.5 };
   const FOV = 50 * Math.PI / 180;
   const TICKER_AT = { x: 0, y: 14, z: 0 };
@@ -59,7 +48,6 @@
   const SPRAY_DK = models.particleGeometry("#7fb8d8", 0.12, 0.2);
   const BOOM_BITS = [FIRE, EMBER, CHAR, SPLINTER];
   const SPLASH_BITS = [SPRAY, SPRAY_DK];
-  // Sky, light and haze from the island's clock, then darkened toward space with height
   const RENDER_OPTS = {
     clear: new Float32Array(3), horizon: new Float32Array(3), zenith: new Float32Array(3), sky: new Float32Array(3), ground: new Float32Array(3), sun: new Float32Array(3), direct: new Float32Array(3),
     light: { x: 0.55, y: 0.78, z: -0.25 }, sunDirection: { x: 0, y: 1, z: 0 }, moon: { x: 0, y: 1, z: 0 }, starMatrix: new Float32Array(9),
@@ -84,22 +72,18 @@
     performance.clearMarks(`ooga:${name}`);
     performance.mark(`ooga:${name}`);
   };
-  // The last pick and build for the page's life; the build is also saved
   const selection = { pilot: contributors.roster[0].name, assist: true };
-  // The climb that reaches orbit: no lean off the pad, then over toward flat as the air thins, flat by the orbit line;
-  // the autopilot flies it whenever A and D are left alone, and the yellow line shows it either way
-  // The climb's arc: straight off the pad, tipping over as the air thins, no further than LEAN_MAX, since up is the goal
+  // No lean off the pad, tipping as the air thins to LEAN_MAX 40 deg; autopilot flies it while A and D are idle.
   const LEAN_FROM = 50, LEAN_OVER = 160, LEAN_CURVE = 0.55, LEAN_MAX = 40 * Math.PI / 180;
   const leanTarget = (alt) => Math.pow(clamp((alt - LEAN_FROM) / LEAN_OVER, 0, 1), LEAN_CURVE) * LEAN_MAX;
 
-  // One visit's state, made in enter and dropped in leave
+  // One visit's state: made in enter, dropped in leave.
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, hud, rhud, hooks, input, fx, controls, audio, clock, spot, site, planet, flight, view, passenger, canopy, heatShell, smoke, plasma, splashNode;
-  // The spacewalker (its own copy of the pilot in a helmet with a jetpack and a measuring stick), the rock and the rope
   let astro, astroStick, astroLight, rockNode, tetherNode;
   const eva = { measured: false, back: false, reeling: false, measuring: 0, reading: 0, drift: 0, tumble: 0, spin: 0, e: 0, u: 0, f: 0, ve: 0, vu: 0, vf: 0, yaw: 0, pitch: 0, near: "", puff: 0 };
   let phase = "build", stack = [], selected = -1, sceneTime = 0, flightTime = 0, accumulator = 0, phaseT = 0, countShown = 0, gauge = 0, release = null, igniteIn = 0;
   let puffClock = 0, reelT = 0;
-  // Where the sky hook reels the flight from and to
+  // REEL holds where the sky hook reels the flight from (x0,y0,z0) and to (x1,y1,z1).
   const REEL = { x0: 0, y0: 0, z0: 0, x1: 0, y1: 0, z1: 0 };
   let orbited = false, spaceCalled = false, stagesDropped = 0, chuteCalled = false, warnAt = 0, flipAt = 0, leanHinted = false, result = null, failure = null, score = 0;
   let meterTimer = 0, stateTimer = 0, hintTimer = 0;
@@ -110,7 +94,7 @@
   const EYE = { x: 0, y: 0, z: 0 };
   const LOCAL = { ux: 0, uy: 1, uz: 0, dx: 0, dy: 0, dz: 1 };
   const HEAD = { x: 0, y: 0, z: 1 };
-  // Speech comes from the top of the pod wherever it is
+  // Speech comes from the top of the pod wherever it is.
   const speaker = { root: { position: { x: 0, y: 0, z: 0 } }, headOffset: 0.6 };
   const placeSpeaker = () => {
     const p = speaker.root.position;
@@ -130,14 +114,13 @@
     }
   };
 
-  // ---------- the world under the rocket ----------
-  // The islands, the site's pad and deck, else the sea (the flight reads the sea from its own height)
+  // Islands, then the site's pad and deck, else the sea (the flight reads the sea from its own height).
   const groundAt = (x, z) => {
     const g = rocketModels.siteGroundAt(spot, x, z);
     if (g > -Infinity) return g;
     return island.onLand(x, z) ? island.surfaceAt(x, z) : -Infinity;
   };
-  // The world's up at a point and the launch plane's downrange there
+  // The world's up at a point and the launch plane's downrange there.
   const localAt = (x, y, z) => {
     const uy = y - CY, r = Math.hypot(x, uy, z);
     LOCAL.ux = x / r; LOCAL.uy = uy / r; LOCAL.uz = z / r;
@@ -146,7 +129,7 @@
     return r - R;
   };
 
-  // ---------- smoke: a fixed ring of puffs, written into one instanced batch ----------
+  // Smoke is a fixed ring of puffs written into one instanced batch.
   const spawnSmoke = (x, y, z, vx, vy, vz, size, life) => {
     const i = smoke.next;
     smoke.next = (i + 1) % SMOKE;
@@ -178,7 +161,7 @@
     smoke.node.visible = count > 0;
     if (count) smoke.node.instanceVersion++;
   };
-  // Plasma streaks in a box round the pod while the air burns, reseeded ahead as they fall behind
+  // Plasma streaks in a box round the pod while the air burns, reseeded ahead as they fall behind.
   const updatePlasma = (glow) => {
     const node = plasma.node, s = flight && flight.state;
     if (!s || glow < 0.05 || s.speed < 4) {
@@ -216,13 +199,11 @@
     node.instanceVersion++;
   };
 
-  // ---------- the rocket on the pad ----------
   const padBase = () => setVec(EYE, spot.x, spot.padY, spot.z);
   const clearPartTargets = () => {
     for (const n of partTargets) input.remove(n);
     partTargets.length = 0;
   };
-  // Throw away the rocket on show and assemble the stack again, the Ooga in its pod
   const rebuildView = () => {
     if (view) {
       clearPartTargets();
@@ -239,7 +220,7 @@
     const top = view.parts[view.parts.length - 1];
     if (top && top.part.kind === "pod") {
       addChild(top.node, passenger.root);
-      // Head and shoulders out of the top, facing the builder's eye
+      // Head and shoulders out of the top (y 0.86 on gourdpod, else 1.02), facing the builder's eye.
       setVec(passenger.root.position, 0, top.part.id === "gourdpod" ? 0.86 : 1.02, 0);
       passenger.root.rotation.y = -0.64;
       addChild(top.node, canopy, heatShell);
@@ -254,7 +235,6 @@
     passenger = models.caveman(contributors.traitsFor(selection.pilot));
     const k = 0.6;
     setVec(passenger.root.scale, k, k, k);
-    // The same Ooga suited up for the spacewalk, hidden until the hatch opens
     if (astro) removeChild(root, astro.root);
     astro = models.caveman(contributors.traitsFor(selection.pilot));
     const h = astro.traits.height;
@@ -262,7 +242,7 @@
     setVec(astro.root.scale, EVA.size, EVA.size, EVA.size);
     addChild(astro.parts.head, createNode({ position: { x: 0, y: 0.13 * h, z: 0 }, scale: { x: h, y: h, z: h }, geometry: rocketModels.helmet(), smokeOpacity: 0.45 }));
     addChild(astro.root, createNode({ position: { x: 0, y: 0.06 * h, z: -0.18 * h }, scale: { x: h, y: h, z: h }, geometry: hubModels.jetpack() }));
-    // The measuring stick rides in the right hand, pointing on out of it; a light at its tip blinks while it reads
+    // The stick rides in the right hand pointing out of it; the tip light blinks while it reads.
     astroStick = createNode({ position: { x: 0, y: -0.62 * h, z: 0.06 * h }, rotation: { x: Math.PI, y: 0, z: 0 }, scale: { x: 1, y: 0.01, z: 1 }, geometry: rocketModels.measureStick(), visible: false });
     astroLight = createNode({ position: { x: 0, y: 0.95, z: 0 }, geometry: rocketModels.readingLight() });
     addChild(astroStick, astroLight);
@@ -277,7 +257,7 @@
     rebuildView();
     rhud.renderStack(stack, selected, rocketParts.check(stack), rocketParts.stats(stack));
   };
-  // A tapped part lands where it belongs: the pod on top, a shield under the pod, anything else under the pod's section
+  // A tapped part lands where it belongs: pod on top, shield under the pod, anything else under the pod's section.
   const addPart = (id) => {
     if (phase !== "build") return;
     if (stack.length >= rocketParts.MAX_PARTS) {
@@ -303,8 +283,7 @@
     audio.cues.tick();
     refreshBuilder();
   };
-  // Dropped parts: a new one put exactly where it was dropped, a dragged one moved there (both as stack indices, 0 at
-  // the bottom); the rocket on the pad and the stack list both rebuild from the new order
+  // Insert/move take stack indices, 0 at the bottom; the pad rocket and the stack list rebuild from the new order.
   const insertPart = (id, at) => {
     if (phase !== "build") return;
     if (stack.length >= rocketParts.MAX_PARTS) {
@@ -325,7 +304,7 @@
     audio.cues.tick();
     refreshBuilder();
   };
-  // Where the rocket's part boundaries sit on screen, bottom up, for drops onto it
+  // Where the rocket's part boundaries sit on screen, bottom up, for drops onto it (rocket-hud slots()).
   const SLOTS = { x: 0, reach: 0, ys: [] }, PROJ = { x: 0, y: 0, depth: 0 };
   const rocketSlots = () => {
     if (phase !== "build" || !view || !renderer.project(spot.x, spot.padY, spot.z, PROJ)) return null;
@@ -379,8 +358,7 @@
     fx.say(speaker, "Ooga fly!", 1.2);
   };
 
-  // ---------- stages coming off ----------
-  // A dropped stage keeps its parts' nodes under a group that falls on its own
+  // A dropped stage keeps its parts' nodes under a group that falls on its own.
   const onDrop = (d) => {
     const s = flight.state;
     const bx = s.p.x - s.up[0] * s.height / 2, by = s.p.y - s.up[1] * s.height / 2, bz = s.p.z - s.up[2] * s.height / 2;
@@ -406,7 +384,7 @@
     }
     cam.shake = Math.max(cam.shake, 0.35);
   };
-  // A falling stage is a segment up its axis, as wide as its widest part; the pod is a ball around its middle
+  // A falling stage is a segment up its axis as wide as its widest part; the pod is a ball around its middle.
   const hitsPod = (d) => {
     const p = d.node.position, c = flight.state.p;
     quat.rotateVec(AXIS, d.node.quaternion, 0, 1, 0);
@@ -428,7 +406,7 @@
       p.z += d.v.z * dt;
       quat.integrate(d.node.quaternion, d.node.quaternion, d.w.x, d.w.y, d.w.z, dt);
       const ground = alt < rocketMod.NEAR_GROUND ? groundAt(p.x, p.z) : -Infinity;
-      // A stage leaves touching the pod, so it can only hit it once it has been clear of it
+      // A stage leaves touching the pod, so it can only hit it once d.clear says it has been clear of it.
       const near = flight.isPod() && hitsPod(d);
       if (!near) d.clear = true;
       else if (d.clear && phase === "descent") {
@@ -450,7 +428,6 @@
     }
   };
 
-  // ---------- fire and water ----------
   const blast = (x, y, z, count, size) => {
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2, b = Math.random() * 2 - 1, sp = (3 + Math.random() * 7) * size;
@@ -503,7 +480,6 @@
     });
   };
 
-  // ---------- flow ----------
   const toBuild = () => {
     phase = "build";
     flight = null;
@@ -578,7 +554,6 @@
     rhud.notice("Space in the green", 0);
     audio.cues.go();
   };
-  // Letting go of the clamps: where the needle sits decides the start
   const releaseClamps = () => {
     if (phase !== "ignite") return false;
     const g = gauge, s = flight.state;
@@ -619,7 +594,7 @@
     for (let i = flight.state.stage + 1; i < flight.stages.length; i++) if (flight.stages[i].engine) return true;
     return false;
   };
-  // Space on the way up: drop the lowest stage and light the next; with nothing left to light, cut the pod loose
+  // Drop the lowest stage and light the next; with nothing left to light, cut the pod loose.
   const stage = () => {
     const s = flight.state;
     if (!flight.isPod() && moreEngines()) {
@@ -652,20 +627,19 @@
     score += SCORE.orbit;
     s.burning = false;
     igniteIn = 0;
-    // From here to the Sky Top straight over the pad
+    // Reel from here to the Sky Top straight over the pad.
     REEL.x0 = s.p.x; REEL.y0 = s.p.y; REEL.z0 = s.p.z;
     const px = spot.x, py = spot.padY - CY, pz = spot.z, pl = Math.hypot(px, py, pz), r = R + TOP;
     REEL.x1 = px / pl * r; REEL.y1 = CY + py / pl * r; REEL.z1 = pz / pl * r;
     reelT = 0;
     rhud.center("LOW ORBIT!", 2600);
-    rhud.notice("You're in low orbit · Ooga NASA steadies you over the island", 4200);
+    rhud.notice("You're in low orbit · steady over the island", 4200);
     hud.setAct(flight.isPod() ? "Walk" : "Drop");
     hud.setSubtitle("Ooga Orbit · in low orbit");
     audio.cues.orbit();
     fx.say(speaker, "OOGA IN ORBIT!", 2.4);
     cam.warm = false;
   };
-  // At the top Space first lets the rest of the rocket go, keeping the pod
   const dropRest = () => {
     if (reelT < REEL_T || flight.isPod() || flight.state.mode === "free") return false;
     flight.homeward();
@@ -675,7 +649,6 @@
     hud.setAct("Walk");
     return true;
   };
-  // After the spacewalk the sky hook lets go: the pod stands shield down and is thrown down toward the island
   const letGo = () => {
     if (phase !== "orbit" || !eva.back) return false;
     const s = flight.state;
@@ -690,7 +663,7 @@
     fx.say(speaker, "Ooga go home!", 1.8);
     return true;
   };
-  // Held at the top: first reeled over the pad, then held still; a free pod may still turn on its puffs
+  // Held at the top: reeled over the pad first, then held still; a free pod may still turn on its puffs.
   const hover = (dt) => {
     if (reelT < REEL_T) {
       reelT = Math.min(REEL_T, reelT + dt);
@@ -741,7 +714,7 @@
     }
     return true;
   };
-  // Where the pod's base came down
+  // Judged where the pod's base came down, not its centre.
   const where = () => {
     const s0 = flight.state, x = s0.p.x - s0.up[0] * s0.height / 2, z = s0.p.z - s0.up[2] * s0.height / 2, d = Math.hypot(x - spot.x, z - spot.z);
     if (d < rocketModels.SITE.padR) return "pad";
@@ -767,7 +740,7 @@
     }
     canopy.visible = false;
     hud.el.act.hidden = true;
-    fx.say(speaker, place === "pad" ? "OOGA NASA!" : place === "sea" ? "Ooga swim now." : "Ooga home.", 2.4);
+    fx.say(speaker, place === "pad" ? "OOGA BULLSEYE!" : place === "sea" ? "Ooga swim now." : "Ooga home.", 2.4);
   };
   const FAILS = {
     overpressure: ["POP", "Waited too long. The engines popped."],
@@ -829,21 +802,19 @@
     if (orbited && !failure) rows.push(["Coming home", `peak heat ${Math.round(s.peakHeat * 100)}% · ${home + cool}`]);
     rows.push(["Landing", failure ? FAILS[failure][0].toLowerCase() : `${place === "land" ? "far land" : place}${place === "sea" ? ` · ${Math.round(dist)} out` : ""}${s.landing === "hard" ? " · hard" : ""} · ${landScore}`]);
     rows.push(["Time", BL.dropHud.formatTime(flightTime * 1000)]);
-    const summary = failure ? FAILS[failure][1] : place === "pad" ? "Back on the pad. Ooga NASA salutes you." : orbited ? "Up to low orbit and home." : missedOrbit();
+    const summary = failure ? FAILS[failure][1] : place === "pad" ? "Back on the pad. The tribe salutes you." : orbited ? "Up to low orbit and home." : missedOrbit();
     rhud.results(rows, summary, result);
     hud.el.act.hidden = true;
     hud.setSubtitle("Ooga Orbit · flight log");
     audio.quiet();
     if (medal) audio.cues.finish();
   };
-  // Why a flight came down short of the Sky Top, in the one thing to change
   const missedOrbit = () => {
     const dv = Math.round(rocketParts.stats(stack).dv), high = Math.round(flight.state.maxAlt);
     if (dv < rocketParts.TOP_DV) return `Short of low orbit (${high} of ${TOP}): not enough push. This rocket has ${dv} speed to spend and low orbit needs about ${rocketParts.TOP_DV}: add fuel or a stage.`;
     if (maxLean > LEAN_MAX + 0.35) return `Short of low orbit (${high} of ${TOP}): it leaned over too far. Keep near the yellow line; up is the goal.`;
     return `Short of low orbit (${high} of ${TOP}): it ran out of push. Drop each empty stage the moment STAGE! shows and keep W held.`;
   };
-  // Space or the act button, by phase
   const act = () => {
     if (phase === "build") return launch();
     if (phase === "count") {
@@ -852,7 +823,7 @@
     }
     if (phase === "ignite") return releaseClamps();
     if (phase === "ascent") return stage();
-    // At the top Space takes the next mission step: drop the rest, go outside, and once back in let go
+    // At the top Space steps the mission: drop the rest, go outside, and once back in let go.
     if (phase === "orbit") return dropRest() || (!eva.back && startEva()) || letGo();
     if (phase === "eva") return evaAct();
     if (phase === "descent") return flight.chuteReady() || flight.state.chute !== "packed" ? pullChute() : false;
@@ -860,9 +831,7 @@
     return false;
   };
 
-  // ---------- per frame ----------
-  // The pod turns by the screen: W A S D push the shield (the orange ring) up, left, down and right as the eye sees
-  // it, Q and E spin it about its own axis; the flight wants body-axis rates, so the wanted turn is split onto them.
+  // W A S D push the shield up/left/down/right as the eye sees it, Q/E spin its axis; split onto body-axis rates.
   // Under the chute and on the way up the keys pass straight through.
   const podTurn = (a) => {
     const s = flight.state;
@@ -870,12 +839,12 @@
     const fl = Math.hypot(fx, fy, fz) || 1;
     fx /= fl; fy /= fl; fz /= fl;
     localAt(s.p.x, s.p.y, s.p.z);
-    // Screen right = forward × up, screen up = right × forward
+    // Screen right = forward x up, screen up = right x forward.
     let rx = fy * LOCAL.uz - fz * LOCAL.uy, ry = fz * LOCAL.ux - fx * LOCAL.uz, rz = fx * LOCAL.uy - fy * LOCAL.ux;
     const rl = Math.hypot(rx, ry, rz) || 1;
     rx /= rl; ry /= rl; rz /= rl;
     const ux = ry * fz - rz * fy, uy = rz * fx - rx * fz, uz = rx * fy - ry * fx;
-    // The shield's normal n = -up turns toward r about n × r, toward u about n × u
+    // Shield normal n = -up; it turns toward r about n x r, toward u about n x u.
     const nx = -s.up[0], ny = -s.up[1], nz = -s.up[2];
     const wx = a.x * (ny * rz - nz * ry) + a.y * (ny * uz - nz * uy) + a.yaw * s.up[0];
     const wy = a.x * (nz * rx - nx * rz) + a.y * (nz * ux - nx * uz) + a.yaw * s.up[1];
@@ -888,7 +857,7 @@
     const a = controls.read();
     if (inputLocked) return a;
     ctrl.throttle = a.y;
-    // Hands off A and D, the autopilot leans along the climb; touching them flies by hand
+    // Hands off A and D (|a.x| < 0.05) the autopilot leans along the climb; touching them flies by hand.
     if (phase === "ascent" && selection.assist && Math.abs(a.x) < 0.05) {
       const s = flight.state;
       ctrl.lean = clamp((leanTarget(s.alt) - s.psi) * 3 - s.psiRate * 1.5, -1, 1);
@@ -923,13 +892,13 @@
       rhud.notice(orbited ? "" : `Out of the air · keep climbing to low orbit at ${TOP}`, 3000);
       audio.cues.space();
     }
-    // Anything still rising through the Sky Top gets there, the whole stack or a pod already cut loose
+    // Anything still rising through the Sky Top gets there: the whole stack or a pod already cut loose.
     if (!orbited && (phase === "ascent" || phase === "descent") && s.alt >= TOP) {
       enterOrbit();
       return;
     }
     if (phase === "ascent") {
-      // Still held down by its own weight after the clamps let go: it is not going anywhere
+      // Still held down by its own weight STUCK_T after the clamps let go: it is not going anywhere.
       if (s.mode === "pad" && phaseT > STUCK_T) {
         s.failure = "stuck";
         boom("stuck");
@@ -947,8 +916,7 @@
       afterStep();
     }
   };
-  // The mission checklist: which step is in hand, what it needs right now as a phrase and one number, and which steps
-  // were skipped or failed; rows are rewritten only when the step, the phrase or the number changes
+  // Rows are rewritten only when the step, the phrase or the number changes.
   const NOW = { step: 0, word: 0, n: 0 };
   const at = (step, word, n = 0) => {
     NOW.step = step;
@@ -956,7 +924,6 @@
     NOW.n = n;
   };
   let missionKey = NaN, leanKey = NaN, failStep = -1, maxLean = 0;
-  // The lean in words: where the stack points and where the climb wants it, and who is flying it
   const leanWords = () => {
     const s = flight.state, lean = Math.round(s.psi * 180 / Math.PI), aim = Math.round(leanTarget(s.alt) * 180 / Math.PI);
     return selection.assist ? `autopilot leaning ${lean}° to ${aim}° (G: by hand)` : `lean ${lean}° to the yellow ${aim}° with A D (G: autopilot)`;
@@ -1017,7 +984,6 @@
       rhud.setStep(i, state, state === "now" ? missionText(NOW.step, NOW.word, NOW.n) : "");
     }
   };
-  // Air puffs from the rim while the pod turns
   const podPuffs = (dt) => {
     const s = flight.state;
     if (s.mode !== "free" || s.chute === "open" || phase === "down" || phase === "boom" || phase === "eva") return;
@@ -1031,13 +997,12 @@
       spawnSmoke(s.p.x + ox * r, s.p.y + oy * r, s.p.z + oz * r, s.v.x + ox * 4, s.v.y + oy * 4, s.v.z + oz * 4, 0.16, 0.55);
     }
   };
-  // ---------- the spacewalk ----------
-  // The pod's frame: the world's up, downrange, their side, and the hatch on the pod's top
+  // FRAME is the pod's frame: world up (u), downrange (f), their side (e), hatch (h) on the pod's top.
   const FRAME = { ux: 0, uy: 1, uz: 0, fx: 0, fy: 0, fz: 1, ex: 1, ey: 0, ez: 0, hx: 0, hy: 0, hz: 0 };
   const podFrame = () => {
     const s = flight.state;
     localAt(s.p.x, s.p.y, s.p.z);
-    // Forward is downrange: the pod hangs still on the sky hook, so its flight gives no direction
+    // Forward is downrange: the pod hangs still on the sky hook, so its flight gives no direction.
     const ux = LOCAL.ux, uy = LOCAL.uy, uz = LOCAL.uz, fx = LOCAL.dx, fy = LOCAL.dy, fz = LOCAL.dz;
     FRAME.ux = ux; FRAME.uy = uy; FRAME.uz = uz;
     FRAME.fx = fx; FRAME.fy = fy; FRAME.fz = fz;
@@ -1047,7 +1012,7 @@
     FRAME.hz = s.p.z + s.up[2] * (s.height / 2 + 0.2);
   };
   const framePoint = (e, u, f, out) => setVec(out, FRAME.hx + FRAME.ex * e + FRAME.ux * u + FRAME.fx * f, FRAME.hy + FRAME.ey * e + FRAME.uy * u + FRAME.fy * f, FRAME.hz + FRAME.ez * e + FRAME.uz * u + FRAME.fz * f);
-  // A rotation whose columns are the given x, y and z axes
+  // A rotation whose columns are the given x, y and z axes.
   const fromBasis = (out, xx, xy, xz, yx, yy, yz, zx, zy, zz) => {
     const trace = xx + yy + zz;
     if (trace > 0) {
@@ -1066,8 +1031,8 @@
     return quat.normalize(out);
   };
   const ROCK = { x: 0, y: 0, z: 0 }, WALKER = { x: 0, y: 0, z: 0 }, LOOK = { x: 0, y: 0, z: 1 }, SIDE = { x: 1, y: 0, z: 0 }, TUMBLE = quat.create();
-  // A sphere at (e, u, f) from the hatch: an Ooga inside it is put back on its surface and its speed into it comes back
-  // out at the restitution; nothing else slows it, so it drifts off tumbling
+  // Sphere at (e,u,f) from the hatch: an Ooga inside is put back on its surface, speed in returns at restitution.
+  // Nothing else slows it, so it drifts off tumbling.
   const bump = (ce, cu, cf, radius) => {
     const de = eva.e - ce, du = eva.u - cu, df = eva.f - cf, d = Math.hypot(de, du, df), min = radius + EVA.body;
     if (d >= min || d < 1e-6) return;
@@ -1077,7 +1042,7 @@
     if (into >= 0) return;
     const k = (1 + EVA.bounce) * into;
     eva.ve -= ne * k; eva.vu -= nu * k; eva.vf -= nf * k;
-    // A knock hard enough to feel: a beat without steadying and a small wobble
+    // A knock past 0.4 into the surface: a beat without steadying and a small wobble.
     if (-into > 0.4) {
       eva.drift = EVA.drift;
       eva.spin = Math.min(1.2, -into * 0.4);
@@ -1087,7 +1052,6 @@
     }
   };
   const canWalk = () => phase === "orbit" && reelT >= REEL_T && flight.state.mode === "free" && !eva.back;
-  // Out of the hatch, looking at the rock
   const startEva = () => {
     if (!canWalk()) return false;
     phase = "eva";
@@ -1125,7 +1089,6 @@
       fx.say(speaker, "Ooga measure good!", 2);
     } else rhud.notice("Back in, rock not measured · Space to go out again", 3000);
   };
-  // Space outside: measure at the rock, climb in at the hatch
   const evaAct = () => {
     if (eva.measuring > 0) return true;
     if (eva.near === "rock") {
@@ -1148,7 +1111,7 @@
     const cp = Math.cos(eva.pitch), le = Math.sin(eva.yaw) * cp, lu = Math.sin(eva.pitch), lf = Math.cos(eva.yaw) * cp;
     const lx = FRAME.ex * le + FRAME.ux * lu + FRAME.fx * lf, ly = FRAME.ey * le + FRAME.uy * lu + FRAME.fy * lf, lz = FRAME.ez * le + FRAME.uz * lu + FRAME.fz * lf;
     setVec(LOOK, lx, ly, lz);
-    // Screen right when looking along the look with the world's up above
+    // Screen right when looking along the look with the world's up above.
     let rx = ly * FRAME.uz - lz * FRAME.uy, ry = lz * FRAME.ux - lx * FRAME.uz, rz = lx * FRAME.uy - ly * FRAME.ux;
     const rl = Math.hypot(rx, ry, rz) || 1;
     rx /= rl; ry /= rl; rz /= rl;
@@ -1158,7 +1121,6 @@
     const me = mx * FRAME.ex + my * FRAME.ey + mz * FRAME.ez, mu = mx * FRAME.ux + my * FRAME.uy + mz * FRAME.uz, mf = mx * FRAME.fx + my * FRAME.fy + mz * FRAME.fz;
     const pushing = Math.abs(a.x) + Math.abs(a.y) + Math.abs(up) > 0.05 && eva.measuring <= 0 && !eva.reeling;
     if (eva.reeling) {
-      // Measured: the tether reels the Ooga back to the hatch, the eye turned to watch the pod come closer
       const d0 = Math.hypot(eva.e, eva.u, eva.f);
       if (d0 < 1) {
         climbIn();
@@ -1183,7 +1145,6 @@
     eva.e += eva.ve * dt;
     eva.u += eva.vu * dt;
     eva.f += eva.vf * dt;
-    // Space bumps: off the rock, and off the pod's body below the hatch
     if (!eva.reeling) {
       const s0 = flight.state, down = s0.height / 2 + 0.2;
       bump(EVA.rockE, EVA.rockU, EVA.rockF, EVA.rockR, dt);
@@ -1191,7 +1152,7 @@
     }
     if (eva.drift > 0) eva.drift -= dt;
     eva.tumble = eva.drift > 0 ? eva.tumble + eva.spin * dt : eva.tumble + wrap(-eva.tumble) * (1 - Math.exp(-3 * dt));
-    // The tether holds the Ooga to the hatch: past its length the outward drift stops
+    // The tether holds the Ooga to the hatch: past EVA.tether the outward drift stops.
     const d = Math.hypot(eva.e, eva.u, eva.f);
     if (d > EVA.tether) {
       const ne = eva.e / d, nu = eva.u / d, nf = eva.f / d, out = eva.ve * ne + eva.vu * nu + eva.vf * nf;
@@ -1202,17 +1163,16 @@
     }
     framePoint(eva.e, eva.u, eva.f, WALKER);
     framePoint(EVA.rockE, EVA.rockU, EVA.rockF, ROCK);
-    // The Ooga faces the look across the world's up
+    // The Ooga faces the look flattened across the world's up.
     let zx = lx - FRAME.ux * lu, zy = ly - FRAME.uy * lu, zz = lz - FRAME.uz * lu;
     const zl = Math.hypot(zx, zy, zz) || 1;
     zx /= zl; zy /= zl; zz /= zl;
     const xx = FRAME.uy * zz - FRAME.uz * zy, xy = FRAME.uz * zx - FRAME.ux * zz, xz = FRAME.ux * zy - FRAME.uy * zx;
     fromBasis(astro.root.quaternion, xx, xy, xz, FRAME.ux, FRAME.uy, FRAME.uz, zx, zy, zz);
     if (Math.abs(eva.tumble) > 1e-3) quat.multiply(astro.root.quaternion, astro.root.quaternion, quat.fromAxisAngle(TUMBLE, 1, 0, 0, eva.tumble));
-    // The walker's point is its middle; the caveman's root is at its feet
+    // The walker's point is its middle; the caveman's root is at its feet.
     const drop = 0.55 * astro.traits.height * EVA.size - Math.sin(sceneTime * 1.7) * 0.08;
     setVec(astro.root.position, WALKER.x - FRAME.ux * drop, WALKER.y - FRAME.uy * drop, WALKER.z - FRAME.uz * drop);
-    // The rope from the hatch to the Ooga's back
     const bx = WALKER.x - zx * 0.12, by = WALKER.y - zy * 0.12, bz = WALKER.z - zz * 0.12;
     let tx = bx - FRAME.hx, ty = by - FRAME.hy, tz = bz - FRAME.hz;
     const tl = Math.hypot(tx, ty, tz) || 1e-3;
@@ -1227,7 +1187,6 @@
     fromBasis(tetherNode.quaternion, ax, ay, az, ty * az - tz * ay, tz * ax - tx * az, tx * ay - ty * ax, tx, ty, tz);
     setVec(tetherNode.position, FRAME.hx, FRAME.hy, FRAME.hz);
     tetherNode.scale.z = tl;
-    // Jet puffs opposite the push
     if (pushing) {
       eva.puff += dt;
       while (eva.puff >= PUFF_EVERY * 1.5) {
@@ -1235,13 +1194,13 @@
         spawnSmoke(bx - zx * 0.15, by - zy * 0.15, bz - zz * 0.15, flight.state.v.x - mx * 3, flight.state.v.y - my * 3, flight.state.v.z - mz * 3, 0.12, 0.5);
       }
     }
-    // Measuring: the Ooga turns to the rock, raises its arm, the stick slides out and taps while its light blinks,
-    // sparkles come off the rock, then the reading
     const arm = astro.parts.armR;
     if (eva.measuring > 0) {
       const k = 1 - eva.measuring / EVA.measure;
       eva.yaw = wrap(eva.yaw + wrap(Math.atan2(EVA.rockE - eva.e, EVA.rockF - eva.f) - eva.yaw) * (1 - Math.exp(-4 * dt)));
-      arm.rotation.x = lerp(-0.2, -1.5, Math.min(1, k * 4)) + Math.sin(sceneTime * 16) * 0.07 * Math.min(1, k * 4);
+      const flat = Math.hypot(EVA.rockE - eva.e, EVA.rockF - eva.f);
+      const aim = clamp(-Math.PI / 2 - Math.atan2(EVA.rockU - eva.u, flat), -2.5, -0.5);
+      arm.rotation.x = lerp(-0.2, aim, Math.min(1, k * 4)) + Math.sin(sceneTime * 16) * 0.07 * Math.min(1, k * 4);
       astroStick.scale.y = Math.min(1, 0.05 + k * 3);
       astroLight.glow = Math.sin(sceneTime * 22) > 0 ? 1 : 0.15;
       eva.measuring -= dt;
@@ -1263,7 +1222,6 @@
     const toRock = Math.hypot(WALKER.x - ROCK.x, WALKER.y - ROCK.y, WALKER.z - ROCK.z);
     eva.near = !eva.measured && toRock < EVA.reach ? "rock" : d < EVA.hatch ? "hatch" : "";
   };
-  // The rock rides beside the pod in orbit, turning slowly
   const placeRock = (dt) => {
     const show = (phase === "orbit" && reelT >= REEL_T && flight.state.mode === "free") || phase === "eva";
     rockNode.visible = show;
@@ -1297,7 +1255,6 @@
     }
     return lit;
   };
-  // Exhaust: puffs left behind while the air is thick, a wall of it off the pad at lift-off
   let smokeClock = 0;
   const exhaust = (dt, push) => {
     if (!flight || push <= 0.05) return;
@@ -1315,14 +1272,13 @@
       }
     }
   };
-  // The eye by phase: beside the launch plane while climbing (downrange to the right), a three-quarter view from behind
-  // and to the side in orbit, behind the flight coming home; a drag swings it and it eases back. The eye and its
-  // target ease as offsets from the subject, so a fast flight never drags the view behind it
+  // Eye and target ease as offsets from the subject, so a fast flight never drags the view behind it.
+  // A drag swings the eye and it eases back.
   const orbitEye = (px, py, pz, fx, fy, fz, dist, elevation, rate, dt, baseYaw = 0) => {
-    // fx..fz: the direction the eye looks along (horizontal in the local frame); the eye sits behind it and up
+    // fx..fz: the direction the eye looks along, horizontal in the local frame; the eye sits behind it and up.
     const yaw = baseYaw + cam.offset, el = clamp(elevation + cam.tilt, -1.2, 1.45);
     const ux = LOCAL.ux, uy = LOCAL.uy, uz = LOCAL.uz;
-    // Side axis: up × forward
+    // Side axis = up x forward.
     const sx = uy * fz - uz * fy, sy = uz * fx - ux * fz, sz = ux * fy - uy * fx;
     const bx = -fx * Math.cos(yaw) + sx * Math.sin(yaw), by = -fy * Math.cos(yaw) + sy * Math.sin(yaw), bz = -fz * Math.cos(yaw) + sz * Math.sin(yaw);
     const ex = px + (bx * Math.cos(el) + ux * Math.sin(el)) * dist;
@@ -1339,7 +1295,7 @@
       cam.oz = damp(cam.oz, ez - sz, rate, dt);
     }
     let x = sx + cam.ox, y = sy + cam.oy, z = sz + cam.oz;
-    // Never under the ground or the sea
+    // Never put the eye under the ground or the sea.
     const alt = localAt(x, y, z), g = alt < rocketMod.NEAR_GROUND ? groundAt(x, z) : -Infinity;
     if (g > -Infinity && y < g + 1) y = g + 1;
     if (alt < 1) {
@@ -1378,25 +1334,23 @@
       const s = flight.state, p = s.p;
       localAt(p.x, p.y, p.z);
       if (phase === "count" || phase === "ignite" || phase === "ascent") {
-        // Look along the plane's normal (+x), from the -x side: downrange (+z) runs to the right
+        // Look along the plane's normal (+x) from the -x side: downrange (+z) runs to the right.
         const dist = CHASE.side + s.height * 1.3 + Math.min(40, s.speed * 0.8) + clamp(s.alt - 42, 0, 150) * 0.12;
         orbitEye(p.x, p.y, p.z, 1, 0, 0, dist, CHASE.sideElevation, CHASE.eyeRate, dt);
         const lead = Math.min(8, s.speed * 0.25);
         aim(p.x, p.y, p.z, p.x + s.v.x / Math.max(1, s.speed) * lead, p.y + s.v.y / Math.max(1, s.speed) * lead, p.z + s.v.z / Math.max(1, s.speed) * lead, dt);
       } else if (phase === "orbit") {
-        // Up and behind the held pod, looking steeply down past it so the islands below stay in view
+        // Up and behind the held pod, looking steeply down past it so the islands below stay in view.
         orbitEye(p.x, p.y, p.z, LOCAL.dx, LOCAL.dy, LOCAL.dz, CHASE.orbitDist + s.height * 1.2, CHASE.orbitElevation, CHASE.orbitRate, dt, CHASE.orbitYaw);
         aim(p.x, p.y, p.z, p.x - LOCAL.ux * 9, p.y - LOCAL.uy * 9, p.z - LOCAL.uz * 9, dt);
       } else if (phase === "eva" && eva.measuring > 0) {
-        // Measuring: off to the Ooga's right, so the raised arm and the stick reaching for the rock are in view
+        // Off to the Ooga's right, so the raised arm and the stick reaching for the rock are in view.
         settle(WALKER.x, WALKER.y, WALKER.z, WALKER.x + SIDE.x * 4.5 - LOOK.x * 1.5 + FRAME.ux * 1.2, WALKER.y + SIDE.y * 4.5 - LOOK.y * 1.5 + FRAME.uy * 1.2, WALKER.z + SIDE.z * 4.5 - LOOK.z * 1.5 + FRAME.uz * 1.2, 4, dt);
         aim(WALKER.x, WALKER.y, WALKER.z, (WALKER.x + ROCK.x) / 2, (WALKER.y + ROCK.y) / 2, (WALKER.z + ROCK.z) / 2, dt);
       } else if (phase === "eva") {
-        // Behind the spacewalker along the look, a little above
         settle(WALKER.x, WALKER.y, WALKER.z, WALKER.x - LOOK.x * EVA.eye + FRAME.ux * 1.4, WALKER.y - LOOK.y * EVA.eye + FRAME.uy * 1.4, WALKER.z - LOOK.z * EVA.eye + FRAME.uz * 1.4, 10, dt);
         aim(WALKER.x, WALKER.y, WALKER.z, WALKER.x + LOOK.x * 3, WALKER.y + LOOK.y * 3, WALKER.z + LOOK.z * 3, dt);
       } else if (phase === "descent") {
-        // Behind the flight's direction across the ground
         const vu = s.v.x * LOCAL.ux + s.v.y * LOCAL.uy + s.v.z * LOCAL.uz;
         let hx = s.v.x - LOCAL.ux * vu, hy = s.v.y - LOCAL.uy * vu, hz = s.v.z - LOCAL.uz * vu;
         const hl = Math.hypot(hx, hy, hz);
@@ -1405,7 +1359,6 @@
           HEAD.y = damp(HEAD.y, hy / hl, 4, dt);
           HEAD.z = damp(HEAD.z, hz / hl, 4, dt);
         }
-        // Falling, the eye looks steeply down past the pod at the islands; under the leaves it sits behind the glide
         const chute = s.chute === "open";
         orbitEye(p.x, p.y, p.z, HEAD.x, HEAD.y, HEAD.z, chute ? CHASE.chuteDist : CHASE.podDist, chute ? CHASE.chuteElevation : CHASE.podElevation, CHASE.eyeRate, dt);
         const lead = chute ? 1 : 0, lift = chute ? 2.6 : -10;
@@ -1421,7 +1374,7 @@
     camera.fov = FOV;
     return eyeAlt;
   };
-  // The clock's sky, darkened toward space by the eye's height; the haze thins and moves out
+  // The clock's sky darkened toward space by the eye's height; the haze thins and moves out.
   const skyFor = (eyeAlt) => {
     const k = smooth((eyeAlt - 30) / 180), o = RENDER_OPTS;
     for (let i = 0; i < 3; i++) {
@@ -1442,7 +1395,6 @@
       setVec(o.shadowCenter, p.x, Math.max(spot.y, p.y - 6), p.z);
     } else setVec(o.shadowCenter, spot.x, spot.y, spot.z);
     o.time = sceneTime;
-    // The flame lights the pad and the smoke round it
     if (lit > 0.05 && flight) {
       const s = flight.state, l = o.lights;
       l[0] = s.p.x - s.up[0] * (s.height / 2 + 1.5);
@@ -1482,7 +1434,7 @@
       if (s.chute !== "open") canopy.visible = false;
     }
     updatePlasma(glow);
-    // Warnings, not every frame
+    // Warnings at most every 1.6s, not every frame.
     if (sceneTime - warnAt > 1.6 && (s.heat > 0.72 || s.stress > 0.8)) {
       warnAt = sceneTime;
       audio.cues.warn();
@@ -1493,7 +1445,6 @@
       rhud.center("FLIP!", 900);
       rhud.notice("Shield first: point the orange ring at the green one", 2400);
     }
-    // Still packed low down: keep saying so
     if (phase === "descent" && chuteCalled && s.chute === "packed" && s.alt < 80 && sceneTime - warnAt > 1.2) {
       warnAt = sceneTime;
       rhud.center("PULL THE CHUTE!", 1000);
@@ -1588,7 +1539,7 @@
       hud.setMeter(world.level, METER_CAPACITY, phase === "build" ? "stable" : flight && orbited ? "in low orbit" : "flying");
     }
   };
-  // Markers in the world: where the flight goes (green) and where the shield faces (orange), and home
+  // World markers: green where the flight goes, orange where the shield faces, plus home.
   const MARKER = { x: 0, y: 0 };
   const markerAt = (project, x, y, z) => {
     const q = project(x, y, z);
@@ -1597,8 +1548,8 @@
     MARKER.y = q.y;
     return MARKER;
   };
-  // The attitude ball: the eye's forward half of the sky as a disc; green where the flight goes, orange where the
-  // shield faces, dashed outside the rim when it faces back past the eye. Put orange on green.
+  // Attitude ball: forward half of the sky as a disc, dashed outside the rim when facing back past the eye.
+  // Draw orange over green.
   const BALL = { x: 0, y: 0, behind: false };
   const ballAt = (dx, dy, dz, fx, fy, fz, rx, ry, rz, ux, uy, uz, radius) => {
     const f = dx * fx + dy * fy + dz * fz, r = dx * rx + dy * ry + dz * rz, u = dx * ux + dy * uy + dz * uz;
@@ -1614,7 +1565,7 @@
     return BALL;
   };
   const drawBall = (ctx, s) => {
-    // Between the sticks on touch, off to the lower left of the pod otherwise
+    // Between the sticks on touch (COARSE), off to the lower left of the pod otherwise.
     const w = ctx.canvas.clientWidth, h = ctx.canvas.clientHeight, radius = 42, cx = COARSE ? w / 2 : Math.min(w / 2 - 170, 150), cy = h - (COARSE ? 200 : 110);
     let fx = cam.tx - camera.position.x, fy = cam.ty - camera.position.y, fz = cam.tz - camera.position.z;
     const fl = Math.hypot(fx, fy, fz) || 1;
@@ -1663,7 +1614,7 @@
     ctx.textAlign = "left";
   };
   const DASH = [4, 4], NO_DASH = [];
-  // Overlay labels rebuilt only when their number changes
+  // Overlay labels rebuilt only when their number changes.
   const labels = { shield: NaN, shieldText: "", home: NaN, homeText: "" };
   const tag = (ctx, project, x, y, z, color, text) => {
     const m = markerAt(project, x, y, z);
@@ -1674,7 +1625,7 @@
     ctx.fillText(text, m.x, m.y);
     ctx.textAlign = "left";
   };
-  // The climb's aim as a yellow line from the stack's middle and where it points now as a white one
+  // Yellow line = the climb's aim from the stack's middle, white = where it points now.
   const LEAN_A = { x: 0, y: 0 };
   const drawLean = (ctx, project, s) => {
     localAt(s.p.x, s.p.y, s.p.z);
@@ -1733,7 +1684,6 @@
       }
     }
     if (turning) drawBall(ctx, s);
-    // The rock to measure and, once it is measured, the hatch to get back to
     if ((phase === "eva" || phase === "orbit") && rockNode.visible && !eva.measured) tag(ctx, project, rockNode.position.x, rockNode.position.y + 1.4, rockNode.position.z, "#7fe0ff", "SPACE ROCK");
     if (phase === "eva" && eva.measured) tag(ctx, project, FRAME.hx, FRAME.hy + 0.6, FRAME.hz, "#f5c542", "HATCH");
     if (phase === "orbit" || phase === "descent" || (phase === "ascent" && s.alt > 90)) {
@@ -1760,7 +1710,6 @@
   };
   const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
 
-  // ---------- donations ----------
   const onDonation = (donation) => {
     game.recordDonation(donation);
     const bananas = gameMod.bananasFor(donation.sats);
@@ -1781,7 +1730,6 @@
   };
   const renderLocker = () => hud.renderInventory(game.state.inventory, game.assignedTo, () => null);
 
-  // ---------- actions and keys ----------
   const onLootCleared = () => {
     if (!lootEnabled) return;
     renderLocker();
@@ -1824,7 +1772,6 @@
     return part ? `${part.part.name} · ${part.part.note}` : "";
   };
 
-  // ---------- scene contract ----------
   const enter = (ctx) => {
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
     camera = createCamera({ fov: 50, near: 0.3, far: 1600 });
@@ -1841,20 +1788,19 @@
       placed.push(node);
       return node;
     };
-    // The island as the hub has it, the mound of bananas at its middle
+    // The island and banana pile as the hub builds them (pileMod footprint/growth by world.level).
     place(createNode({ geometry: island.geometry }));
     const level = Math.floor(world.level), footprint = pileMod.footprintFor(level, 0.45);
     const growth = level <= pileMod.DISK_BANANAS ? pileMod.PACKING_HEIGHT * level / pileMod.DISK_BANANAS : pileMod.footprintFor(level, 1) * pileMod.PACKING_HEIGHT;
     place(createNode({ position: { x: 0, y: 0.36, z: 0 }, scale: { x: footprint, y: 0.48 * growth, z: footprint }, geometry: models.bananaPileCoreGeometry(0.45 * 6, 0.48 * 6, 0.45), visible: level > 0 }));
     const slab = place(createNode({ geometry: hubModels.altarSlab(), depthBias: 0.15 }));
     setVec(slab.scale, footprint + 0.3, 0.34, footprint + 0.3);
-    // The launch site and the world round it
     site = rocketModels.site(spot);
     place(site.node);
     planet = place(createNode({ position: { x: 0, y: CY, z: 0 }, geometry: rocketModels.planet() }));
     const rand = mulberry32(SEED + 505);
     for (let i = 0; i < CLOUDS; i++) {
-      // Most clouds round home, the rest anywhere; none right over the islands
+      // Most clouds round home (the first 45), the rest anywhere; none right over the islands.
       const t = i < 45 ? (140 + rand() * 1400) / R : 0.5 + rand() * 2.2, a = rand() * Math.PI * 2, h = R + 28 + rand() * 30;
       const dx = Math.sin(t) * Math.cos(a), dy = Math.cos(t), dz = Math.sin(t) * Math.sin(a);
       const q = quat.create(), axis = Math.hypot(dz, dx) || 1;
@@ -1862,7 +1808,6 @@
       const s = 3.5 + rand() * 5;
       place(createNode({ position: { x: dx * h, y: CY + dy * h, z: dz * h }, quaternion: q, scale: { x: s, y: s * 0.7, z: s }, geometry: hubModels.cloud(i % 3) }));
     }
-    // Pools: smoke, plasma, fireballs, one splash
     smoke = { node: place(createNode({ geometry: rocketModels.puff(), instanceData: new Float32Array(SMOKE * 20), instanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true, visible: false })), x: new Float32Array(SMOKE), y: new Float32Array(SMOKE), z: new Float32Array(SMOKE), vx: new Float32Array(SMOKE), vy: new Float32Array(SMOKE), vz: new Float32Array(SMOKE), age: new Float32Array(SMOKE), life: new Float32Array(SMOKE), size: new Float32Array(SMOKE), next: 0, count: 0 };
     plasma = { node: place(createNode({ geometry: rocketModels.plasma(), instanceData: new Float32Array(PLASMA * 20), instanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true, visible: false })), x: new Float32Array(PLASMA), y: new Float32Array(PLASMA), z: new Float32Array(PLASMA) };
     for (let i = 0; i < FIREBALLS; i++) fireballs.push(place(createNode({ geometry: rocketModels.fireball(), visible: false, smokeOpacity: 0 })));
@@ -1870,7 +1815,7 @@
     canopy = createNode({ geometry: dropModels.canopy(), visible: false });
     heatShell = createNode({ geometry: rocketModels.heatShell(), visible: false, smokeOpacity: 0 });
     mark("orbit world");
-    // An Ooga walked or tapped onto the pad flies
+    // An Ooga walked or tapped onto the pad arrives as world.pilot and flies.
     if (world.pilot) {
       selection.pilot = world.pilot;
       world.pilot = null;
@@ -2018,9 +1963,10 @@
             return eva;
           },
           launch, toBuild, act, releaseClamps, dropRest, letGo, pullChute, startEva, evaAct,
-          // Where the rocket's part boundaries sit on screen, for drops onto it
+          // Where the space rock sits in the pod's frame and how near counts as at it, so a check can place the walker.
+          rock: { e: EVA.rockE, u: EVA.rockU, f: EVA.rockF, reach: EVA.reach },
           slots: rocketSlots,
-          // Run the scene forward without frames, at the fixed step
+          // Run the scene forward without frames, at the fixed step.
           simulate: (seconds) => {
             for (let t = 0; t < seconds; t += FIXED) update(FIXED, sceneTime + FIXED);
           },
@@ -2028,7 +1974,7 @@
             inputLocked = !!input;
             if (input) Object.assign(ctrl, input);
           },
-          // Skip the climb: straight up to the Sky Top a little downrange of the pad
+          // Skip the climb: straight up to the Sky Top a little downrange of the pad.
           toOrbit: () => {
             if (phase === "build") launch();
             phase = "ascent";

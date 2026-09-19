@@ -1,5 +1,5 @@
-// Procedural Ooga Orbit sound on the drop's pattern: one context from an activated gesture, a fixed voice pool gated by
-// gain, one noise loop behind the engine roar, the wind and the plasma hiss, and a low rumble under the roar
+// One AudioContext created from an activated gesture; a fixed pool of voices gated by gain, never per sound.
+// One noise loop feeds the engine roar, the wind and the plasma hiss; a low rumble sits under the roar.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -7,7 +7,7 @@
   const VOICES = 8;
   const NOISE_SECONDS = 2;
   const MASTER = 0.55;
-  // Shared with the rally and the drop, so one mute covers every game
+  // Shared with the rally and the drop, so one mute covers every game.
   const STORAGE_KEY = "oogaboogaland.audio";
   const NOTE = (semis) => 220 * Math.pow(2, semis / 12);
   const create = () => {
@@ -15,12 +15,12 @@
     try {
       muted = localStorage.getItem(STORAGE_KEY) === "off";
     } catch {
-      // Storage may be unavailable
+      // localStorage can throw; swallowing it is deliberate.
     }
     const voices = [];
     let voiceNext = 0;
     const layers = { roar: null, roarFilter: null, rumble: null, rumbleGain: null, wind: null, windFilter: null, hiss: null, rush: null };
-    // What the scene tells us each frame: the engine's push (0..1) and nearness, the air's push, the plasma
+    // Written by the scene each frame: engine push 0..1, nearness, air push, plasma.
     const state = { engine: 0, near: 1, air: 0, plasma: 0 };
     const init = () => {
       if (ctx || typeof AudioContext === "undefined") return;
@@ -56,19 +56,15 @@
       noise = ctx.createBufferSource();
       noise.buffer = buffer;
       noise.loop = true;
-      // The roar: low-passed noise that opens with the push
       layers.roarFilter = filter("lowpass", 300, 0.9);
       layers.roar = gain(0, master);
       layers.roarFilter.connect(layers.roar);
-      // Wind over the stack, a band that climbs with the air's push
       layers.windFilter = filter("bandpass", 400, 0.6);
       layers.wind = gain(0, master);
       layers.windFilter.connect(layers.wind);
-      // Plasma: a high hiss while the shield burns
       const hiss = filter("highpass", 2400, 0.7);
       layers.hiss = gain(0, master);
       hiss.connect(layers.hiss);
-      // Rush: a whoosh for separations, the chute and the clamps
       const rush = filter("lowpass", 900, 0.8);
       layers.rush = gain(0, master);
       rush.connect(layers.rush);
@@ -77,7 +73,6 @@
       noise.connect(hiss);
       noise.connect(rush);
       noise.start();
-      // The rumble under the roar
       layers.rumbleGain = gain(0, master);
       layers.rumble = ctx.createOscillator();
       layers.rumble.type = "sawtooth";
@@ -219,7 +214,7 @@
       try {
         localStorage.setItem(STORAGE_KEY, muted ? "off" : "on");
       } catch {
-        // Storage may be unavailable
+        // localStorage can throw; swallowing it is deliberate.
       }
     };
     const dispose = () => {

@@ -1,4 +1,3 @@
-// The visitor's camera, flight and possession
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -9,7 +8,7 @@
   const MAX_FOV = 64 * Math.PI / 180;
   const MIN_HFOV = 58 * Math.PI / 180;
   const YAW_RATE = 1.7, PITCH_RATE = 1.1;
-  // Keep a tiny horizontal component so the vertical view retains its yaw.
+  // Trailing pitch stops 1e-4 short of +-PI/2 so the vertical view keeps a horizontal part and retains its yaw.
   const TRAILING_PITCH = [-Math.PI / 2 + 1e-4, Math.PI / 2 - 1e-4];
   const CLOSE_RATE = 12, CLOSE_SNAP = 0.001, CLOSE_PINCH_EXIT = 1.08, CLOSE_LOOK_DIST = 4;
   const AIM_ENTRY_RATE = 8, CARRY_FOCUS_TIME = 0.22;
@@ -18,9 +17,7 @@
   const SHOULDER_PITCH = 0.42, SHOULDER_LIFT = 0.16, SHOULDER_DISTANCE = 2.85, SHOULDER_SIDE = 0.6;
   const CLOSE_GROUND_RATE = 9, CLOSE_TELEPORT = 0.8;
   const WALK = { speed: 7.75, gravity: 9.8, step: 0.6, ledgeRise: 2.4, ledgeSpeed: 3, ledgeDrag: 1.5 };
-  // The camera swings behind while walking forward
   const FOLLOW_TURN = 1.8, DRAG_HOLD = 1.5;
-  // Act button labels, action or jetpack throttle
   const ACT_DO = "JUMP!", ACT_FLY = "Blast off!";
   // Camera rotations carry look and up together, including a sleeper's roll.
   // Local -Z looks forward; local +Y is the top of the rendered image.
@@ -613,8 +610,7 @@
       entryOffsetActive = false;
       closeMix = closeVelocity = 0;
       headOrbit = exitAngleHold = false;
-      // The physical boom and close-distance flattening can differ from the
-      // requested orbit. Enter along the direction actually on screen.
+      // Boom and close-distance flattening can differ from the requested orbit: enter along the direction on screen.
       const dx = camera.target.x - camera.position.x, dy = camera.target.y - camera.position.y, dz = camera.target.z - camera.position.z, up = camera.up;
       viewRotation(cameraRotation, dx, dy, dz, up ? up.x : 0, up ? up.y : 1, up ? up.z : 0, orbit.yaw);
       orbit.yaw = orbit.tYaw = Math.atan2(-dx, -dz);
@@ -622,8 +618,7 @@
       closeCameraActive = true;
       sleepingView = !!(cave && crew.sleeping && cave.root.quaternion);
       if (sleepingView) {
-        // Keep the approach as an offset from this pose; a later roll still
-        // carries the head and view together without moving the sleeping body.
+        // Keep the approach as an offset from this pose so a later roll carries head and view without moving the body.
         const q = cave.root.quaternion;
         inverseRotation[0] = -q[0]; inverseRotation[1] = -q[1]; inverseRotation[2] = -q[2]; inverseRotation[3] = q[3];
         quat.multiply(sleepViewRotation, inverseRotation, cameraRotation);
@@ -647,9 +642,8 @@
       }
       if (cave) faceWith(cave);
       else {
-        // Finish zooming to the displayed focal point before walking physics
-        // takes over. Resolve an embedded destination before the dolly, so
-        // recovery cannot teleport the eye when it reaches first person.
+        // Finish zooming to the displayed focal point before walking physics takes over.
+        // Resolve an embedded destination before the dolly, or recovery teleports the eye at first person.
         freeTarget.x = headOrbit ? orbit.tx : camera.target.x;
         freeTarget.y = headOrbit ? orbit.ty : camera.target.y;
         freeTarget.z = headOrbit ? orbit.tz : camera.target.z;
@@ -678,8 +672,7 @@
       distanceVelocity = 0;
       const cave = player(), up = camera.up, dx = camera.target.x - camera.position.x, dy = camera.target.y - camera.position.y, dz = camera.target.z - camera.position.z;
       if (dollyTime < DOLLY_HANDOFF) {
-        // Outward zoom changes distance along the held viewing ray. Keep its
-        // longitudinal velocity without carrying a fading sideways head turn.
+        // Outward zoom moves along the held viewing ray: keep longitudinal velocity, drop a fading sideways head turn.
         const along = (dollyVelocity.x * dx + dollyVelocity.y * dy + dollyVelocity.z * dz) / (dx * dx + dy * dy + dz * dz);
         dollyVelocity.x = dx * along; dollyVelocity.y = dy * along; dollyVelocity.z = dz * along;
       }
@@ -689,9 +682,8 @@
       viewRotation(headRotation, dx, dy, dz, 0, 1, 0, orbit.yaw);
       inverseRotation[0] = -headRotation[0]; inverseRotation[1] = -headRotation[1]; inverseRotation[2] = -headRotation[2]; inverseRotation[3] = headRotation[3];
       quat.multiply(entryRoll, inverseRotation, cameraRotation);
-      // Zoom back on the ray already being viewed, including its roll. The
-      // starting eye becomes the head-relative orbit anchor, so only distance
-      // changes even when collision previously displaced that eye slightly.
+      // Zoom back on the ray already viewed, roll included.
+      // The starting eye becomes the head-relative orbit anchor, so only distance changes after a collision nudge.
       if (cave) {
         headAnchor(cave, followTarget);
         headOrbitOffset.x = camera.position.x - followTarget.x; headOrbitOffset.y = camera.position.y - followTarget.y; headOrbitOffset.z = camera.position.z - followTarget.z;
@@ -708,8 +700,7 @@
       releaseMix = 0;
       closeWanted = false;
       syncHeadVisibility(cave);
-      // The new orbit starts at the displayed eye, including an interrupted
-      // entry. Begin its outward dolly there without changing that position.
+      // The new orbit starts at the displayed eye, even mid-entry; its dolly begins there without moving it.
       closeMix = 1;
       closeVelocity = 0;
       entryRebase = entryOffsetActive = false;
@@ -719,8 +710,6 @@
       orbit.tDist = clamp(cave ? close.trailingDist : close.orbitDist, DIST_MIN, DIST_MAX);
       if (cave && crew.sleeping) crew.look(0, 0, 0);
     };
-    // ---------- possession ----------
-    // Relabel the act button for what the press does
     const syncJetpackHud = () => {
       const cave = player(), status = ctx.jetpackStatus && ctx.jetpackStatus(cave);
       if (status) hud.setJetpack(status.owned, status.equipped, status.fuel, status.blocked);
@@ -886,8 +875,7 @@
       if (crew.sleeping && closeWanted) {
         const dx = camera.target.x - camera.position.x, dy = camera.target.y - camera.position.y, dz = camera.target.z - camera.position.z;
         rememberSleepView();
-        // Close-view input was relative to the sleeping head. Free navigation
-        // starts from that same world direction and eases only its roll upright.
+        // Close-view input was head-relative; free navigation resumes from that world direction, easing roll upright.
         orbit.yaw = orbit.tYaw = Math.atan2(-dx, -dz);
         orbit.pitch = orbit.tPitch = clamp(Math.atan2(-dy, Math.hypot(dx, dz)), TRAILING_PITCH[0], TRAILING_PITCH[1]);
       }
@@ -899,8 +887,7 @@
         closeVelocity = 0;
       }
       else if (recovered) {
-        // A solid-rock third-person view hands free navigation a clear eye.
-        // Rebase its orbit so the next frame keeps that accepted position.
+        // ctx.releaseView handed back a clear eye in solid rock: rebase the orbit so the next frame keeps that position.
         const cp = Math.cos(orbit.pitch), distance = orbit.dist;
         freeTarget.x = camera.position.x - Math.sin(orbit.yaw) * cp * distance;
         freeTarget.y = camera.position.y - Math.sin(orbit.pitch) * distance;
@@ -925,7 +912,7 @@
       const cave = player();
       return cave ? crew.playerAction() : !!ctx.onFreeAction && ctx.onFreeAction();
     };
-    // Held it climbs, clicked it acts; both mouse buttons on the canvas walk
+    // Boost held climbs and clicked acts; chord means both mouse buttons on the canvas walk.
     const controls = createControls({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, chord: canvas, onAction: action, pressActions: true, shooter: armed });
     let dragHold = 0, trailingViewInput = false, trailingZoomInput = false, stoppedZoomGesture = null;
     const zoomPitch = (cave, fromDistance) => {
@@ -1009,8 +996,7 @@
         orbit.tDist = clamp(fromDistance * factor, DIST_MIN, DIST_MAX);
         zoomPitch(cave, fromDistance);
         if (player()) {
-          // Ease the chosen distance in the orbit itself. A wheel event must
-          // not teleport the eye before its close-view dolly starts.
+          // Ease the chosen distance in the orbit itself: a wheel event must not teleport the eye before its dolly starts.
           trailingZoomInput = true;
         }
         if (factor < 1 && orbit.tDist <= DIST_MIN + 0.001) {
@@ -1029,7 +1015,6 @@
         } else if (player()) release();
       }
     };
-    // ---------- camera ----------
     const goPreset = (name) => {
       const p = presets[name];
       if (!p) return;
@@ -1054,7 +1039,7 @@
       orbit.tPitch = p.pitch;
       orbit.tDist = p.dist;
     };
-    // Read keys and sticks before the crew moves
+    // Call before the crew moves: reads keys and sticks for this frame.
     const readInput = (dt) => {
       syncAim();
       const a = controls.read();
@@ -1090,8 +1075,7 @@
           const stopStrafe = freeStrafe && (!a.x || freeStrafe * a.x < 0), stopForward = freeForward && (!a.y || freeForward * a.y < 0);
           const stopClimb = freeClimb && (!a.up || freeClimb * a.up < 0);
           if (stopStrafe || stopForward || stopClimb) {
-            // Consume released or reversed input's remaining damping. The eye's
-            // current center also keeps close-view release from snapping back.
+            // Consume released or reversed input's leftover damping; the eye's current center stops release snapping back.
             const offset = orbit.dist * (1 - closeMix), cp = Math.cos(viewPitch);
             const centerX = camera.position.x - Math.sin(orbit.yaw) * cp * offset;
             const centerY = camera.position.y - Math.sin(viewPitch) * offset;
@@ -1123,8 +1107,7 @@
           freeTarget.x += (fx0 * a.y + rx * a.x) * speed;
           freeTarget.z += (fz0 * a.y + rz * a.x) * speed;
           if (a.up && !closeWanted) {
-            // Underground bounds apply to the eye. A pitched orbit's focus can
-            // sit below its floor, and horizontal input must leave it there.
+            // Underground bounds apply to the eye: a pitched orbit's focus can sit below its floor, and must stay there.
             const offset = fly.yMin === undefined ? 0 : Math.sin(viewPitch) * orbit.dist * (1 - closeMix);
             freeTarget.y = clamp(freeTarget.y + a.up * fly.climb * dt, (fly.yMin === undefined ? 0 : fly.yMin) - offset, fly.yMax - offset);
           }
@@ -1153,7 +1136,7 @@
         if (cave && !closeWanted) trailingViewInput = trailingPitchChosen = true;
       }
     };
-    // The camera moves only on input, no drift
+    // The camera moves only on input: no drift, auto-orbit or inertia.
 
     const poseAim = () => {
       if (aimPreserveFacing) {
@@ -1290,8 +1273,7 @@
       const sleeping = !!(cave && crew.sleeping && cave.root.quaternion);
       if (sleepingView && !sleeping && cave && closeWanted && closeMix > 0) {
         rememberSleepView();
-        // Waking restores the bed's upright stance. Ease the rendered roll
-        // toward that heading without applying sleeping-relative Euler angles.
+        // Waking restores the bed's upright stance: ease rendered roll to that heading, no sleep-relative Euler angles.
         orbit.yaw = orbit.tYaw = cave.root.rotation.y + Math.PI;
         orbit.pitch = orbit.tPitch = 0;
         quat.fromEuler(entryRoll, 0, 0, 0);
@@ -1327,9 +1309,8 @@
         if (Math.hypot(body.x - exitBodyX, body.y - exitBodyY, body.z - exitBodyZ) > 1e-5) exitAngleHold = false;
       }
       const directTrailingView = trailingViewInput && !!cave && !closeWanted;
-      // Crossing into first person starts a dolly, even when the same wheel
-      // event changed the trailing distance. Its physical corridor recovery
-      // must keep the normal motion budget instead of acting as a direct drag.
+      // Crossing into first person starts a dolly even when the same wheel event changed the trailing distance.
+      // Its corridor recovery keeps the normal motion budget instead of acting as a direct drag.
       const directCameraPosition = directTrailingView || trailingZoomInput && !!cave && !closeWanted;
       trailingViewInput = false;
       trailingZoomInput = false;
@@ -1347,9 +1328,8 @@
         }
       }
       if (close) {
-        // An analytic critically damped dolly starts with continuous speed.
-        // First-order easing adds its largest step exactly when the wheel
-        // reaches first person, on top of the still-moving orbit distance.
+        // Analytic critically damped step: speed stays continuous.
+        // First-order easing would add its largest step exactly when the wheel reaches first person.
         const target = closeWanted ? 1 : 0, delta = closeMix - target;
         const decay = Math.exp(-closeRate * dt), impulse = (closeVelocity + closeRate * delta) * dt;
         closeMix = target + (delta + impulse) * decay;
@@ -1398,8 +1378,7 @@
         groundValid = false;
       }
       {
-        // Repeated wheel events change the destination, never the current
-        // distance velocity. Use the exact critically damped spring step.
+        // Wheel events change the destination, never the current distance velocity; exact critically damped step.
         const delta = orbit.dist - orbit.tDist, decay = Math.exp(-CLOSE_RATE * dt);
         const impulse = (distanceVelocity + CLOSE_RATE * delta) * dt;
         orbit.dist = orbit.tDist + (delta + impulse) * decay;
@@ -1462,8 +1441,7 @@
           eyeX = cave.sleepHead.x + sleepForward[0] * 0.28;
           eyeY = cave.sleepHead.y + sleepForward[1] * 0.28;
           eyeZ = cave.sleepHead.z + sleepForward[2] * 0.28;
-          // Author the dolly toward a clear resting eye, including the full
-          // near-plane volume above its pillow, before blending positions.
+          // Aim the dolly at a clear resting eye, the whole near-plane volume above the pillow included, before blending.
           if (close.sleepEyeFloorAt) eyeY = Math.max(eyeY, close.sleepEyeFloorAt(cave));
           eyeClearance = Math.max(0.1, eyeY - close.groundAt(eyeX, eyeZ, eyeY - 0.1));
         } else if (cave) {
@@ -1504,8 +1482,7 @@
       camera.position.y = orbitY + (eyeY - orbitY) * closeMix;
       camera.position.z = orbitZ + (eyeZ - orbitZ) * closeMix;
       if (entryRebase) {
-        // A reversed dolly or a new possession may use another orbit pivot.
-        // Its zero-distance-time endpoint is still the eye already displayed.
+        // A reversed dolly or a new possession may use another orbit pivot; its zero-time endpoint is the displayed eye.
         entryRebase = false;
         entryOffsetActive = true;
       }
@@ -1518,9 +1495,8 @@
       if (dollyTime < DOLLY_HANDOFF) {
         dollyTime = Math.min(DOLLY_HANDOFF, dollyTime + dt);
         const u = dollyTime / DOLLY_HANDOFF, remaining = 1 - u;
-        // This finite handoff starts with the previous rendered velocity and
-        // zero acceleration, then ends with zero offset, velocity and
-        // acceleration. The new dolly can brake before reversing direction.
+        // Finite handoff starts at the previous rendered velocity with zero acceleration and ends at zero for all three.
+        // Lets the new dolly brake before reversing direction.
         const carry = dollyTime * remaining * remaining * remaining * (1 + 3 * u);
         camera.position.x += dollyVelocity.x * carry;
         camera.position.y += dollyVelocity.y * carry;
@@ -1536,8 +1512,7 @@
       if (!cave && closeWanted && closeMix === 1 && freeFallValid) {
         const feet = camera.position.y - close.eyeHeight;
         const ground = close.groundAt(camera.position.x, camera.position.z, feet);
-        // Collision may reject the requested ledge crossing. Only accepted
-        // movement starts a fall, and a landing clears its velocity and drift.
+        // Collision can reject a ledge crossing: only accepted movement falls; landing clears velocity and drift.
         if (freeLedge && previousFloor - ground <= WALK.step || freeFalling && freeFallV <= 0 && feet <= ground + 1e-6) {
           freeFalling = false;
           freeFallV = freeLeapX = freeLeapZ = 0;
@@ -1548,8 +1523,7 @@
         freeTarget.y = camera.position.y;
       }
       if (collided && !cave && orbit.target === freeTarget) {
-        // A blocked eye consumes its blocked movement. Keep the orbit offset,
-        // but discard hidden target travel so reversing responds immediately.
+        // A blocked eye consumes its movement: keep the orbit offset, drop hidden target travel so reversing responds.
         const orbitMix = 1 - closeMix;
         if (Math.abs(camera.position.x - desiredX) > 1e-7) freeTarget.x = orbit.tx = camera.position.x - (orbitX - targetX) * orbitMix;
         if (Math.abs(camera.position.y - desiredY) > 1e-7) freeTarget.y = orbit.ty = camera.position.y - (orbitY - orbit.ty) * orbitMix;
@@ -1564,8 +1538,7 @@
       let lookZ = camera.position.z - Math.cos(orbit.yaw) * lookCp * CLOSE_LOOK_DIST;
       if ((cave || headOrbit) && closeCameraActive) {
         viewRotation(orbitRotation, targetX - camera.position.x, targetY - camera.position.y, targetZ - camera.position.z, 0, 1, 0, orbit.yaw);
-        // Follow the previously rendered rotation: choosing a fresh shortest
-        // arc between two moving endpoints can reverse that arc at 180°.
+        // Follow the previously rendered rotation: a fresh shortest arc between two moving endpoints can reverse at 180.
         if (headOrbit || closeMix === 1) quat.copy(cameraRotation, headRotation);
         else if (carryExitMode && !closeWanted && closeMix === 0) {
           // Finish recentering promptly, independently of the zoom spring
@@ -1577,9 +1550,8 @@
           if (!remaining) closeCameraActive = false;
         } else quat.slerpTo(cameraRotation, closeWanted ? headRotation : orbitRotation, 1 - Math.exp(-CLOSE_RATE * dt));
         if (!headOrbit && !closeWanted && closeMix === 0) {
-          // The physical close-view boom may end on a different side of the
-          // head from the unrestricted orbit. Settle its orientation too,
-          // rather than discarding a still-rolled camera at the position snap.
+          // The close-view boom can end on a different side of the head than the unrestricted orbit.
+          // Settle its orientation too; do not discard a still-rolled camera at the position snap.
           const sign = cameraRotation[0] * orbitRotation[0] + cameraRotation[1] * orbitRotation[1] + cameraRotation[2] * orbitRotation[2] + cameraRotation[3] * orbitRotation[3] < 0 ? -1 : 1;
           const error = Math.hypot(cameraRotation[0] - sign * orbitRotation[0], cameraRotation[1] - sign * orbitRotation[1], cameraRotation[2] - sign * orbitRotation[2], cameraRotation[3] - sign * orbitRotation[3]);
           if (error < 1e-4) closeCameraActive = false;
@@ -1627,7 +1599,7 @@
       eyeMotionValid = true;
     };
     // The scene supplies a safe arrival and resets its collision history first.
-    // Navigation changes location, not the visitor's mode or chosen Ooga.
+    // navigate changes location only, never the visitor's mode or chosen Ooga.
     const navigate = (destination) => {
       restoredPose = null;
       carryExitMode = carryFocusRemaining = 0;

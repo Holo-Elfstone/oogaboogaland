@@ -1,5 +1,4 @@
-// Ooga Orbit props: every rocket part, the flame, smoke and fire, the launch islet with its pad, tower and rope
-// bridge, and the round world under it all; one cached geometry per builder
+// Ooga Orbit props: rocket parts, fx, the launch site and the round world; one cached geometry per builder.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -19,7 +18,7 @@
   };
   const WOOD = "#8a6236", WOOD_DK = "#5c4425", PLANK = "#a9773f", LEAF = "#4f8a3d", LEAF_DK = "#3e7a2c", BANANA = "#f5c542", SPOT = "#4a2f16", BONE = "#e8e2d2";
   const CLAY = "#b5562f", CLAY_DK = "#8c3f22", STONE = "#6b625a", STONE_DK = "#57504a", MUD = "#5a3d22", MUD_DK = "#432c17", ROPE = "#b89760";
-  // A lathe whose colour can change round the ring as well as up it: color(t, s) by profile step and segment
+  // Lathe whose colour varies round the ring as well as up it: color(t, s) = profile step, segment index.
   const latheBy = ({ profile, segments = 8, color, emissive = 0 }) => {
     const geo = { verts: [], faces: [], lines: [] };
     const rings = profile.map(([r, y]) => Array.from({ length: segments }, (_, s) => {
@@ -36,27 +35,25 @@
     }
     return geo;
   };
-  // A stick from radius r0 at y0 to radius r1 at y1, at angle a round the axis
+  // A stick from radius r0 at y0 to radius r1 at y1, at angle a round the axis.
   const stick = (r0, y0, r1, y1, a, width, color) => {
     const len = Math.hypot(r1 - r0, y1 - y0);
     return turn(shift(turn(box({ w: width, h: len, d: width, color }), 0, Math.atan2(r0 - r1, y1 - y0)), (r0 + r1) / 2, (y0 + y1) / 2, 0), -a);
   };
-  // A thin box lying along a line in the yz plane, for rails and ropes
+  // A thin box lying along a line in the yz plane, for rails and ropes.
   const beam = (x, y0, z0, y1, z1, w, h, color) => {
     const len = Math.hypot(y1 - y0, z1 - z0);
     return shift(turn(box({ w, h, d: len, color }), 0, 0, -Math.atan2(y1 - y0, z1 - z0)), x, (y0 + y1) / 2, (z0 + z1) / 2);
   };
   const hoops = (r, ys) => ys.map((y) => ring({ r, thickness: 0.035, y, segments: 10, color: "#2d241c" }));
 
-  // ---------- parts: origin at the bottom centre, height up +y ----------
+  // Part builders: origin at the bottom centre, height up +y.
   const PART_BUILDERS = {
-    // Twelve sticks lashed into a teepee over a dark wooden bowl; the top stays open for the Ooga's head
     stickpod: (p) => merge(
       lathe({ profile: [[0, 0], [p.r, 0], [p.r, 0.12], [0.82, 0.55], [0.52, 1.2], [0.36, 1.46], [0.3, 1.46]], segments: 12, color: (t) => t < 0.3 ? WOOD_DK : "#4a3319" }),
       ...Array.from({ length: 12 }, (_, i) => stick(p.r + 0.04, 0.04, 0.12, p.h + 0.22, i / 12 * Math.PI * 2 + 0.13, 0.085, i % 2 ? WOOD : PLANK)),
       ring({ r: p.r - 0.02, thickness: 0.05, y: 0.34, segments: 12, color: ROPE }),
       ring({ r: 0.6, thickness: 0.045, y: 1.06, segments: 12, color: ROPE }),
-      // The rolled leaf chute strapped to the back
       shift(turn(box({ w: 0.42, h: 0.5, d: 0.26, color: LEAF }), 0, 0, -0.45), 0, 1.02, -0.62),
       shift(turn(box({ w: 0.46, h: 0.08, d: 0.3, color: ROPE }), 0, 0, -0.45), 0, 1.02, -0.62)
     ),
@@ -66,7 +63,6 @@
       shift(turn(box({ w: 0.4, h: 0.44, d: 0.24, color: LEAF }), 0, 0, -0.4), 0, 0.82, -0.66),
       ring({ r: 0.8, thickness: 0.04, y: 0.5, segments: 12, color: ROPE })
     ),
-    // Banana leaves overlapping under a thin mat
     leafshield: (p) => merge(
       lathe({ profile: [[0, 0.05], [p.r - 0.05, 0.05], [p.r - 0.05, p.h], [0, p.h]], segments: 14, color: LEAF_DK }),
       ...Array.from({ length: 10 }, (_, i) => turn(shift(box({ w: 0.34, h: 0.05, d: p.r + 0.08, color: i % 2 ? LEAF : "#5f9c45" }), 0, 0.03, (p.r + 0.08) / 2), i / 10 * Math.PI * 2))
@@ -79,7 +75,6 @@
       latheBy({ profile: [[0, 0], [0.92, 0], [p.r, 0.1], [p.r, 0.22], [0.9, p.h], [0, p.h]], segments: 14, color: (t, s) => s % 4 === 0 ? STONE_DK : STONE }),
       ...Array.from({ length: 3 }, (_, i) => turn(box({ w: 0.04, h: 0.03, d: 1.6, color: "#3a3531", offset: { y: 0.005 } }), i * 1.05 + 0.3))
     ),
-    // A hazelnut: pale shell under a ridged cap
     nut: (p) => merge(
       lathe({ profile: [[0, 0], [0.3, 0.02], [0.5, 0.2], [p.r, 0.44], [0.46, 0.62]], segments: 12, color: "#c8955a" }),
       latheBy({ profile: [[0.46, 0.6], [0.57, 0.64], [0.52, 0.76], [0, p.h]], segments: 12, color: (t, s) => s % 2 ? "#6b4526" : "#7c5230" })
@@ -95,36 +90,29 @@
     bigbarrel: (p) => merge(
       latheBy({ profile: [[0, 0], [0.84, 0], [0.97, 0.45], [p.r, 1.25], [0.97, 2.05], [0.84, p.h], [0, p.h]], segments: 14, color: (t, s) => s % 2 ? WOOD : PLANK }),
       ...hoops(0.99, [0.45, 1.0, 1.5, 2.05]),
-      // A painted banana on the side
       shift(turn(box({ w: 0.62, h: 0.16, d: 0.04, color: BANANA, emissive: 0.1 }), 0, 0.5), 0, 1.25, 1.0)
     ),
-    // A clay pot upside down, a glow at the mouth
     pot: (p) => merge(
       latheBy({ profile: [[0, 0.02], [0.62, 0], [p.r, 0.12], [0.5, 0.36], [0.55, 0.6], [0.64, 0.8], [0.6, p.h], [0, p.h]], segments: 12, color: (t) => t > 0.4 && t < 0.6 ? CLAY_DK : CLAY }),
       lathe({ profile: [[0, 0.01], [0.45, 0.01]], segments: 10, color: "#ff8a2a", emissive: 0.9 })
     ),
-    // A little volcano on its head: dark rock, lava in the cracks
     jug: (p) => merge(
       latheBy({ profile: [[0, 0.03], [0.88, 0], [p.r, 0.2], [0.6, 0.55], [0.7, 0.9], [0.86, 1.2], [0.8, p.h], [0, p.h]], segments: 12, color: (t, s) => s % 3 === 0 && t < 0.7 ? "#3a302b" : "#4a3f3a" }),
       ...Array.from({ length: 6 }, (_, i) => turn(box({ w: 0.08, h: 0.36, d: 0.05, color: "#ff6a1e", emissive: 0.9, offset: { x: 0, y: 0.28 + (i % 2) * 0.3, z: 0.74 } }), i / 6 * Math.PI * 2)),
       lathe({ profile: [[0, 0.02], [0.66, 0.02]], segments: 10, color: "#ffb13b", emissive: 1 })
     ),
-    // A mammoth tusk cut into a bell, bound with rope
     tusk: (p) => merge(
       lathe({ profile: [[0, 0.02], [0.48, 0], [p.r, 0.12], [0.3, 0.5], [0.4, 0.85], [0.5, p.h], [0, p.h]], segments: 10, color: (t) => t < 0.2 ? "#cfc6b2" : BONE }),
       ...[0.55, 0.78].map((y) => ring({ r: 0.36 + (y - 0.5) * 0.4, thickness: 0.035, y, segments: 10, color: ROPE }))
     ),
-    // Three bamboo tubes packed with powder, bound in vines, charred at the bottom
     bamboo: (p) => merge(
       ...[0, 2.09, 4.19].map((a) => shift(latheBy({ profile: [[0, 0], [0.24, 0], [0.24, 0.18], [0.25, 0.2], [0.24, 0.22], [0.24, 0.9], [0.26, 0.92], [0.24, 0.95], [0.24, 1.7], [0.26, 1.72], [0.24, 1.75], [0.24, p.h], [0, p.h]], segments: 8, color: (t) => t < 0.1 ? "#2b261e" : t % 0.25 < 0.04 ? "#6f8a2f" : "#9bb84a" }), Math.cos(a) * 0.25, 0, Math.sin(a) * 0.25)),
       ...[0.5, 1.4, 2.3].map((y) => ring({ r: 0.5, thickness: 0.04, y, segments: 10, color: LEAF_DK }))
     ),
-    // A knot of vine you cut to drop a stage
     vine: (p) => merge(
       latheBy({ profile: [[0, 0], [0.7, 0], [p.r, 0.1], [p.r, 0.25], [0.7, p.h], [0, p.h]], segments: 12, color: (t, s) => s % 3 === 0 ? LEAF : LEAF_DK }),
       ...[0, 1.6, 3.4, 4.9].map((a) => turn(box({ w: 0.2, h: 0.2, d: 0.2, color: "#2f5f22", offset: { x: p.r, y: 0.17 } }), a))
     ),
-    // A collar with four long feathers
     feathers: (p) => merge(
       lathe({ profile: [[0, 0], [p.r, 0], [p.r, p.h], [0, p.h]], segments: 10, color: WOOD_DK }),
       ...Array.from({ length: 4 }, (_, i) => turn(merge(
@@ -139,18 +127,16 @@
     )
   };
   const partGeometry = keyed((id) => PART_BUILDERS[id](rocketParts.partOf(id)));
-  // Exhaust: a unit cone of fire hanging down from the nozzle; the scene scales it by the engine and the throttle
+  // A unit cone of fire hanging down from the nozzle; the scene scales it by the engine and the throttle.
   const flame = cached(() => noShadow(latheBy({ profile: [[0, -2.8], [0.28, -1.7], [0.52, -0.7], [0.66, -0.12], [0.6, 0], [0, 0.02]], segments: 9, color: (t) => t < 0.3 ? "#ff5a1e" : t < 0.65 ? "#ff9a2a" : "#ffe7a0", emissive: 1 })));
-  // Smoke puffs, fire balls, plasma, splashes
   const BALL = [[0, -1], [0.72, -0.7], [1, 0], [0.72, 0.7], [0, 1]];
   const puff = cached(() => noShadow(lathe({ profile: BALL, segments: 7, color: "#d9d6cf", emissive: 0.12 })));
   const fireball = cached(() => noShadow(latheBy({ profile: BALL, segments: 9, color: (t, s) => (s + Math.floor(t * 4)) % 3 ? "#ff8a2a" : "#ffd36a", emissive: 1 })));
   const plasma = cached(() => noShadow(box({ w: 0.06, h: 0.06, d: 1, color: "#ffb347", emissive: 1 })));
   const splash = cached(() => noShadow(lathe({ profile: [[0.7, 0], [1, 0.05], [0.95, 0.6], [0.8, 0.9], [0.6, 0.3]], segments: 14, color: "#e8f4fb", emissive: 0.25 })));
-  // The glow around the pod while the air burns: a shell just larger than the shield, drawn only as heat
   const heatShell = cached(() => noShadow(lathe({ profile: [[0, -0.3], [0.9, -0.2], [1.12, 0.1], [1.05, 0.5], [0.7, 0.9]], segments: 12, color: "#ff7a2a", emissive: 1 })));
-  // The spacewalk: a glass bubble over the head in caveman-height units (the scene fades it to glass), a rope that the
-  // scene stretches along +z from the hatch, the glowing space rock to measure, and the measuring stick
+  // Spacewalk props in caveman-height units; the scene fades the helmet to glass.
+  // The tether is a unit box the scene stretches along +z from the hatch.
   const helmet = cached(() => noShadow(merge(
     lathe({ profile: [[0, -0.2], [0.3, -0.16], [0.42, 0.06], [0.38, 0.28], [0.22, 0.44], [0, 0.48]], segments: 12, color: "#cfe8f5", emissive: 0.15 }),
     ring({ r: 0.34, thickness: 0.04, y: -0.18, segments: 12, color: "#d8dde3" })
@@ -165,7 +151,7 @@
     box({ w: 0.05, h: 0.9, d: 0.05, color: WOOD, offset: { y: 0.45 } }),
     ...[0.15, 0.35, 0.55, 0.75].map((y) => box({ w: 0.1, h: 0.02, d: 0.1, color: BANANA, offset: { y } }))
   ));
-  // A rocket from a stack, bottom up: the group's origin is the bottom of the whole stack; engines carry a flame
+  // Built bottom up: the group's origin is the bottom of the whole stack, and engines carry a flame node.
   const assemble = (stack) => {
     const node = createNode();
     const parts = [];
@@ -186,12 +172,11 @@
     return { node, parts, height: y };
   };
 
-  // ---------- the launch site ----------
-  // The bridge leaves the south rim for `span`, sagging to its middle; the islet's middle sits past its end. `from` is
-  // where the search for the rim's edge starts
+  // The bridge leaves the south rim for `span`, sagging to its middle; the islet's middle sits past its end.
+  // `from` is where the search for the rim's edge starts.
   const SITE = { from: 27.4, span: 13.5, sag: 0.45, width: 2.1, isletR: 7.2, isletDepth: 13, padR: 4.2, padH: 0.45, towerX: 5.4 };
-  // Where the site stands on an island: the bridge head sits where the ground under it runs out, at that ground's
-  // height, so the planks meet the grass; that height sets both ends
+  // The bridge head sits where the ground under it runs out, at that ground's height, so planks meet the grass.
+  // That height sets both ends of the site.
   const siteSpot = (island, out = {}) => {
     let z = SITE.from;
     while (island.surfaceAt(0, z + 0.1) > 0.5) z += 0.1;
@@ -202,7 +187,7 @@
     out.padY = out.y + SITE.padH;
     return out;
   };
-  // A floating chunk of the island in voxels: grass, dirt, then rock tapering to a point; top face at y = 0
+  // A floating chunk of island in voxels: grass, dirt, then rock tapering to a point; top face at y = 0.
   const ISLET_UNIT = 0.5;
   const islet = cached(() => {
     const rand = mulberry32(911);
@@ -218,7 +203,7 @@
     }
     return voxelGeometry(v, { unit: ISLET_UNIT, palette: ["#5b8a3a", "#4f7d33", "#6b4a2b", STONE, STONE_DK], origin: { x: 0, y: 0, z: 0 } });
   });
-  // The pad: a stone disc with a painted ring, a charred trench and four fire posts; its top at SITE.padH
+  // Stone disc, painted ring, charred trench and four fire posts; its top sits at SITE.padH.
   const pad = cached(() => merge(
     latheBy({ profile: [[0, 0], [SITE.padR, 0], [SITE.padR, SITE.padH - 0.08], [SITE.padR - 0.12, SITE.padH], [0, SITE.padH]], segments: 24, color: (t, s) => s % 3 === 0 ? STONE_DK : "#756b62" }),
     lathe({ profile: [[SITE.padR - 0.8, SITE.padH + 0.005], [SITE.padR - 1.1, SITE.padH + 0.005]], segments: 24, color: BANANA, emissive: 0.35 }),
@@ -228,8 +213,7 @@
       box({ w: 0.26, h: 0.2, d: 0.26, color: "#ff9a2a", emissive: 1, offset: { x: SITE.padR - 0.4, y: SITE.padH + 1.2 } })
     ), i * Math.PI / 2 + Math.PI / 4))
   ));
-  // The tower: four poles, cross beams, a lookout and a banana flag; it stands beside the pad on +x, behind the rocket
-  // from the launch camera
+  // Stands beside the pad on +x, behind the rocket from the launch camera.
   const TOWER_H = 15;
   const tower = cached(() => {
     const geos = [];
@@ -241,13 +225,11 @@
     geos.push(box({ w: 2.2, h: 0.16, d: 2.2, color: PLANK, offset: { y: TOWER_H } }));
     geos.push(box({ w: 0.1, h: 2.4, d: 0.1, color: WOOD_DK, offset: { x: 0.9, y: TOWER_H + 1.2, z: 0.9 } }));
     geos.push(box({ w: 0.05, h: 0.6, d: 0.9, color: BANANA, emissive: 0.15, offset: { x: 0.9, y: TOWER_H + 2.05, z: 0.45 } }));
-    // Arms reaching over to the rocket on -x
     geos.push(box({ w: 3.6, h: 0.18, d: 0.5, color: WOOD, offset: { x: -2.3, y: TOWER_H * 0.62 } }));
     geos.push(box({ w: 3.6, h: 0.18, d: 0.5, color: WOOD, offset: { x: -2.3, y: TOWER_H * 0.3 } }));
     return merge(...geos);
   });
-  // The bridge in its own frame: from z = 0 to z = span at deck height 0, planks sagging to the middle, a post pair at
-  // each end, two hand ropes and hangers
+  // Built in its own frame: z = 0 to z = SITE.span at deck height 0, planks sagging to the middle.
   const deckY = (z) => -SITE.sag * 4 * (z / SITE.span) * (1 - z / SITE.span);
   const bridge = cached(() => {
     const geos = [], w = SITE.width, count = Math.round(SITE.span / 0.47);
@@ -271,7 +253,6 @@
     }
     return merge(...geos);
   });
-  // The cave sign for the site, on two pegs
   const SIGN_SCALE = 0.42, PEG_H = 0.6;
   const siteSign = cached(() => {
     const sign = caveSign("Ooga Orbit"), board = { verts: sign.verts.slice(), faces: sign.faces, lines: sign.lines };
@@ -284,7 +265,7 @@
     const half = sign.signWidth * SIGN_SCALE * 0.5 - 0.12;
     return merge(board, ...[-half, half].map((x) => box({ w: 0.07, h: PEG_H + 0.2, d: 0.07, color: WOOD_DK, offset: { x, y: (PEG_H + 0.2) * 0.5 - 0.1 } })));
   });
-  // The whole site on an island, as nodes under one group at the islet's middle; the bridge head is `spot.bridgeZ`
+  // Nodes under one group placed at the islet's middle; the bridge head is `spot.bridgeZ`.
   const site = (spot) => {
     const node = createNode({ position: { x: spot.x, y: spot.y, z: spot.z } });
     const isletNode = createNode({ geometry: islet() });
@@ -295,7 +276,7 @@
     addChild(node, isletNode, padNode, towerNode, bridgeNode, signNode);
     return { node, islet: isletNode, pad: padNode, tower: towerNode, bridge: bridgeNode, sign: signNode };
   };
-  // Ground under a point of the site, in world space, or -Infinity: the pad, the islet's top, the bridge deck
+  // Ground under a site point in world space, or -Infinity: the pad, the islet's top, the bridge deck.
   const siteGroundAt = (spot, x, z) => {
     const dx = x - spot.x, dz = z - spot.z, r = Math.hypot(dx, dz);
     if (r < SITE.padR) return spot.padY;
@@ -305,11 +286,9 @@
     return -Infinity;
   };
 
-  // ---------- the world ----------
-  // A sphere round the top pole, rings close together near the islands and wider away; turquoise shallows round home,
-  // deep sea, hashed continents far off and ice at the bottom pole; centre at the origin, radius R
+  // Sphere centred at the origin, radius rocket.R; rings close together near the islands and wider away.
   const PLANET_SEGMENTS = 96;
-  // Continents lie well past where a pod comes down near home, so every home landing is on the islands or in the sea
+  // Continents lie well past where a pod comes down near home, so every home landing is on islands or sea.
   const LANDS = (() => {
     const rand = mulberry32(4242);
     return Array.from({ length: 9 }, () => {
@@ -317,8 +296,8 @@
       return { x: Math.sin(t) * Math.cos(a), y: Math.cos(t), z: Math.sin(t) * Math.sin(a), r: 0.16 + rand() * 0.24 };
     });
   })();
-  // How far inside the nearest continent a direction from the world's centre is (positive on land), and its angle a
-  // round the pole and t down from it for the coast's wobble
+  // Depth inside the nearest continent for a unit direction from the world's centre; positive on land.
+  // a is the angle round the pole, t the angle down from it, both feeding the coast's wobble.
   const landDepth = (x, y, z, t, a) => {
     let land = -Infinity;
     for (const l of LANDS) {
@@ -328,7 +307,7 @@
     }
     return land;
   };
-  // A world point over a continent (its position relative to the world's centre)
+  // Takes a position relative to the world's centre, any length, not a world-space point.
   const onContinent = (x, y, z) => {
     const r = Math.hypot(x, y, z), t = Math.acos(y / r), a = Math.atan2(z, x);
     return landDepth(x / r, y / r, z / r, t, a < 0 ? a + Math.PI * 2 : a) > 0.015;
@@ -341,7 +320,7 @@
       step = Math.min(step * 1.16, 0.045);
     }
     const geo = { verts: [], faces: [], lines: [] };
-    // Bottom pole first so the profile climbs and the faces look out
+    // Bottom pole first so the profile climbs and the faces look out.
     const rings = [];
     for (let i = thetas.length - 1; i >= 0; i--) {
       const t = thetas[i], row = [];

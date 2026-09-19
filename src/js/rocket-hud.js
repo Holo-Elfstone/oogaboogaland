@@ -1,5 +1,5 @@
-// Ooga Orbit HUD: the builder (parts, the stack, the numbers), the flight strip and meters, the clamp gauge, centre
-// calls and notices, the results board; text and bars change only when their value does
+// Ooga Orbit HUD: builder, flight strip and meters, clamp gauge, calls/notices, results board.
+// Text and bars change only when their value does.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -9,8 +9,8 @@
   const MEDALS = { gold: 3600, silver: 2600, bronze: 1500 };
   const medalFor = (score) => score >= MEDALS.gold ? "gold" : score >= MEDALS.silver ? "silver" : score >= MEDALS.bronze ? "bronze" : null;
   const KIND_TAB = { pod: "Pods", shield: "Shields", engine: "Engines", tank: "Fuel", sep: "Knots", fins: "Fins" };
-  // Each part drawn once per visit with the locker's icon renderer; the tiles and the stack show copies, so the cache
-  // never holds a tile (and everything in it), and it is emptied when the builder goes
+  // Each part icon drawn once per visit; tiles and the stack show copies, so the cache never holds a tile.
+  // Emptied when the builder goes.
   const ICONS = new Map();
   const iconFor = (id) => {
     let icon = ICONS.get(id);
@@ -25,12 +25,11 @@
     c.getContext("2d").drawImage(src, 0, 0);
     return c;
   };
-  // The one number that says what a part is for
   const keyStat = (p) => p.kind === "engine" ? `push ${p.thrust}` : p.kind === "tank" ? `fuel ${p.fuel}` : p.kind === "shield" ? `shield ${p.ablate}` : p.kind === "pod" ? `hull ${p.heatTol}` : p.kind === "fins" ? `steady ${p.stability}` : "drops a stage";
-  // Drag and drop, on pointer events alone: a mouse drag starts after a few pixels, a touch after a still long press
+  // Pointer events only: a mouse drag starts after DRAG_START 6px, a touch after a still LONG_PRESS 380ms.
   const DRAG_START = 6, LONG_PRESS = 380;
-  // onInsert(id, at) and onMoveTo(from, at) take a stack index (0 is the bottom); slots() gives where the rocket's part
-  // boundaries sit on screen, bottom up, as { x, reach, ys } or null
+  // onInsert(id, at) / onMoveTo(from, at) take stack indices, 0 at the bottom.
+  // slots() gives the rocket's part boundaries on screen, bottom up, as { x, reach, ys } or null.
   const create = ({ best, onAdd, onMove, onRemove, onSelect, onPreset, onPilot, onInsert, onMoveTo, slots }) => {
     const el = {
       root: $("orbit"), build: $("orbit-build"), clear: $("orbit-clear"), tabs: $("orbit-tabs"), dv: $("orbit-dv"), dvFill: $("orbit-dv-fill"), twr: $("orbit-twr"), twrFill: $("orbit-twr-fill"), rocket: $("orbit-rocket"), palette: $("orbit-parts"), stack: $("orbit-stack"), presets: $("orbit-presets"),
@@ -81,8 +80,6 @@
       bits.push(`${p.dry + (p.fuel || 0)}t`);
       return bits.join(" · ");
     };
-    // The palette: a tab per kind, and under it a grid of tiles, each the part's picture, name, price and key number;
-    // tapping one adds it to the rocket
     let activeKind = "engine";
     const groups = new Map(), tabs = new Map();
     const showKind = (kind) => {
@@ -122,7 +119,6 @@
         return grid;
       }));
       showKind(activeKind);
-      // Ready rockets as golden cards: the name over its stages and speed to spend
       presetCards.length = 0;
       el.presets.replaceChildren(...rocketParts.PRESETS.map((preset) => {
         const st = rocketParts.stats(preset.stack), b = button("", "orbit-preset", () => onPreset(preset.name));
@@ -131,7 +127,7 @@
         return b;
       }));
     };
-    // Stack rows are rebuilt on every change, so their buttons carry an op and an index and one listener reads them
+    // Stack rows are rebuilt on every change, so buttons carry an op and index that one delegated listener reads.
     const tool = (text, className, op, index) => {
       const b = document.createElement("button");
       b.type = "button";
@@ -157,8 +153,6 @@
       li.append(span(label, ""), span(value, ""));
       return li;
     };
-    // The stack from the top down, grouped by stage with the speed each can spend, the readiness gauges, the facts
-    // and anything stopping a launch
     const STAGE_HUES = ["#ff9a2a", "#7fe0ff", "#b58cff", "#8fdc6a"];
     const renderStack = (stack, selected, check, stats) => {
       const rows = [], stages = rocketParts.stagesOf(stack);
@@ -195,10 +189,9 @@
         rows.push(li);
       }
       el.stack.replaceChildren(...rows);
-      // The ready rocket on the pad, if the stack is one
       const current = stack.join(",");
       for (const card of presetCards) card.b.setAttribute("aria-pressed", String(card.stack === current));
-      // Readiness: speed against twice what orbit needs (the mark at the middle), push against 3× (the mark at 1×)
+      // Readiness bars: dv against 2x TOP_DV (mark at the middle), push against 3x (mark at 1x).
       el.dv.textContent = `${Math.round(stats.dv)} of ~${rocketParts.TOP_DV}`;
       el.dvFill.style.width = `${Math.min(100, stats.dv / (rocketParts.TOP_DV * 2) * 100)}%`;
       el.dvFill.dataset.state = stats.dv < rocketParts.TOP_DV ? "bad" : stats.dv < rocketParts.TOP_DV * 1.25 ? "warn" : "ok";
@@ -233,7 +226,7 @@
       if (!check.problems.length && stack.length) {
         const li = document.createElement("li");
         li.dataset.warn = "ok";
-        li.textContent = "Ooga NASA has no budget. Wink. Ready to fly.";
+        li.textContent = "The bill is only for show. Ready to fly.";
         el.problems.append(li);
       }
       el.launch.disabled = !check.ok;
@@ -258,7 +251,7 @@
         el.gauge.hidden = true;
       }
     };
-    // Numbers in the strip, compared as numbers so an unchanged value builds no string
+    // Compare as numbers so an unchanged value builds no string.
     const last = { alt: NaN, speed: NaN, stage: NaN };
     const setNumber = (key, node, n) => {
       if (last[key] === n) return;
@@ -271,8 +264,7 @@
       setNumber("stage", el.stage, n);
       el.stages.textContent = `/${total}`;
     };
-    // The mission checklist: every step of a flight, the current one lit with a live detail, done ones ticked and
-    // skipped ones struck; built once, each row changes only when its state or text does
+    // Mission rows are built once; each changes only when its state or text does.
     const MISSION = ["Launch", "Climb and arc", "Reach low orbit", "Spacewalk", "Drop home", "Shield first", "Chute and land"];
     const missionRows = [], missionState = [], missionText = [];
     const buildMission = () => {
@@ -299,7 +291,6 @@
         row.detail.data = text;
       }
     };
-    // The height meter up the flight card's edge: a fill and a notch by the fraction of the Sky Top
     let altPct = NaN;
     const setAltimeter = (alt, top) => {
       const pct = Math.round(Math.max(0, Math.min(1.04, alt / top)) * 400) / 4;
@@ -308,13 +299,12 @@
       el.altFill.style.height = `${Math.min(100, pct)}%`;
       el.altNow.style.bottom = `${pct}%`;
     };
-    // The spacewalk button shows only while a walk can start
     const setEva = (on) => {
       if (el.evaBtn.hidden === !on) return;
       el.evaBtn.hidden = !on;
     };
     const bars = new Map();
-    // A bar's fill by percent and its state: "" plain, "warn", "bad", "ok"
+    // Bar state is one of '' (plain), 'warn', 'bad', 'ok'.
     const setBar = (node, value, state = "") => {
       let b = bars.get(node);
       if (!b) bars.set(node, b = { pct: -1, state: null });
@@ -341,7 +331,7 @@
         el.center.hidden = true;
       }, ms);
     };
-    // The callout: keys named in the text become key caps; rebuilt only when the text changes
+    // Keys named in the text become key caps; rebuilt only when the text changes.
     const KEYS = /\b(Space|W A S D Q E|W A S D|W S|A D|Q E|V|G|Enter)\b/;
     let lastNotice = "";
     const notice = (text, ms = 1600) => {
@@ -360,7 +350,6 @@
         el.notice.hidden = true;
       }, ms);
     };
-    // The total big over the rows, with its medal and how it stands against the best; the pop replays each flight
     const results = (rows, summary, { score, medal, improved }) => {
       el.finalScore.textContent = String(score);
       el.finalMedal.hidden = !medal;
@@ -379,9 +368,7 @@
       void el.final.offsetWidth;
       el.final.classList.add("is-shown");
     };
-    // ---------- drag and drop ----------
-    // A floating ghost of the part follows the pointer; a glowing line shows where it would go, in the stack list or
-    // on the rocket itself; a row dragged off both is taken off the rocket
+    // A ghost follows the pointer and a line shows the target; a row dragged clear of both is taken off the rocket.
     const ghost = document.createElement("div");
     ghost.className = "orbit-ghost";
     const line = document.createElement("div");
@@ -404,7 +391,6 @@
       el.root.append(ghost, line);
       document.body.classList.add("orbit-dragging");
     };
-    // Where a drop at (x, y) would put the part, and the line to show it
     const aim = (x, y) => {
       line.hidden = true;
       drag.at = -1;
@@ -455,7 +441,7 @@
         ghost.remove();
         line.remove();
         document.body.classList.remove("orbit-dragging");
-        // Only the click this very release makes is eaten; a release elsewhere makes none
+        // Only the click from this very release is eaten; a release elsewhere makes none.
         swallowClick = true;
         window.clearTimeout(clickTimer);
         clickTimer = window.setTimeout(() => {
@@ -500,7 +486,7 @@
     on(window, "pointermove", (e) => {
       if (!drag.armed || e.pointerId !== drag.pointer) return;
       if (!drag.active) {
-        // A touch that moves before the long press is a scroll, not a drag
+        // A touch that moves before the long press is a scroll, not a drag.
         if (Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < DRAG_START) return;
         if (drag.touch) {
           finish(false);
@@ -518,13 +504,12 @@
     on(window, "pointercancel", (e) => {
       if (e.pointerId === drag.pointer) finish(false);
     });
-    // Once a touch drag is going, the page must not scroll under it
+    // Once a touch drag is going, the page must not scroll under it (preventDefault).
     const holdScroll = (e) => {
       if (drag.active) e.preventDefault();
     };
     window.addEventListener("touchmove", holdScroll, { passive: false });
     listeners.push(() => window.removeEventListener("touchmove", holdScroll, { passive: false }));
-    // The click that ends a drag is not a tap
     const eatClick = (e) => {
       if (!swallowClick) return;
       swallowClick = false;

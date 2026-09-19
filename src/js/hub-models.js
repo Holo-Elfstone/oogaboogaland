@@ -1,10 +1,9 @@
-// Hub props, one cached geometry per builder
+// Hub props; each builder returns one cached geometry shared by every instance.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { hexToRgb, mulberry32 } = BL.math;
   const { box, lathe, ring, merge, cached, variants, makeVox: vox, voxelGeometry: voxGeo, voxCoords } = BL.models;
-  // Ellipsoid of cells, chipped and cut off below floor
   const blob = (v, { cx, cy, cz, rx, ry, rz, chip = 0, floor = -Infinity, rand, color }) => {
     for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
       for (let y = Math.max(floor, Math.floor(cy - ry)); y <= Math.ceil(cy + ry); y++) {
@@ -19,7 +18,6 @@
   };
   const CELL = [0, 0, 0];
   const pick = (rand, base, alt, p) => () => rand() < p ? alt : base;
-  // Tone leaf cells between lo and hi: dark under the lower third, light caps on top
   const foliage = (v, rand, base, lo, hi, berry = 0) => {
     for (const [k, c] of v.map) {
       if (c < base) continue;
@@ -32,7 +30,7 @@
       v.map.set(k, base + tone);
     }
   };
-  // Roll about z, then yaw about y, in place
+  // Rolls about z first, then yaws about y, mutating geo.verts in place.
   const turn = (geo, yaw, roll = 0) => {
     const p = geo.verts;
     const cy = Math.cos(yaw), sy = Math.sin(yaw), cr = Math.cos(roll), sr = Math.sin(roll);
@@ -125,7 +123,7 @@
     const textW = cells * SIGN_CELL;
     const width = Math.max(CAVE_SIGN_WIDTH, textW + SIGN_PAD);
     const half = CAVE_SIGN_HEIGHT * 0.5;
-    // Back slab, two planks with end grain, hung from a bar; the front face sits at SIGN_FRONT
+    // Sign's front face sits at SIGN_FRONT.
     const geos = [
       box({ w: width, h: CAVE_SIGN_HEIGHT, d: 0.14, color: WOOD_DK }),
       box({ w: width - 0.24, h: half, d: 0.16, color: WOOD, offset: { y: half * 0.5, z: 0.15 } }),
@@ -163,7 +161,6 @@
     SIGN_CACHE.set(text, geo);
     return geo;
   };
-  // Stone frame around a cave mouth
   const caveMouthRim = cached(() => {
     const rand = mulberry32(31);
     const v = vox();
@@ -195,7 +192,7 @@
     for (let bar = 0; bar < 7; bar++) {
       const x = -2.25 + bar * 0.75;
       parts.push(box({ w: 0.14, h: 3.15, d: 0.18, color: "#17211b", offset: { x, y: 1.575 } }));
-      // Small paired pixels read as a different falling code rune on every bar.
+      // Per-bar pixel offsets vary on purpose so each bar reads as a different falling rune.
       for (let row = 0; row < 7; row++) {
         const side = (bar * 3 + row * 5) & 1 ? -1 : 1;
         parts.push(box({ w: 0.035, h: 0.06, d: 0.025, color: row & 1 ? "#46ff70" : "#18dc4a", emissive: 0.7, offset: { x: x + side * 0.03, y: 0.22 + row * 0.44, z: 0.1025 } }));
@@ -207,9 +204,8 @@
   const sealedCaveFace = variants((variant) => {
     const rand = mulberry32(419), stone = vox(), parts = [];
     const mossColors = ["#6f7d3e", "#7b8945", "#65733a"];
-    // Match both depth layers of the rim, with a continuous stone core.
-    // Meshing the joined voxels removes the internal faces between blocks;
-    // the seal cannot develop slits where different block depths once met.
+    // Match both rim depth layers with a continuous stone core: merged voxels drop internal faces so the
+    // seal cannot open slits where different block depths meet.
     const backZ = -0.52, stoneFront = backZ + VOX * 2;
     let frontZ = stoneFront;
     for (let y = 0; y < 6; y++) for (let x = 0; x < 10; x++) {
@@ -217,8 +213,7 @@
       stone.set(x - 5, y, 0, color); stone.set(x - 5, y, 1, color);
     }
     parts.push(voxGeo(stone, { unit: VOX, palette: CLIFF, origin: { x: 0, y: 0, z: backZ } }));
-    // The hill steps wear quarter-voxel grass caps. Continue that same muted,
-    // blocky growth across the seal in connected patches rather than flecks.
+    // Grass caps continue the hill steps' quarter-voxel growth in connected patches, not flecks.
     for (let y = 0; y < 12; y++) for (let x = 0; x < 20; x++) {
       const top = variant === 0 ? y === 11 && (x < 7 || x > 8 && x < 15 || x > 16) : variant === 1 ? y === 11 && (x < 3 || x > 4 && x < 12 || x > 14) : y === 11 && (x < 5 || x > 7 && x < 11 || x > 13);
       const upper = variant === 0 ? y === 10 && (x < 6 || x > 9 && x < 14 || x > 17) || y === 9 && (x > 0 && x < 5 || x > 10 && x < 13 || x === 18) : variant === 1 ? y === 10 && (x < 2 || x > 5 && x < 11 || x > 15) || y === 9 && (x === 1 || x > 6 && x < 10 || x > 16) : y === 10 && (x < 4 || x > 7 && x < 12 || x > 14) || y === 9 && (x > 1 && x < 4 || x > 8 && x < 11 || x > 15 && x < 19);
@@ -263,7 +258,7 @@
     geo.matrixGlyph = true;
     return geo;
   });
-  // Gateway arch over the pass, trail along z
+  // Gateway arch over the pass; the trail runs along z.
   const gate = cached(() => {
     const rand = mulberry32(67);
     const v = vox();
@@ -279,7 +274,6 @@
     box({ w: 0.7, h: 0.5, d: 0.12, color: "#1d2326", offset: { x, y, z: 0 } }),
     box({ w: 0.62, h: 0.42, d: 0.02, color, emissive: 0.9, offset: { x, y, z: 0.07 } })
   ];
-  // Shelves that glow enough to read in the tunnel
   const caveShelves = cached(() => merge(
     box({ w: 2.4, h: 2.2, d: 0.1, color: "#3a3632", emissive: 0.35, offset: { y: 1.1, z: -0.25 } }),
     box({ w: 0.12, h: 2.2, d: 0.6, color: "#6a4f34", emissive: 0.35, offset: { x: -1.14, y: 1.1 } }),
@@ -293,7 +287,7 @@
     box({ w: 0.24, h: 0.3, d: 0.24, color: "#d8892b", offset: { x: 0.2, y: 0.25, z: 0.06 } }),
     box({ w: 0.24, h: 0.2, d: 0.24, color: "#6f9fca", offset: { x: 0.65, y: 0.2, z: 0.02 } })
   ));
-  // Jetpack tanks and backplate, flame kept separate
+  // Jetpack tanks and backplate only; the flame is a separate geometry.
   const JET_UNIT = 0.075;
   const JET_ORIGIN = { x: -3 * JET_UNIT, y: 0, z: -2 * JET_UNIT };
   const jetpack = cached(() => {
@@ -320,14 +314,14 @@
   const GREENS = ["#3f7a2b", "#4f8f36", "#5fa243", "#74b552"];
   const CANOPIES = [GREENS, ["#2f6b3a", "#3f8248", "#4f9a58", "#66b06a"], ["#5a7d2a", "#6f9436", "#86aa44", "#a2c055"], ["#c47f9d", "#d697b0", "#e8b4c6", "#f2c9d8"]];
   const TREE_HEIGHT = 3;
-  // Crown clumps per variant as [cx, cy, cz, rx, ry, rz] in quarter cells
+  // CROWNS entries are [cx, cy, cz, rx, ry, rz] in quarter cells, per variant.
   const CROWNS = [
     [[0, 8.6, 0, 4.6, 3.0, 4.4], [-2.2, 9.6, 1.4, 2.6, 2.4, 2.6], [2.0, 7.4, -1.6, 2.4, 2.0, 2.4]],
     [[0, 8.2, 0, 4.2, 2.6, 4.6], [1.6, 10.0, 0.6, 2.8, 2.2, 2.6], [-2.4, 7.6, -0.8, 2.6, 2.2, 2.4]],
     [[0.4, 8.8, -0.4, 4.4, 3.2, 4.2], [-2.6, 8.0, 1.8, 2.8, 2.2, 2.6]],
     [[0, 8.6, 0, 4.6, 3.0, 4.6], [2.2, 9.6, -1.2, 2.6, 2.2, 2.6], [-2.0, 7.6, 1.6, 2.4, 2.0, 2.4]]
   ];
-  // Rooted trunk with branch stubs under a clumped canopy, TREE_HEIGHT units tall
+  // Tree is TREE_HEIGHT units tall.
   const tree = variants((i) => {
     const rand = mulberry32(101 + i);
     const v = vox();
@@ -374,7 +368,6 @@
     geometry.treeSolidCanopyFloor = middle * QUARTER;
     return geometry;
   });
-  // Bush clumps per variant, small tuft to a wide berry bush
   const CLUMPS = [
     [[0, 1.0, 0, 1.9, 1.8, 1.7], [0.7, 1.4, -0.5, 1.3, 1.3, 1.2]],
     [[0, 1.4, 0, 2.5, 2.2, 2.3], [-1.2, 2.0, 0.8, 1.7, 1.6, 1.6], [1.3, 1.8, -0.9, 1.6, 1.5, 1.5]],
@@ -412,7 +405,7 @@
     segments: 32,
     color: (t) => t < 0.5 ? "#57504a" : "#756b62"
   }));
-  // Unit blocks are instanced around the continuously growing altar edge.
+  // Unit block: instanced around the altar edge as it grows.
   const altarBlock = variants((i) => box({ color: STONE[i % STONE.length], offset: { y: 0.5 } }));
   const woodCrate = cached(() => merge(
     box({ w: 0.9, h: 0.9, d: 0.9, color: PLANK, offset: { y: 0.45 } }),
@@ -446,7 +439,6 @@
     geo.flameY = 1.36;
     return geo;
   });
-  // A tuft of leaning blades, no shadow
   const grass = cached(() => {
     const rand = mulberry32(89);
     return noShadow(merge(...Array.from({ length: 6 }, (_, n) => {
@@ -454,7 +446,7 @@
       return turn(box({ w: 0.05, h, d: 0.12, color: n % 2 ? "#74b552" : "#4f8f36", offset: { y: h * 0.5 } }), n * Math.PI / 6 + (rand() - 0.5) * 0.4, (rand() - 0.5) * 0.4);
     })));
   });
-  // Caged lamp hanging from its hook at the origin
+  // Lantern hangs below the origin; the origin is its hook.
   const lantern = cached(() => noShadow(merge(
     box({ w: 0.06, h: 0.08, d: 0.06, color: "#3a2a18", offset: { y: -0.04 } }),
     box({ w: 0.24, h: 0.04, d: 0.24, color: "#2b2521", offset: { y: -0.1 } }),
@@ -462,7 +454,7 @@
     box({ w: 0.24, h: 0.04, d: 0.24, color: "#2b2521", offset: { y: -0.44 } }),
     box({ w: 0.13, h: 0.16, d: 0.13, color: "#ffd27a", emissive: 1, offset: { y: -0.27 } })
   )));
-  // Stone ring over an ash bed with three crossed logs; the flame is fireFlame
+  // Firepit geometry only; the flame is fireFlame.
   const firepit = cached(() => {
     const rand = mulberry32(131);
     return merge(
@@ -489,7 +481,6 @@
   });
   const firefly = cached(() => noShadow(box({ w: 0.06, h: 0.06, d: 0.06, color: "#d9ff6a", emissive: 1 })));
   const ember = cached(() => noShadow(box({ w: 0.05, h: 0.05, d: 0.05, color: "#ff8a2a", emissive: 1 })));
-  // Three leaf strands, about 1.2 wide
   const vine = cached(() => {
     const rand = mulberry32(53);
     const leaves = [];
@@ -500,7 +491,6 @@
     geo.castShadow = false;
     return geo;
   });
-  // Flat cloud blobs from overlapping puffs
   const CLOUD_PUFFS = [
     [[0, 3, 2.6], [3, 4.5, 2]],
     [[-2, 3.4, 3], [2.5, 4.4, 2.6], [6, 3, 2.2]],

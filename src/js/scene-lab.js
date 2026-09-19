@@ -13,7 +13,6 @@
     || preloadedAmmo !== null && preloadedAmmo.trim() !== "" && Number.isFinite(Number(preloadedAmmo));
   const METER_CAPACITY = 60;
   const ROOM_HALF = 10;
-  // Orbit, follow and flight limits
   const PITCH = [0.12, 1.1], DIST = [4.5, 9.2];
   const FOLLOW = { y: 0.9, min: 3, max: 7, pitch: [0.25, 0.8] };
   const FLY = { speed: 4, perDist: 0.4, climb: 3, yMax: 3.5 };
@@ -27,7 +26,6 @@
     bench: { yaw: -1.5, pitch: 0.3, dist: 6, target: { x: 6.5, y: 1, z: 1.5 } }
   };
   const RENDER_OPTS = { shadowCenter: { x: 0, y: 1.5, z: 0 }, shadowExtent: 13.5 };
-  // Where the crew builds equipment
   const BUILD_SPOTS = [
     { x: 5.4, z: -9.3, ry: 0 }, { x: 6.7, z: -9.3, ry: 0 }, { x: 8, z: -9.3, ry: 0 },
     { x: -5.1, z: -9.3, ry: 0 }, { x: -9.1, z: -9.3, ry: 0 },
@@ -35,11 +33,8 @@
     { x: 9.4, z: 4.6, ry: -Math.PI / 2 }, { x: 9.4, z: 6.4, ry: -Math.PI / 2 },
     { x: -9.4, z: 5, ry: Math.PI / 2 }, { x: -9.4, z: 6.6, ry: Math.PI / 2 }, { x: -9.4, z: 8.2, ry: Math.PI / 2 }
   ];
-  // Where eaters walk in from
   const WALK_IN = { x: 0.6, z: 7 };
-  // Where the thank-you ticker hangs
   const TICKER_AT = { x: 0, y: 3.3, z: -ROOM_HALF + 0.3 };
-  // Keep a dragged banana inside the room
   const clampDrag = (p) => {
     p.x = clamp(p.x, -ROOM_HALF + 0.5, ROOM_HALF - 0.5);
     p.z = clamp(p.z, -ROOM_HALF + 0.5, ROOM_HALF - 0.5);
@@ -52,7 +47,7 @@
   const ledGrey = models.box({ w: 0.07, h: 0.05, d: 0.02, color: "#5a5a5e", emissive: 0.25 });
   const STATE_LED = { working: 0, chilling: 3, sleeping: 1 };
 
-  // One visit's state, made in enter and dropped in leave
+  // One visit's state: made in enter(), dropped in leave().
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, lab, hud, hooks, input, pilot, fx, pile, crew, crates, pulseNodes;
   let stateTimer = 0, hintTimer = 0, meterTimer = 0, unsubscribeActivity = null;
   const propTargets = [];
@@ -60,7 +55,6 @@
     input.add(node, owner, opts);
     propTargets.push(node);
   };
-  // A driven step stays inside the walls
   const walkable = (fromX, fromZ, toX, toZ) => Math.abs(toX) < WALL && Math.abs(toZ) < WALL && Math.hypot(toX, toZ) > pile.pileEdge() + 0.4;
   const clampTarget = (t) => {
     t.x = clamp(t.x, -WALL, WALL);
@@ -72,7 +66,6 @@
     p.y = clamp(p.y, 0.5, 4.3);
   };
 
-  // ---------- donations ----------
   const celebrate = (donation, bananas) => {
     for (const cave of crew.workingCavemen()) {
       if (cave.build) continue;
@@ -94,7 +87,6 @@
     hud.setStats(game.state);
   };
 
-  // ---------- props ----------
   const rackInfo = (rack) => {
     if (rack.index === 0) {
       const counts = crew.stateCounts();
@@ -219,7 +211,6 @@
     }
   };
 
-  // ---------- per frame ----------
   const updateMeter = () => {
     let reloading = 0;
     for (let i = 0; i < crew.list.length; i++) if (crew.list[i].weapon.reloading) reloading++;
@@ -262,7 +253,6 @@
   };
   const overlay = (dt) => fx.drawOverlay(dt, crew.drawQuotes);
 
-  // ---------- actions and keys ----------
   const onLootCleared = () => {
     if (!lootEnabled) return;
     crew.applyAllSwag();
@@ -309,7 +299,6 @@
     }
   };
 
-  // ---------- scene contract ----------
   const enter = (ctx) => {
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
     camera = createCamera({ fov: 48, near: 0.25, far: 60 });
@@ -419,7 +408,6 @@
       }
     }
     unsubscribeActivity = contributors.subscribe(() => { crew.refreshStates(); syncRackLeds(); });
-    // Once a minute, refresh states, LEDs and the pool
     stateTimer = window.setInterval(() => {
       crew.refreshStates();
       syncRackLeds();
@@ -466,7 +454,6 @@
     const targets = input.targetCount;
     input.dispose();
     hud.dispose();
-    // Drop the room and every system
     lab = hud = hooks = input = pilot = fx = pile = crew = crates = pulseNodes = null;
     labScene.input = labScene.debug = null;
     return { targets };

@@ -10,7 +10,7 @@
     low: { dpr: 1, msaa: 0, shadow: 512, bloom: false, mirror: 256, environment: 64, environmentCadence: 4, lights: POINT_LIGHT_CAPACITY }
   };
   const INSTANCE_FLOATS = 20;
-  // Caps the pixel ratio to bound buffer memory
+  // MAX_PIXELS caps the pixel ratio to bound buffer memory.
   const MAX_PIXELS = 2.6e6;
   const DEFAULT_LIGHT = { x: 0.45, y: 0.85, z: 0.3 };
   const DEFAULT_SKY = [0.50, 0.52, 0.58];
@@ -66,8 +66,6 @@ void main() {
   vNormal = normalize(mat3(m) * aNormal);
   vColor = aColor;
   vColor.rgb *= 1.0 - clamp(-aParams.y, 0.0, 1.0) * 0.88;
-  // Cave ownership shares the otherwise nonnegative emissive channel. Decode it
-  // before lighting so leaving the portal restores the original material exactly.
   float encoded = max(0.0, -aColor.a - 1.0);
   // Sloping HQ floors keep cave-wave ownership, but their glyphs span the
   // mesh's tiny triangle seams through the same material as the deeper ramp.
@@ -80,7 +78,6 @@ void main() {
   vColor.a = aColor.a < 0.0 ? encoded - vMatrixCave * 2.0 : aColor.a;
   vParams = aParams;
   vParams.y = max(0.0, aParams.y);
-  // Smoke fades through coverage without a separate transparent draw pass.
   vSmokeOpacity = aParams.z < 0.0 ? -aParams.z - 1.0 : 1.0;
   vParams.z = max(0.0, aParams.z);
   vShadow = uLightViewProj * w;
@@ -164,8 +161,6 @@ float matrixPixelCoverage(vec2 p, vec2 halfSize, vec2 footprint) {
     return covered / float(uMatrixSamples);
   }
 #endif
-  // Integrate the pixel rectangle over the screen pixel's footprint. A distance
-  // smoothstep dims resolved cores and loses energy as several voxels minify.
   vec2 lo = max(p - footprint * 0.5, -halfSize);
   vec2 hi = min(p + footprint * 0.5, halfSize);
   vec2 covered = max(hi - lo, vec2(0.0)) / footprint;
@@ -239,23 +234,16 @@ float matrixGlyphAt(vec3 n, float flow, out float glow, out float tip, out float
   glow = (0.58 + matrixHash(stream + 101) * 0.36) * (0.48 + trail * 0.52);
   tip = trainPosition == trainLength - 1 ? 1.0 : trainPosition == trainLength - 2 ? 0.55 : 0.0;
   vec2 local = vec2(localCross, fract(movingGrid) * glyphGap - glyphGap * 0.5);
-  // Falling motion and glyph orientation are independent: wall characters keep
-  // the reference mesh's upright Y axis while their centres travel downward.
   if (an.y < max(an.x, an.z)) local.y = -local.y;
   vec2 footprint = max(abs(vec2(dot(worldDx, crossAxis), dot(worldDx, flowAxis)))
     + abs(vec2(dot(worldDy, crossAxis), dot(worldDy, flowAxis))), vec2(0.00001));
 #ifdef MATRIX_SAMPLE_INTERPOLATION
-  // Use the framebuffer's real sample locations, just as the voxel meshes do.
-  // Explicit interpolation here does not force sample-frequency shading on the
-  // normal scene, and requires no extra pass or per-frame resources.
   for (int i = 0; i < 4; i++) {
     if (i >= uMatrixSamples) break;
     vec3 offset = interpolateAtSample(vWorld, i) - vWorld;
     matrixSampleOffsets[i] = vec2(dot(offset, crossAxis), dot(offset, flowAxis));
   }
 #endif
-  // The reference boxes are .01 deep with .01 surface clearance: their back,
-  // centre and front lie at .01, .015 and .02. Project that same silhouette.
   vec2 slope = vec2(dot(viewDir, crossAxis), dot(viewDir, flowAxis)) / viewNormal;
   vec2 middle = local;
   ivec2 nearest = ivec2(floor(vec2(middle.x / pixelPitch + 2.0, 3.0 - middle.y / pixelPitch)));
@@ -294,7 +282,6 @@ float shadowAt(vec3 p, float bias) {
 }
 vec3 lightFactorAt(vec3 n) {
   float ndl = max(max(dot(n, uLightDir), 0.0), uDiffuseFloor);
-  // The light matrix is orthographic, so vShadow.w is exactly 1
   vec3 sp = vShadow.xyz * 0.5 + 0.5;
   float bias = max(uShadowBias * (1.0 - ndl), uShadowBias * 0.32);
   float sh = shadowAt(sp, bias);
@@ -321,8 +308,6 @@ float matrixTravel(vec2 point, float caveIndex) {
   if (caveIndex < 0.5) return length(point - uMatrixOrigin.xz);
   vec4 cave = uMatrixCaves[int(caveIndex) - 1];
   float depth = max(0.0, cave.z - dot(point, cave.xy));
-  // Project to this point's entrance crossing, not the mouth center: the path
-  // agrees exactly with the exterior radial wave across the entire opening.
   return length(point + cave.xy * depth - uMatrixOrigin.xz) + depth;
 }
 float matrixPermanentAt(vec3 point, float caveIndex) {
@@ -377,8 +362,6 @@ void main() {
       }
     }
   }
-  // Living occupants retain the cloud-side reveal after flying beyond the
-  // island. Carved cave paths still follow their full entrance travel distance.
   if (living > 0.0 && caveIndex < 0.5) flow = min(flow, 36.0);
   float localSurface = max(vMatrixSurface, step(1.5, uMatrixGlyph));
   float permanent = matrixPermanentAt(vWorld, caveIndex);
@@ -390,8 +373,6 @@ void main() {
   if (living < 0.5 && uMatrixGlyph < 0.5 && permanentDepth < permanentFootprint + 0.000001) permanent = 0.0;
   float front = max(permanent, mix(1.0, uMatrixLivingGlobal, living) * uMatrixParams.x * (1.0 - smoothstep(uMatrixParams.y - 1.5, uMatrixParams.y, flow)));
   if (uMatrixGlyph > 2.5) {
-    // The original black liner is an effect, not the unrevealed cave material.
-    // Blend it only behind the advancing front; the ordinary stone stays below.
     if (front <= 0.0) discard;
     float fog = smoothstep(uFogRange.x, uFogRange.y, distance(vWorld, uEye));
     oColor = vec4(uFog * fog, front);
@@ -442,9 +423,6 @@ void main() {
       matrixCoverage = glyph;
       matrixBloom = glow * 0.9 + tip * 0.85;
     }
-    // RGBA8 stores each covered voxel sample before MSAA resolves it. Clamp
-    // color and bloom separately BEFORE coverage to preserve that same order.
-    // Multiplying coverage first overfeeds bloom on partially covered hot tips.
     vec3 frontColor = clamp(mix(matrixColor, uFog, fog), 0.0, 1.0);
     vec3 sideColor = clamp(mix(matrixSide, uFog, fog), 0.0, 1.0);
     vec3 frontBright = clamp(matrixGreen * matrixBloom * (1.0 - fog), 0.0, 1.0);
@@ -457,8 +435,6 @@ void main() {
       return;
     }
   }
-  // Negative instance glow is body heat; ordinary material emission remains
-  // nonnegative. Keep color variation and directional shading in the embers.
   float ember = clamp(-vParams.x, 0.0, 1.0);
   float detail = 0.72 + dot(base, vec3(0.2126, 0.7152, 0.0722)) * 0.28;
   vec3 heat = vec3(1.0, 0.12 + ember * 0.85, 0.01 + ember * ember * ember * 0.74) * detail;
@@ -470,9 +446,6 @@ void main() {
   col = mix(col, vec3(1.0, 0.86, 0.45), vParams.y * 0.4);
   float tip = clamp(vParams.z, 0.0, 1.0) * (1.0 - step(1.5, vParams.z));
   col = mix(col, vec3(0.84, 1.0, 0.89), tip * 0.88);
-  // Blend the two finished RGBA8 appearances, including their independent bloom.
-  // Original emission fades out with the stone instead of surviving in Matrix
-  // colors until the front becomes fully covered.
   vec3 normalColor = clamp(mix(col, uFog, fog), 0.0, 1.0);
   vec3 normalBright = clamp(col * (emissive * 0.9 + vParams.y * 0.5 + tip * 0.85) * (1.0 - fog), 0.0, 1.0);
   oColor = vec4(mix(normalColor, matrixColorResult, front), 1.0);
@@ -592,8 +565,6 @@ void main() {
   vOpacity = aParams.z < 0.0 ? -aParams.z - 1.0 : 1.0;
   vMirrorNormal = normalize(model[2].xyz);
   gl_Position = uViewProj * world;
-  // Close the portal even while its glass is closer than the camera near plane.
-  // Only depth moves; the physical outline and reflection coordinates stay put.
   if (uShard < 0.5) gl_Position.z = max(gl_Position.z, -gl_Position.w);
 }`;
   const MIRROR_FS = `#version 300 es
@@ -858,7 +829,7 @@ void main() {
   const createRenderer = (canvas, { quality = "high" } = {}) => {
     const gl = canvas.getContext("webgl2", { antialias: false, alpha: false, powerPreference: "high-performance" });
     if (!gl) throw new Error("WebGL2 unavailable");
-    // Hoisted so the per-frame resolve allocates no draw-buffer arrays
+    // Hoisted so the per-frame resolve allocates no draw-buffer arrays.
     const DRAW_COLOR = [gl.COLOR_ATTACHMENT0, gl.NONE];
     const DRAW_BRIGHT = [gl.NONE, gl.COLOR_ATTACHMENT1];
     const DRAW_BOTH = [gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1];
@@ -898,7 +869,7 @@ void main() {
       active: false, faux: false, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, samples: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: false, reflectionOnlyCount: 0, planeDistance: 0, ripples: 0, bodyContacts: 0, bodyWaves: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), capturedViewProj: mirrorCapturedViewProj, shardsDrawn: 0, environmentPassCount: 0, environmentFaces: 0, environmentSize: 0, environmentResources: 0, skipReason: "none"
     };
-    // Compile without blocking, ready flips once linked
+    // Compiles without blocking; ready flips once linked.
     let parallel = null;
     let ready = false;
     let failure = null;
@@ -1068,7 +1039,7 @@ void main() {
       mirrorDebug.environmentSize = size;
       mirrorDebug.allocationCount++;
     };
-    // The tier's multisampling draws into renderbuffers, resolved by blit into the sampled texture
+    // The tier's multisampling draws into renderbuffers, resolved by blit into the sampled texture.
     const ensureMirrorTarget = () => {
       const cap = settings.mirror;
       const scale = cap / Math.max(width, height, 1);
@@ -1302,7 +1273,7 @@ void main() {
         if (source) { out[o++] = source[b]; out[o++] = source[b + 1]; out[o++] = source[b + 2]; }
       };
       for (const f of faces) {
-        // Newell's method, stable when leading vertices coincide
+        // Newell's method, stable when leading vertices coincide.
         let nx = 0, ny = 0, nz = 0;
         for (let k = 0, m = f.i.length; k < m; k++) {
           const a = f.i[k] * 3, b = f.i[(k + 1) % m] * 3;
@@ -1360,7 +1331,7 @@ void main() {
       }
       return rec;
     };
-    // Gribb-Hartmann planes of a column-major view-projection: left, right, bottom, top, near, far
+    // Gribb-Hartmann planes of a column-major view-projection: left, right, bottom, top, near, far.
     const extractFrustum = (m, planes = FRUSTUM) => {
       for (let i = 0; i < 6; i++) {
         const row = i >> 1, sign = i & 1 ? -1 : 1, o = i * 4;
@@ -1378,8 +1349,7 @@ void main() {
       }
       return true;
     };
-    // The camera, shadow and mirror passes all test the same world sphere, so
-    // collect computes it once onto the node and they each just dot the planes.
+    // Camera, shadow and mirror passes test the same world sphere: collect computes it once onto the node.
     const writeCullSphere = (node) => {
       const b = boundsOf(node.geometry), w = node.world;
       mat4.transformPoint(CENTER, w, b.center[0], b.center[1], b.center[2]);
@@ -1390,9 +1360,8 @@ void main() {
       node.cullR = b.radius * Math.sqrt(scale) + CULL_MARGIN;
     };
     const nodeInFrustum = (node, planes) => sphereInFrustum(node.cullX, node.cullY, node.cullZ, node.cullR, planes);
-    // The shadow map and the mirror capture draw every instance of a record.
-    // A record wholly outside that pass's clip volume writes no depth and no
-    // pixels there, so it skips the draw call; partial records draw in full.
+    // Shadow and mirror draw every instance of a record; one wholly outside that pass's clip volume skips the
+    // draw call, partial records draw in full.
     const markLightVisible = () => {
       for (const rec of activeRecords) {
         if (rec.geometry.castShadow === false) continue;
@@ -1440,10 +1409,10 @@ void main() {
         rec.offscreen = !!node.cullSphere && !sphereInFrustum(node.cullSphere[0], node.cullSphere[1], node.cullSphere[2], node.cullSphere[3] + CULL_MARGIN);
         return;
       }
-      // In-frustum nodes stay in front of the culled ones by swapping into the draw region
+      // In-frustum nodes stay in front of the culled ones by swapping into the draw region.
       const idx = rec.count++;
       rec.nodes[idx] = node;
-      // Camera-hidden nodes still cast shadows and appear in the mirror
+      // Camera-hidden nodes still cast shadows and appear in the mirror.
       writeCullSphere(node);
       if (node.smokeOpacity === 0 || hiddenFromCamera(node)) {
         rec.cameraHiddenCount++;
@@ -1456,8 +1425,8 @@ void main() {
     const uploadInstances = (rec) => {
       const need = rec.count * INSTANCE_FLOATS;
       if (rec.batch) {
-        // A reserved pool that has never held an instance owns no GPU memory
-        // until it does: empty cave batches cost nothing until the wave arrives.
+        // A reserved pool that has never held an instance owns no GPU memory until it does;
+        // empty cave batches cost nothing until the wave arrives.
         if (!need && !rec.capacity) return;
         gl.bindBuffer(gl.ARRAY_BUFFER, rec.ibo);
         // Fixed-capacity systems reserve their bounded upload once; variable batches grow geometrically.
@@ -1468,8 +1437,8 @@ void main() {
           rec.batchVersion = -1;
         }
         if (rec.batchVersion !== rec.batch.instanceVersion) {
-          // WebGL treats a zero source length as "the rest of the array". Empty
-          // cave batches must not upload their whole reserved pool on restore.
+          // WebGL treats a zero source length as "the rest of the array": empty cave batches must not upload their
+          // whole reserved pool on restore.
           if (need > 0) gl.bufferSubData(gl.ARRAY_BUFFER, 0, rec.batch.instanceData, 0, need);
           rec.batchVersion = rec.batch.instanceVersion;
         }
@@ -1478,17 +1447,17 @@ void main() {
       if (!rec.data || rec.data.length < need) {
         rec.data = new Float32Array(Math.max(need, (rec.data ? rec.data.length : 0) * 2, INSTANCE_FLOATS));
       }
-      // The buffer mirrors rec.data exactly, so an unchanged block (static
-      // props, resting crew) needs no upload this frame.
+      // The buffer mirrors rec.data exactly, so an unchanged block (static props, resting crew) needs no upload.
       const d = rec.data;
-      // One moving node in a shared record uploads only its own span
+      // One moving node in a shared record uploads only its own span.
       let lo = need, hi = 0;
       for (let i = 0; i < rec.count; i++) {
         const n = rec.nodes[i], w = n.world;
         const o = i * INSTANCE_FLOATS;
         let dirty = false;
         for (let j = 0; j < 16; j++) if (d[o + j] !== w[j]) { d[o + j] = w[j]; dirty = true; }
-        // Preserve fire and smoke parameters in the cached Float32 upload.
+        // Sign-encoded fire/smoke in the cached upload: negative glow = ember, negative highlight = scorch,
+        // mode = -1 - smokeOpacity.
         const glow = Math.fround(n.ember > 0 ? -n.ember : n.glow), highlight = Math.fround(n.scorch > 0 ? -n.scorch : n.highlight);
         const mode = Math.fround(n.smokeOpacity === undefined ? matrixModeOf(n) : -1 - n.smokeOpacity);
         if (d[o + 16] !== glow) { d[o + 16] = glow; dirty = true; }
@@ -1520,7 +1489,7 @@ void main() {
       out.y = point.y - 2 * d * normal[1];
       out.z = point.z - 2 * d * normal[2];
     };
-    // NDC bounds of the mirror's vertices under a view-projection, false when none lie in front
+    // NDC bounds of the mirror's vertices under a view-projection; false when none lie in front.
     const mirrorRect = (node, vp) => {
       const verts = (node.mirrorCaptureGeometry || node.geometry).verts, world = node.world;
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, behind = false;
@@ -1600,10 +1569,8 @@ void main() {
       mirrorUp.z = UP.z;
       mat4.lookAt(mirrorView, mirrorEye, mirrorTarget, mirrorUp);
       mat4.perspective(mirrorProj, camera.fov, width / height, Math.min(camera.near, cameraSide * 0.5), camera.far);
-      // Crop the reflected frustum to the glass, limiting each axis independently
-      // to one capture texel per visible screen pixel. The fixed perpendicular
-      // capture axis does not share the main camera's projected aspect at oblique
-      // angles, so a single scalar density bound under-samples one axis.
+      // Crop the reflected frustum to the glass, limiting each axis independently to one capture texel per screen
+      // pixel: the perpendicular axis does not share the camera's projected aspect at oblique angles.
       mat4.multiply(mirrorViewProj, mirrorProj, mirrorView);
       mirrorRect(node, mirrorViewProj);
       const cropX = (MIRROR_RECT[0] + MIRROR_RECT[2]) * 0.5, cropY = (MIRROR_RECT[1] + MIRROR_RECT[3]) * 0.5;
@@ -1617,7 +1584,7 @@ void main() {
       mirrorProj[8] = (mirrorProj[8] + cropX) / halfX;
       mirrorProj[5] /= halfY;
       mirrorProj[9] = (mirrorProj[9] + cropY) / halfY;
-      // Sky rays unproject through the cropped projection, before the oblique clip bends z
+      // Sky rays unproject through the cropped projection, before the oblique clip bends z.
       mat4.multiply(mirrorViewProj, mirrorProj, mirrorView);
       skyInverse(mirrorInvViewProj, mirrorProj, mirrorView);
       mat4.transformPoint(MIRROR_POINT, mirrorView, center[0], center[1], center[2]);
@@ -1719,7 +1686,7 @@ void main() {
     };
     canvas.addEventListener("webglcontextlost", onLost);
     canvas.addEventListener("webglcontextrestored", onRestored);
-    // The camera pass draws only the in-frustum front of each record; shadow and mirror draw all
+    // The camera pass draws only the in-frustum front of each record; shadow and mirror draw all.
     const drawParts = (kind, useProgram, excludeMirror = false, cull = false, matrixStage = 0) => {
       for (const rec of activeRecords) {
         if (excludeMirror && (rec === mirror.record || rec.geometry.mirrorSource)) continue;
@@ -1747,8 +1714,8 @@ void main() {
           }
         }
         if (kind === "line") gl.uniform1f(res.programs.line.u.uWidth, part.width * dpr);
-        // Surface overlays stay above their backing at distant zooms in both color
-        // passes. Keep the shadow depth and subsequent ordinary meshes unchanged.
+        // Surface overlays stay above their backing at distant zooms in both color passes; shadow depth and later
+        // ordinary meshes stay unchanged.
         const offset = kind === "mesh" && useProgram === "mesh" && rec.geometry.depthOffset;
         if (offset) {
           gl.enable(gl.POLYGON_OFFSET_FILL);
@@ -1759,8 +1726,8 @@ void main() {
         if (offset) gl.disable(gl.POLYGON_OFFSET_FILL);
       }
     };
-    // Celestial rays depend only on orientation. Removing translation before
-    // inversion avoids altitude-dependent cancellation in the star shader.
+    // Celestial rays depend only on orientation: strip translation before inversion to avoid altitude-dependent
+    // cancellation in the star shader.
     const skyInverse = (out, projection, cameraView) => {
       out.set(cameraView);
       out[12] = out[13] = out[14] = 0;
@@ -1814,8 +1781,8 @@ void main() {
       gl.uniform1i(pg.mesh.u.uLightCount, lightCount);
       gl.uniform3fv(pg.mesh.u.uFog, fog);
       gl.uniform2f(pg.mesh.u.uFogRange, fogNear, fogFar);
-      // The mirror closes before the retreat reaches the pile. Its reflection
-      // must still show the same partially transformed world as the main view.
+      // The mirror closes before the retreat reaches the pile; its reflection must still show the same partially
+      // transformed world as the main view.
       gl.uniform4f(pg.mesh.u.uMatrixParams, matrix ? matrix.active : 0, matrix ? matrix.radius : 0, matrix ? matrix.time : 0, matrix ? matrix.density : 0);
       gl.uniform1i(pg.mesh.u.uMatrixSamples, cube ? 1 : Math.max(1, mirrorDebug.samples));
       if (matrix) gl.uniform3fv(pg.mesh.u.uMatrixOrigin, matrix.origin);
@@ -2009,7 +1976,7 @@ void main() {
         gl.uniform1f(pg.sky.u.uStars, stars);
         gl.uniform1f(pg.sky.u.uTime, time);
       }
-      // Set the light back to bracket the shadowed volume
+      // Set the light back far enough to bracket the shadowed volume.
       const lightDist = shadowExtent * 1.8, lightDepth = shadowExtent * 1.5;
       LIGHT_EYE.x = shadowCenter.x + lx * lightDist;
       LIGHT_EYE.y = shadowCenter.y + ly * lightDist;
@@ -2024,8 +1991,7 @@ void main() {
       mat4.multiply(lightViewProj, lightProj, lightView);
       for (const rec of activeRecords) {
         rec.active = false;
-        // Drop the references without trimming the backing store the next
-        // frame's collect would immediately regrow
+        // Drop the references without trimming the backing store the next frame's collect would immediately regrow.
         rec.nodes.fill(null);
         rec.batch = null;
         rec.offscreen = false;
@@ -2124,9 +2090,8 @@ void main() {
       drawParts("mesh", "mesh", true, true);
       drawMirrorSurface(camera);
       if (skyOn) drawSky(invViewProj, camera.position.y);
-      // Ordinary surfaces first, then the effect-only black liner and native
-      // voxel glyphs. Alpha follows the same wave as the backing shader; depth
-      // still rejects hidden faces and keeps the glyphs on their real surfaces.
+      // Ordinary surfaces first, then the effect-only black liner and native voxel glyphs; alpha follows the backing
+      // shader's wave, depth still rejects hidden faces.
       gl.useProgram(pg.mesh.prog);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
@@ -2171,7 +2136,7 @@ void main() {
       gl.enable(gl.DEPTH_TEST);
       return true;
     };
-    // Screen position of a world point, written into out
+    // Screen position of a world point, written into out.
     const project = (x, y, z, out = {}) => {
       mat4.transformPoint4(P4, viewProj, x, y, z);
       if (P4[3] <= 0.01) return null;
@@ -2202,7 +2167,7 @@ void main() {
       const ext = gl.getExtension("WEBGL_lose_context");
       if (ext) ext.loseContext();
     };
-    // Drop unreferenced buffers, rebuilt on demand
+    // Drop unreferenced buffers; they are rebuilt on demand.
     const releaseUnused = (live) => {
       let released = 0;
       if (mirror.geometry && !live.has(mirror.geometry)) destroyMirror();
