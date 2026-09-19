@@ -66,7 +66,7 @@
     performance.mark(`ooga:${name}`);
   };
   // The board remembers the last pick for the page's life
-  const selection = { racer: contributors.roster[0].name };
+  const selection = { racer: contributors.activeRoster[0]?.name || null };
 
   // One visit's state, made in enter and dropped in leave
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, hud, dhud, hooks, input, fx, controls, audio, clock, diver, plane, streaks, mound, hole;
@@ -255,8 +255,10 @@
   const toBoard = () => {
     phase = "board";
     parkPlane();
-    diver.place(roof.x, roof.y, roof.z, roof.ry);
-    seatDiver();
+    if (diver) {
+      diver.place(roof.x, roof.y, roof.z, roof.ry);
+      seatDiver();
+    }
     resetRings();
     ringIndex = 0;
     score = ringsHit = 0;
@@ -277,6 +279,7 @@
     boardView();
   };
   const startFlight = () => {
+    if (!diver) return false;
     toBoard();
     phase = "climb";
     dhud.show("flight");
@@ -330,6 +333,7 @@
   const CRASHES = { tumble: "Ooga rolled to a stop. The ground won.", hole: "Ooga went through the meadow. Ooga is a hole now.", pancake: "Ooga is a pancake now." };
   const crashed = (landing) => landing === "tumble" || landing === "hole" || landing === "pancake";
   const finish = (landing, dist) => {
+    if (!diver) return;
     phase = "results";
     const accuracy = landing === "lost" || crashed(landing) ? 0 : Math.round(SCORE.land * clamp(1 - dist / SCORE.landRadius, 0, 1));
     const soft = landing === "stand" ? SCORE.stand : landing === "stumble" ? SCORE.stumble : 0;
@@ -548,8 +552,8 @@
     camera.fov = damp(camera.fov, lerp(FOV_BASE, FOV_FAST, fast), 5, dt);
   };
   const updateLighting = () => {
-    const p = diver.state.p;
-    const low = phase !== "board" && p.y < 60;
+    const p = diver ? diver.state.p : plane.node.position;
+    const low = !!diver && phase !== "board" && p.y < 60;
     setVec(RENDER_OPTS.shadowCenter, low ? p.x : 0, low ? Math.max(0, p.y - 4) : 0, low ? p.z : 0);
     RENDER_OPTS.time = sceneTime;
   };
@@ -645,12 +649,12 @@
     }
     if (phase === "board") plane.prop.rotation.z += dt * 3;
     if (phase !== "climb" && phase !== "board" && planeState.t > 0) flyPlane(dt);
-    diver.pose(dt, elapsed, ctrl);
+    if (diver) diver.pose(dt, elapsed, ctrl);
     if (phase === "air" && diver.state.phase === "free" && ringIndex < RING_COUNT && !rings[ringIndex].hit) {
       const ring = rings[ringIndex], k = ring.r * (1 + NEXT_RING_PULSE * (0.5 + 0.5 * Math.sin(sceneTime * 5)));
       setVec(ring.node.scale, k, k, k);
     }
-    updateStreaks();
+    if (diver) updateStreaks();
     for (let i = 0; i < clouds.length; i++) {
       const c = clouds[i], p = c.node.position;
       p.x += c.speed * dt;
@@ -691,8 +695,10 @@
     const loot = lootEnabled ? game.lootFor(donation) : null;
     hud.toast(`+${gameMod.formatLarge(donation.sats)} sats · ${bananas} banana${bananas > 1 ? "s" : ""} · ${who}${loot ? ` · ${loot.tier} ${loot.item.name}` : ""}`);
     fx.showTicker(`THANKS ${donation.handle ? "@" + donation.handle.toUpperCase() : "ANON"} · ${bananas} BANANAS`, 4.5);
-    const p = diver.state.p;
-    if (diver.body.visible) fx.burst(p.x, p.y + 1.2, p.z, 20, CONFETTI, 2.2);
+    if (diver && diver.body.visible) {
+      const p = diver.state.p;
+      fx.burst(p.x, p.y + 1.2, p.z, 20, CONFETTI, 2.2);
+    }
     if (loot) {
       game.addItem({ item: loot.item, tier: loot.tier, donationId: donation.id });
       renderLocker();
@@ -723,7 +729,7 @@
     }
     if (e.key === "l" || e.key === "L") demoTip(120000);
   };
-  const tooltipFor = (hit) => hit.owner.kind === "diver" ? `${diver.cave.traits.name} · ${phase === "board" ? "ready to fly" : phase === "air" ? "falling" : "your Ooga"}` : "";
+  const tooltipFor = (hit) => hit.owner.kind === "diver" ? diver.cave.traits.name : "";
   const pickDiver = (name) => {
     selection.racer = name;
     buildDiver();
@@ -735,6 +741,8 @@
       for (const key of ["torso", "head"]) input.remove(diver.cave.parts[key]);
       diver.dispose();
     }
+    diver = null;
+    if (!selection.racer) return;
     diver = skydiver.create({ root, traits: contributors.traitsFor(selection.racer) });
     for (const key of ["torso", "head"]) input.add(diver.cave.parts[key], { kind: "diver", priority: 1 });
   };
@@ -746,10 +754,10 @@
     root = createNode();
     clock = daylight.createClock({ hour: hourParam, daylen: daylenParam, day: dayParam, time: timeParam, now: new Date() });
     island = terrain.island({ seed: SEED });
-    hud = hudMod.create({ roster: contributors.roster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled });
+    hud = hudMod.create({ roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled });
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
-    fx = fxMod.create({ root, renderer, overlay: ctx.overlay, tickerAt: TICKER_AT });
+    fx = fxMod.create({ root, renderer, camera, hud, overlay: ctx.overlay, tickerAt: TICKER_AT });
     // The island itself, resident from the hub, and the mound of bananas at its middle
     const place = (node) => {
       addChild(root, node);
@@ -795,15 +803,19 @@
     mark("drop world");
     // An Ooga walked or tapped into the plane flies it
     if (world.pilot) {
-      selection.racer = world.pilot;
+      if (contributors.activeRoster.some((c) => c.name === world.pilot)) selection.racer = world.pilot;
       world.pilot = null;
     }
     buildDiver();
-    layCourse();
+    if (diver) layCourse();
+    else {
+      for (const ring of rings) ring.node.visible = false;
+      targetNode.visible = false;
+    }
     setVec(targetNode.position, landingSpot.x, landingSpot.y + 0.02, landingSpot.z);
-    dhud = dropHud.create({ roster: contributors.roster, best: () => game.state.drop.best, onPick: pickDiver });
+    dhud = dropHud.create({ roster: contributors.activeRoster, best: () => game.state.drop.best, onPick: pickDiver });
     dhud.selection.racer = selection.racer;
-    dhud.buildBoard((name) => contributors.stateFor(contributors.roster.find((c) => c.name === name)));
+    dhud.buildBoard((name) => contributors.stateFor(contributors.activeRoster.find((c) => c.name === name)));
     controls = controlsMod.create({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, chord: ctx.canvas, onAction: act });
     audio = dropAudio.create();
     // Cleared per visit: a flare held at leave would suppress the next cue
@@ -828,10 +840,10 @@
     });
     Object.assign(hooks, {
       onHover: (hit, p) => {
-        if (hit) hud.tooltip.show(tooltipFor(hit), p.x, p.y);
+        if (hit) hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.kind === "diver" ? diver.cave : null);
         else hud.tooltip.hide();
       },
-      onHoverMove: (hit, p) => hud.tooltip.show(tooltipFor(hit), p.x, p.y),
+      onHoverMove: (hit, p) => hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.kind === "diver" ? diver.cave : null),
       onTap: (hit) => {
         if (hit && hit.owner.kind === "diver" && phase !== "board") fx.say(diver.cave, phase === "air" ? "Ooga busy falling!" : "Ooga!", 1.2);
       },
@@ -863,7 +875,7 @@
         location.reload();
       }
     });
-    for (const c of contributors.roster) hud.setRosterRow(c.name, contributors.stateFor(c), contributors.ageLabel(c));
+    for (const c of contributors.activeRoster) hud.setRosterRow(c.name, contributors.stateFor(c), contributors.ageLabel(c));
     if (lootEnabled) renderLocker();
     hud.setStats(game.state);
     hud.el.sheet.dataset.open = "false";
@@ -919,6 +931,7 @@
           selection, start: startFlight, toBoard, jump, deploy, finish,
           // Run the clock forward without frames: the climb, then substeps in the air
           simulate: (seconds) => {
+            if (!diver) return;
             for (let t = 0; t < seconds; t += FIXED) {
               sceneTime += FIXED;
               if (phase === "climb") {
@@ -943,6 +956,7 @@
           },
           // Jump straight from the plane's course start, as the prompt would
           jumpNow: () => {
+            if (!diver) return false;
             if (phase !== "climb") startFlight();
             planeState.t = ROLL_T + CLIMB_T;
             flyPlane(0.001);
@@ -960,8 +974,10 @@
     window.removeEventListener("pointerdown", onGesture);
     window.removeEventListener("keydown", onGesture);
     audio.dispose();
-    for (const key of ["torso", "head"]) input.remove(diver.cave.parts[key]);
-    diver.dispose();
+    if (diver) {
+      for (const key of ["torso", "head"]) input.remove(diver.cave.parts[key]);
+      diver.dispose();
+    }
     fx.dispose();
     controls.dispose();
     hud.el.act.hidden = true;
@@ -978,7 +994,7 @@
     return { targets: count };
   };
   const liveGeometry = (set) => {
-    set.add(diver.cave.headOpen).add(diver.cave.headClosed);
+    if (diver) set.add(diver.cave.headOpen).add(diver.cave.headClosed);
   };
   const stats = () => {
     let nodes = 0;

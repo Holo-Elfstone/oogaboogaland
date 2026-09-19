@@ -17,16 +17,16 @@
   // Sleep marks grow from 11px to 23px, so the whole range is a fixed table
   const ZZZ_FONTS = [];
   for (let size = 11; size <= 23; size++) ZZZ_FONTS[size] = `${size}px ui-monospace, monospace`;
-  const drawBubble = (ctx, text, x, y, alpha) => {
+  const drawBubble = (ctx, text, x, y, alpha, topSpace = 0) => {
     ctx.globalAlpha = alpha;
     ctx.font = "bold 10px ui-monospace, monospace";
     const tw = ctx.measureText(text).width;
     const px = 3;
     const bw = Math.ceil((tw + 28) / px) * px;
     const bh = 11 * px;
-    const bx = Math.round((x - bw / 2) / px) * px;
-    const by = Math.round((y - bh - 14) / px) * px;
-    const tx = Math.round(x / px) * px;
+    const bx = Math.round(Math.max(8, Math.min(window.innerWidth - bw - 8, x - bw / 2)) / px) * px;
+    const by = Math.round(Math.max(8 + topSpace, Math.min(window.innerHeight - bh - 14, y - bh - 14)) / px) * px;
+    const tx = Math.round(Math.max(bx + 2 * px, Math.min(bx + bw - 2 * px, x)) / px) * px;
     const bg = "rgba(18,18,18,0.95)";
     ctx.fillStyle = bg;
     ctx.fillRect(bx + px, by + px, bw - 2 * px, bh - 2 * px);
@@ -44,10 +44,14 @@
     ctx.fillText(text, bx + bw / 2, by + bh / 2 + 4);
     ctx.textAlign = "left";
     ctx.globalAlpha = 1;
+    return by;
   };
   // Particles, bubbles, sleep marks and the ticker
-  const create = ({ root, renderer, overlay, tickerAt, overlayVisible = null, zzzVisible = null }) => {
+  const create = ({ root, renderer, camera, overlay, tickerAt, hud = null, overlayVisible = null, zzzVisible = null }) => {
     const overlayCtx = overlay.getContext("2d");
+    const visibility = BL.characterVisibility.create({ root, renderer, camera });
+    const speechScreen = { x: 0, y: 0 };
+    if (hud) hud.tooltip.setVisibility(visibility);
     const particles = [];
     const particlePool = [];
     const MAX_PARTICLES = 240;
@@ -153,8 +157,18 @@
     let overlayW = 0, overlayH = 0, overlayDpr = 1;
     const projectRaw = (x, y, z) => renderer.project(x, y, z, SCREEN);
     const project = (x, y, z) => !overlayVisible || overlayVisible(x, y, z) ? projectRaw(x, y, z) : null;
+    const drawSpeech = (ctx, text, x, y, alpha, cave = null) => {
+      if (cave) {
+        if (!visibility.anchor(cave, speechScreen)) return;
+        x = speechScreen.x; y = speechScreen.y;
+      }
+      const top = drawBubble(ctx, text, x, y, alpha, hud ? hud.tooltip.speechSpace(cave) : 0);
+      if (hud) hud.tooltip.aboveSpeech(cave, top);
+    };
     // drawExtra paints between the bubbles and the ticker
     const drawOverlay = (dt, drawExtra) => {
+      visibility.begin();
+      if (hud) hud.tooltip.beginFrame();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = overlay.clientWidth, h = overlay.clientHeight;
       if (w !== overlayW || h !== overlayH || dpr !== overlayDpr) {
@@ -190,15 +204,13 @@
           bubbles.splice(i, 1);
           continue;
         }
-        const head = b.cave && b.cave.bedTravel && b.cave.bedTravel.mode === "rest" ? b.cave.sleepHead : null;
-        const pos = head ? project(head.x, head.y + 0.1, head.z) : b.cave
-          ? project(b.cave.root.position.x, b.cave.root.position.y + (b.cave.state === "sleeping" && !b.cave.bedTravel?.mode ? 0.6 : b.cave.headOffset + 0.05), b.cave.root.position.z)
-          : project(b.at.x, b.at.y, b.at.z);
+        const pos = b.cave ? speechScreen : project(b.at.x, b.at.y, b.at.z);
         if (!pos) continue;
         const fade = Math.min(1, b.t / 0.2, (b.dur - b.t) / 0.3);
-        drawBubble(ctx, b.text, pos.x, pos.y, fade);
+        drawSpeech(ctx, b.text, pos.x, pos.y, fade, b.cave);
       }
-      drawExtra(ctx, project, drawBubble);
+      drawExtra(ctx, project, drawSpeech);
+      if (hud) hud.tooltip.update();
       if (ticker) {
         ticker.t += dt;
         if (ticker.t > ticker.dur) ticker = null;
@@ -224,6 +236,8 @@
       while (particlePool.length > POOL_KEEP) removeChild(root, particlePool.pop().node);
     };
     const dispose = () => {
+      if (hud) hud.tooltip.setVisibility(null);
+      visibility.dispose();
       for (const p of particles) removeChild(root, p.node);
       for (const p of particlePool) removeChild(root, p.node);
       particles.length = 0;

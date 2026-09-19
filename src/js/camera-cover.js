@@ -89,6 +89,17 @@
     const view = mat4.create(), triangle = new Float64Array(9), clipped = new Float64Array(12);
     let actorDepth = new Float32Array(0), clipActor = false, actorMinX = 0, actorMinY = 0, actorMaxX = -1, actorMaxY = -1;
     let actorColumns = new Int32Array(0);
+    // Search the small silhouette band nearest-first. Stable distance order
+    // keeps the same row/column tie break as scanning the complete square.
+    // Buffer scale <= 1, spread <= 1.5 and contrast <= 1 bound its pad at 5.
+    const actorNeighbors = new Int8Array(242);
+    for (let y = -5, count = 0; y <= 5; y++) for (let x = -5; x <= 5; x++) {
+      let at = count++ * 2;
+      while (at && actorNeighbors[at - 2] ** 2 + actorNeighbors[at - 1] ** 2 > x * x + y * y) {
+        actorNeighbors[at] = actorNeighbors[at - 2]; actorNeighbors[at + 1] = actorNeighbors[at - 1]; at -= 2;
+      }
+      actorNeighbors[at] = x; actorNeighbors[at + 1] = y;
+    }
     const apertureView = new Float64Array(36), apertureClip = new Float64Array(39);
     let structurePhases = new Float32Array(0), structureTargets = new Uint8Array(0), structureSeen = new Uint8Array(0), structureLines = new Float32Array(0);
     const ROCK_GRID = 32, rockSamples = new Uint8Array((ROCK_GRID + 1) ** 2), rockTriangle = new Float64Array(9);
@@ -606,12 +617,30 @@
         // Preserve their depth so small hair/accessory tips can be clipped.
         rasterActorEdge(ax, ay, ad, bx, by, bd); rasterActorEdge(bx, by, bd, cx, cy, cd); rasterActorEdge(cx, cy, cd, ax, ay, ad);
         if (Math.abs(area) < 1e-9) continue;
-        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-          const aWeight = ((by - cy) * (x + 0.5 - cx) + (cx - bx) * (y + 0.5 - cy)) / area;
-          const bWeight = ((cy - ay) * (x + 0.5 - cx) + (ax - cx) * (y + 0.5 - cy)) / area, cWeight = 1 - aWeight - bWeight;
-          if (aWeight < -1e-7 || bWeight < -1e-7 || cWeight < -1e-7) continue;
-          const at = y * width + x, depth = aWeight * ad + bWeight * bd + cWeight * cd;
-          if (depth > actorDepth[at]) actorDepth[at] = depth;
+        const aStep = (by - cy) / area, bStep = (cy - ay) / area, cStep = -aStep - bStep;
+        for (let y = y0; y <= y1; y++) {
+          const aStart = ((by - cy) * (x0 + 0.5 - cx) + (cx - bx) * (y + 0.5 - cy)) / area;
+          const bStart = ((cy - ay) * (x0 + 0.5 - cx) + (ax - cx) * (y + 0.5 - cy)) / area, cStart = 1 - aStart - bStart;
+          let first = x0, last = x1;
+          // Conservative scanline bounds skip the empty half of a triangle's
+          // rectangle. Keep an extra pixel at each boundary, then use the
+          // original barycentric test and depth calculation without rounding.
+          if (aStep > 0) first = Math.max(first, Math.ceil(x0 + (-1e-7 - aStart) / aStep) - 1);
+          else if (aStep < 0) last = Math.min(last, Math.floor(x0 + (-1e-7 - aStart) / aStep) + 1);
+          else if (aStart < -1e-7) continue;
+          if (bStep > 0) first = Math.max(first, Math.ceil(x0 + (-1e-7 - bStart) / bStep) - 1);
+          else if (bStep < 0) last = Math.min(last, Math.floor(x0 + (-1e-7 - bStart) / bStep) + 1);
+          else if (bStart < -1e-7) continue;
+          if (cStep > 0) first = Math.max(first, Math.ceil(x0 + (-1e-7 - cStart) / cStep) - 1);
+          else if (cStep < 0) last = Math.min(last, Math.floor(x0 + (-1e-7 - cStart) / cStep) + 1);
+          else if (cStart < -1e-7) continue;
+          for (let x = first; x <= last; x++) {
+            const aWeight = ((by - cy) * (x + 0.5 - cx) + (cx - bx) * (y + 0.5 - cy)) / area;
+            const bWeight = ((cy - ay) * (x + 0.5 - cx) + (ax - cx) * (y + 0.5 - cy)) / area, cWeight = 1 - aWeight - bWeight;
+            if (aWeight < -1e-7 || bWeight < -1e-7 || cWeight < -1e-7) continue;
+            const at = y * width + x, depth = aWeight * ad + bWeight * bd + cWeight * cd;
+            if (depth > actorDepth[at]) actorDepth[at] = depth;
+          }
         }
       }
     };
@@ -634,10 +663,12 @@
         for (let x = x0; x <= x1 + 1; x++) {
           let clear = false;
           if (x <= x1 && coverage && coverage < area) {
-            let depth = actorDepth[y * width + x], nearest = Infinity;
-            if (!depth) for (let dy = -pad; dy <= pad; dy++) for (let dx = -pad; dx <= pad; dx++) {
-              const xx = x + dx, yy = y + dy, d = xx < 0 || xx >= width || yy < 0 || yy >= height ? 0 : actorDepth[yy * width + xx];
-              if (d && dx * dx + dy * dy < nearest) { nearest = dx * dx + dy * dy; depth = d; }
+            let depth = actorDepth[y * width + x];
+            if (!depth) for (let n = 0; n < actorNeighbors.length; n += 2) {
+              const dx = actorNeighbors[n], dy = actorNeighbors[n + 1], xx = x + dx, yy = y + dy;
+              if (Math.abs(dx) > pad || Math.abs(dy) > pad || xx < 0 || xx >= width || yy < 0 || yy >= height) continue;
+              depth = actorDepth[yy * width + xx];
+              if (depth) break;
             }
             if (depth) {
               // Extend the nearest body depth into its small rim band. Test

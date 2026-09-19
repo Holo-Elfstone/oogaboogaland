@@ -22,7 +22,8 @@
       listeners.push(() => target.removeEventListener(type, fn));
     };
     for (const node of [el.alt, el.rings, el.time, el.speed, el.center, el.notice, el.chuteName]) if (!node.firstChild) node.append("");
-    const selection = { racer: roster[0].name };
+    const selection = { racer: roster[0]?.name || null };
+    for (const button of el.drop.querySelectorAll('[data-action="drop-start"], [data-action="drop-again"]')) button.disabled = !roster.length;
     const buttons = new Map();
     const mark = () => {
       for (const [key, b] of buttons) b.setAttribute("aria-pressed", String(key === selection.racer));
@@ -39,7 +40,7 @@
         const state = document.createElement("span");
         state.className = "roster-state";
         state.dataset.state = stateOf(c.name);
-        state.textContent = { working: "EATING", sleeping: "ZZZ", away: "AWAY" }[state.dataset.state];
+        state.textContent = BL.hud.STATE_LABELS[state.dataset.state];
         b.append(name, state);
         on(b, "click", () => {
           b.blur();

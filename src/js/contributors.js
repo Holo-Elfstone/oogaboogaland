@@ -2,33 +2,102 @@
   "use strict";
   const BL = window.BL = window.BL || {};
   const HOUR = 60 * 60 * 1e3;
-  // TODO: replace with the GitHub API
+  const ENTROPY = "oogaboogax/entropylab", MAX_REPOS = 64;
+  const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+  // Historical EntropyLab activity; a backend can refresh it with applyActivity.
   const roster = [
     ["portlandhodl", 1788159681],
     ["w-s-bitcoin", 1788178261],
     ["dplusplus1024", 1788153655],
     ["bc1gui", 1788190400],
-    ["RandyMcMillan", 1788210011, "sleeping"],
+    ["RandyMcMillan", 1788210011],
     ["MrHodlX", 1788200000],
     ["timechainb", 1788171200],
     ["YellowBrokeIt", 1788225311],
     ["DrNeski", 1788219000],
     ["genXbtc", 1788215311]
-  ].map(([name, unixSeconds, defaultState]) => ({ name, lastCommitAt: unixSeconds * 1e3, defaultState }));
-  const SNAPSHOT_AT = 1788225311 * 1e3;
-  const stateFor = (contributor, at = SNAPSHOT_AT) => {
-    // The demo's initial activity is separate from the public commit timestamp.
-    if (contributor.defaultState) return contributor.defaultState;
-    const age = at - contributor.lastCommitAt;
-    if (age < 24 * HOUR) return "working";
-    if (age < 7 * 24 * HOUR) return "sleeping";
-    return "away";
+  ].map(([name, unixSeconds]) => ({ name, lastCommitAt: unixSeconds * 1e3, activity: new Map([[ENTROPY, unixSeconds * 1e3]]) }));
+  // Filter construction, not visibility: solo worlds do no work for absent Oogas.
+  // Keep the canonical roster intact for activity, likenesses and stable indices.
+  const params = new URLSearchParams(location.search);
+  const solo = params.has("debug") && (params.get("solo") === "1" || params.get("solo") === "");
+  const character = params.get("character")?.trim().toLowerCase();
+  const activeRoster = solo ? roster.filter((entry) => entry.name.toLowerCase() === character) : roster;
+  const byName = new Map(roster.map((contributor) => [contributor.name.toLowerCase(), contributor]));
+  byName.set("ottoz0r", byName.get("bc1gui"));
+  const listeners = new Set();
+  const repositoryOf = (repo) => {
+    if (typeof repo !== "string") return null;
+    const key = repo.toLowerCase();
+    if (key === "w-s-bitcoin/entropylab") return ENTROPY;
+    return /^oogaboogax\/[a-z0-9_.-]{1,100}$/.test(key) ? key : null;
   };
-  const ageLabel = (contributor, at = SNAPSHOT_AT) => {
+  // Callers use the canonical lowercase repository key, keeping frame queries allocation-free.
+  const hasRecentActivity = (contributor, repo, at = Date.now()) => {
+    const seen = contributor.activity.get(repo);
+    return seen > 0 && seen <= at && at - seen < HOUR;
+  };
+  const stateFor = (contributor, at = Date.now()) => {
+    const age = at - contributor.lastCommitAt;
+    if (!Number.isFinite(age) || contributor.lastCommitAt <= 0 || age < 0) return "sleeping";
+    if (age < HOUR) return "working";
+    return age < 24 * HOUR ? "chilling" : "sleeping";
+  };
+  const ageLabel = (contributor, at = Date.now()) => {
+    if (!Number.isFinite(contributor.lastCommitAt) || contributor.lastCommitAt <= 0) return "no activity";
     const hours = Math.max(0, Math.floor((at - contributor.lastCommitAt) / HOUR));
     if (hours < 1) return "just now";
     if (hours < 48) return `${hours}h ago`;
     return `${Math.floor(hours / 24)}d ago`;
+  };
+  // Rows: { name: GitHub handle, lastCommitAt: Unix milliseconds, repo? }.
+  // Keep each repository's newest activity; delayed snapshots cannot rewind it.
+  const applyActivity = (rows, at = Date.now()) => {
+    if (!Array.isArray(rows) || !Number.isFinite(at)) return 0;
+    const changed = new Set();
+    for (const row of rows) {
+      if (!row || typeof row.name !== "string" || !Number.isFinite(row.lastCommitAt) || row.lastCommitAt <= 0 || row.lastCommitAt > at) continue;
+      const contributor = byName.get(row.name.toLowerCase()), repo = repositoryOf(row.repo === undefined ? ENTROPY : row.repo);
+      if (!contributor || !repo) continue;
+      const previous = contributor.activity.get(repo);
+      if (previous !== undefined ? row.lastCommitAt <= previous : contributor.activity.size >= MAX_REPOS) continue;
+      contributor.activity.set(repo, row.lastCommitAt);
+      contributor.lastCommitAt = Math.max(contributor.lastCommitAt, row.lastCommitAt);
+      changed.add(contributor);
+    }
+    if (changed.size) for (const notify of listeners) notify();
+    return changed.size;
+  };
+  // Oogatron schema 1, one snapshot or an array of project snapshots. generated_at
+  // describes the snapshot, never the contributor's most recent activity.
+  const applySnapshot = (snapshots, at = Date.now()) => {
+    const rows = [];
+    for (const snapshot of Array.isArray(snapshots) ? snapshots : [snapshots]) {
+      if (!snapshot || !snapshot.meta || snapshot.meta.schema_version !== 1 || !Array.isArray(snapshot.contributors)) continue;
+      const repo = repositoryOf(snapshot.meta.repo);
+      if (!repo) continue;
+      for (const contributor of snapshot.contributors) {
+        if (!contributor || typeof contributor.login !== "string" || typeof contributor.last_seen_at !== "string" || !ISO_TIME.test(contributor.last_seen_at)) continue;
+        const lastCommitAt = Date.parse(contributor.last_seen_at);
+        if (Number.isFinite(lastCommitAt)) rows.push({ name: contributor.login, lastCommitAt, repo });
+      }
+    }
+    return applyActivity(rows, at);
+  };
+  const subscribe = (callback) => {
+    listeners.add(callback);
+    return () => listeners.delete(callback);
+  };
+  // Explicit debug fixture only; the director never calls this on a normal page.
+  const seedDebugActivity = (at = Date.now()) => {
+    for (let i = 0; i < roster.length; i++) {
+      const contributor = roster[i];
+      const age = i < 3 ? i * 30000 : i < 6 ? 2 * HOUR + i * 60000 : 48 * HOUR;
+      contributor.lastCommitAt = at - age;
+      contributor.activity.clear();
+      contributor.activity.set(ENTROPY, contributor.lastCommitAt);
+    }
+    for (const notify of listeners) notify();
   };
   const { fnv1a, mulberry32 } = BL.math;
   // Opt-in likeness overrides per handle
@@ -101,5 +170,5 @@
     if (likeness.height) traits.height = likeness.height;
     return traits;
   };
-  BL.contributors = { roster, stateFor, ageLabel, traitsFor, voiceFor };
+  BL.contributors = { roster, activeRoster, solo, stateFor, ageLabel, traitsFor, voiceFor, hasRecentActivity, applyActivity, applySnapshot, subscribe, seedDebugActivity };
 })();

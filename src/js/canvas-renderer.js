@@ -6,6 +6,16 @@
   const DEFAULT_SKY = [0.5, 0.52, 0.58];
   const DEFAULT_GROUND = [0.22, 0.2, 0.19];
   const byDepth = (a, b) => a.depth - b.depth;
+  // Shared native Matrix greens, with quantized brightness so ripple pixels
+  // never build RGB strings while a shot is crossing the mirror.
+  const RIPPLE_GREENS = new Array(96);
+  for (let tip = 0; tip < 3; tip++) for (let gain = 0; gain < 16; gain++) for (let odd = 0; odd < 2; odd++) {
+    const emission = 0.88 + gain / 15 * 0.25, head = (tip === 2 ? 1 : tip === 1 ? 0.55 : 0) * 0.88;
+    const r = Math.round(lerp((odd ? 70 : 24) * emission, 214.2, head));
+    const g = Math.min(255, Math.round(lerp((odd ? 255 : 220) * emission, 255, head)));
+    const b = Math.round(lerp((odd ? 112 : 74) * emission, 226.95, head));
+    RIPPLE_GREENS[(tip * 16 + gain) * 2 + odd] = `rgb(${r},${g},${b})`;
+  }
   const createRenderer = (canvas, { width: fixedW = 0, height: fixedH = 0, transparent = false } = {}) => {
     const ctx = canvas.getContext("2d");
     let width = 0, height = 0, dpr = 1, backdrop = null, skyGradient = null, lastF = 1;
@@ -60,7 +70,7 @@
     }
     const acquire = () => {
       if (poolUsed === pool.length) {
-        pool.push({ pts: new Float32Array(24), n: 0, depth: 0, style: "", coreStyle: "", line: false, lineGlow: 0, smokeOpacity: 1, mirror: false, portal: false, matrix: 0, matrixGlyph: false, matrixGlyphOpacity: 1, matrixWall: 0, matrixNx: 0, matrixNy: 0, matrixNz: 0, matrixPlane: 0, matrixCenterDepth: 0, matrixMinX: 0, matrixMaxX: 0, matrixMinY: 0, matrixMaxY: 0, matrixRed: 0, matrixGreen: 0, matrixBlue: 0, matrixCave: 0, matrixLocal: false, matrixLiving: false, matrixDynamic: false, matrixPartial: false, matrixBacking: false, matrixFaceNx: 0, matrixFaceNy: 0, matrixFaceNz: 0, matrixFacePlane: 0 });
+        pool.push({ pts: new Float32Array(24), n: 0, depth: 0, style: "", coreStyle: "", line: false, lineGlow: 0, smokeOpacity: 1, mirror: false, mirrorMinX: 0, mirrorMaxX: 0, mirrorMinY: 0, mirrorMaxY: 0, portal: false, matrix: 0, matrixGlyph: false, matrixGlyphOpacity: 1, matrixWall: 0, matrixNx: 0, matrixNy: 0, matrixNz: 0, matrixPlane: 0, matrixCenterDepth: 0, matrixMinX: 0, matrixMaxX: 0, matrixMinY: 0, matrixMaxY: 0, matrixRed: 0, matrixGreen: 0, matrixBlue: 0, matrixCave: 0, matrixLocal: false, matrixLiving: false, matrixDynamic: false, matrixPartial: false, matrixBacking: false, matrixFaceNx: 0, matrixFaceNy: 0, matrixFaceNz: 0, matrixFacePlane: 0 });
       }
       return pool[poolUsed++];
     };
@@ -69,9 +79,15 @@
     const CLIP_OUT = new Float32Array(30);
     const MIRROR_CLIP_IN = new Float32Array(30);
     const MIRROR_CLIP_OUT = new Float32Array(30);
+    const rippleView = mat4.create();
+    const rippleCircle = new Float32Array(98);
+    for (let i = 0; i <= 48; i++) {
+      rippleCircle[i * 2] = Math.cos(i * Math.PI / 24);
+      rippleCircle[i * 2 + 1] = Math.sin(i * Math.PI / 24);
+    }
     const BATCH_NODE = { geometry: null, world: new Float32Array(16), glow: 1, highlight: 0, scorch: 0, ember: 0, tip: 0, smokeOpacity: 1, depthBias: 0, matrixLiving: false, matrixEmissiveLiving: false, matrixCloud: false, matrixFullCave: 0 };
     const mirrorDebug = {
-      active: false, faux: true, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: true, reflectionOnlyCount: 0, planeDistance: 0,
+      active: false, faux: true, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: true, reflectionOnlyCount: 0, planeDistance: 0, bodyContacts: 0, bodyWaves: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), skipReason: "canvas-faux"
     };
     const resize = () => {
@@ -208,7 +224,14 @@
       const glyphDepth = localMatrixGlyph ? view[2] * w[12] + view[6] * w[13] + view[10] * w[14] + view[14] : 0;
       const matrixMode = matrixModeOf(node) || node.tip;
       if (mirrorFace && portalFace) return;
+      let mirrorMinimumY = -Infinity;
       const mirrorReveal = mirrorFace ? Math.max(0, Math.min(1, node.mirrorReveal || 0)) : 0;
+      if (mirrorReveal > 0) {
+        const bounds = BL.scene.boundsOf(node.geometry), min = bounds.min, max = bounds.max;
+        const low = w[13] + Math.min(w[1] * min[0], w[1] * max[0]) + Math.min(w[5] * min[1], w[5] * max[1]) + Math.min(w[9] * min[2], w[9] * max[2]);
+        const high = w[13] + Math.max(w[1] * min[0], w[1] * max[0]) + Math.max(w[5] * min[1], w[5] * max[1]) + Math.max(w[9] * min[2], w[9] * max[2]);
+        mirrorMinimumY = lerp(low, high, mirrorReveal);
+      }
       const clipMinimumY = node.geometry.clipMinY ?? -Infinity, clipMaximumY = node.geometry.clipMaxY ?? Infinity;
       if (faces) {
         for (const face of faces) {
@@ -265,12 +288,7 @@
           const partial = maximumFront > 0 && minimumFront < 1;
           const matrixAmount = !localMatrixGlyph && !partial ? minimumFront : 0;
           let surface = null, surfaceCount = count;
-          let minimumY = clipMinimumY;
-          if (mirrorReveal > 0) {
-            let minY = Infinity, maxY = -Infinity;
-            for (let k = 0; k < count; k++) { minY = Math.min(minY, V[k][1]); maxY = Math.max(maxY, V[k][1]); }
-            minimumY = Math.max(minimumY, lerp(minY, maxY, mirrorReveal));
-          }
+          const minimumY = Math.max(clipMinimumY, mirrorMinimumY);
           // Only clipped geometry needs its face copied into the clip buffers
           if (minimumY > -Infinity || clipMaximumY < Infinity) {
             surface = MIRROR_CLIP_IN;
@@ -315,6 +333,15 @@
           rec.line = false;
           rec.smokeOpacity = node.smokeOpacity === undefined ? 1 : node.smokeOpacity;
           rec.mirror = mirrorFace;
+          if (mirrorFace) {
+            rec.mirrorMinX = rec.mirrorMinY = Infinity;
+            rec.mirrorMaxX = rec.mirrorMaxY = -Infinity;
+            for (let k = 0; k < count; k++) {
+              const at = idx[k] * 3;
+              rec.mirrorMinX = Math.min(rec.mirrorMinX, verts[at]); rec.mirrorMaxX = Math.max(rec.mirrorMaxX, verts[at]);
+              rec.mirrorMinY = Math.min(rec.mirrorMinY, verts[at + 1]); rec.mirrorMaxY = Math.max(rec.mirrorMaxY, verts[at + 1]);
+            }
+          }
           rec.portal = portalFace;
           rec.matrixGlyph = localMatrixGlyph;
           rec.matrixGlyphOpacity = node.geometry.matrixGlyphOpacity ?? 1;
@@ -696,6 +723,183 @@
         ctx.fillRect(x, y, step, step);
       }
     };
+    const rippleRing = (x, y, radius) => {
+      const m = rippleView;
+      let connected = false;
+      ctx.beginPath();
+      for (let i = 0; i <= 48; i++) {
+        const px = x + rippleCircle[i * 2] * radius, py = y + rippleCircle[i * 2 + 1] * radius;
+        const depth = -(m[2] * px + m[6] * py + m[14]);
+        if (depth <= 1e-7) { connected = false; continue; }
+        const sx = width * 0.5 + (m[0] * px + m[4] * py + m[12]) * lastF / depth;
+        const sy = height * 0.5 - (m[1] * px + m[5] * py + m[13]) * lastF / depth;
+        if (connected) ctx.lineTo(sx, sy);
+        else ctx.moveTo(sx, sy);
+        connected = true;
+      }
+      ctx.stroke();
+    };
+    const ripplePixel = (x, y, halfX = 0.008, halfY = halfX) => {
+      const m = rippleView;
+      for (let i = 0; i < 4; i++) {
+        const px = x + (i === 0 || i === 3 ? -halfX : halfX), py = y + (i < 2 ? -halfY : halfY);
+        CLIP_IN[i * 3] = m[0] * px + m[4] * py + m[12];
+        CLIP_IN[i * 3 + 1] = m[1] * px + m[5] * py + m[13];
+        CLIP_IN[i * 3 + 2] = m[2] * px + m[6] * py + m[14];
+      }
+      const count = clipNear(CLIP_IN, 4, 1e-7, CLIP_OUT);
+      if (count < 3) return;
+      ctx.beginPath();
+      for (let i = 0; i < count; i++) {
+        const depth = -CLIP_OUT[i * 3 + 2];
+        const sx = width * 0.5 + CLIP_OUT[i * 3] * lastF / depth, sy = height * 0.5 - CLIP_OUT[i * 3 + 1] * lastF / depth;
+        if (i) ctx.lineTo(sx, sy);
+        else ctx.moveTo(sx, sy);
+      }
+      ctx.closePath(); ctx.fill();
+    };
+    const drawMirrorRipples = (node, rec) => {
+      const ripples = node.mirrorRipples;
+      if (!ripples || !ripples.active) return;
+      const { CAPACITY, START_RADIUS, SPEED, WIDTH, GLYPH_THRESHOLD } = BL.mirrorRipples;
+      const waves = ripples.waves;
+      mat4.multiply(rippleView, view, node.world);
+      const m = rippleView, scale = Math.max(Math.hypot(m[0], m[1]), Math.hypot(m[4], m[5]));
+      // Paint within the mirror face's clip and depth order. The fallback keeps
+      // its silver tint beneath small light/dark crests instead of an opaque flash.
+      for (let i = 0; i < CAPACITY; i++) {
+        const offset = i * 4, strength = waves[offset + 3];
+        if (strength <= 0) continue;
+        const x = waves[offset], y = waves[offset + 1], radius = START_RADIUS + waves[offset + 2] * SPEED;
+        const reach = radius + WIDTH * 2;
+        if (x + reach < rec.mirrorMinX || x - reach > rec.mirrorMaxX || y + reach < rec.mirrorMinY || y - reach > rec.mirrorMaxY) continue;
+        const depth = Math.max(1e-7, -(m[2] * x + m[6] * y + m[14]));
+        ctx.lineWidth = Math.max(0.7, Math.min(4, 0.012 * scale * lastF / depth));
+        ctx.strokeStyle = "#21313b"; ctx.globalAlpha = strength * 0.18;
+        rippleRing(x, y, radius + WIDTH * 0.5);
+        ctx.strokeStyle = "#ebf5fa"; ctx.globalAlpha = strength * 0.34;
+        rippleRing(x, y, radius);
+        if (radius > WIDTH * 2.5) {
+          ctx.globalAlpha = strength * 0.13;
+          rippleRing(x, y, radius - WIDTH * 2.5);
+        }
+        if (strength <= GLYPH_THRESHOLD) continue;
+        const bright = Math.min(1, (strength - GLYPH_THRESHOLD) / (0.85 - GLYPH_THRESHOLD));
+        const mutation = Math.floor(ripples.time * 20);
+        const firstColumn = Math.floor(Math.max(x - reach, rec.mirrorMinX - 0.04) / 0.12);
+        const lastColumn = Math.floor(Math.min(x + reach, rec.mirrorMaxX + 0.04) / 0.12);
+        for (let col = firstColumn; col <= lastColumn; col++) {
+          const stream = (col + 2048) * 6, train = matrixStreams[stream + 2], sequence = matrixStreams[stream + 3];
+          const travel = ripples.time * matrixStreams[stream + 1] + matrixStreams[stream + 4];
+          const first = Math.floor((-Math.min(y + reach, rec.mirrorMaxY + 0.061) - travel) / 0.13);
+          const last = Math.floor((-Math.max(y - reach, rec.mirrorMinY - 0.061) - travel) / 0.13);
+          for (let row = first; row <= last; row++) {
+            const position = (row % sequence + sequence) % sequence;
+            if (position >= train) continue;
+            const cx = (col + 0.5) * 0.12, cy = -travel - (row + 0.5) * 0.13;
+            if (Math.abs(Math.hypot(cx - x, cy - y) - radius) > WIDTH * 2) continue;
+            const glyph = (Math.abs(col * 73 + row * 151) + mutation) & 7, mask = MATRIX_MASKS[glyph];
+            const glow = matrixStreams[stream + 5] * (0.48 + (position + 1) / train * 0.52);
+            const gain = Math.max(0, Math.min(15, Math.round((0.78 + glow * 0.37 - 0.88) / 0.25 * 15)));
+            const tip = position === train - 1 ? 2 : position === train - 2 ? 1 : 0;
+            ctx.fillStyle = RIPPLE_GREENS[(tip * 16 + gain) * 2 + (glyph & 1)];
+            for (let bit = 0; bit < 24; bit++) {
+              if (!((mask >> bit) & 1)) continue;
+              const px = cx + ((bit & 3) - 1.5) * 0.021, py = cy + (2.5 - (bit >> 2)) * 0.021;
+              const crest = (Math.hypot(px - x, py - y) - radius) / WIDTH;
+              if (Math.abs(crest) > 2) continue;
+              ctx.globalAlpha = bright * bright * (3 - 2 * bright) * Math.exp(-crest * crest) * 0.82;
+              ripplePixel(px, py);
+            }
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    };
+    let bodyLight = 0, bodyCrest = 0;
+    const sampleMirrorBody = (body, gx, gy, y) => {
+      bodyLight = bodyCrest = 0;
+      gx = Math.max(0, Math.min(body.width - 1, gx));
+      gy = Math.max(0, Math.min(body.height - 1, gy));
+      const x0 = Math.floor(gx), y0 = Math.floor(gy), tx = gx - x0, ty = gy - y0;
+      const right = Math.min(x0 + 1, body.width - 1) - x0, top = Math.min(y0 + 1, body.height - 1) - y0;
+      const data = body.pixels, waves = body.waves, stride = body.width * body.height * 4;
+      for (let layer = 0; layer < body.layers; layer++) {
+        const w = (layer - 1) * 4;
+        if (layer === 0 ? !body.contacts : waves[w + 1] <= 0) continue;
+        const a = layer * stride + (y0 * body.width + x0) * 4;
+        if (!data[a + 3]) continue;
+        const b = a + right * 4, c = a + top * body.width * 4, d = c + right * 4;
+        const value = lerp(lerp(data[a], data[b], tx), lerp(data[c], data[d], tx), ty);
+        const distance = (value / 255 - 0.5) * BL.mirrorBody.RANGE * 2;
+        if (layer === 0) {
+          const phase = (distance - 0.02) / 0.075, contact = Math.exp(-phase * phase);
+          bodyLight += contact * 0.022;
+          bodyCrest = Math.max(bodyCrest, contact * (0.66 + 0.06 * Math.sin(body.time * 3 + y * 4)));
+          continue;
+        }
+        const phase = (distance - waves[w] * BL.mirrorBody.SPEED) / BL.mirrorBody.WIDTH;
+        if (phase > 3 || phase < -5.5) continue;
+        const primary = Math.exp(-phase * phase), trailingPhase = phase + 2.5;
+        bodyLight += (primary - Math.exp(-trailingPhase * trailingPhase) * 0.28) * waves[w + 1] * 0.055;
+        const bright = Math.max(0, Math.min(1, (waves[w + 1] - 0.55) / 0.3));
+        bodyCrest = Math.max(bodyCrest, primary * bright * bright * (3 - 2 * bright));
+      }
+    };
+    const drawMirrorBody = (node, rec) => {
+      const body = node.mirrorBody;
+      if (!body || !body.contacts && !body.active) return;
+      mirrorDebug.bodyContacts = body.contacts;
+      mirrorDebug.bodyWaves = body.active;
+      const bounds = BL.scene.boundsOf(node.geometry), minX = bounds.min[0], minY = bounds.min[1];
+      const dx = (bounds.max[0] - minX) / body.width, dy = (bounds.max[1] - minY) / body.height;
+      mat4.multiply(rippleView, view, node.world);
+      // Sample the same fixed silhouette atlas as WebGL. Only the narrow crests
+      // paint over the fallback's silver face, leaving the body's interior clear.
+      // Fractured panes share the atlas; each face samples only its own bounds.
+      const firstRow = Math.max(0, Math.floor((rec.mirrorMinY - minY) / dy) - 1);
+      const lastRow = Math.min(body.height, Math.ceil((rec.mirrorMaxY - minY) / dy) + 1);
+      const firstColumn = Math.max(0, Math.floor((rec.mirrorMinX - minX) / dx) - 1);
+      const lastColumn = Math.min(body.width, Math.ceil((rec.mirrorMaxX - minX) / dx) + 1);
+      for (let row = firstRow; row < lastRow; row++) {
+        const y = minY + (row + 0.5) * dy;
+        for (let col = firstColumn; col < lastColumn; col++) {
+          sampleMirrorBody(body, col, row, y);
+          if (Math.abs(bodyLight) < 0.001) continue;
+          ctx.fillStyle = bodyLight > 0 ? "#ebf5fa" : "#21313b";
+          ctx.globalAlpha = Math.min(0.32, Math.abs(bodyLight) * 3);
+          ripplePixel(minX + (col + 0.5) * dx, y, dx * 0.51, dy * 0.51);
+        }
+      }
+      const mutation = Math.floor(body.time * 20);
+      for (let col = Math.floor(Math.max(minX, rec.mirrorMinX - 0.04) / 0.12); col <= Math.floor(Math.min(bounds.max[0], rec.mirrorMaxX + 0.04) / 0.12); col++) {
+        const stream = (col + 2048) * 6, train = matrixStreams[stream + 2], sequence = matrixStreams[stream + 3];
+        const travel = body.time * matrixStreams[stream + 1] + matrixStreams[stream + 4];
+        const first = Math.floor((-Math.min(bounds.max[1], rec.mirrorMaxY + 0.061) - travel) / 0.13);
+        const last = Math.floor((-Math.max(minY, rec.mirrorMinY - 0.061) - travel) / 0.13);
+        for (let row = first; row <= last; row++) {
+          const position = (row % sequence + sequence) % sequence;
+          if (position >= train) continue;
+          const cx = (col + 0.5) * 0.12, cy = -travel - (row + 0.5) * 0.13;
+          sampleMirrorBody(body, (cx - minX) / dx - 0.5, (cy - minY) / dy - 0.5, cy);
+          if (bodyCrest < 0.0001) continue;
+          const glyph = (Math.abs(col * 73 + row * 151) + mutation) & 7, mask = MATRIX_MASKS[glyph];
+          const glow = matrixStreams[stream + 5] * (0.48 + (position + 1) / train * 0.52);
+          const gain = Math.max(0, Math.min(15, Math.round((0.78 + glow * 0.37 - 0.88) / 0.25 * 15)));
+          const tip = position === train - 1 ? 2 : position === train - 2 ? 1 : 0;
+          ctx.fillStyle = RIPPLE_GREENS[(tip * 16 + gain) * 2 + (glyph & 1)];
+          for (let bit = 0; bit < 24; bit++) {
+            if (!((mask >> bit) & 1)) continue;
+            const px = cx + ((bit & 3) - 1.5) * 0.021, py = cy + (2.5 - (bit >> 2)) * 0.021;
+            sampleMirrorBody(body, (px - minX) / dx - 0.5, (py - minY) / dy - 0.5, py);
+            if (bodyCrest < 0.025) continue;
+            ctx.globalAlpha = bodyCrest * 0.82;
+            ripplePixel(px, py);
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    };
     const render = (root, camera, opts = {}) => {
       const { light = DEFAULT_LIGHT, directStrength: strength = 1, ambientFloor: ambient = 0.3, diffuseFloor: diffuse = 0, clear = null, sky = DEFAULT_SKY, ground = DEFAULT_GROUND, horizon = null, zenith = null, fog = null, fogNear: near0 = 0, fogFar: far0 = 0, matrix = null } = opts;
       matrixActive = matrix ? matrix.active : 0;
@@ -754,10 +958,13 @@
       mirrorDebug.portal = false;
       mirrorDebug.reveal = 0;
       mirrorDebug.surfaceDrawn = false;
+      mirrorDebug.bodyContacts = mirrorDebug.bodyWaves = 0;
+      let mirrorNode = null;
       updateWorld(root, null);
       traverseVisible(root, (node) => {
         if (node.mirror || node.mirrorPortal) {
           if (mirrorDebug.active) throw new Error("A scene may contain at most one mirror node");
+          mirrorNode = node;
           mirrorDebug.active = true;
           mirrorDebug.skippedPassCount++;
           const w = node.world, nlen = Math.hypot(w[8], w[9], w[10]) || 1;
@@ -887,6 +1094,10 @@
             ctx.moveTo(minX - (maxY - minY) * 0.2, maxY);
             ctx.lineTo(maxX, minY + (maxY - minY) * 0.18);
             ctx.stroke();
+            if (!rec.portal) {
+              drawMirrorRipples(mirrorNode, rec);
+              drawMirrorBody(mirrorNode, rec);
+            }
             ctx.restore();
           }
         }
@@ -919,6 +1130,7 @@
         mirrorDebug.portal = false;
         mirrorDebug.reveal = 0;
         mirrorDebug.surfaceDrawn = false;
+        mirrorDebug.bodyContacts = mirrorDebug.bodyWaves = 0;
       },
       get quality() {
         return "low";

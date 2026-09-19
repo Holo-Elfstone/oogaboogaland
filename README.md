@@ -2,9 +2,11 @@
 
 A small WebGL2 floating island whose cliff caves are projects. The open cave is a lab
 where donated bananas feed voxel cavemen who stand in for the contributors of
-[EntropyLab](https://github.com/w-s-bitcoin/entropylab). Contributors eat when they
-have committed recently, sleep when they have not, and hand-build lab equipment between
-meals. Visitors can poke the crew, roll the dice, and watch donated bananas rain onto the
+[EntropyLab](https://github.com/OogaBoogaX/entropylab). Contributors work when their
+latest repository activity is less than an hour old, chill for the rest of the first
+day, and sleep after a day without activity. Working Oogas load banana ammunition
+at the pile, run to their project's cave and shoot into it from outside, then return to reload.
+Visitors can poke the crew, roll the dice, and watch donated bananas rain onto the
 shared pile on the island and in the cave alike.
 
 Everything is plain JavaScript with no dependencies, no build requirement, and no
@@ -30,7 +32,8 @@ horizon haze, revealing more stars while their directions remain fixed in the sk
 Fly around the island with **W A S D** (or the arrows), **Q E** to turn, **R F** to tilt,
 **Z** or **Space** up and **X** down; drag to orbit and scroll to zoom. On a phone the left
 stick moves and the right stick looks. Double-tap a caveman to walk in their boots: the same
-keys or stick walk them, and holding **both mouse buttons** walks them forward. **Space**
+keys or stick walk them. **Right-click** while carrying a weapon enters third-person
+shooting view with that weapon. **Space**
 (or the **JUMP!** button) jumps: press once from the ground, then once more for a double
 jump. Release between jumps; both reset after landing. While walking or airborne,
 Space keeps its jump action. Stop beside a reachable control, bench, or Ooga Rally/Drop
@@ -39,14 +42,139 @@ launcher to use it with Space. The action button changes to
 These actions work from every direction without needing to face them; the car's
 platform and the plane's wings have room around them to activate the launcher. Click or tap
 decorative props to interact with them. Walking into the lit lab cave enters it.
-**Escape** lets go and **0** brings the camera home.
+**Escape** lets go.
+Trees stay compact: you can walk through the lower half of their foliage and
+stand on their upper canopy. Trunks and roots remain solid.
+The banana pile's stone platform requires a jump; walking into its edge stops you.
+The **AK-47** button appears above the jetpack controls while driving an awake Ooga.
+Click it or press **G** to equip or put away their rifle; clicking anywhere in the
+expanded control, including the ammo, puts it away. When put away, its compact count
+shows loaded and spare rounds together. Equipping a weapon keeps your
+current view. Outside shooter mode, the stock rests by the front of the leg,
+with the right hand lowered on the grip and the barrel angled up toward the
+left hand, which turns to cradle the wooden grip.
+Scrolling in or right-clicking from carry mode raises it to aim with the mouse. Third person uses an
+above-head right-shoulder camera that keeps the whole character visible, with the
+crosshair near the top of the head and over the right arm; first person keeps the
+eye view. Both show a centered aiming reticle. While aiming, the left arm hangs naturally and swings with
+walking. In these shooter views, **WASD**
+strafe and backpedal relative to the view without turning away from the target.
+**Left mouse** fires the equipped gun or swings the primary melee weapon. A quick
+click fires three bananas; holding continues into full auto at the same shot cadence.
+Releasing during full auto stops immediately, keeping the exact remaining ammo.
+Hold **right mouse** to aim down the gun's sights
+or focus melee aim, tightening the view and slowing mouse sensitivity. Left-click
+still attacks while right-click is held. **Space** reloads beside the pile and jumps
+elsewhere (hold it to climb with a jetpack); **R** swaps the AK's loaded magazine with your spare
+while in shooting mode, and **Shift** sprints forward. **Escape** or **Tab**
+frees the mouse for UI controls and pauses mouse aiming. The next click on the island
+hides the cursor without attacking; subsequent clicks fire or swing while it is hidden.
+**1** selects the club or assigned primary melee skin; **2** selects the rifle and
+carries the primary weapon diagonally across the back. Neither key changes the camera, and **0**
+does not switch views. In shooter mode the club is held outward: hold left-click
+to raise it, then release to strike. The arm and wrist extend toward the aimed spot
+for the club's full reach, then return to the ready pose. Navigation uses its relaxed carry pose.
+Clicking the AK button switches between the rifle and the active primary melee weapon.
+Scroll inward from navigation to the closest view to enter shoulder aim with the
+last selected melee weapon or rifle, swooping toward the point under your cursor.
+The pointer glides into the centered aiming dot along with that camera transition.
+Four separated arcs show the rifle's shot spread: bananas cluster around the dot
+with a normal distribution bounded by the circle. Holding right-click tightens
+both the circle and the spread smoothly while the dot stays centered.
+The center dot turns green over reachable friendly characters and orange over
+reachable interactive objects; red is reserved for enemies. It stays neutral when
+the target is blocked or beyond the equipped weapon's reach. A brief pulse in the
+target's color confirms an actual banana or club hit. The club uses its extended
+reach; a hit on a friendly character does not cause damage.
+If a wall between the camera and character blocks that view, the camera moves
+into shoulder position while the character keeps their existing aim.
+Each scroll gesture stops at shoulder aim;
+pause, then scroll inward again for first person.
+Scroll outward once for shoulder aim, then again for centered navigation and
+further zooming out; one large outward scroll from shoulder aim can pull all the
+way back. Zoom follows your chosen angle with a gentle added downward tilt,
+keeping the distant view shallow; beneath a ceiling, zoom stays horizontal.
+Zooming out keeps your selected weapon equipped. Mouse clicks attack only in
+the shooter views.
+Focus returns to the character at the start of the outward zoom, even if you stop scrolling partway.
+Returning from shooting view to carry mode places the pointer at the center of the screen.
+Moving the mouse moves the pointer; drag to rotate the camera as before.
+**Escape** or **Tab** releases the normal browser cursor.
+Burning keeps your current view but blocks swings and shots; press **Space** to
+drop and roll, then attack again once the fire is out.
+**V** also uses the selected weapon. Each rifle burst has one kick and flash per banana.
+While you control a worker, putting the rifle away carries it on their back. The expanded control shows an
+exact count out of **30** and thirty tiny banana indicators. The rifle's magazine window holds nine banana marks,
+each representing three shots, with another three shots in the hidden chamber.
+Each character keeps their ammunition between cave visits.
+
+One full spare magazine is hidden in a bush or tree. Click its hiding place to reveal it,
+then touch the hovering magazine with your character to collect it. It hangs on the
+character's left hip. While the AK is equipped, a separate magazine button shows its
+exact ammo and up to five banana marks, one per six rounds, rounded down.
+Press **R** in AK shooting mode, or click the spare's button with the AK equipped, to swap
+magazines. The right hand lowers the rifle as the left hand raises the spare to meet it,
+then the rifle rises and the left hand returns the exchanged magazine to the hip.
+The motion takes just under half a second; ammo exchanges at the handoff, and firing waits until it finishes.
+Magazines can be swapped even when their counts match. The spare stays with the character who collected it, including
+after releasing control and between scenes. That character loses it on an abyss respawn.
+
+With the AK equipped, overlap any part of the circular path around the banana pile
+and press **Space** once to eat and load. Each load feeds two bananas in sequence, adding **six
+shots** total, up to 30. Each banana consumes one from the pile and adds three shots.
+The right arm extends straight forward, like the shooting pose, to hold the AK upright, with its magazine turned
+inward while the left hand grabs the bananas.
+Reloading fills the AK first, then briefly shows it full before lowering it and raising
+the spare if you own one. While filling the spare, the AK goes on the back and the
+right hand holds the spare sideways at the same angle as the AK's magazine for the left hand to load.
+Finishing or interrupting the reload briefly lowers the spare and restores the AK;
+firing with rounds available interrupts loading and fires once the rifle is back in position.
+Once reloading starts, **Space**
+jumps or jetpacks again while loading continues. Walking and jumping within reach keep
+loading until both are full; moving beyond the path or flying too far above or below
+the pile edge, putting the gun away, or leaving control stops it. Completed rounds
+stay loaded, and another press resumes. The first banana fills the hidden chamber, then the remaining nine pop
+into the magazine one at a time. An empty weapon takes five loads, and an empty spare takes another five.
+Partial loads preserve every round, using only the required fraction of the last banana. Interrupting
+before a banana enters does not consume it. Empty piles cannot reload.
+Put the AK away to restore the usual walking and nearby-control inputs.
+
+Repository activity is tracked separately for each character and project. After a
+magazine and a refill, workers visit their next recently active repository's open
+cave in turn. Workers fan out on either side of the entrance, forming staggered
+rows when the front row fills. They keep their rifles selected throughout the work cycle
+and shoot at different points inside the cave, leaving the central path open.
+After the last shot they briefly hold their empty rifle aimed, then lower it across
+the body for the return to the pile. A worker with ammunition in their spare swaps it
+in and empties it at the cave first, then returns to fill the AK and spare before the next trip.
+The rifle stays held while filling its own magazine and goes on the back while filling the spare.
+Walkers favor their right side of each curved path and leave room for one another.
+Returning workers peel off near the pile for the closest open reload slot;
+chilling Oogas and those heading to sleep go around active firing areas.
+Chilling Oogas rest for a staggered 30–90 seconds between strolls, while still
+moving promptly out of active work areas and responding to control or new activity.
+Chilling walkers wait before crossing an approaching worker's route, then continue
+once the worker has passed. Releasing a working Ooga sends them straight back to
+their cave if they have ammunition, or to a free pile slot if empty, avoiding
+obstacles on the way. Normal path-following resumes after that trip.
+EntropyLab is the first registered work cave; adding a repository to
+an open cave's `repo` field includes it in this rotation. See
+[the activity data contract](docs/activity-contract.md) for the pending Oogatron
+snapshot integration. Historical snapshot dates do not imply current activity.
+Debug mode seeds three workers, three chilling Oogas, and two sleepers.
+Roster labels show yellow for workin, orange for chillin, and gray for sleepin.
+A separate dot before each roster name is green while a human controls that Ooga
+and gray while offline; activity labels stay visible in either case. Hovered names
+keep their existing dot colors: green while human-controlled, otherwise the activity
+color. Future live global state can use the same presence indicator.
+
 Landing on another Ooga carries you along with their movement. You can still
 look around, walk across them, or jump off; walls and ceilings remain solid.
 
 The jetpack starts spinning above a cloud beyond the island. Reach that cloud and jump
 into the pack to collect it. Its compact button then appears at the upper left; click it
-or press **J** to put the controlled Ooga's jetpack on or take it off. The button expands
-to show fuel while the pack is worn. With the jetpack equipped,
+or press **J** to put the controlled Ooga's jetpack on or take it off. The compact button
+keeps the fuel percentage visible and expands to show the fuel bar while the pack is worn. With the jetpack equipped,
 tap **Space** on the ground for a weighted hop, half the height of a normal jump,
 or hold it to keep climbing under thrust. Clicking an Ooga still shows a talking
 bubble without making them hop.
@@ -84,9 +212,10 @@ NPC walkers check destinations for obstructions and use a bounded local recovery
 path to back out of dead ends and go around scenery that blocks their route.
 They keep clear of lit firepits when walking, choosing eating spots, and planning
 recovery jumps; an Ooga already too close can still move out of the flames.
-They follow the midpoint curves of connected surface paths, stepping off to pass
+They follow the curves of connected surface paths slightly to their right, stepping off to pass
 other Oogas or make the final approach to an off-path destination such as a
-fireplace seat. Routes
+fireplace seat. A trailing Ooga headed to the same destination waits for a
+comfortable gap before following. Routes
 adapt when the growing pile changes the paths; player movement stays unrestricted.
 When walkers meet, they turn the contacted shoulder back and sidestep past each
 other while keeping their heads facing ahead, then return to their original lines.
@@ -157,12 +286,23 @@ or just your free camera, to that destination while keeping your current view mo
 **LAB** takes you to the EntropyLab entrance on the island; tap the cave or walk inside
 to enter the lab. **MIRROR** takes you to the OBL mirror, **HQ** to the headquarters,
 and **BSMT** directly to its basement. On narrow screens these destinations remain in
-one horizontally scrollable row. Inside HQ, two curved descents connect to a shared basement with
+one horizontally scrollable row. Bananas pass through the mirror with small ripples in
+its reflection; moving green glyphs briefly appear on each ripple's strongest ring, then fade before the water-like distortion.
+Aim converges on the mirror under the reticle before the bananas continue through it.
+A club strike that reaches the mirror creates the same brief ripple and green glyphs.
+Walking through the mirror sends ripples around the body's intersection with it.
+A faint moving green glyph outline remains along the touching parts until the
+character fully clears the surface, releasing another ripple on exit.
+Inside HQ, two curved descents connect to a shared basement with
 eight unclaimed rooms around a smaller common area. Each HQ and basement room has
 one floor mattress in its rear corner, sized for a sleeping Ooga. Its blanket wraps
 around the mattress, and the pillow carries the same LifeHash pattern rotated 90°,
-derived from that room's x, y, z coordinates. Sleepy Oogas walk down the ramps to an
-available bed and lie on top of the sheet. RandyMcMillan starts sleepy in the demo.
+derived from that room's x, y, z coordinates. Oogas already asleep when the world
+loads start in their beds. Those who become sleepy later walk down the ramps to an
+available bed and lie on top of the sheet. While lying down, their melee weapon and AK
+lean against the wall behind the bed's head, returning to the character on waking.
+Sleep follows contribution activity;
+the debug number keys can wake a contributor for local interaction checks.
 The HQ benches and fireplace are solid. Near a free bench seat, **Space** or **SIT**
 sits facing the fire; movement or **STAND UP!** gets up. Touching a lit fireplace's
 flames sets the Ooga on fire. Press **Space** or **DROP & ROLL!** once to roll back and
@@ -247,7 +387,8 @@ camera back, **M** mutes, **Escape** returns to the builder. The best flight and
 are kept in your browser.
 
 Keys: **B** add 100 test bananas, **J** toggle a collected jetpack on the controlled Ooga, **L** legendary
-tip, **P** fill the pile, **1** to **9** force a contributor to eating, **Escape** leave a
+tip, **P** fill the pile, **1** to **9** force a contributor to eating when not controlling an Ooga
+(**3** to **9** still do so while controlling), **Escape** leave a
 cave or let go, **Shift+R** reset the demo.
 
 URL flags: `?scene=lab` opens the lab directly, `?scene=race` the rally garage, `?scene=drop` the drop board and `?scene=orbit` the rocket builder, `?nosim=1` silences simulated tips,
@@ -270,9 +411,16 @@ omitted (the first roster entry if none is working). An explicit unknown handle 
 selection untouched. With `view=hq` or `view=bsmt`, the pack stays owned with its icon
 visible but disabled underground. These views skip automatic equipping and selection
 while respecting an explicit `character=` or `firstperson=1`. `character`,
-`firstperson`, and `jetpack` apply only on the initial page load. `&latitude=20` optionally changes
+`firstperson`, and `jetpack` apply only on the initial page load. Add `&mag=1` in debug mode
+to give the first character you control a full spare magazine; it is not granted again after a fall. `&latitude=20` optionally changes
 the debug latitude (bounded to 66 degrees north or south). Use `&loot=1` to exercise the loot feature. Loot ships off: `LOOT_DEFAULT` in `src/js/director.js`
 turns it on for everyone. The pile holds at most ten million bananas; every count is clamped there.
+
+Add `&solo=1` (or bare `&solo`) in debug mode to load only the character named by
+`character`; without a valid character, the world loads empty of characters. For example,
+`?debug=1&solo=1&character=w-s-bitcoin` loads just that Ooga, while `?debug=1&solo=1`
+loads the scenery alone. Solo stays active across scene changes, omits rally spectators,
+and never selects a fallback character for `jetpack=1`. Use `solo=0` to restore the full roster.
 
 ## Test
 

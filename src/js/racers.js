@@ -40,7 +40,7 @@
     const order = [];
     let player = null, laps = 3, rankTimer = 0, elapsed = 0, raceTime = 0, running = false, autopilot = false;
     const events = { onLap: null, onFinish: null, onRespawn: null, onDrift: null, onLand: null, onWrongWay: null, onWall: null, onBump: null, onHop: null };
-    contributors.roster.forEach((contributor, i) => {
+    contributors.activeRoster.forEach((contributor, i) => {
       const traits = contributors.traitsFor(contributor.name);
       const cave = models.caveman(traits);
       const node = createNode({ visible: false });
@@ -103,6 +103,7 @@
       // The visitor starts last on the grid, the AI ahead by roster order
       const lineup = racers.filter((r) => r.name !== playerName);
       const chosen = racers.find((r) => r.name === playerName) || racers[0];
+      if (!chosen) return;
       lineup.push(chosen);
       lineup.forEach((racer, slot) => {
         const g = grid[Math.min(grid.length - 1, slot)];

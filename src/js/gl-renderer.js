@@ -27,6 +27,8 @@
   const ZERO4 = new Float32Array([0, 0, 0, 1]);
   const NO_FOG = new Float32Array(3);
   const NO_MATRIX_CAVES = new Float32Array(32);
+  const NO_MIRROR_RIPPLES = new Float32Array(BL.mirrorRipples.CAPACITY * 4);
+  const NO_MIRROR_BODY_WAVES = new Float32Array(BL.mirrorBody.CAPACITY * 4);
   const FOG_OFF = 1e8;
   const LIGHT_EYE = { x: 0, y: 0, z: 0 };
   const MESH_STRIDE = 10;
@@ -532,10 +534,16 @@ uniform mat4 uReflectionViewProj;
 out vec4 vReflection;
 out vec3 vWorld;
 out vec2 vPortalUv;
+out vec2 vMirrorLocal;
+flat out vec4 vReflectionX;
+flat out vec4 vReflectionY;
 void main() {
   vec4 world = mat4(aM0, aM1, aM2, aM3) * vec4(aPos, 1.0);
   vWorld = world.xyz;
   vReflection = uReflectionViewProj * world;
+  vReflectionX = uReflectionViewProj * vec4(aM0.xyz, 0.0);
+  vReflectionY = uReflectionViewProj * vec4(aM1.xyz, 0.0);
+  vMirrorLocal = aPos.xy;
   vPortalUv = vec2(aPos.x / 5.0 + 0.5, 1.0 - (aPos.y + 1.75) / 3.25);
   gl_Position = uViewProj * world;
   // Close the portal even while its glass is closer than the camera near plane.
@@ -544,22 +552,131 @@ void main() {
 }`;
   const MIRROR_FS = `#version 300 es
 precision highp float;
+precision highp int;
 in vec4 vReflection;
 in vec3 vWorld;
 in vec2 vPortalUv;
+in vec2 vMirrorLocal;
+flat in vec4 vReflectionX;
+flat in vec4 vReflectionY;
 uniform sampler2D uReflection;
+uniform sampler2D uMatrixGlyphTex;
 uniform vec3 uTint;
 uniform float uPortal;
 uniform float uReveal;
+uniform int uRippleActive;
+uniform float uRippleTime;
+uniform vec4 uRipples[${BL.mirrorRipples.CAPACITY}];
+uniform sampler2D uBodyField;
+uniform vec4 uBodyBounds;
+uniform vec2 uBodyTexel;
+uniform int uBodyContacts;
+uniform int uBodyActive;
+uniform vec4 uBodyWaves[${BL.mirrorBody.CAPACITY}];
 layout(location=0) out vec4 oColor;
 layout(location=1) out vec4 oBright;
+float rippleHash(int n) {
+  uint x = uint(n);
+  x ^= x >> 16;
+  x *= 2146121005u;
+  x ^= x >> 15;
+  x *= 2221713035u;
+  x ^= x >> 16;
+  return float(x >> 8) / 16777216.0;
+}
+vec4 bodyField(vec2 uv, int layer) {
+  uv = clamp(uv, uBodyTexel * 0.5, vec2(1.0) - uBodyTexel * 0.5);
+  return texture(uBodyField, vec2(uv.x, (uv.y + float(layer)) / ${BL.mirrorBody.CAPACITY + 1}.0));
+}
 void main() {
   if (vPortalUv.y > 1.0 - uReveal) discard;
-  vec2 projectedUv = vReflection.xy / vReflection.w * 0.5 + 0.5;
+  vec2 displacement = vec2(0.0);
+  float ringLight = 0.0, glyphCrest = 0.0;
+  vec2 pixelFootprint = max(fwidth(vMirrorLocal) / 0.021, vec2(0.001));
+  if (uPortal < 0.5 && uRippleActive > 0) {
+    for (int i = 0; i < ${BL.mirrorRipples.CAPACITY}; i++) {
+      vec4 wave = uRipples[i];
+      if (wave.w <= 0.0) continue;
+      vec2 offset = vMirrorLocal - wave.xy;
+      float distance = length(offset);
+      float radius = ${BL.mirrorRipples.START_RADIUS.toFixed(6)} + wave.z * ${BL.mirrorRipples.SPEED.toFixed(6)};
+      float phase = (distance - radius) / ${BL.mirrorRipples.WIDTH.toFixed(6)};
+      if (phase > 3.0 || phase < -5.5) continue;
+      float primary = exp(-phase * phase);
+      float trailingPhase = phase + 2.5;
+      float trailing = exp(-trailingPhase * trailingPhase) * 0.28;
+      float slope = (primary * phase + trailing * trailingPhase) * wave.w;
+      displacement += offset / max(distance, 0.0001) * slope * 0.045;
+      ringLight += (primary - trailing) * wave.w * 0.055;
+      glyphCrest = max(glyphCrest, primary * smoothstep(${BL.mirrorRipples.GLYPH_THRESHOLD.toFixed(6)}, 0.85, wave.w));
+    }
+  }
+  if (uPortal < 0.5 && (uBodyContacts > 0 || uBodyActive > 0)) {
+    vec2 bodyUv = (vMirrorLocal - uBodyBounds.xy) / uBodyBounds.zw;
+    if (uBodyContacts > 0) {
+      vec4 field = bodyField(bodyUv, 0);
+      float distance = (field.r - 0.5) * ${(BL.mirrorBody.RANGE * 2).toFixed(6)};
+      float phase = (distance - 0.02) / 0.075;
+      float contact = exp(-phase * phase) * field.a;
+      glyphCrest = max(glyphCrest, contact * (0.66 + 0.06 * sin(uRippleTime * 3.0 + vMirrorLocal.y * 4.0)));
+      ringLight += contact * 0.022;
+    }
+    for (int i = 0; i < ${BL.mirrorBody.CAPACITY}; i++) {
+      vec4 wave = uBodyWaves[i];
+      if (wave.y <= 0.0) continue;
+      vec4 field = bodyField(bodyUv, i + 1);
+      float distance = (field.r - 0.5) * ${(BL.mirrorBody.RANGE * 2).toFixed(6)};
+      float phase = (distance - wave.x * ${BL.mirrorBody.SPEED.toFixed(6)}) / ${BL.mirrorBody.WIDTH.toFixed(6)};
+      if (phase > 3.0 || phase < -5.5 || field.a < 0.5) continue;
+      float primary = exp(-phase * phase);
+      float trailingPhase = phase + 2.5;
+      float trailing = exp(-trailingPhase * trailingPhase) * 0.28;
+      vec2 gradient = field.gb * 2.0 - 1.0;
+      gradient /= max(length(gradient), 0.0001);
+      displacement += gradient * (primary * phase + trailing * trailingPhase) * wave.y * 0.045;
+      ringLight += (primary - trailing) * wave.y * 0.055;
+      glyphCrest = max(glyphCrest, primary * smoothstep(0.55, 0.85, wave.y));
+    }
+  }
+  displacement *= min(1.0, 0.035 / max(length(displacement), 0.0001));
+  // Perturb in the mirror's own plane, then project. A fixed screen-space
+  // offset would slide the water rings when the camera moves or looks obliquely.
+  vec4 rippled = vReflection + vReflectionX * displacement.x + vReflectionY * displacement.y;
+  vec2 projectedUv = rippled.xy / rippled.w * 0.5 + 0.5;
   vec2 uv = mix(projectedUv, vPortalUv, uPortal);
   vec3 reflected = texture(uReflection, uv).rgb;
   float sheen = pow(max(0.0, 1.0 - abs(fract((vWorld.x + vWorld.y) * 0.22) - 0.5) * 7.0), 5.0) * 0.08;
-  vec3 color = mix(reflected, uTint, 0.1) + sheen;
+  vec3 color = mix(reflected, uTint, 0.1) + sheen + ringLight;
+  if (glyphCrest > 0.0) {
+    // The crest briefly reveals the same falling green streams as the cave,
+    // including their moving cells, changing runes and bright leading tips.
+    float grid = vMirrorLocal.x / 0.12;
+    int stream = int(floor(grid));
+    int train = 7 + int(floor(rippleHash(stream) * 6.0));
+    int sequence = train + 2 + int(floor(rippleHash(stream + 41) * 5.0));
+    float speed = 0.56 + rippleHash(stream + 19) * 0.64;
+    float phase = rippleHash(stream + 73) * float(sequence) * 0.13;
+    float movingGrid = (-vMirrorLocal.y - uRippleTime * speed - phase) / 0.13;
+    int flowCell = int(floor(movingGrid));
+    int position = flowCell % sequence;
+    if (position < 0) position += sequence;
+    if (position < train) {
+      vec2 local = vec2((fract(grid) - 0.5) * 0.12, (0.5 - fract(movingGrid)) * 0.13);
+      vec2 pixelCoord = vec2(local.x / 0.021 + 2.0, 3.0 - local.y / 0.021);
+      ivec2 pixel = ivec2(floor(pixelCoord));
+      if (pixel.x >= 0 && pixel.x < 4 && pixel.y >= 0 && pixel.y < 6) {
+        int glyph = (abs(stream * 73 + flowCell * 151) + int(floor(uRippleTime * 20.0))) & 7;
+        float mask = texelFetch(uMatrixGlyphTex, ivec2(glyph * 6 + 1 + pixel.x, 5 - pixel.y), 0).r;
+        vec2 coverage = 1.0 - smoothstep(vec2(0.38) - pixelFootprint * 0.5, vec2(0.38) + pixelFootprint * 0.5, abs(fract(pixelCoord) - 0.5));
+        float alpha = glyphCrest * mask * coverage.x * coverage.y * 0.82;
+        float glow = (0.58 + rippleHash(stream + 101) * 0.36) * (0.48 + float(position + 1) / float(train) * 0.52);
+        float tip = position == train - 1 ? 1.0 : position == train - 2 ? 0.55 : 0.0;
+        vec3 base = (glyph & 1) == 0 ? vec3(24.0, 220.0, 74.0) : vec3(70.0, 255.0, 112.0);
+        vec3 green = mix(base / 255.0 * mix(0.78, 1.15, glow), vec3(0.84, 1.0, 0.89), tip * 0.88);
+        color = mix(color, green, alpha);
+      }
+    }
+  }
   oColor = vec4(color, 1.0);
   oBright = vec4(0.0);
 }`;
@@ -699,9 +816,9 @@ void main() {
     const records = new Map();
     const activeRecords = [];
     const res = { programs: {}, fbo: null, shadow: null, bloom: null, quadVao: null, matrixTexture: null };
-    const mirror = { node: null, record: null, geometry: null, program: null, programReady: false, fb: null, tex: null, depth: null, color: null, msFb: null, msaa: -1, width: 0, height: 0, frame: 0, portal: false, reveal: 0, frontFacing: false, walkThrough: false, captureValid: false, capturePending: false };
+    const mirror = { node: null, record: null, geometry: null, program: null, programReady: false, fb: null, tex: null, depth: null, color: null, msFb: null, msaa: -1, width: 0, height: 0, frame: 0, portal: false, reveal: 0, frontFacing: false, walkThrough: false, captureValid: false, capturePending: false, bodyTex: null, bodyState: null, bodyVersion: -1 };
     const mirrorDebug = {
-      active: false, faux: false, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, samples: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: false, reflectionOnlyCount: 0, planeDistance: 0,
+      active: false, faux: false, portal: false, reveal: 0, surfaceDrawn: false, captureValid: false, width: 0, height: 0, samples: 0, allocationCount: 0, reflectionPassCount: 0, skippedPassCount: 0, resources: 0, captureExcluded: false, reflectionOnlyCount: 0, planeDistance: 0, ripples: 0, bodyContacts: 0, bodyWaves: 0,
       cameraPosition: new Float32Array(3), cameraTarget: new Float32Array(3), planeCenter: new Float32Array(3), planeNormal: new Float32Array(3), capturedViewProj: mirrorCapturedViewProj, skipReason: "none"
     };
     // Compile without blocking, ready flips once linked
@@ -742,7 +859,7 @@ void main() {
     };
     const ensureMirrorProgram = () => {
       if (!mirror.program) {
-        mirror.program = compile(MIRROR_VS, MIRROR_FS, ["uViewProj", "uReflectionViewProj", "uReflection", "uTint", "uPortal", "uReveal"]);
+        mirror.program = compile(MIRROR_VS, MIRROR_FS, ["uViewProj", "uReflectionViewProj", "uReflection", "uTint", "uPortal", "uReveal", "uMatrixGlyphTex", "uRippleActive", "uRippleTime", "uRipples", "uBodyField", "uBodyBounds", "uBodyTexel", "uBodyContacts", "uBodyActive", "uBodyWaves"]);
         mirrorDebug.resources++;
       }
       if (mirror.programReady) return true;
@@ -870,6 +987,12 @@ void main() {
     const destroyMirror = () => {
       destroyMirrorTarget();
       destroyMirrorProgram();
+      if (mirror.bodyTex) {
+        gl.deleteTexture(mirror.bodyTex);
+        mirrorDebug.resources--;
+      }
+      mirror.bodyTex = mirror.bodyState = null;
+      mirror.bodyVersion = -1;
       mirror.node = mirror.record = mirror.geometry = null;
       mirror.portal = mirror.frontFacing = mirror.walkThrough = mirror.capturePending = false;
       mirrorDebug.active = false;
@@ -877,9 +1000,12 @@ void main() {
       mirrorDebug.surfaceDrawn = false;
       mirrorDebug.captureExcluded = false;
       mirrorDebug.reflectionOnlyCount = 0;
+      mirrorDebug.ripples = 0;
+      mirrorDebug.bodyContacts = mirrorDebug.bodyWaves = 0;
     };
     const forgetMirror = () => {
-      mirror.node = mirror.record = mirror.geometry = mirror.program = mirror.fb = mirror.tex = mirror.depth = mirror.color = mirror.msFb = null;
+      mirror.node = mirror.record = mirror.geometry = mirror.program = mirror.fb = mirror.tex = mirror.depth = mirror.color = mirror.msFb = mirror.bodyTex = mirror.bodyState = null;
+      mirror.bodyVersion = -1;
       mirror.programReady = false;
       mirror.msaa = -1;
       mirror.width = mirror.height = mirrorDebug.width = mirrorDebug.height = mirrorDebug.samples = 0;
@@ -889,6 +1015,8 @@ void main() {
       mirrorDebug.surfaceDrawn = false;
       mirrorDebug.captureExcluded = false;
       mirrorDebug.reflectionOnlyCount = 0;
+      mirrorDebug.ripples = 0;
+      mirrorDebug.bodyContacts = mirrorDebug.bodyWaves = 0;
       mirrorDebug.resources = 0;
     };
     const destroyFbo = () => {
@@ -1566,6 +1694,8 @@ void main() {
     };
     const drawMirrorSurface = () => {
       const rec = mirror.record, part = rec && rec.mesh, pg = mirror.program;
+      mirrorDebug.ripples = 0;
+      mirrorDebug.bodyContacts = mirrorDebug.bodyWaves = 0;
       if (mirror.portal || !mirror.frontFacing || !part || !mirror.tex || !mirror.programReady || !mirror.captureValid) return;
       gl.useProgram(pg.prog);
       gl.uniformMatrix4fv(pg.u.uViewProj, false, viewProj);
@@ -1573,6 +1703,37 @@ void main() {
       gl.uniform3f(pg.u.uTint, 0.56, 0.62, 0.67);
       gl.uniform1f(pg.u.uPortal, mirror.portal ? 1 : 0);
       gl.uniform1f(pg.u.uReveal, mirror.reveal);
+      const ripples = mirror.node.mirrorRipples, body = mirror.node.mirrorBody;
+      mirrorDebug.ripples = ripples ? ripples.active : 0;
+      gl.uniform1i(pg.u.uRippleActive, mirrorDebug.ripples);
+      gl.uniform1f(pg.u.uRippleTime, body ? body.time : ripples ? ripples.time : 0);
+      gl.uniform4fv(pg.u.uRipples, ripples ? ripples.waves : NO_MIRROR_RIPPLES);
+      const bodyActive = body && (body.contacts || body.active);
+      gl.activeTexture(gl.TEXTURE4);
+      if (bodyActive) {
+        // One bounded silhouette atlas belongs to the mirror for its lifetime.
+        // Contacts rebuild it at their capped cadence; moving wave ages are uniforms.
+        if (!mirror.bodyTex) {
+          mirror.bodyTex = createTexture(body.width, body.height * body.layers, gl.RGBA8, gl.LINEAR);
+          mirrorDebug.resources++;
+        }
+        gl.bindTexture(gl.TEXTURE_2D, mirror.bodyTex);
+        if (mirror.bodyState !== body || mirror.bodyVersion !== body.version) {
+          gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, body.width, body.height * body.layers, gl.RGBA, gl.UNSIGNED_BYTE, body.pixels);
+          mirror.bodyState = body;
+          mirror.bodyVersion = body.version;
+        }
+        const bounds = boundsOf(mirror.node.geometry);
+        gl.uniform4f(pg.u.uBodyBounds, bounds.min[0], bounds.min[1], bounds.max[0] - bounds.min[0], bounds.max[1] - bounds.min[1]);
+        gl.uniform2f(pg.u.uBodyTexel, 1 / body.width, 1 / body.height);
+        mirrorDebug.bodyContacts = body.contacts;
+        mirrorDebug.bodyWaves = body.active;
+      } else gl.bindTexture(gl.TEXTURE_2D, mirror.bodyTex || res.matrixTexture);
+      gl.uniform1i(pg.u.uBodyField, 4);
+      gl.uniform1i(pg.u.uBodyContacts, mirrorDebug.bodyContacts);
+      gl.uniform1i(pg.u.uBodyActive, mirrorDebug.bodyWaves);
+      gl.uniform4fv(pg.u.uBodyWaves, body ? body.waves : NO_MIRROR_BODY_WAVES);
+      bindMatrixTexture(pg);
       gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_2D, mirror.tex);
       gl.uniform1i(pg.u.uReflection, 2);
@@ -1685,6 +1846,8 @@ void main() {
       mirrorDebug.portal = false;
       mirrorDebug.reveal = 0;
       mirrorDebug.surfaceDrawn = false;
+      mirrorDebug.ripples = 0;
+      mirrorDebug.bodyContacts = mirrorDebug.bodyWaves = 0;
       culled = drawn = suppressed = 0;
       updateWorld(root, null);
       traverseVisible(root, collect);
