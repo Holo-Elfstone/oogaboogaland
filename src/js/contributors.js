@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const HOUR = 60 * 60 * 1e3;
+  const MINUTE = 60 * 1e3, HOUR = 60 * MINUTE, WORK_WINDOW = 4 * HOUR, CHILL_WINDOW = 48 * HOUR;
   const ENTROPY = "oogaboogax/entropylab", MAX_REPOS = 64;
   const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
   // Historical EntropyLab activity; a backend can refresh it with applyActivity.
@@ -25,7 +25,7 @@
   const activeRoster = solo ? roster.filter((entry) => entry.name.toLowerCase() === character) : roster;
   const byName = new Map(roster.map((contributor) => [contributor.name.toLowerCase(), contributor]));
   byName.set("ottoz0r", byName.get("bc1gui"));
-  const listeners = new Set();
+  const listeners = new Set(), snapshotRepos = new Set();
   const repositoryOf = (repo) => {
     if (typeof repo !== "string") return null;
     const key = repo.toLowerCase();
@@ -35,18 +35,19 @@
   // Callers use the canonical lowercase repository key, keeping frame queries allocation-free.
   const hasRecentActivity = (contributor, repo, at = Date.now()) => {
     const seen = contributor.activity.get(repo);
-    return seen > 0 && seen <= at && at - seen < HOUR;
+    return seen > 0 && seen <= at && at - seen < WORK_WINDOW;
   };
   const stateFor = (contributor, at = Date.now()) => {
     const age = at - contributor.lastCommitAt;
     if (!Number.isFinite(age) || contributor.lastCommitAt <= 0 || age < 0) return "sleeping";
-    if (age < HOUR) return "working";
-    return age < 24 * HOUR ? "chilling" : "sleeping";
+    if (age < WORK_WINDOW) return "working";
+    return age < CHILL_WINDOW ? "chilling" : "sleeping";
   };
   const ageLabel = (contributor, at = Date.now()) => {
     if (!Number.isFinite(contributor.lastCommitAt) || contributor.lastCommitAt <= 0) return "no activity";
-    const hours = Math.max(0, Math.floor((at - contributor.lastCommitAt) / HOUR));
-    if (hours < 1) return "just now";
+    const minutes = Math.max(0, Math.floor((at - contributor.lastCommitAt) / MINUTE));
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
     if (hours < 48) return `${hours}h ago`;
     return `${Math.floor(hours / 24)}d ago`;
   };
@@ -76,10 +77,25 @@
       if (!snapshot || !snapshot.meta || snapshot.meta.schema_version !== 1 || !Array.isArray(snapshot.contributors)) continue;
       const repo = repositoryOf(snapshot.meta.repo);
       if (!repo) continue;
+      const firstSnapshot = !snapshotRepos.has(repo), accepted = [];
       for (const contributor of snapshot.contributors) {
         if (!contributor || typeof contributor.login !== "string" || typeof contributor.last_seen_at !== "string" || !ISO_TIME.test(contributor.last_seen_at)) continue;
         const lastCommitAt = Date.parse(contributor.last_seen_at);
-        if (Number.isFinite(lastCommitAt)) rows.push({ name: contributor.login, lastCommitAt, repo });
+        const entry = byName.get(contributor.login.toLowerCase());
+        if (entry && Number.isFinite(lastCommitAt) && lastCommitAt > 0 && lastCommitAt <= at) accepted.push({ entry, name: contributor.login, lastCommitAt, repo });
+      }
+      // The first authoritative snapshot replaces the bundled historical fallback,
+      // even when the fallback happened to be later. Subsequent snapshots still
+      // cannot rewind newer activity received during this page session.
+      if (accepted.length) {
+        if (firstSnapshot) for (const row of accepted) {
+          row.entry.activity.delete(repo);
+          let latest = 0;
+          for (const stamp of row.entry.activity.values()) latest = Math.max(latest, stamp);
+          row.entry.lastCommitAt = latest;
+        }
+        snapshotRepos.add(repo);
+        for (const { name, lastCommitAt } of accepted) rows.push({ name, lastCommitAt, repo });
       }
     }
     return applyActivity(rows, at);
@@ -92,7 +108,7 @@
   const seedDebugActivity = (at = Date.now()) => {
     for (let i = 0; i < roster.length; i++) {
       const contributor = roster[i];
-      const age = i < 3 ? i * 30000 : i < 6 ? 2 * HOUR + i * 60000 : 48 * HOUR;
+      const age = i < 3 ? i * 30000 : i < 6 ? 8 * HOUR + i * 60000 : CHILL_WINDOW;
       contributor.lastCommitAt = at - age;
       contributor.activity.clear();
       contributor.activity.set(ENTROPY, contributor.lastCommitAt);

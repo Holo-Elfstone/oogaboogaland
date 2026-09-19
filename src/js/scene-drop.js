@@ -882,7 +882,10 @@
     dhud.el.help.textContent = COARSE ? "Left stick pitches and rolls · right stick turns · the button jumps, pulls and flares" : "W S pitch · A D roll · Q E turn · Space jumps, pulls the chute · S flares · drag to look";
     meterTimer = 0;
     toBoard();
-    stateTimer = window.setInterval(() => fx.trimPool(), 6e4);
+    stateTimer = window.setInterval(() => {
+      for (const c of contributors.activeRoster) hud.setRosterRow(c.name, contributors.stateFor(c), contributors.ageLabel(c));
+      fx.trimPool();
+    }, 6e4);
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Pick an Ooga, then Fly!" : "Pick an Ooga, then Fly! (Enter)"), 1200);
     Object.assign(dropScene, {
       root, camera, input,
