@@ -397,6 +397,19 @@
       .map(([hx, hy]) => box({ w: 0.03, h: 0.03, d: 0.008, color: "#0f1113", offset: { x: hx, y: 0.1 + hy, z: 0.463 } }));
     return merge(hood, snout, filter, ...holes, lens(-0.12), lens(0.12), tube(-0.21), tube(0.21), ring({ r: 0.315, thickness: 0.02, y: 0.4, segments: 14, color: trim }));
   });
+  // A silk top hat: wide brim, tall crown with a slight flare, an island-orange
+  // band, a white X badge pinned above the band
+  const topHatGeometry = cached(() => {
+    const felt = "#1b1b1d";
+    const brim = lathe({ profile: [[0, 0], [0.31, 0], [0.325, 0.02], [0.31, 0.04], [0, 0.04]], segments: 14, color: "#111113" });
+    const crown = lathe({ profile: [[0.205, 0.03], [0.2, 0.16], [0.205, 0.3], [0.225, 0.42], [0.23, 0.46], [0, 0.46]], segments: 14, color: felt });
+    const cross = [];
+    for (let i = -2; i <= 2; i++) {
+      cross.push(box({ w: 0.036, h: 0.036, d: 0.03, color: "#f2efe4", offset: { x: i * 0.036, y: 0.27 + i * 0.036, z: 0.207 } }));
+      if (i) cross.push(box({ w: 0.036, h: 0.036, d: 0.03, color: "#f2efe4", offset: { x: i * 0.036, y: 0.27 - i * 0.036, z: 0.207 } }));
+    }
+    return merge(brim, crown, ring({ r: 0.21, thickness: 0.035, y: 0.075, segments: 14, color: "#d8892b" }), ...cross);
+  });
   // A tall crook staff in the club's grip: shaft from the ground past the shoulder, knots along it, curled head
   const staffVoxels = (rand) => {
     const v = makeVox();
@@ -509,7 +522,7 @@
   const buildCaveman = (traits) => {
     const { skin, hair, height: h, belly, rand } = traits;
     const u = h / 16;
-    const P = { skin: 0, skinDk: 1, hair: 2, hairDk: 3, fur: 4, spot: 5, white: 6, black: 7, nose: 8, stubble: 9, wood: 10, stone: 11, stoneDk: 12, apple: 13, appleDk: 14, leaf: 15, knit: 16, knitDk: 17, pom: 18, lens: 19, btc: 20, gold: 21, goldDk: 22, wing: 23, wingDk: 24, goggle: 25, goggleDk: 26, orange: 27 };
+    const P = { skin: 0, skinDk: 1, hair: 2, hairDk: 3, fur: 4, spot: 5, white: 6, black: 7, nose: 8, stubble: 9, wood: 10, stone: 11, stoneDk: 12, apple: 13, appleDk: 14, leaf: 15, knit: 16, knitDk: 17, pom: 18, lens: 19, btc: 20, gold: 21, goldDk: 22, wing: 23, wingDk: 24, goggle: 25, goggleDk: 26, orange: 27, pumpkin: 28, pumpkinDk: 29, pumpkinGlow: 30 };
     const palette = [
       shade(skin, 1),
       shade(skin, 0.9),
@@ -538,7 +551,10 @@
       hexToRgb("#bcdcec"),
       hexToRgb("#3a9dff"),
       hexToRgb("#1f6fc4"),
-      hexToRgb("#e89423")
+      hexToRgb("#e89423"),
+      hexToRgb("#e8862a"),
+      hexToRgb("#cf6f1c"),
+      hexToRgb("#ffc14d")
     ];
     const jit = (base, dark, p) => () => rand() < p ? dark : base;
     const skinJ = jit(P.skin, P.skinDk, 0.08);
@@ -581,6 +597,20 @@
         v.fill(1, 7, 3, 7, 1, 4, skinJ);
       }
       if (traits.orangeChest) v.fill(0, 8, 0, 7, 0, 5, P.orange);
+      if (traits.skeleton) {
+        // A dark tailcoat over bone: rib stripes and a sternum on the chest, a light
+        // cravat at the throat, an orange rose on the lapel, a white X across the back
+        v.fill(0, 8, 0, 7, 0, 5, leopard);
+        for (const ry of [1, 3, 5]) v.fill(1, 7, ry, ry, 5, 5, skinJ);
+        v.fill(4, 4, 1, 6, 5, 5, skinJ);
+        v.fill(3, 5, 4, 7, 5, 5, jit(P.white, P.skin, 0.3));
+        v.fill(6, 7, 5, 6, 5, 5, P.orange);
+        v.set(7, 6, 5, P.spot);
+        for (let i = 0; i <= 6; i++) {
+          v.set(1 + i, 7 - i, 0, P.white);
+          v.set(7 - i, 7 - i, 0, P.white);
+        }
+      }
       if (traits.bee) {
         // The Bee: black bands round the fuzz and two pale wings folded off the back, baked into the torso
         v.fill(1, 7, 4, 4, 1, 4, P.black);
@@ -662,12 +692,23 @@
         v.set(3, 8, 2, P.wood);
         v.set(3, 9, 2, P.wood);
         v.set(4, 9, 2, P.leaf);
+      } else if (traits.pumpkin) {
+        // A carved pumpkin, ribbed in two oranges, rounded top and bottom
+        v.fill(-1, 7, 0, 7, -1, 5, (x) => (x + 9) % 3 ? P.pumpkin : P.pumpkinDk);
+        for (let x = -1; x <= 7; x++) {
+          for (let z = -1; z <= 5; z++) {
+            if (x === -1 || x === 7 || z === -1 || z === 5) {
+              v.del(x, 7, z);
+              v.del(x, 0, z);
+            }
+          }
+        }
       } else {
         v.fill(0, 6, 0, 5, 0, 5, skinJ);
         v.fill(1, 5, 0, 1, 6, 6, skinJ);
       }
-      if (traits.gasMask) {
-        // Nose, beard and mouth sit under the mask
+      if (traits.gasMask || traits.pumpkin) {
+        // Nose, beard and mouth sit under the mask; the pumpkin's are carved below
       } else if (traits.yellowFace) {
         // YellowBrokeIt uses a simple black nose and white muzzle below.
       } else if (traits.slim || traits.cleanShaven) {
@@ -683,8 +724,8 @@
         v.set(5, 0, 7, P.white);
         v.fill(2, 4, 2, 3, 6, 7, jit(traits.apple ? P.appleDk : P.nose, traits.apple ? P.apple : P.skin, 0.25));
       }
-      if (!traits.gasMask && !traits.skater && !traits.bee) v.fill(0, 6, 4, 4, 6, 6, hairJ);
-      const hairy = !traits.bald && !traits.apple && !traits.gasMask && !traits.anunnaki && !traits.skater && !traits.bee;
+      if (!traits.gasMask && !traits.skater && !traits.bee && !traits.pumpkin) v.fill(0, 6, 4, 4, 6, 6, hairJ);
+      const hairy = !traits.bald && !traits.apple && !traits.pumpkin && !traits.gasMask && !traits.anunnaki && !traits.skater && !traits.bee;
       if (hairy) {
         v.fill(-1, 7, 6, 8, -1, 6, hairJ);
         v.fill(-1, 7, traits.slim ? -5 : -2, 5, -2, -1, hairJ);
@@ -767,12 +808,25 @@
       if (hairy) {
         for (let x = 0; x <= 6; x++) for (let z = 0; z <= 5; z++) if (rand() < 0.08) v.set(x, 9, z, rand() < 0.5 ? P.hair : P.hairDk);
       }
-      const eyes = traits.wideEyes ? [[0, 2], [4, 6]] : [[0, 1], [5, 6]];
-      const eyeY0 = traits.wideEyes ? 1 : 2, eyeY1 = traits.wideEyes ? 4 : 3;
-      for (const [ex0, ex1] of eyes) {
-        for (let x = ex0; x <= ex1; x++) for (let y = eyeY0; y <= eyeY1; y++) {
-          v.set(x, y, 5, traits.laserEyes ? P.btc : P.white);
-          eyeCells.push([x, y]);
+      if (traits.pumpkin) {
+        // Carved triangle eyes lit from inside; lids still close over them.
+        // The nose and jagged grin glow too, but stay clear when he blinks.
+        for (const [ex, ey] of [[1, 4], [2, 4], [2, 5], [4, 4], [5, 4], [4, 5]]) {
+          v.set(ex, ey, 5, P.pumpkinGlow);
+          eyeCells.push([ex, ey]);
+        }
+        v.set(3, 3, 5, P.pumpkinGlow);
+        v.fill(0, 6, 2, 2, 5, 5, P.pumpkinGlow);
+        v.set(2, 1, 5, P.pumpkinGlow);
+        v.set(4, 1, 5, P.pumpkinGlow);
+      } else {
+        const eyes = traits.wideEyes ? [[0, 2], [4, 6]] : [[0, 1], [5, 6]];
+        const eyeY0 = traits.wideEyes ? 1 : 2, eyeY1 = traits.wideEyes ? 4 : 3;
+        for (const [ex0, ex1] of eyes) {
+          for (let x = ex0; x <= ex1; x++) for (let y = eyeY0; y <= eyeY1; y++) {
+            v.set(x, y, 5, traits.laserEyes ? P.btc : P.white);
+            eyeCells.push([x, y]);
+          }
         }
       }
       if (traits.yellowFace) {
@@ -783,7 +837,7 @@
         v.set(6, 5, 6, P.black);
         v.set(5, 4, 6, P.black);
       }
-      if (!traits.laserEyes) {
+      if (!traits.laserEyes && !traits.pumpkin) {
         v.set(1, 2, 5, P.black);
         v.set(5, 2, 5, P.black);
       }
@@ -806,18 +860,19 @@
     }
     const headOrigin = { x: -3.5 * u, y: 0, z: -3 * u };
     // Laser eyes are the only lit faces on the head; closed lids cover them
-    const headEmissive = traits.laserEyes ? { [P.btc]: 1 } : undefined;
+    const headEmissive = traits.laserEyes ? { [P.btc]: 1 } : traits.pumpkin ? { [P.pumpkinGlow]: 1 } : undefined;
     const headOpen = vg(headVox, headOrigin, headEmissive);
     const closedVox = makeVox();
     for (const [k, c] of headVox.map) closedVox.map.set(k, c);
-    for (const [x, y] of eyeCells) closedVox.set(x, y, 5, y === 2 ? P.skinDk : P.skin);
+    for (const [x, y] of eyeCells) closedVox.set(x, y, 5, traits.pumpkin ? P.pumpkinDk : y === 2 ? P.skinDk : P.skin);
     const headClosed = vg(closedVox, headOrigin, headEmissive);
     parts.head = createNode({ position: { x: 0, y: 0.5 * h, z: 0.02 * h }, geometry: headOpen });
-    const hatY = traits.gasMask ? 0.66 * h : (traits.bald ? 6 : traits.apple ? 8 : traits.anunnaki ? 12 : traits.skater ? 13 : traits.bee ? 11 : 9) * u;
+    const hatY = traits.gasMask ? 0.66 * h : (traits.topHat ? (traits.pumpkin ? 15 : 13) : traits.bald ? 6 : traits.apple ? 8 : traits.anunnaki ? 12 : traits.skater ? 13 : traits.bee ? 11 : 9) * u;
     parts.hat = createNode({ position: { x: 0, y: hatY, z: 0 }, scale: { x: h, y: h, z: h }, visible: false });
     parts.face = createNode({ position: { x: 0, y: 0, z: 0 }, scale: { x: h, y: h, z: h }, visible: false });
     addChild(parts.head, parts.hat, parts.face);
     if (traits.gasMask) addChild(parts.head, createNode({ scale: { x: h, y: h, z: h }, geometry: gasMaskGeometry() }));
+    if (traits.topHat) addChild(parts.head, createNode({ position: { x: 0, y: (traits.pumpkin ? 7.5 : 5.5) * u, z: 0 }, rotation: { x: 0, y: 0, z: 0.06 }, scale: { x: h, y: h, z: h }, geometry: topHatGeometry() }));
     addChild(root, parts.legL, parts.legR, parts.torso, parts.armL, parts.armR, parts.head);
     if (traits.anunnaki) {
       parts.lion = createNode({ geometry: voxelGeometry(lionVoxels(rand), { unit: u, palette: LION_PALETTE, origin: { x: armX + 1.5 * u, y: -1 * u, z: -2 * u } }) });
