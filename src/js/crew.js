@@ -370,6 +370,7 @@
       let weapon = world.weapons.get(contributor.name);
       if (!weapon) { weapon = { equipped: false, ammo: AMMO_MAX }; world.weapons.set(contributor.name, weapon); }
       weapon.ammo = Math.round(clamp(weapon.ammo, 0, AMMO_MAX));
+      weapon.unlimited = weapon.unlimited === true;
       if (!weapon.spareAmmo) weapon.spareAmmo = [];
       if (legacyMagazine.owned && legacyMagazine.carrier === contributor.name) {
         claimLegacyMagazines(weapon);
@@ -566,6 +567,7 @@
       setVec(parts.club.position, 0, -0.62 * cave.traits.height, 0.08 * cave.traits.height);
       setVec(parts.club.rotation, cave.traits.energyCan ? 0 : cave.traits.anunnaki || cave.traits.newspaper ? 0.2 : cave.traits.stoneAxe ? 0.24 : 0.95, 0, cave.traits.newspaper ? 0.1 : 0);
       rest.visible = false;
+      if (ctx.refreshMirrorObject) ctx.refreshMirrorObject(cave.root);
     };
     const leanBedWeapon = (node, geometry, x, wall) => {
       node.poseYaw = 0;
@@ -597,6 +599,7 @@
       math.quat.fromEuler(parts.gun.quaternion, -Math.PI / 2 - 0.18, 0, Math.PI / 2);
       leanBedWeapon(parts.club, parts.club.geometry, -0.32, wall);
       leanBedWeapon(parts.gun, parts.gunBody.geometry, 0.32, wall);
+      if (ctx.refreshMirrorObject) ctx.refreshMirrorObject(cave.root);
     };
     const resetPose = (cave) => {
       takeBedWeapons(cave);
@@ -666,20 +669,19 @@
         if (parent) addChild(parent, node);
       }
       const h = holder.traits.height;
-      const rightHip = index !== fullestMagazine(holder);
-      const side = rightHip ? -1 : 1, hip = rightHip ? holder.clubTorsoBounds.min[0] : holder.clubTorsoBounds.max[0];
-      const leg = rightHip ? holder.parts.legL : holder.parts.legR;
+      const hip = holder.clubTorsoBounds.max[0];
+      const beltZ = holder.parts.legR.position.z + (holder.weapon.spareAmmo.length === 2 ? index === fullestMagazine(holder) ? 0.095 : -0.085 : 0) * h;
       node.poseYaw = swapping ? holder.parts.torso.poseYaw : 0;
       if (swapping) {
         // The left hand brings the spare from its hip to the lowered rifle,
-        // then returns the old magazine to its ranked hip.
+        // then returns the old magazine to its ranked place on the left hip.
         const parts = holder.parts, torso = parts.torso, gun = parts.gun, arm = parts.armR;
         const progress = 1 - holder.weapon.swapTime / MAGAZINE_SWAP_TIME;
         const blend = ease.inOutQuad(1 - Math.abs(progress * 2 - 1));
         if (arm.quaternion) magazineArmRest.set(arm.quaternion);
         else math.quat.fromEuler(magazineArmRest, arm.rotation.x, arm.rotation.y, arm.rotation.z);
         math.quat.fromEuler(magazineHandRotation, torso.rotation.x, torso.rotation.y, torso.rotation.z);
-        math.quat.rotateVec(MUZZLE, magazineHandRotation, hip * torso.scale.x + side * 0.039 * h, 0.035 * h * torso.scale.y, leg.position.z);
+        math.quat.rotateVec(MUZZLE, magazineHandRotation, hip * torso.scale.x + 0.039 * h, 0.035 * h * torso.scale.y, beltZ);
         const hipX = torso.position.x + MUZZLE[0], hipY = torso.position.y + MUZZLE[1], hipZ = torso.position.z + MUZZLE[2];
         math.quat.rotateVec(MUZZLE, gun.quaternion, 0, -0.1825 * h, 0.0675 * h);
         setVec(node.position, lerp(hipX, gun.position.x + MUZZLE[0] + 0.1 * h, blend), lerp(hipY, gun.position.y + MUZZLE[1], blend), lerp(hipZ, gun.position.z + MUZZLE[2], blend));
@@ -710,25 +712,27 @@
         setVec(node.position, MUZZLE[0], -0.58 * h + MUZZLE[1], 0.25 * h + MUZZLE[2]);
         setVec(node.scale, h, h, h);
       } else {
-        // The fullest spare sits on the anatomical left hip; ties keep
-        // slot order. Both magazines curve the same way along the body.
+        // Both spares sit side by side on the anatomical left hip. The
+        // fullest is forward; ties keep slot order and both curve alike.
         node.quaternion = null;
         setVec(node.rotation, 0, 0, 0);
-        setVec(node.position, hip + side * 0.039 * h / parent.scale.x, 0.035 * h, leg.position.z / parent.scale.z);
+        setVec(node.position, hip + 0.039 * h / parent.scale.x, 0.035 * h, beltZ / parent.scale.z);
         setVec(node.scale, h / parent.scale.x, h, h / parent.scale.z);
       }
       magazineModel.setAmmo(holder.weapon.spareAmmo[index]);
       return attached;
     };
+    const syncMagazineHolder = (holder) => {
+      let changed = syncMagazineSlot(holder, 0);
+      changed = syncMagazineSlot(holder, 1) || changed;
+      if (changed && ctx.refreshMirrorObject) ctx.refreshMirrorObject(holder.root);
+      return changed;
+    };
     const syncMagazine = (holder = null) => {
       let changed = false;
-      if (holder) {
-        changed = syncMagazineSlot(holder, 0);
-        changed = syncMagazineSlot(holder, 1) || changed;
-      } else for (let caveIndex = 0; caveIndex < crewList.length; caveIndex++) {
-        const cave = crewList[caveIndex];
-        changed = syncMagazineSlot(cave, 0) || changed;
-        changed = syncMagazineSlot(cave, 1) || changed;
+      if (holder) changed = syncMagazineHolder(holder);
+      else for (let caveIndex = 0; caveIndex < crewList.length; caveIndex++) {
+        changed = syncMagazineHolder(crewList[caveIndex]) || changed;
       }
       if (changed && ctx.onModelChange) ctx.onModelChange();
     };
@@ -1276,6 +1280,19 @@
       poseWeapon(cave);
       return true;
     };
+    const configureWeapon = (cave, slot = 0, ammo = null, unlimited = ammo === "unlimited") => {
+      if (!cave) return false;
+      let changed = slot === 1 || slot === 2 ? selectWeapon(slot, cave) : false;
+      const rounds = typeof ammo === "number" || typeof ammo === "string" && ammo.trim() ? Number(ammo) : NaN;
+      if (ammo === "unlimited" || Number.isFinite(rounds)) {
+        stopBurst(cave); stopReload(cave, true);
+        cave.weapon.unlimited = unlimited;
+        cave.weapon.ammo = Number.isFinite(rounds) ? Math.floor(clamp(rounds, 0, AMMO_MAX)) : AMMO_MAX;
+        poseWeapon(cave);
+        changed = true;
+      }
+      return changed;
+    };
     const swingWeapon = (cave = player, held = false, focused = false) => {
       if (!cave || !cave.weapon.primaryEquipped || cave.weapon.meleeCooldown > 0 || cave.weapon.meleeTime > 0 || cave.camp.burning || cave.camp.rolling || cave.camp.seat || cave.bedTravel.mode) return false;
       cave.weapon.meleeTime = MELEE_TIME;
@@ -1347,7 +1364,8 @@
       const awakeTravel = !cave.bedTravel.mode || cave.bedTravel.mode === "walk" && !cave.bedTravel.toBed;
       const ready = (w.equipped || cave.state === "working") && cave.root.visible && cave.state !== "sleeping" && awakeTravel && !cave.camp.burning && !cave.camp.rolling && !cave.camp.panic.active;
       const working = cave !== player && cave.state === "working";
-      const spareLoading = ready && reloadingSpare(cave);
+      const celebrating = working && cave.cheer > 0;
+      const spareLoading = ready && reloadingSpare(cave) && !celebrating;
       const drawn = ready && !spareLoading && (working || cave === player && w.equipped || !w.reloading && (!!cave.build || w.recoil > 0));
       parts.gunFlash.visible = drawn && w.recoil > GUN_HOLD - GUN_FLASH_TIME;
       gun.visible = ready;
@@ -1434,17 +1452,17 @@
         if (!w.reloading) parts.snack.visible = false;
         // Keep the loading hand free while workers carry their rifle for
         // the whole trip, including an empty magazine and each banana load.
-        const lowCarry = !w.reloading && (cave === player ? !w.aiming : working && cave.work.phase !== "shoot" && !cave.build)
+        const lowCarry = !w.reloading && !celebrating && (cave === player ? !w.aiming : working && cave.work.phase !== "shoot" && !cave.build)
           && !w.burstRemaining && w.recoil <= 0;
         leftSupportsGun = lowCarry;
         // Facing +Z, the character's right hand is armL (-X), and their
         // left hand is armR (+X). Keep the left hand high and the right low.
         const gripRight = w.reloading || !lowCarry && (cave === player || working);
         const arm = gripRight ? parts.armL : parts.armR;
-        const steadyAim = cave === player && w.aiming && !w.reloading && !w.swapTime && !w.reloadHandoff;
+        const steadyAim = cave === player && w.aiming && !w.reloading && !w.reloadHandoff;
         if (!gripRight) leftSupportsGun = true;
         if (w.reloading) {
-          arm.rotation.x = -1.55; arm.rotation.y = 0;
+          arm.rotation.x = -Math.PI / 2; arm.rotation.y = 0;
         } else if (lowCarry) {
           arm.rotation.x = -1; arm.rotation.y = 0;
         } else if (!w.reloading && (!cave.build || cave.build.phase === "shoot")) {
@@ -1457,7 +1475,7 @@
         // The shoulder pivot still follows the twisting torso, but the arm
         // counterturns to keep its rifle aligned with the crosshair direction.
         // Leave out the relaxed arm splay while aiming; it skews the barrel.
-        math.quat.fromEuler(GUN_ARM, arm.rotation.x, lowCarry ? 0.2 : arm.rotation.y, steadyAim ? 0 : lowCarry ? -0.15 : arm.rotation.z);
+        math.quat.fromEuler(GUN_ARM, arm.rotation.x, lowCarry ? 0.2 : arm.rotation.y, steadyAim || w.reloading ? 0 : lowCarry ? -0.15 : arm.rotation.z);
         // Roll around the arm's own axis so the finger nubs face inward.
         // Keep the rifle's aim independent of that wrist roll.
         math.quat.fromEuler(GUN_GRIP, 0, gripRight ? Math.PI / 2 : -Math.PI / 2, 0);
@@ -1529,7 +1547,7 @@
           math.quat.normalize(FINGER_TARGET);
           math.quat.multiply(cave.gunHandRotation, FINGER_TARGET, q);
         }
-        if (w.swapTime > 0 || w.reloadHandoff) {
+        if (!celebrating && (w.swapTime > 0 || w.reloadHandoff)) {
           // Lower the right hand diagonally across the body, bringing the
           // rifle's magazine toward the spare on the anatomical left hip.
           // Blend from the current carry/aim pose and keep the grip attached.
@@ -1591,8 +1609,8 @@
       w.reloadFire = w.reloadFireHeld = false;
       w.reloadFireRounds = BURST_ROUNDS;
     };
-    const weaponReady = (cave) => !!cave && cave.root.visible && cave.weapon.equipped && !cave.weapon.reloading && !cave.weapon.swapTime && !cave.weapon.reloadHandoff && cave.weapon.ammo > 0
-      && cave.state !== "sleeping" && !cave.camp.burning && !cave.camp.rolling && !cave.camp.panic.active && !cave.bedTravel.mode;
+    const weaponReady = (cave) => !!cave && cave.root.visible && cave.weapon.equipped && !cave.weapon.reloading && !cave.weapon.swapTime && !cave.weapon.reloadHandoff && (cave.weapon.unlimited || cave.weapon.ammo > 0)
+      && cave.state !== "sleeping" && !cave.camp.burning && !cave.camp.rolling && !cave.camp.panic.active && !cave.bedTravel.mode && !cave.camp.seat;
     const canFire = (cave = player) => weaponReady(cave) && cave.weapon.cooldown <= 0 && !cave.weapon.burstRemaining;
     const canSwapMagazine = (cave = player) => hasMagazine(cave) && (cave === player || cave.state === "working") && cave.root.visible
       && cave.weapon.equipped && !cave.weapon.reloading && !cave.weapon.swapTime && !cave.weapon.reloadHandoff
@@ -1630,12 +1648,13 @@
         }
         w.aimPitch = -Math.atan2(spot.y - p.y - cave.traits.height * 0.45, Math.hypot(spot.x - p.x, spot.z - p.z));
       }
-      w.ammo--; w.shotsFired++; w.recoil = GUN_HOLD;
+      if (!w.unlimited) w.ammo--;
+      w.shotsFired++; w.recoil = GUN_HOLD;
       poseWeapon(cave);
       fireBullet(cave, spot);
     };
     const interruptReloadToFire = (cave) => {
-      if (cave !== player || !cave || !cave.root.visible || !cave.weapon.equipped || cave.weapon.ammo <= 0 || cave.weapon.swapTime
+      if (cave !== player || !cave || !cave.root.visible || !cave.weapon.equipped || !cave.weapon.unlimited && cave.weapon.ammo <= 0 || cave.weapon.swapTime
         || cave.state === "sleeping" || cave.camp.burning || cave.camp.rolling || cave.camp.panic.active || cave.bedTravel.mode || cave.camp.seat) return false;
       if (cave.weapon.reloading) { stopReload(cave); poseWeapon(cave); }
       return cave.weapon.reloadHandoff < 0;
@@ -1654,11 +1673,11 @@
       w.burstPlayerAim = !target;
       w.burstWork = cave !== player && !!workSites && cave.work.phase === "shoot";
       if (target) setVec(w.burstTarget, target.x, target.y === undefined ? groundAt(target.x, target.z) + 0.75 : target.y, target.z);
-      w.burstRemaining = Math.min(rounds, w.ammo) - 1;
+      w.burstRemaining = (w.unlimited ? rounds : Math.min(rounds, w.ammo)) - 1;
       w.burstTimer = BURST_STEP;
       w.cooldown = SHOT_PERIOD;
       emitWeaponShot(cave);
-      if (!w.ammo) w.triggerHeld = false;
+      if (!w.unlimited && !w.ammo) w.triggerHeld = false;
       return true;
     };
     const setWeaponTrigger = (held, single = false) => {
@@ -1692,6 +1711,9 @@
     };
     const updateWeapon = (cave, dt) => {
       const w = cave.weapon;
+      // A donation pauses the worker's burst and magazine timers while the
+      // free hand cheers. The unfinished reload resumes from the same round.
+      if (cave !== player && cave.state === "working" && cave.cheer > 0) { stopBurst(cave); return; }
       w.cooldown = Math.max(0, w.cooldown - dt);
       w.recoil = Math.max(0, w.recoil - dt);
       w.reloadHandoffFrame = !!w.reloadHandoff;
@@ -1728,7 +1750,7 @@
         w.reloadFireRounds = BURST_ROUNDS;
         poseWeapon(cave);
         fireWeapon(cave, target, rounds);
-        w.triggerHeld = held && w.ammo > 0;
+        w.triggerHeld = held && (w.unlimited || w.ammo > 0);
         return;
       }
       if (!w.burstRemaining && !w.triggerHeld) return;
@@ -1742,14 +1764,15 @@
       if (w.triggerHeld && !w.burstTimer) { fireWeapon(cave); return; }
       w.burstTimer -= dt;
       // Finish a tapped burst; holding continues on the same shot clock.
-      // The magazine bounds catch-up work even after a long frame.
-      while ((w.burstRemaining || w.triggerHeld) && w.ammo > 0 && w.burstTimer <= 1e-9) {
+      // Keep the normal magazine-sized catch-up bound in unlimited debug mode.
+      let shots = 0;
+      while ((w.burstRemaining || w.triggerHeld) && (w.unlimited || w.ammo > 0) && w.burstTimer <= 1e-9 && shots++ < AMMO_MAX) {
         emitWeaponShot(cave);
         if (w.burstRemaining) w.burstRemaining--;
         w.burstTimer += BURST_STEP;
         if (w.triggerHeld) w.cooldown = Math.max(0, w.burstTimer);
       }
-      if (!w.ammo) w.triggerHeld = false;
+      if (!w.unlimited && !w.ammo) w.triggerHeld = false;
       if (!w.burstRemaining && !w.triggerHeld) w.burstTimer = 0;
     };
     const runReload = (cave, dt) => {
@@ -2537,6 +2560,9 @@
         for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
           const other = crewList[otherIndex];
           if (!shoulderNeighbor(cave, other)) continue;
+          // Spacing already owns same-direction traffic. Starting a pass as
+          // that wait releases would steer the follower back into its leader.
+          if (npc && following(cave, other, NPC_PASS_REACH)) continue;
           const dx = other.shoulder.snapX - s.snapX, dz = other.shoulder.snapZ - s.snapZ;
           const along = dx * fx + dz * fz, side = dx * fz - dz * fx;
           if (Math.abs(along) >= nearest || Math.abs(side) >= SHOULDER_GAP || dx * dx + dz * dz < SHOULDER_GAP * SHOULDER_GAP - 1e-6) continue;
@@ -3411,6 +3437,12 @@
         return;
       }
       if (cave.hop > 0 || cave.hopV > 0) { runPlayer(cave, dt, false); return; }
+      if (workSites && cave.state === "working" && cave.cheer > 0) {
+        standPose(cave);
+        runIdle(cave, dt);
+        parts.snack.visible = false;
+        return;
+      }
       if (cave.walk) {
         runWalk(cave, dt);
         return;
@@ -3491,6 +3523,7 @@
       addChild(node, flame);
       addChild(cave.root, node);
       cave.jet = { node, flame, thrust: false, spending: false, power: 0, puff: 0 };
+      if (ctx.refreshMirrorObject) ctx.refreshMirrorObject(cave.root);
       if (cave.jetFuel < JET_LAUNCH_FUEL && grounded(cave)) cave.jetRecovering = true;
       return node;
     };
@@ -3498,6 +3531,7 @@
       if (!cave.jet) return false;
       removeChild(cave.root, cave.jet.node);
       cave.jet = null;
+      if (ctx.refreshMirrorObject) ctx.refreshMirrorObject(cave.root);
       return true;
     };
     const thrust = (on) => {
@@ -3835,7 +3869,11 @@
       cave.swagNodes.push(node);
     };
     const applyAllSwag = () => {
-      for (let i = 0; i < crewList.length; i++) applySwag(crewList[i]);
+      for (let i = 0; i < crewList.length; i++) {
+        const cave = crewList[i];
+        applySwag(cave);
+        if (ctx.refreshMirrorObject) ctx.refreshMirrorObject(cave.root);
+      }
       if (ctx.onModelChange) ctx.onModelChange();
     };
     const wornBy = (name) => {
@@ -4195,7 +4233,7 @@
     return {
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawQuotes,
       control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, ignite, dropRoll, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, thrust, update, dispose, stats,
-      toggleWeapon, selectWeapon, swingWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
+      toggleWeapon, selectWeapon, configureWeapon, swingWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
         return player;

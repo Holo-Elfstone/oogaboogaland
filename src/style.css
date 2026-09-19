@@ -1004,8 +1004,34 @@ select {
   text-transform: uppercase;
 }
 
+.bottom-hud,
 .message-stack {
   display: contents;
+}
+
+.position-debug {
+  position: fixed;
+  left: calc(16px + var(--safe-left));
+  bottom: calc(16px + var(--safe-bottom));
+  z-index: 12;
+  max-width: calc(100vw - 32px - var(--safe-left) - var(--safe-right));
+  padding: 8px 10px;
+  color: #b8ffc5;
+  background: rgba(10, 18, 13, 0.9);
+  border: 1px solid rgba(101, 232, 121, 0.65);
+  border-radius: 4px;
+  font-size: 10px;
+  line-height: 1.45;
+  text-align: left;
+  white-space: pre;
+  cursor: copy;
+  user-select: text;
+  overflow-x: auto;
+}
+
+.position-debug[data-copied="true"] {
+  color: #fff6b0;
+  border-color: #ffd84a;
 }
 
 .toast,
@@ -1218,6 +1244,15 @@ select {
   filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.45));
 }
 
+#magazine-back {
+  opacity: 0.8;
+}
+
+.magazine-hud:not([data-count="2"]) #magazine-back,
+.magazine-hud:not([data-count="2"]) .magazine-ammo-low {
+  display: none;
+}
+
 .equipment-compact {
   position: absolute;
   left: 46px;
@@ -1231,6 +1266,16 @@ select {
   opacity: 1;
   visibility: visible;
   transition: opacity 0.14s ease, visibility 0s;
+}
+
+.magazine-readout {
+  display: flex;
+  flex-direction: column;
+  line-height: 11px;
+}
+
+.magazine-ammo-low {
+  opacity: 0.8;
 }
 
 .weapon-hud[data-equipped="true"] .weapon-compact,
@@ -1262,15 +1307,18 @@ select {
   opacity: 0;
 }
 
-.magazine-hud[data-level="empty"] .magazine-ammo {
+.magazine-hud[data-level="empty"] .magazine-ammo,
+.magazine-ammo-low[data-level="empty"] {
   color: var(--danger);
 }
 
-.magazine-hud[data-level="low"] .magazine-ammo {
+.magazine-hud[data-level="low"] .magazine-ammo,
+.magazine-ammo-low[data-level="low"] {
   color: var(--warn);
 }
 
-.magazine-hud[data-reloading="true"] .magazine-ammo {
+.magazine-hud[data-reloading="true"] .magazine-ammo,
+.magazine-ammo-low[data-reloading="true"] {
   color: var(--accent);
 }
 
@@ -3199,7 +3247,7 @@ body.orbit-dragging #tooltip {
 
   /* The open sheet takes the sticks with it */
   .sheet[data-open="true"]~.joysticks,
-  .sheet[data-open="true"]~.act {
+  .sheet[data-open="true"]~.bottom-hud>.act {
     display: none;
   }
 
@@ -3272,16 +3320,16 @@ body.orbit-dragging #tooltip {
     transition: opacity 0.3s ease, transform 0.3s ease, max-height 0.3s ease, margin-top 0.3s ease;
   }
 
-  .topbar:has(.presets[data-scene="hub"]:not([hidden]))~.message-stack {
+  .topbar:has(.presets[data-scene="hub"]:not([hidden]))~.bottom-hud>.message-stack {
     top: calc(94px + var(--safe-top));
   }
 
-  #equipment-hud:has(.weapon-hud:not([hidden]), .magazine-hud:not([hidden]), .jetpack-hud:not([hidden]))~.message-stack {
+  #equipment-hud:has(.weapon-hud:not([hidden]), .magazine-hud:not([hidden]), .jetpack-hud:not([hidden]))~.bottom-hud>.message-stack {
     --equipment-height: 56px;
     top: calc(98px + var(--equipment-height) + var(--safe-top));
   }
 
-  #equipment-hud:has(.weapon-hud:not([hidden]), .magazine-hud:not([hidden])):has(.jetpack-hud:not([hidden]))~.message-stack {
+  #equipment-hud:has(.weapon-hud:not([hidden]), .magazine-hud:not([hidden])):has(.jetpack-hud:not([hidden]))~.bottom-hud>.message-stack {
     --equipment-height: 116px;
   }
 
@@ -3664,6 +3712,53 @@ body.orbit-dragging #tooltip {
     gap: 4px;
   }
 
+}
+
+/* Desktop messages share a bottom stack beneath the Space action. */
+@media (min-width: 721px) {
+  .bottom-hud {
+    position: absolute;
+    left: 50%;
+    bottom: calc(11px + var(--safe-bottom));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: max-content;
+    max-width: calc(100% - 32px - var(--safe-left) - var(--safe-right));
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .bottom-hud>.act {
+    position: static;
+    transform: none;
+    pointer-events: auto;
+  }
+
+  .bottom-hud>.message-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    min-height: 41px;
+    width: 100%;
+  }
+
+  .message-stack>.toast,
+  .message-stack>.hint {
+    position: static;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
+    transform: translateY(8px);
+  }
+
+  .message-stack>.toast.show,
+  .message-stack>.hint.show {
+    transform: translateY(0);
+  }
 }
 
 /* The aiming mark stays centered independently of equipment expansion. */

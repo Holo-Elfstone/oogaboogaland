@@ -748,7 +748,10 @@
       arm(context, island);
     }
     contexts.push(BL.holeGuides.create({ island }));
-    for (const context of contexts) for (const wall of context.walls) wall.cameraReady = false;
+    for (const context of contexts) {
+      context.surfacePerception = -1;
+      for (const wall of context.walls) wall.cameraReady = false;
+    }
     // The observer can see through a doorway into a second space. Keep one
     // deduplicated world set for sight filtering, independent of the orbit eye.
     const unique = new Map();
@@ -834,17 +837,18 @@
         perceiveBranch(context, wall, node.right, ex, ey, ez);
       }
     };
-    const updateSurface = (context, ex, ey, ez, camera, dt, actor = null, objectClear = null, occlusion = 0) => {
+    const updateSurface = (context, ex, ey, ez, camera, dt, actor = null, objectClear = null, occlusion = 0, perception = occlusion) => {
       if (!context) return null;
       surfacesActive = true;
       const center = actor ? actor.root.position : null, px = center ? center.x : ex, py = center ? center.y : ey, pz = center ? center.z : ez;
       const eye = context.surfaceEye, position = context.surfacePosition, eyeMoved = context.surfaceActor !== actor || !Number.isFinite(eye[0])
         || Math.hypot(ex - eye[0], ey - eye[1], ez - eye[2]) > 0.025 || Math.hypot(px - position[0], py - position[1], pz - position[2]) > 0.025;
-      const moved = eyeMoved || context.surfaceOcclusion !== occlusion;
+      const occlusionChanged = context.surfaceOcclusion !== occlusion, moved = eyeMoved || context.surfacePerception !== perception;
+      context.surfaceOcclusion = occlusion;
       const walls = context.walls, centers = context.surfaceCenters, wallGroups = context.surfaceWallGroups, outdoor = context.kind === "surface" && context.source.slopeSide === undefined;
       const wholeSection = !outdoor && (context.kind === "surface" || context.kind === "front" || context.kind === "cave" || context.kind === "sealed" || context.kind === "hole");
       if (moved) {
-        context.surfaceActor = actor; context.surfaceOcclusion = occlusion;
+        context.surfaceActor = actor; context.surfacePerception = perception;
         // Whole sections need one reachable witness. Mark untested samples
         // separately so a later prop movement can safely search past it.
         if (eyeMoved) {
@@ -909,7 +913,9 @@
       }
       const p = camera.position, target = camera.target, cameraEye = context.surfaceCamera, view = context.surfaceView;
       const length = Math.hypot(target.x - p.x, target.y - p.y, target.z - p.z), fx = (target.x - p.x) / length, fy = (target.y - p.y) / length, fz = (target.z - p.z) / length;
-      const cameraMoved = moved && (context.kind === "cave" || context.kind === "sealed") || !Number.isFinite(cameraEye[0]) || Math.hypot(p.x - cameraEye[0], p.y - cameraEye[1], p.z - cameraEye[2]) > 0.025
+      // Passing bodies affect the camera's cave rays, but never the actor's
+      // perception of a wall. Keep those invalidation epochs independent.
+      const cameraMoved = (eyeMoved || occlusionChanged) && (context.kind === "cave" || context.kind === "sealed") || !Number.isFinite(cameraEye[0]) || Math.hypot(p.x - cameraEye[0], p.y - cameraEye[1], p.z - cameraEye[2]) > 0.025
         || context.windows?.length && (p.x !== cameraEye[0] || p.y !== cameraEye[1] || p.z !== cameraEye[2])
         || Math.abs(fx - view[0]) + Math.abs(fy - view[1]) + Math.abs(fz - view[2]) > 0.001 || view[3] !== camera.near;
       if (cameraMoved) {
@@ -994,7 +1000,7 @@
       if (changed) context.surfaceVersion++;
       return context;
     };
-    const updateSurfaces = (ex, ey, ez, camera, dt, actor = null, objectClear = null, occlusion = 0) => {
+    const updateSurfaces = (ex, ey, ez, camera, dt, actor = null, objectClear = null, occlusion = 0, perception = occlusion) => {
       stats.surfaceRays = stats.surfaceCertificates = 0;
       const center = actor ? actor.root.position : null, px = center ? center.x : ex, py = center ? center.y : ey, pz = center ? center.z : ez;
       // Fixed authored registry; broad-phase rejection prevents the nearby
@@ -1005,7 +1011,7 @@
           const b = wall.bounds, dx = Math.max(b[0] - px, 0, px - b[3]), dy = Math.max(b[1] - py, 0, py - b[4]), dz = Math.max(b[2] - pz, 0, pz - b[5]);
           if (dx * dx + dy * dy + dz * dz < RADIUS * RADIUS) { nearby = true; break; }
         }
-        if (nearby) updateSurface(context, ex, ey, ez, camera, dt, actor, objectClear, occlusion);
+        if (nearby) updateSurface(context, ex, ey, ez, camera, dt, actor, objectClear, occlusion, perception);
       }
       return contexts;
     };
@@ -1017,6 +1023,7 @@
         context.surfacePhases.fill(0); context.surfaceWholePhases.fill(0); context.surfaceTargets.fill(0); context.surfacePerceived.fill(0);
         context.surfaceActive = context.surfaceWholeActive = 0;
         context.surfaceEye.fill(NaN); context.surfaceCamera.fill(NaN);
+        context.surfaceOcclusion = context.surfacePerception = -1;
         for (const wall of context.walls) wall.phase = wall.target = 0;
       }
     };

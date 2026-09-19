@@ -56,7 +56,8 @@ left hand, which turns to cradle the wooden grip.
 Scrolling in or right-clicking from carry mode raises it to aim with the mouse. Third person uses an
 above-head right-shoulder camera that keeps the whole character visible, with the
 crosshair near the top of the head and over the right arm; first person keeps the
-eye view. Both show a centered aiming reticle. While aiming, the left arm hangs naturally and swings with
+eye view and always uses shooter controls while awake, including on initial load
+and after waking up. Both show a centered aiming reticle. While aiming, the left arm hangs naturally and swings with
 walking. In these shooter views, **WASD**
 strafe and backpedal relative to the view without turning away from the target.
 **Left mouse** fires the equipped gun or swings the primary melee weapon. A quick
@@ -65,14 +66,16 @@ Releasing during full auto stops immediately, keeping the exact remaining ammo.
 Hold **right mouse** to aim down the gun's sights
 or focus melee aim, tightening the view and slowing mouse sensitivity. Left-click
 still attacks while right-click is held. **Space** reloads beside the pile and jumps
-elsewhere (hold it to climb with a jetpack); **R** swaps the AK's loaded magazine with your spare
+elsewhere (hold it to climb with a jetpack); **R** swaps the AK's loaded magazine with your fullest spare
 while in shooting mode, and **Shift** sprints forward. **Escape** or **Tab**
 frees the mouse for UI controls and pauses mouse aiming. The next click on the island
 hides the cursor without attacking; subsequent clicks fire or swing while it is hidden.
 **1** selects the club or assigned primary melee skin; **2** selects the rifle and
 carries the primary weapon diagonally across the back. Neither key changes the camera, and **0**
 does not switch views. In shooter mode the club is held outward: hold left-click
-to raise it, then release to strike. The arm and wrist extend toward the aimed spot
+to raise it, then release to strike. Holding for about a second raises the arm farther,
+up to a 50% longer swing with 50% more damage; focused aim and charging never stack above that bonus.
+The arm and wrist extend toward the aimed spot
 for the club's full reach, then return to the ready pose. Navigation uses its relaxed carry pose.
 Clicking the AK button switches between the rifle and the active primary melee weapon.
 Scroll inward from navigation to the closest view to enter shoulder aim with the
@@ -109,15 +112,31 @@ each representing three shots, with another three shots in the hidden chamber.
 Each character keeps their ammunition between cave visits.
 
 One full spare magazine is hidden in a bush or tree. Click its hiding place to reveal it,
-then touch the hovering magazine with your character to collect it. It hangs on the
-character's left hip. While the AK is equipped, a separate magazine button shows its
-exact ammo and up to five banana marks, one per six rounds, rounded down.
-Press **R** in AK shooting mode, or click the spare's button with the AK equipped, to swap
+then touch the hovering magazine with your character to collect it. A character can carry
+two spares together on the left hip, with the fuller one toward the front and the lower-ammo one behind it. Breakable props can
+drop additional full magazines. With two spares already owned, a pickup replaces the
+least-filled magazine, including the one in the AK; a pickup stays on the ground if all are full.
+While the AK is equipped, one spare-magazine button shows the fullest spare in front, with up to
+five banana marks, one per six rounds, rounded down. With two spares, **2x** appears above the
+highest ammo count, with the lowest count underneath. With the AK put away, its compact count
+includes all three magazines and the spare button is hidden.
+Press **R** in AK shooting mode, or click the magazine button, to select the fullest spare and swap
 magazines. The right hand lowers the rifle as the left hand raises the spare to meet it,
 then the rifle rises and the left hand returns the exchanged magazine to the hip.
 The motion takes just under half a second; ammo exchanges at the handoff, and firing waits until it finishes.
-Magazines can be swapped even when their counts match. The spare stays with the character who collected it, including
-after releasing control and between scenes. That character loses it on an abyss respawn.
+Magazines can be swapped even when their counts match. Spares stay with the character who collected them, including
+after releasing control and between scenes. That character loses both on an abyss respawn.
+
+Outdoor boxes, barrels, and rocks can be broken with weapons; vegetation is not a weapon target.
+A box takes one ordinary melee swing, a barrel has 2.25 times its strength, and a rock has 4.25 times its strength.
+Each AK shot deals half a normal swing's damage: boxes take two shots, barrels five, and rocks nine.
+Each can be empty or drop one pickup: a banana marked **+10**, **+20**, or **+30**, a full magazine,
+or a jetpack, from most common to rarest. Tougher props drop rewards more often and have better odds
+of the rarer rewards. Touch a reward to collect it. Banana pickups refill the fullest magazine that still
+has room first, then the others; excess ammo disappears. An already-owned jetpack gets refueled.
+Broken props return after 30–60 seconds in a new clear meadow position, away from paths, the pile, and
+other objects. Uncollected rewards disappear when respawning comes due; a crowded map delays respawning
+until a safe position is available.
 
 With the AK equipped, overlap any part of the circular path around the banana pile
 and press **Space** once to eat and load. Each load feeds two bananas in sequence, adding **six
@@ -125,13 +144,13 @@ shots** total, up to 30. Each banana consumes one from the pile and adds three s
 The right arm extends straight forward, like the shooting pose, to hold the AK upright, with its magazine turned
 inward while the left hand grabs the bananas.
 Reloading fills the AK first, then briefly shows it full before lowering it and raising
-the spare if you own one. While filling the spare, the AK goes on the back and the
+each spare that needs ammo. While filling a spare, the AK goes on the back and the
 right hand holds the spare sideways at the same angle as the AK's magazine for the left hand to load.
 Finishing or interrupting the reload briefly lowers the spare and restores the AK;
 firing with rounds available interrupts loading and fires once the rifle is back in position.
 Once reloading starts, **Space**
 jumps or jetpacks again while loading continues. Walking and jumping within reach keep
-loading until both are full; moving beyond the path or flying too far above or below
+loading until all magazines are full; moving beyond the path or flying too far above or below
 the pile edge, putting the gun away, or leaving control stops it. Completed rounds
 stay loaded, and another press resumes. The first banana fills the hidden chamber, then the remaining nine pop
 into the magazine one at a time. An empty weapon takes five loads, and an empty spare takes another five.
@@ -290,9 +309,35 @@ one horizontally scrollable row. Bananas pass through the mirror with small ripp
 its reflection; moving green glyphs briefly appear on each ripple's strongest ring, then fade before the water-like distortion.
 Aim converges on the mirror under the reticle before the bananas continue through it.
 A club strike that reaches the mirror creates the same brief ripple and green glyphs.
-Walking through the mirror sends ripples around the body's intersection with it.
-A faint moving green glyph outline remains along the touching parts until the
-character fully clears the surface, releasing another ripple on exit.
+The first 20 damage spreads all the mirror's cracks without opening holes. After that,
+each panel has one health point. Hits break panels near the impact; they fall, settle
+flat on the ground and fade, leaving holes into the glyph room. Cracks stay thinner
+at the rim. Two AK bananas or one default melee hit break a full-health panel;
+extra damage from a stronger hit carries to the nearest next panel.
+If any glass remains, it starts healing after three seconds without a hit. Each
+missing panel slowly grows from its center back to its original cracked edges,
+recovering health in proportion to its restored glass.
+A fully missing panel takes 24 seconds to regrow; damaged panels that have not
+broken also recover health.
+Once every panel is restored, the cracks seal over 1.5 seconds;
+damage that only made cracks goes straight to that final phase. A new hit preserves
+repaired glass and crack contours away from the impact and restarts the quiet delay.
+Once fully shattered, the mirror stays broken until the page reloads, including after
+visiting another scene.
+While any glass remains, the full mirror plane keeps the character's head and
+first-person eye outside, even where panels are missing. Once the mirror is fully
+shattered, that glass barrier disappears and the gate controls entry.
+Approach the exposed gate to open it from either side. The room's control button
+opens all five gates when pressed in and lowers them when pressed out; this inside
+control can open the mirror bars before the glass is fully broken.
+Characters, held weapons and moving pickups create glyph ripples at contact.
+A faint moving green glyph outline remains along touching parts until they
+clear the surface, releasing another ripple on exit. From outside with the room
+button off, bright glyph mode starts exactly at the glass: only the parts behind it
+change. While you are inside or the button is pressed in, all characters use full
+glyph mode and the island's glyph wave stays active.
+The room's floor, ceiling, walls and the path beyond the glass plane always show
+glyphs, even with that button off; their exterior portions keep their usual material.
 Inside HQ, two curved descents connect to a shared basement with
 eight unclaimed rooms around a smaller common area. Each HQ and basement room has
 one floor mattress in its rear corner, sized for a sleeping Ooga. Its blanket wraps
@@ -412,9 +457,29 @@ selection untouched. With `view=hq` or `view=bsmt`, the pack stays owned with it
 visible but disabled underground. These views skip automatic equipping and selection
 while respecting an explicit `character=` or `firstperson=1`. `character`,
 `firstperson`, and `jetpack` apply only on the initial page load. Add `&mag=1` in debug mode
-to give the first character you control a full spare magazine; it is not granted again after a fall. `&latitude=20` optionally changes
+to give the first character you control one full spare magazine, or `&mag=2` for two full spares;
+they are not granted again after a fall. `&latitude=20` optionally changes
 the debug latitude (bounded to 66 degrees north or south). Use `&loot=1` to exercise the loot feature. Loot ships off: `LOOT_DEFAULT` in `src/js/director.js`
 turns it on for everyone. The pile holds at most ten million bananas; every count is clamped there.
+
+Use `?debug=1&weapon=1` to start with the primary weapon held, or `&weapon=2` for the
+AK. Add `&ammo=N` to set its starting magazine to a whole number from 0 to 30
+(larger or negative values are clamped), or `&ammo=unlimited` for unlimited shots,
+shown as **∞**. Unlimited firing never consumes the magazine or spare rounds;
+swapping still exchanges their actual counts, and an empty swapped magazine can
+still fire. These flags work on the hub and direct lab startup. They use `character=`
+when supplied, otherwise the first working Ooga (or first available roster entry).
+An unknown character or empty solo world remains unselected. Starting ammo is applied
+once; later scene visits preserve the character's current ammo and unlimited mode.
+
+In the hub, debug mode also shows a position readout by default; `&pos=0` hides it. Click the
+readout to copy a URL that restores the exact character pose, camera, view mode and
+equipment, including unequal spare loads and jetpack fuel. The copied `pose=` state
+holds the displayed pose until movement, looking, zooming or an action resumes play.
+For manual setup, use `&pos=x,y,z`, `&body=x,y,z` and `&head=x,y,z` (body/head angles
+in radians), `&camera=x,y,z`, `&look=x,y,z`, and
+`&mode=carry|shoulder|first-person|orbit|eye-level`. The position readout, manual pose
+flags and copied pose replay are hub-only.
 
 Add `&solo=1` (or bare `&solo`) in debug mode to load only the character named by
 `character`; without a valid character, the world loads empty of characters. For example,

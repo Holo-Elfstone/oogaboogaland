@@ -99,8 +99,12 @@
       weaponMagazine: $("weapon-magazine"),
       weaponBananas: [...$("weapon-magazine").querySelectorAll(".weapon-banana")],
       magazine: $("magazine-hud"),
+      magazineIcon: $("magazine-hud").querySelector(".magazine-icon"),
+      magazineFront: $("magazine-front"),
       magazineAmmo: $("magazine-ammo"),
-      magazineBananas: [...$("magazine-hud").querySelectorAll(".magazine-banana")],
+      magazineBananas: [...$("magazine-front").querySelectorAll(".magazine-banana")],
+      magazineLowAmmo: $("magazine-ammo-low"),
+      magazineRearBananas: [...$("magazine-back").querySelectorAll(".magazine-banana")],
       jetpack: $("jetpack-hud"),
       jetpackFuel: $("jetpack-fuel"),
       jetpackFuelFill: $("jetpack-fuel-fill"),
@@ -207,43 +211,72 @@
       actLabel = label;
       el.act.textContent = label;
     };
-    let weaponShown = false, weaponEquipped = false, weaponAmmo = -1, weaponReloading = false, weaponCanReload = false;
-    let magazineOwned = false, magazineAmmo = -1, magazineCanSwap = false, magazineReloading = false;
+    let weaponShown = false, weaponEquipped = false, weaponAmmo = -1, weaponDisplayAmmo = -1, weaponReloading = false, weaponCanReload = false, weaponUnlimited = false;
+    let magazineCount = 0, magazineHigh = -1, magazineLow = -1, magazineCanSwap = false;
+    let magazineHighReloading = false, magazineLowReloading = false;
     let weaponTotal = -1, weaponLabelAmmo = -1, weaponLabelEquipped = false;
     const refreshWeaponSummary = () => {
-      const total = Math.max(0, weaponAmmo) + (magazineOwned ? Math.max(0, magazineAmmo) : 0);
-      const showMagazine = weaponShown && weaponEquipped && magazineOwned;
-      if (el.magazine.hidden === showMagazine) el.magazine.hidden = !showMagazine;
-      const disabled = !showMagazine || !magazineCanSwap || magazineReloading;
+      const total = weaponUnlimited ? Infinity : Math.max(0, weaponAmmo) + (magazineCount ? Math.max(0, magazineHigh) : 0) + (magazineCount > 1 ? Math.max(0, magazineLow) : 0);
+      const shown = weaponShown && weaponEquipped && magazineCount > 0;
+      if (el.magazine.hidden === shown) el.magazine.hidden = !shown;
+      const disabled = !shown || !magazineCanSwap;
       if (el.magazine.disabled !== disabled) el.magazine.disabled = disabled;
       if (total !== weaponTotal) {
         weaponTotal = total;
-        el.weaponCompact.firstChild.data = String(total);
+        el.weaponCompact.firstChild.data = weaponUnlimited ? "∞" : String(total);
         el.weaponCompact.dataset.level = total === 0 ? "empty" : total <= 5 ? "low" : "ok";
       }
-      const labelAmmo = weaponEquipped ? weaponAmmo : total;
+      const labelAmmo = weaponEquipped ? weaponDisplayAmmo : total;
       if (labelAmmo !== weaponLabelAmmo || weaponEquipped !== weaponLabelEquipped) {
         weaponLabelAmmo = labelAmmo; weaponLabelEquipped = weaponEquipped;
-        el.weaponToggle.setAttribute("aria-label", weaponEquipped ? `Stow AK-47; ammo ${weaponAmmo} of 30 rounds` : `Equip AK-47; ${total} rounds total`);
+        el.weaponToggle.setAttribute("aria-label", weaponUnlimited ? `${weaponEquipped ? "Stow" : "Equip"} AK-47; unlimited ammunition` : weaponEquipped ? `Stow AK-47; ammo ${labelAmmo} of 30 rounds` : `Equip AK-47; ${total} rounds total`);
       }
     };
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const showWeaponAmmo = (ammo) => {
+      if (ammo === weaponDisplayAmmo) return;
+      weaponDisplayAmmo = ammo;
+      el.weaponAmmo.firstChild.data = weaponUnlimited ? "∞" : `${ammo} / 30`;
+      el.weaponMagazine.setAttribute("aria-valuenow", String(ammo));
+      el.weaponMagazine.setAttribute("aria-valuetext", weaponUnlimited ? "Unlimited ammunition" : `${ammo} of 30 rounds`);
+      el.weaponMagazine.dataset.level = weaponUnlimited ? "ok" : ammo === 0 ? "empty" : ammo <= 5 ? "low" : "ok";
+      refreshWeaponSummary();
+    };
+    const clearWeaponLoad = () => {
+      for (const banana of el.weaponBananas) {
+        banana.classList.remove("weapon-banana--loading");
+        banana.style.removeProperty("animation-delay");
+      }
+    };
+    on(el.weaponMagazine, "animationstart", (event) => {
+      if (event.animationName !== "weapon-banana-load" || !weaponShown || !weaponEquipped) return;
+      const banana = event.target.closest(".weapon-banana");
+      if (!banana.classList.contains("weapon-banana--loading") || banana.dataset.filled !== "true") return;
+      // A banana credits three rounds at once; the readout follows each
+      // already-loaded slot as its staggered fill actually appears.
+      showWeaponAmmo(Math.min(weaponAmmo, Math.max(weaponDisplayAmmo, el.weaponBananas.indexOf(banana) + 1)));
+    });
     on(el.weaponMagazine, "animationend", (event) => {
       if (event.animationName !== "weapon-banana-load") return;
       const banana = event.target.closest(".weapon-banana");
       banana.classList.remove("weapon-banana--loading");
       banana.style.removeProperty("animation-delay");
     });
-    const setWeapon = (available, equipped, ammo, reloading = false, canReload = false) => {
-      ammo = Math.max(0, Math.min(30, Math.floor(ammo)));
-      const animateReload = available && weaponShown && equipped && weaponEquipped && weaponAmmo >= 0
-        && ammo > weaponAmmo && ammo <= weaponAmmo + 3 && (reloading || weaponReloading) && !reducedMotion.matches;
-      if ((!available && weaponShown) || (!equipped && weaponEquipped)) {
-        for (const banana of el.weaponBananas) {
-          banana.classList.remove("weapon-banana--loading");
-          banana.style.removeProperty("animation-delay");
-        }
+    on(reducedMotion, "change", () => {
+      if (!reducedMotion.matches) return;
+      clearWeaponLoad();
+      showWeaponAmmo(weaponAmmo);
+    });
+    const setWeapon = (available, equipped, ammo, reloading = false, canReload = false, unlimited = false) => {
+      const modeChanged = weaponUnlimited !== unlimited;
+      if (modeChanged) {
+        weaponUnlimited = unlimited;
+        weaponDisplayAmmo = weaponTotal = weaponLabelAmmo = -1;
       }
+      ammo = Math.max(0, Math.min(30, Math.floor(ammo)));
+      const animateReload = !unlimited && available && weaponShown && equipped && weaponEquipped && weaponAmmo >= 0
+        && ammo > weaponAmmo && ammo <= weaponAmmo + 3 && (reloading || weaponReloading) && !reducedMotion.matches;
+      if (modeChanged || (!available && weaponShown) || (!equipped && weaponEquipped) || ammo !== weaponAmmo && !animateReload) clearWeaponLoad();
       if (available !== weaponShown) {
         weaponShown = available;
         el.weapon.hidden = !available;
@@ -256,21 +289,21 @@
         el.weaponToggle.title = equipped ? "Stow AK-47 (G)" : "Equip AK-47 (G)";
         el.weaponReadout.setAttribute("aria-hidden", String(!equipped));
       }
-      if (reloading !== weaponReloading || canReload !== weaponCanReload) {
+      if (modeChanged || reloading !== weaponReloading || canReload !== weaponCanReload) {
         weaponReloading = reloading;
         weaponCanReload = canReload;
         el.weapon.dataset.reloading = String(reloading);
         el.weapon.dataset.canReload = String(canReload);
         el.weaponLabel.firstChild.data = reloading ? "Reloading" : "Ammo";
-        el.weaponMagazine.title = reloading ? "Stay near the pile to keep reloading; leave its range to stop" : canReload ? "Press Space to reload; two bananas load 6 rounds" : "Each slot is 1 round. Press Space beside the pile to reload.";
+        el.weaponMagazine.title = unlimited ? "Unlimited ammunition; firing does not consume rounds" : reloading ? "Stay near the pile to keep reloading; leave its range to stop" : canReload ? "Press Space to reload; two bananas load 6 rounds" : "Each slot is 1 round. Press Space beside the pile to reload.";
       }
-      if (ammo === weaponAmmo) { refreshWeaponSummary(); return; }
+      if (ammo === weaponAmmo) {
+        if (modeChanged || !available || !equipped || reducedMotion.matches) showWeaponAmmo(ammo);
+        refreshWeaponSummary(); return;
+      }
       const from = Math.max(0, Math.min(ammo, weaponAmmo)), to = weaponAmmo < 0 ? 30 : Math.max(ammo, weaponAmmo);
       weaponAmmo = ammo;
-      el.weaponAmmo.firstChild.data = `${ammo} / 30`;
-      el.weaponMagazine.setAttribute("aria-valuenow", String(ammo));
-      el.weaponMagazine.setAttribute("aria-valuetext", `${ammo} of 30 rounds`);
-      el.weaponMagazine.dataset.level = ammo === 0 ? "empty" : ammo <= 5 ? "low" : "ok";
+      if (!animateReload) showWeaponAmmo(ammo);
       for (let i = from; i < to; i++) {
         const banana = el.weaponBananas[i];
         banana.dataset.filled = String(i < ammo);
@@ -280,31 +313,47 @@
       }
       refreshWeaponSummary();
     };
-    const setMagazine = (owned, ammo, canSwap, reloading = false) => {
-      ammo = Math.max(0, Math.min(30, Math.floor(ammo)));
-      canSwap = owned && canSwap && !reloading;
-      if (owned === magazineOwned && ammo === magazineAmmo && canSwap === magazineCanSwap && reloading === magazineReloading) return;
-      if (owned !== magazineOwned) {
-        magazineOwned = owned;
-        el.magazine.dataset.owned = String(owned);
+    const setMagazine = (count, firstAmmo, secondAmmo, canSwap, reloadingIndex = -1) => {
+      const button = el.magazine;
+      firstAmmo = Math.max(0, Math.min(30, Math.floor(firstAmmo)));
+      secondAmmo = Math.max(0, Math.min(30, Math.floor(secondAmmo)));
+      const front = count > 1 && secondAmmo > firstAmmo ? 1 : 0;
+      const high = count ? front ? secondAmmo : firstAmmo : 0, low = count > 1 ? front ? firstAmmo : secondAmmo : 0;
+      const highReloading = count > 0 && reloadingIndex === front, lowReloading = count > 1 && reloadingIndex === 1 - front;
+      canSwap = count > 0 && canSwap && reloadingIndex < 0;
+      if (count === magazineCount && high === magazineHigh && low === magazineLow && canSwap === magazineCanSwap
+        && highReloading === magazineHighReloading && lowReloading === magazineLowReloading) return;
+      if (count !== magazineCount) {
+        magazineCount = count;
+        button.dataset.count = String(count);
+        button.dataset.owned = String(count > 0);
+        el.magazineIcon.setAttribute("viewBox", count === 2 ? "0 0 32 32" : "2 0 32 32");
+        el.magazineFront.setAttribute("transform", count === 2
+          ? "translate(11.15 16) scale(0.86) rotate(20) scale(-1 1) translate(-12 -17)"
+          : "translate(16 16) scale(0.94) rotate(20) scale(-1 1) translate(-12 -17)");
       }
-      if (canSwap !== magazineCanSwap || reloading !== magazineReloading || ammo !== magazineAmmo) {
-        magazineCanSwap = canSwap;
-        magazineReloading = reloading;
-        el.magazine.dataset.reloading = String(reloading);
-        el.magazine.title = reloading ? "Loading spare magazine; stay near the banana pile"
-          : canSwap ? "Click to swap; R in shooting mode. Each banana is 6 rounds."
-          : "Equip the AK-47 to swap magazines";
-        el.magazine.setAttribute("aria-label", `Spare magazine; ${ammo} of 30 rounds${reloading ? "; reloading" : canSwap ? "; click to swap, or press R in shooting mode" : ""}`);
+      magazineCanSwap = canSwap;
+      magazineHighReloading = highReloading; magazineLowReloading = lowReloading;
+      button.dataset.reloading = String(highReloading);
+      el.magazineLowAmmo.dataset.reloading = String(lowReloading);
+      button.title = reloadingIndex >= 0 ? "Loading spare magazines; stay near the banana pile"
+        : canSwap ? "Click or press R to use the fullest spare. Each banana is 6 rounds."
+        : "Equip the AK-47 to swap magazines";
+      button.setAttribute("aria-label", `${count} spare magazine${count === 1 ? "" : "s"}; ${high} of 30 rounds${count > 1 ? ` fullest, ${low} of 30 rounds lowest` : ""}${reloadingIndex >= 0 ? "; reloading" : canSwap ? "; click to use the fullest spare" : ""}`);
+      if (high !== magazineHigh) {
+        const filled = Math.floor(high / 6), previous = Math.floor(magazineHigh / 6);
+        for (let i = 0; i < el.magazineBananas.length; i++) if (magazineHigh < 0 || (i < filled) !== (i < previous)) el.magazineBananas[i].dataset.filled = String(i < filled);
+        magazineHigh = high;
+        el.magazineAmmo.firstChild.data = String(high);
+        button.dataset.level = high === 0 ? "empty" : high <= 5 ? "low" : "ok";
       }
-      if (ammo === magazineAmmo) { refreshWeaponSummary(); return; }
-      const filled = Math.floor(ammo / 6), previous = Math.floor(magazineAmmo / 6);
-      for (let i = 0; i < el.magazineBananas.length; i++) {
-        if (magazineAmmo < 0 || (i < filled) !== (i < previous)) el.magazineBananas[i].dataset.filled = String(i < filled);
+      if (low !== magazineLow) {
+        const filled = Math.floor(low / 6), previous = Math.floor(magazineLow / 6);
+        for (let i = 0; i < el.magazineRearBananas.length; i++) if (magazineLow < 0 || (i < filled) !== (i < previous)) el.magazineRearBananas[i].dataset.filled = String(i < filled);
+        magazineLow = low;
+        el.magazineLowAmmo.firstChild.data = String(low);
+        el.magazineLowAmmo.dataset.level = low === 0 ? "empty" : low <= 5 ? "low" : "ok";
       }
-      magazineAmmo = ammo;
-      el.magazineAmmo.firstChild.data = String(ammo);
-      el.magazine.dataset.level = ammo === 0 ? "empty" : ammo <= 5 ? "low" : "ok";
       refreshWeaponSummary();
     };
     let jetpackShown = false, jetpackEquipped = false, jetpackBlocked = false, jetpackPercent = -1;
@@ -639,7 +688,7 @@
       el.hint.hidden = true;
       tooltip.hide();
       setWeapon(false, false, 0);
-      setMagazine(false, 0, false);
+      setMagazine(0, 0, 0, false);
       setJetpack(false, false, 0);
       closeFeed();
     };

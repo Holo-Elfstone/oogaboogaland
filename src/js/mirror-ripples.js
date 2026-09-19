@@ -16,7 +16,8 @@
     let next = 0;
     const state = { waves, active: 0, hits: 0, time: 0, cross, strike, aimAt, continueShot, update, dispose };
     const onGlass = (x, y) => x >= bounds.min[0] && x <= bounds.max[0]
-      && y >= bounds.min[1] + (bounds.max[1] - bounds.min[1]) * (node.mirrorReveal || 0) && y <= bounds.max[1];
+      && y >= bounds.min[1] + (bounds.max[1] - bounds.min[1]) * (node.mirrorReveal || 0) && y <= bounds.max[1]
+      && (!node.mirrorDamage || node.mirrorDamage.contains(x, y));
     function intersection(ax, ay, az, bx, by, bz) {
       if (!node.visible || node.mirrorPortal) return -1;
       mat4.transformPoint(a, inverse, ax, ay, az);
@@ -76,6 +77,30 @@
           enter = Math.max(enter, Math.min(t0, t1)); leave = Math.min(leave, Math.max(t0, t1));
           if (enter > leave) return false;
         }
+      }
+      if (node.mirrorDamage?.stage) {
+        const verts = node.geometry.verts, dx = bx - ax, dy = by - ay;
+        let earliest = Infinity;
+        for (const face of node.geometry.faces) {
+          const a = face.i[0] * 3, b = face.i[1] * 3, c = face.i[2] * 3;
+          const winding = (verts[b] - verts[a]) * (verts[c + 1] - verts[a + 1]) - (verts[b + 1] - verts[a + 1]) * (verts[c] - verts[a]);
+          const sign = winding > 0 ? 1 : -1;
+          let first = enter, last = leave;
+          for (let edge = 0; edge < 3; edge++) {
+            const from = face.i[edge] * 3, to = face.i[(edge + 1) % 3] * 3;
+            const ex = verts[to] - verts[from], ey = verts[to + 1] - verts[from + 1];
+            const start = sign * (ex * (ay - verts[from + 1]) - ey * (ax - verts[from])), delta = sign * (ex * dy - ey * dx);
+            if (Math.abs(delta) < 1e-12) { if (start < 0) { first = Infinity; break; } }
+            else {
+              const t = -start / delta;
+              if (delta > 0) first = Math.max(first, t); else last = Math.min(last, t);
+              if (first > last) break;
+            }
+          }
+          if (first <= last) earliest = Math.min(earliest, first);
+        }
+        if (earliest === Infinity) return false;
+        enter = earliest;
       }
       contact[0] = ax + (bx - ax) * enter; contact[1] = ay + (by - ay) * enter;
       return true;

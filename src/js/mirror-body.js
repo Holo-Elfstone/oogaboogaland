@@ -1,9 +1,9 @@
-// A small distance atlas follows the body's actual section through the glass.
+// A small distance atlas follows moving geometry's actual section through glass.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {}, { mat4 } = BL.math;
   const SIZE = 96, CAPACITY = 4, RANGE = 1.5, WIDTH = 0.06, SPEED = 1.2, LIFETIME = 0.9;
-  const INTERVAL = 1 / 30, PARTS = ["torso", "head", "legL", "legR", "armL", "armR", "fingersL", "fingersR"];
+  const INTERVAL = 1 / 30;
   const strengthAt = age => Math.exp(-3 * age) * Math.max(0, 1 - age / LIFETIME);
   const visible = node => {
     for (let part = node; part; part = part.parent) if (!part.visible) return false;
@@ -16,24 +16,63 @@
     const minX = bounds.min[0], minY = bounds.min[1], plane = bounds.min[2];
     const dx = (bounds.max[0] - minX) / SIZE, dy = (bounds.max[1] - minY) / SIZE, diagonal = Math.hypot(dx, dy);
     const mask = new Uint8Array(count), union = new Uint8Array(count), lastUnion = new Uint8Array(count);
-    const parity = new Uint8Array(count), distance = new Float32Array(count);
-    const actors = [];
-    let maxVertices = 0;
-    for (const cave of cavemen.values()) {
-      const parts = PARTS.map(key => cave.parts[key]);
-      for (const part of parts) maxVertices = Math.max(maxVertices, part.geometry.verts.length);
-      maxVertices = Math.max(maxVertices, cave.headOpen.verts.length, cave.headClosed.verts.length);
-      actors.push({ cave, parts, previous: parts.map(() => mat4.create()), current: parts.map(() => mat4.create()),
-        lastMask: new Uint8Array(count), touching: false, sampled: false, x: 0, y: 0, z: 0 });
+    const parity = new Uint8Array(count), distance = new Float32Array(count), glass = new Uint8Array(count);
+    const actors = [], records = new WeakMap();
+    let vertices = new Float64Array(0), alive = true;
+    // Registration follows the scene's bounded actor and object pools. Only
+    // model changes walk a subtree or resize scratch; sampling never scans the scene.
+    function refresh(body) {
+      if (!alive) return false;
+      const actor = records.get(body);
+      if (!actor) return false;
+      const parts = [];
+      let maximum = actor.vertexCapacity;
+      const visit = part => {
+        if (part.geometry) { parts.push(part); maximum = Math.max(maximum, part.geometry.verts.length); }
+        for (const child of part.children) visit(child);
+      };
+      visit(body);
+      actor.parts = parts;
+      actor.previous = parts.map(() => mat4.create()); actor.current = parts.map(() => mat4.create());
+      actor.sampled = false;
+      if (vertices.length < maximum) vertices = new Float64Array(maximum);
+      return true;
     }
-    const vertices = new Float64Array(maxVertices);
+    function track(body, radius = Infinity, vertexCapacity = 0) {
+      if (!alive) return false;
+      let actor = records.get(body);
+      if (actor?.active) return false;
+      if (!actor) {
+        actor = { body, radius, vertexCapacity, parts: null, previous: null, current: null,
+          lastMask: new Uint8Array(count), touching: false, sampled: false, active: false };
+        records.set(body, actor); refresh(body);
+      } else {
+        actor.radius = radius; actor.touching = actor.sampled = false; actor.lastMask.fill(0);
+        let maximum = vertexCapacity;
+        for (const part of actor.parts) maximum = Math.max(maximum, part.geometry.verts.length);
+        if (vertices.length < maximum) vertices = new Float64Array(maximum);
+      }
+      actor.active = true;
+      actors.push(actor);
+      return true;
+    }
+    function untrack(body) {
+      const index = actors.findIndex(actor => actor.body === body);
+      if (index < 0) return false;
+      actors[index].active = false;
+      actors.splice(index, 1);
+      return true;
+    }
+    for (const cave of cavemen.values()) track(cave.root, cave.traits.height * 2,
+      Math.max(cave.headOpen.verts.length, cave.headClosed.verts.length));
     let root = node;
     while (root.parent) root = root.parent;
     BL.scene.updateWorld(root);
     mat4.invert(inverse, node.world);
-    let next = 0, sampleTime = INTERVAL, bottom = minY, alive = true, blocked = false;
+    let next = 0, sampleTime = INTERVAL, bottom = minY, blocked = false, glassVersion = -1;
     const state = { width: SIZE, height: SIZE, layers: CAPACITY + 1, pixels, version: 0,
-      contacts: 0, active: 0, hits: 0, waves, time: 0, update, dispose };
+      contacts: 0, active: 0, hits: 0, waves, time: 0, track, untrack, refresh, update, dispose,
+      get tracked() { return actors.length; } };
     function clearLayer(layer) {
       const end = (layer + 1) * layerBytes;
       for (let i = layer * layerBytes; i < end; i += 4) {
@@ -94,7 +133,17 @@
       const end = Math.min(SIZE, Math.ceil((highY - minY) / dy - 0.5));
       for (let row = first; row < end; row++) {
         let inside = 0;
-        for (let col = 0, i = row * SIZE; col < SIZE; col++, i++) { inside ^= parity[i]; mask[i] |= inside; }
+        for (let col = 0, i = row * SIZE; col < SIZE; col++, i++) {
+          inside ^= parity[i];
+          if (!inside || mask[i]) continue;
+          if (node.mirrorDamage?.stage) {
+            // Test only touched texels, once per immutable fracture version.
+            // Repeated held contacts never rescan the pane polygons.
+            if (!glass[i]) glass[i] = node.mirrorDamage.contains(minX + (col + 0.5) * dx, minY + (row + 0.5) * dy) ? 2 : 1;
+            if (glass[i] === 1) continue;
+          }
+          mask[i] = 1;
+        }
       }
     }
     function bodyMask(actor, blend = 1) {
@@ -110,6 +159,23 @@
       }
       for (let i = 0; i < count; i++) if (mask[i]) return true;
       return false;
+    }
+    function crossing(actor, elapsed) {
+      // A held weapon can cross while its owner's body stays still. Check
+      // each part's swept centre, then rasterize its real interpolated mesh.
+      for (let p = 0; p < actor.parts.length; p++) {
+        const part = actor.parts[p];
+        if (!visible(part)) continue;
+        const box = BL.scene.boundsOf(part.geometry), previous = actor.previous[p], current = actor.current[p];
+        const x = (box.min[0] + box.max[0]) * 0.5, y = (box.min[1] + box.max[1]) * 0.5, z = (box.min[2] + box.max[2]) * 0.5;
+        mat4.transformPoint(point, previous, x, y, z);
+        const px = point[0], py = point[1], pz = point[2] - plane;
+        mat4.transformPoint(point, current, x, y, z);
+        const cz = point[2] - plane;
+        if (pz * cz >= 0 || (point[0] - px) ** 2 + (point[1] - py) ** 2 + (cz - pz) ** 2 >= 4) continue;
+        const t = pz / (pz - cz);
+        if (bodyMask(actor, t)) { emit(mask, (1 - t) * elapsed); emit(mask, (1 - t) * elapsed * 0.5); return; }
+      }
     }
     // Two chamfer passes turn any union mask into a bounded signed field. The
     // renderers sample five texels rather than walking every limb per pixel.
@@ -164,18 +230,19 @@
     }
     function sample(elapsed) {
       union.fill(0);
+      const version = node.mirrorDamage ? node.mirrorDamage.version : -1;
+      if (version !== glassVersion) { glass.fill(0); glassVersion = version; }
       bottom = minY + (bounds.max[1] - minY) * (node.mirrorReveal || 0);
       let contacts = 0;
       for (const actor of actors) {
-        const cave = actor.cave, body = cave.root, position = body.position;
+        const body = actor.body, position = body.position;
         if (body.parent) {
           mat4.transformPoint(point, body.parent.world, position.x, position.y, position.z);
           mat4.transformPoint(point, inverse, point[0], point[1], point[2]);
         } else mat4.transformPoint(point, inverse, position.x, position.y, position.z);
-        const x = point[0], y = point[1], z = point[2] - plane, radius = cave.traits.height * 2;
+        const x = point[0], y = point[1], z = point[2] - plane, radius = actor.radius;
         const shown = visible(body), nearby = shown && x + radius >= minX && x - radius <= bounds.max[0]
           && y + radius >= bottom && y - radius <= bounds.max[1] && Math.abs(z) <= radius;
-        const moved = (x - actor.x) ** 2 + (y - actor.y) ** 2 + (z - actor.z) ** 2;
         let touching = false;
         if (nearby) {
           BL.scene.updateWorld(body, body.parent?.world);
@@ -186,16 +253,11 @@
             if (!actor.touching) emit(mask);
             actor.lastMask.set(mask);
             for (let i = 0; i < count; i++) union[i] |= mask[i];
-          } else if (!actor.touching && actor.sampled && actor.z * z < 0 && moved < 4) {
-            // Preserve a real crossing between samples, but ignore a teleport.
-            const t = actor.z / (actor.z - z);
-            if (bodyMask(actor, t)) { emit(mask, (1 - t) * elapsed); emit(mask, (1 - t) * elapsed * 0.5); }
-          }
+          } else if (!actor.touching && actor.sampled) crossing(actor, elapsed);
           for (let p = 0; p < actor.parts.length; p++) actor.previous[p].set(actor.current[p]);
         }
         if (!touching && actor.touching && shown) emit(actor.lastMask);
         actor.touching = touching; actor.sampled = nearby;
-        actor.x = x; actor.y = y; actor.z = z;
       }
       let changed = false;
       for (let i = 0; i < count; i++) if (lastUnion[i] !== union[i]) { changed = true; break; }
@@ -235,7 +297,7 @@
       if (sampleTime >= INTERVAL) { const elapsed = sampleTime; sampleTime %= INTERVAL; sample(elapsed); }
     }
     function dispose() {
-      clear(); alive = false; node.mirrorBody = null;
+      clear(); actors.length = 0; vertices = null; alive = false; node.mirrorBody = null;
     }
     node.mirrorBody = state;
     return state;

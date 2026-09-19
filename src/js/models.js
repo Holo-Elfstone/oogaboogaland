@@ -373,22 +373,7 @@
   const GOLD_NEWS_PALETTE = [hexToRgb("#e0b53a"), hexToRgb("#c99a2e"), hexToRgb("#6b5416"), hexToRgb("#f0c95a")];
   const GUN_PALETTE = { body: "#3a3a3a", stock: "#5c4425", barrel: "#2b2b2b", emissive: 0 };
   const GOLD_GUN_PALETTE = { body: "#e0b53a", stock: "#5c4425", barrel: "#f0c95a", emissive: 0.25 };
-  const extrudedProfile = (points, depth, color, edgeColor = color) => {
-    const geo = geometry(), front = [], back = [], half = depth / 2;
-    for (const [x, y] of points) {
-      front.push(pushVert(geo, x, y, half));
-      back.push(pushVert(geo, x, y, -half));
-    }
-    face(geo, front, hexToRgb(color));
-    face(geo, [...back].reverse(), hexToRgb(color));
-    const edge = hexToRgb(edgeColor);
-    for (let i = 0; i < points.length; i++) {
-      const next = (i + 1) % points.length;
-      face(geo, [front[i], back[i], back[next], front[next]], edge);
-    }
-    return geo;
-  };
-  const beveledStone = (outline, center, bodyDepth, edgeDepth, color, chipColor, edgeColor) => {
+  const beveledStone = (outline, center, bodyDepth, edgeDepth, color, chipColor) => {
     const geo = geometry(), innerFront = [], innerBack = [], outerFront = [], outerBack = [];
     const bodyHalf = bodyDepth / 2, edgeHalf = edgeDepth / 2;
     // Both outlines wind counterclockwise around a center inside every facet.
@@ -406,7 +391,7 @@
     }
     const front = pushVert(geo, center[0], center[1], bodyHalf);
     const back = pushVert(geo, center[0], center[1], -bodyHalf);
-    const stone = hexToRgb(color), chip = hexToRgb(chipColor), edge = hexToRgb(edgeColor);
+    const stone = hexToRgb(color), chip = hexToRgb(chipColor);
     for (let i = 0; i < outline.length; i++) {
       const next = (i + 1) % outline.length;
       face(geo, [front, innerFront[i], innerFront[next]], stone);
@@ -417,7 +402,7 @@
       face(geo, [innerFront[i], outerFront[next], innerFront[next]], i % 3 ? stone : chip);
       face(geo, [innerBack[i], outerBack[next], outerBack[i]], i % 3 ? chip : stone);
       face(geo, [innerBack[i], innerBack[next], outerBack[next]], i % 3 ? stone : chip);
-      face(geo, [outerFront[i], outerBack[i], outerBack[next], outerFront[next]], edge);
+      face(geo, [outerFront[i], outerBack[i], outerBack[next], outerFront[next]], i % 3 ? chip : stone);
     }
     return geo;
   };
@@ -425,7 +410,6 @@
     const u = h / 16, pieces = [];
     const wood = "#4a2b16", woodShade = "#2f1a0d", woodLight = "#68401f";
     const stone = gold ? "#b28b35" : "#68635a";
-    const stoneEdge = gold ? "#7d6227" : "#3d3b36";
     const stoneChip = gold ? "#d1ad56" : "#918a7c";
     const profile = (points) => points.map(([x, y]) => [x * 0.84 * u, y * u]);
     // One slightly bowed hardwood haft, spanning the same twenty voxels as
@@ -444,16 +428,13 @@
     // form the stone itself, including its irregular underside.
     pieces.push(
       beveledStone(profile([[0, 14.1], [-2.3, 14.75], [-4.8, 14.95], [-6.7, 14.3], [-7.65, 13.05], [-7.85, 11.65], [-7.25, 10.4], [-6.1, 9.55], [-4.4, 9.3], [-2.75, 9.85], [-0.95, 10.75], [0.6, 11.35], [2.25, 11.55], [3.75, 11.25], [4.9, 11.7], [6.4, 12.5], [7.25, 13.25], [6, 14], [4.25, 14.5], [2.35, 14.65]]),
-        [0, 12.7 * u], 2.3 * u, 0.12 * u, stone, stoneChip, stoneEdge)
+        [0, 12.7 * u], 2.3 * u, 0.12 * u, stone, stoneChip)
     );
-    // A separate matching stone point is wedged vertically above the head.
+    // A separate matching stone point is wedged vertically above the head;
+    // both rims share their adjacent stone facets' color without a dark seam.
     pieces.push(
       beveledStone(profile([[-1.25, 13.7], [1.2, 14.05], [0.45, 15.95], [-0.3, 17], [-0.9, 15.15]]),
-        [0, 14.9 * u], 2.15 * u, 0.1 * u, stone, stoneChip, stoneEdge)
-    );
-    pieces.push(
-      extrudedProfile(profile([[-0.25, 4.5], [0.05, 4.6], [0.7, 1.4], [0.4, 1.3]]), 2.3 * u, woodShade),
-      extrudedProfile(profile([[0.35, 8.1], [0.65, 8], [0.2, 6.15], [-0.1, 6.25]]), 2.4 * u, woodLight, woodShade)
+        [0, 14.9 * u], 2.15 * u, 0.1 * u, stone, stoneChip)
     );
     const axe = merge(...pieces);
     axe.stoneAxe = true;

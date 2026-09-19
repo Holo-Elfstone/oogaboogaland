@@ -47,11 +47,18 @@
     return by;
   };
   // Particles, bubbles, sleep marks and the ticker
-  const create = ({ root, renderer, camera, overlay, tickerAt, hud = null, overlayVisible = null, zzzVisible = null }) => {
+  const create = ({ root, renderer, camera, overlay, tickerAt, hud = null, overlayVisible = null, zzzVisible = null, characterOccluded = null }) => {
     const overlayCtx = overlay.getContext("2d");
-    const visibility = BL.characterVisibility.create({ root, renderer, camera });
+    const visibility = BL.characterVisibility.create({ root, renderer, camera, occluded: characterOccluded });
     const speechScreen = { x: 0, y: 0 };
     if (hud) hud.tooltip.setVisibility(visibility);
+    // Prepare only the current celebrants' exact sight queries while the scene
+    // is covered. Immutable blocker meshes remain shared across scene visits.
+    const warmVisibility = (crew) => {
+      BL.scene.updateWorld(root);
+      visibility.begin();
+      for (const cave of crew.list) if (cave.state === "working") visibility.visible(cave);
+    };
     const particles = [];
     const particlePool = [];
     const MAX_PARTICLES = 240;
@@ -248,7 +255,7 @@
     };
     const stats = () => ({ particles: particles.length, pool: particlePool.length, bubbles: bubbles.length, zzz: zzz.length });
     return {
-      spawnParticle, burst, puff, say, sayAt, zzzAt, showTicker, drawOverlay, update: stepParticles, trimPool, dispose, stats,
+      spawnParticle, burst, puff, say, sayAt, zzzAt, showTicker, drawOverlay, warmVisibility, update: stepParticles, trimPool, dispose, stats,
       get inMotion() {
         return particles.length > 0;
       }

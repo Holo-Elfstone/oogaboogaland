@@ -59,8 +59,9 @@
   const game = gameMod.create({ catalog: models.SWAG });
   // The banana level, equipment ownership, and Ooga handed from the hub to a
   // launched scene persist while scenes exchange their own temporary systems.
-  const world = { level: START_BANANAS, pilot: null, jetpack: { owned: false, fuel: 1 } };
-  world.magazine = { owned: DEBUG && params.get("mag") === "1", ammo: DEBUG && params.get("mag") === "1" ? 30 : 0, carrier: null };
+  const world = { level: START_BANANAS, pilot: null, jetpack: { owned: false, fuel: 1 }, mirrorBroken: false };
+  const debugMagazines = DEBUG ? (params.get("mag") === "2" ? 2 : params.get("mag") === "1" ? 1 : 0) : 0;
+  world.magazine = { owned: debugMagazines > 0, count: debugMagazines, ammo: debugMagazines ? 30 : 0, carrier: null };
 
   // ---------- scenes ----------
   // One active scene owns its root, camera and systems

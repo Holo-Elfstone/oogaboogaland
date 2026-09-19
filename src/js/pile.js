@@ -243,12 +243,14 @@
         slot.age += dt;
         if (slot.age >= slot.life) { slot.life = 0; continue; }
         const p = slot.position, v = slot.velocity, r = slot.rotation, spin = slot.spin;
+        const x = p.x, y = p.y, z = p.z;
         p.x += v.x * dt; p.y += v.y * dt - SPILL_GRAVITY * dt * dt * 0.5; p.z += v.z * dt;
         v.y -= SPILL_GRAVITY * dt;
         r.x += spin.x * dt; r.y += spin.y * dt; r.z += spin.z * dt;
         // Settle onto the pile platform before shrinking, rather than
         // leaving a second pile of physical fruit or falling through it.
         if (p.y < BASE_Y + 0.04) { p.y = BASE_Y + 0.04; setVec(v, 0, 0, 0); slot.age = Math.max(slot.age, slot.life - SPILL_FADE_TIME); }
+        if (ctx.onProjectileMove) ctx.onProjectileMove(x, y, z, p.x, p.y, p.z, dt);
       }
       writeSpills();
     };
@@ -478,6 +480,7 @@
       slot.note = null;
       slot.moving = true;
       slot.bananaValue = bananaValue;
+      if (ctx.trackMirrorObject) ctx.trackMirrorObject(slot.node, 1);
       delivery.airborneValue += bananaValue;
       delivery.airborneCount++;
       delivery.visualDropsStarted++;
@@ -501,6 +504,7 @@
           delivery.totalLandedValue += slot.bananaValue;
           slot.moving = false;
           slot.node.visible = false;
+          if (ctx.untrackMirrorObject) ctx.untrackMirrorObject(slot.node);
           slot.tween = null;
           world.level += slot.bananaValue;
           slot.bananaValue = 0;
@@ -538,6 +542,7 @@
           delivery.visualDropsCanceled++;
         }
         if (slot.tween) slot.tween.alive = false;
+        if (slot.moving && ctx.untrackMirrorObject) ctx.untrackMirrorObject(slot.node);
         slot.token++;
         slot.moving = false;
         slot.node.visible = false;

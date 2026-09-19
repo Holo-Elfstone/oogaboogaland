@@ -114,7 +114,7 @@
         const x1 = x0 + (col - start - 1) * cell + pixel, y = (2 - row) * cell;
         const at = geo.verts.length / 3;
         geo.verts.push(x0, y - pixel / 2, 0.054, x1, y - pixel / 2, 0.054, x1, y + pixel / 2, 0.054, x0, y + pixel / 2, 0.054);
-        geo.faces.push({ i: [at, at + 1, at + 2, at + 3], color: [211, 193, 155], emissive: 0, roomSignInk: true });
+        geo.faces.push({ i: [at, at + 1, at + 2, at + 3], color: [211, 193, 155], emissive: 0.2, roomSignInk: true });
       }
     }
     // The hanging point is the origin, so impacts rotate the whole sign

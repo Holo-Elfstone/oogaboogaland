@@ -7,6 +7,10 @@
   const { DROP_HEIGHT } = pileMod;
   const { CONFETTI } = fxMod;
   const params = new URLSearchParams(location.search);
+  const DEBUG = params.has("debug"), preloadedWeapon = DEBUG ? Number(params.get("weapon")) : 0;
+  const preloadedAmmo = DEBUG ? params.get("ammo") : null;
+  const preloadedEquipment = preloadedWeapon === 1 || preloadedWeapon === 2 || preloadedAmmo === "unlimited"
+    || preloadedAmmo !== null && preloadedAmmo.trim() !== "" && Number.isFinite(Number(preloadedAmmo));
   const METER_CAPACITY = 60;
   const ROOM_HALF = 10;
   // Orbit, follow and flight limits
@@ -219,7 +223,7 @@
   const updateMeter = () => {
     let reloading = 0;
     for (let i = 0; i < crew.list.length; i++) if (crew.list[i].weapon.reloading) reloading++;
-    hud.setMeter(world.level, METER_CAPACITY, reloading ? `${reloading} reloading · 5 shots per banana` : world.level < 1 ? "Waiting for bananas" : "Ready for reloads");
+    hud.setMeter(world.level, METER_CAPACITY, reloading ? `${reloading} reloading · 6 shots per banana` : world.level < 1 ? "Waiting for bananas" : "Ready for reloads");
   };
   const update = (dt, elapsed) => {
     pilot.readInput(dt);
@@ -403,6 +407,17 @@
     meterTimer = 0;
     crew.refreshStates(true);
     syncRackLeds();
+    if (ctx.from === null && preloadedEquipment) {
+      const name = params.get("character")?.trim().toLowerCase();
+      const contributor = params.has("character") ? contributors.activeRoster.find(entry => entry.name.toLowerCase() === name)
+        : contributors.activeRoster.find(entry => crew.stateOf(crew.cavemen.get(entry.name)) === "working") || contributors.activeRoster[0];
+      const cave = contributor && crew.cavemen.get(contributor.name);
+      if (cave) {
+        if (crew.stateOf(cave) !== "working") { cave.override = "working"; crew.refreshStates(true); }
+        pilot.possess(cave);
+        crew.configureWeapon(cave, preloadedWeapon, preloadedAmmo);
+      }
+    }
     unsubscribeActivity = contributors.subscribe(() => { crew.refreshStates(); syncRackLeds(); });
     // Once a minute, refresh states, LEDs and the pool
     stateTimer = window.setInterval(() => {
@@ -430,6 +445,10 @@
         camera, crew, pilot, controls: pilot.controls
       }
     });
+    pilot.update(0);
+    mark("visibility-start");
+    fx.warmVisibility(crew);
+    mark("visibility");
   };
   const leave = () => {
     window.clearInterval(stateTimer);

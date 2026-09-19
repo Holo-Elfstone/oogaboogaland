@@ -81,7 +81,8 @@
     const stack = new Int32Array(64), point = new Float64Array(3), triangle = new Float64Array(9), swept = new Float64Array(9), clipped = new Float64Array(12);
     const sweepBox = new Float64Array(6), queryBox = new Float64Array(6), low = new Float64Array(3), high = new Float64Array(3);
     const stats = { queries: 0, candidates: 0, triangleTests: 0, transforms: 0 };
-    let generation = 0;
+    let generation = 0, originX = 0, originY = 0, originZ = 0;
+    let contactDistance = Infinity, contactTriangle = Infinity, contactX = 0, contactY = 0, contactZ = 0;
     const transformState = () => ({ stamp: 0, active: false, version: 0, parent: null, parentVersion: -1, values: new Float64Array(14) });
     const register = node => {
       if (!entries.has(node)) entries.set(node, { geometry: node.geometry, data: null, bounds: node.geometry ? BL.scene.boundsOf(node.geometry) : null, world: mat4.create(), inverse: mat4.create(), box: new Float64Array(6), version: -1, valid: false });
@@ -211,39 +212,45 @@
       point[0] = ax + dx * enter; point[1] = ay + dy * enter; point[2] = az + dz * enter;
       return true;
     };
-    const trianglesTouch = (verts, a, b, c) => {
+    const saveContact = index => {
+      const dx = point[0] - originX, dy = point[1] - originY, dz = point[2] - originZ, distance = dx * dx + dy * dy + dz * dz;
+      // BVH order never decides a hit. Original triangle order breaks exact
+      // distance ties; contacts within one triangle keep their fixed edge order.
+      if (distance > contactDistance || distance === contactDistance && index >= contactTriangle) return;
+      contactDistance = distance; contactTriangle = index;
+      contactX = point[0]; contactY = point[1]; contactZ = point[2];
+    };
+    const triangleContacts = (verts, a, b, c, index) => {
       stats.triangleTests++;
       for (let axis = 0; axis < 3; axis++) if (Math.max(verts[a + axis], verts[b + axis], verts[c + axis]) < Math.min(triangle[axis], triangle[axis + 3], triangle[axis + 6]) - EPS
-        || Math.min(verts[a + axis], verts[b + axis], verts[c + axis]) > Math.max(triangle[axis], triangle[axis + 3], triangle[axis + 6]) + EPS) return false;
+        || Math.min(verts[a + axis], verts[b + axis], verts[c + axis]) > Math.max(triangle[axis], triangle[axis + 3], triangle[axis + 6]) + EPS) return;
       for (let i = 0; i < 3; i++) {
         const from = i * 3, to = (i + 1) % 3 * 3;
-        if (segment(verts, a, b, c, triangle[from], triangle[from + 1], triangle[from + 2], triangle[to], triangle[to + 1], triangle[to + 2])) return true;
+        if (segment(verts, a, b, c, triangle[from], triangle[from + 1], triangle[from + 2], triangle[to], triangle[to + 1], triangle[to + 2])) saveContact(index);
         const j = i === 0 ? a : i === 1 ? b : c, k = i === 0 ? b : i === 1 ? c : a;
-        if (segment(triangle, 0, 3, 6, verts[j], verts[j + 1], verts[j + 2], verts[k], verts[k + 1], verts[k + 2])) return true;
+        if (segment(triangle, 0, 3, 6, verts[j], verts[j + 1], verts[j + 2], verts[k], verts[k + 1], verts[k + 2])) saveContact(index);
       }
-      return false;
     };
-    const sweepTouches = (data, before, after) => {
+    const sweepContacts = (data, before, after, index) => {
       for (let i = 0; i < data.triangles.length; i += 3) {
         const a = data.triangles[i], b = data.triangles[i + 1], c = data.triangles[i + 2];
         let separated = false;
         for (let axis = 0; axis < 3; axis++) if (Math.max(before[a + axis], before[b + axis], before[c + axis], after[a + axis], after[b + axis], after[c + axis]) < Math.min(triangle[axis], triangle[axis + 3], triangle[axis + 6]) - EPS
           || Math.min(before[a + axis], before[b + axis], before[c + axis], after[a + axis], after[b + axis], after[c + axis]) > Math.max(triangle[axis], triangle[axis + 3], triangle[axis + 6]) + EPS) { separated = true; break; }
         if (separated) continue;
-        if (trianglesTouch(before, a, b, c) || trianglesTouch(after, a, b, c)) return true;
+        triangleContacts(before, a, b, c, index); triangleContacts(after, a, b, c, index);
         // A moving triangle sweeps three edge quads. Testing both triangles of
         // each quad also catches a thin target crossing between club vertices.
         for (let edge = 0; edge < 3; edge++) {
           const j = edge === 0 ? a : edge === 1 ? b : c, k = edge === 0 ? b : edge === 1 ? c : a;
           for (let axis = 0; axis < 3; axis++) { swept[axis] = before[j + axis]; swept[axis + 3] = before[k + axis]; swept[axis + 6] = after[k + axis]; }
-          if (trianglesTouch(swept, 0, 3, 6)) return true;
+          triangleContacts(swept, 0, 3, 6, index);
           for (let axis = 0; axis < 3; axis++) { swept[axis + 3] = after[k + axis]; swept[axis + 6] = after[j + axis]; }
-          if (trianglesTouch(swept, 0, 3, 6)) return true;
+          triangleContacts(swept, 0, 3, 6, index);
         }
       }
-      return false;
     };
-    const revealedTouches = (verts, a, b, c, bottom, matrix, data, before, after) => {
+    const revealedContacts = (verts, a, b, c, bottom, matrix, data, before, after, index) => {
       // Cutting a shard at the reveal height leaves at most four vertices.
       // Clip before testing so a hidden contact cannot mask visible glass.
       let count = 0;
@@ -265,12 +272,13 @@
           const at = (vertex === 0 ? 0 : vertex === 1 ? i : i + 1) * 3, x = clipped[at], y = clipped[at + 1], z = clipped[at + 2];
           for (let axis = 0; axis < 3; axis++) triangle[vertex * 3 + axis] = matrix[axis] * x + matrix[axis + 4] * y + matrix[axis + 8] * z + matrix[axis + 12];
         }
-        if (sweepTouches(data, before, after)) return true;
+        sweepContacts(data, before, after, index);
       }
-      return false;
     };
     const strike = (out, previousWorld, currentWorld, geometry, ignore = null) => {
       begin(out);
+      originX = currentWorld[12]; originY = currentWorld[13]; originZ = currentWorld[14];
+      let nearest = Infinity;
       const data = geometryOf(geometry);
       let buffers = clubs.get(geometry);
       if (!buffers) { buffers = { before: new Float64Array(data.verts.length), after: new Float64Array(data.verts.length) }; clubs.set(geometry, buffers); }
@@ -291,16 +299,16 @@
         if (!entry || !overlaps(entry.box, sweepBox)) continue;
         stats.candidates++;
         const m = entry.world;
-        let touched = false;
+        contactDistance = contactTriangle = Infinity;
         if (target.node.mirror && !target.node.mirrorDamage?.stage) {
           const bounds = entry.bounds, bottom = bounds.min[1] + (bounds.max[1] - bounds.min[1]) * (target.node.mirrorReveal || 0);
-          for (let face = 0; face < 2 && !touched; face++) {
+          for (let face = 0; face < 2; face++) {
             for (let vertex = 0; vertex < 3; vertex++) {
               const corner = face ? vertex === 0 ? 0 : vertex + 1 : vertex;
               const x = corner === 0 || corner === 3 ? bounds.min[0] : bounds.max[0], y = corner < 2 ? bottom : bounds.max[1], z = bounds.min[2];
               for (let axis = 0; axis < 3; axis++) triangle[vertex * 3 + axis] = m[axis] * x + m[axis + 4] * y + m[axis + 8] * z + m[axis + 12];
             }
-            touched = sweepTouches(data, before, after);
+            sweepContacts(data, before, after, face);
           }
         } else {
           const targetData = entry.data || (entry.data = geometryOf(target.node.geometry));
@@ -308,28 +316,29 @@
           for (let axis = 0; axis < 3; axis++) { low[axis] = sweepBox[axis]; high[axis] = sweepBox[axis + 3]; }
           transformBox(queryBox, entry.inverse, low, high);
           let size = 1; stack[0] = 0;
-          while (size && !touched) {
+          while (size) {
             const node = targetData.nodes[stack[--size]];
             if (!overlaps(node.box, queryBox)) continue;
             if (node.left >= 0) { stack[size++] = node.left; stack[size++] = node.right; continue; }
-            for (let i = node.from; i < node.to && !touched; i++) {
+            for (let i = node.from; i < node.to; i++) {
               const index = targetData.order[i] * 3;
               if (target.node.mirror && target.node.mirrorReveal > 0) {
                 const bounds = entry.bounds, bottom = bounds.min[1] + (bounds.max[1] - bounds.min[1]) * target.node.mirrorReveal;
-                touched = revealedTouches(targetData.verts, targetData.triangles[index], targetData.triangles[index + 1], targetData.triangles[index + 2], bottom, m, data, before, after);
+                revealedContacts(targetData.verts, targetData.triangles[index], targetData.triangles[index + 1], targetData.triangles[index + 2], bottom, m, data, before, after, index);
                 continue;
               }
               for (let vertex = 0; vertex < 3; vertex++) {
                 const at = targetData.triangles[index + vertex], x = targetData.verts[at], y = targetData.verts[at + 1], z = targetData.verts[at + 2];
                 for (let axis = 0; axis < 3; axis++) triangle[vertex * 3 + axis] = m[axis] * x + m[axis + 4] * y + m[axis + 8] * z + m[axis + 12];
               }
-              touched = sweepTouches(data, before, after);
+              sweepContacts(data, before, after, index);
             }
           }
         }
-        if (touched) {
-          const distance = Math.hypot(point[0] - currentWorld[12], point[1] - currentWorld[13], point[2] - currentWorld[14]);
-          if (distance < out.distance) hit(out, target, distance, point[0], point[1], point[2]);
+        // Equal target distances keep the first registered target.
+        if (contactDistance < nearest) {
+          nearest = contactDistance;
+          hit(out, target, Math.sqrt(contactDistance), contactX, contactY, contactZ);
         }
       }
       return !!out.node;

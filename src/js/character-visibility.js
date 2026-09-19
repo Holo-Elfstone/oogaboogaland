@@ -35,13 +35,13 @@
     mesh = { vertices, indices: new Uint32Array(indices), order: new Uint32Array(order), nodes };
     meshes.set(geometry, mesh); return mesh;
   };
-  const create = ({ root, renderer, camera }) => {
+  const create = ({ root, renderer, camera, occluded = null }) => {
     let records = new WeakMap(), memo = new WeakMap();
-    const active = [], view = mat4.create(), nextView = mat4.create(), stack = new Int32Array(64);
+    const active = [], candidates = [], view = mat4.create(), nextView = mat4.create(), stack = new Int32Array(64);
     const clipA = new Float64Array(VERTICES * 4), clipB = new Float64Array(VERTICES * 4), projected = new Float64Array(VERTICES * 2);
     const insideA = new Float64Array(VERTICES * 2), insideB = new Float64Array(VERTICES * 2), outside = new Float64Array(VERTICES * 2);
     const fragments = new Float64Array(FRAGMENTS * VERTICES * 2), counts = new Uint8Array(FRAGMENTS);
-    let frame = 0, viewVersion = 0, prepared = false, width = 1, height = 1, tanX = 1, tanY = 1, sideX = 1, sideY = 1, near = 0.1, far = 1000;
+    let frame = 0, viewVersion = 0, candidateCount = 0, prepared = false, width = 1, height = 1, tanX = 1, tanY = 1, sideX = 1, sideY = 1, near = 0.1, far = 1000;
     let planeA = 0, planeB = 0, planeC = 0, witnessX = 0, witnessY = 0, hitEntry = null, hitTriangle = 0, hitDepth = 0;
     const belongs = (node, owner) => {
       for (let parent = node; parent; parent = parent.parent) if (parent === owner) return true;
@@ -59,7 +59,7 @@
       if (!list) { list = []; records.set(node, list); }
       const index = instance + 1;
       let entry = list[index];
-      if (!entry) { entry = { node, inverse: mat4.create(), camera: mat4.create(), world: mat4.create(), bounds: null, geometry: null, frame: -1, viewVersion: -1, inFrustum: false, orientation: 1, radius: 0, inverseDirty: true, localMinY: -Infinity }; list[index] = entry; }
+      if (!entry) { entry = { node, inverse: mat4.create(), camera: mat4.create(), world: mat4.create(), bounds: null, geometry: null, frame: -1, viewVersion: -1, minX: -Infinity, minY: -Infinity, maxX: Infinity, maxY: Infinity, minDepth: 0, inFrustum: false, orientation: 1, radius: 0, inverseDirty: true, localMinY: -Infinity }; list[index] = entry; }
       const geometry = node.geometry, w = entry.world;
       let changed = entry.geometry !== geometry;
       for (let i = 0; !changed && i < 16; i++) changed = w[i] !== world[offset + i];
@@ -77,6 +77,24 @@
         const m = entry.camera, b = bounds.center, radius = entry.radius;
         const x = m[0] * b[0] + m[4] * b[1] + m[8] * b[2] + m[12], y = m[1] * b[0] + m[5] * b[1] + m[9] * b[2] + m[13], z = -(m[2] * b[0] + m[6] * b[1] + m[10] * b[2] + m[14]);
         entry.inFrustum = !(z + radius < near || z - radius > far || Math.abs(x) > z * tanX + radius * sideX || Math.abs(y) > z * tanY + radius * sideY);
+        if (entry.inFrustum) {
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, minDepth = Infinity;
+          for (let i = 0; i < 8; i++) {
+            const bx = i & 1 ? bounds.max[0] : bounds.min[0], by = i & 2 ? bounds.max[1] : bounds.min[1], bz = i & 4 ? bounds.max[2] : bounds.min[2];
+            const depth = -(m[2] * bx + m[6] * by + m[10] * bz + m[14]);
+            minDepth = Math.min(minDepth, depth);
+            if (depth <= near) continue;
+            const px = (m[0] * bx + m[4] * by + m[8] * bz + m[12]) / (depth * tanX), py = (m[1] * bx + m[5] * by + m[9] * bz + m[13]) / (depth * tanY);
+            minX = Math.min(minX, px); minY = Math.min(minY, py); maxX = Math.max(maxX, px); maxY = Math.max(maxY, py);
+          }
+          // Perspective extrema lie at box corners only when the whole box is
+          // in front of the near plane. Straddlers keep the full exact query.
+          // Allow Float32 transform rounding before the exact local ray test.
+          const margin = 1e-6 * Math.max(1, Math.abs(minX), Math.abs(minY), Math.abs(maxX), Math.abs(maxY));
+          entry.minX = minDepth > near ? minX - margin : -Infinity; entry.minY = minDepth > near ? minY - margin : -Infinity;
+          entry.maxX = minDepth > near ? maxX + margin : Infinity; entry.maxY = minDepth > near ? maxY + margin : Infinity;
+          entry.minDepth = minDepth - 1e-6 * Math.max(1, Math.abs(minDepth));
+        }
         entry.viewVersion = viewVersion;
       }
       if (!entry.inFrustum) return;
@@ -128,8 +146,9 @@
       const vx = sx * tanX, vy = sy * tanY;
       const dx = view[0] * vx + view[1] * vy - view[2], dy = view[4] * vx + view[5] * vy - view[6], dz = view[8] * vx + view[9] * vy - view[10];
       const eye = camera.position; hitEntry = null; hitDepth = depth - Math.max(1e-6, depth * 1e-7);
-      for (const entry of active) {
-        if (belongs(entry.node, owner)) continue;
+      for (let candidate = 0; candidate < candidateCount; candidate++) {
+        const entry = candidates[candidate];
+        if (sx < entry.minX || sx > entry.maxX || sy < entry.minY || sy > entry.maxY || entry.minDepth >= hitDepth) continue;
         const m = entry.inverse;
         const x = m[0] * eye.x + m[4] * eye.y + m[8] * eye.z + m[12], y = m[1] * eye.x + m[5] * eye.y + m[9] * eye.z + m[13], z = m[2] * eye.x + m[6] * eye.y + m[10] * eye.z + m[14];
         const ux = m[0] * dx + m[4] * dy + m[8] * dz, uy = m[1] * dx + m[5] * dy + m[9] * dz, uz = m[2] * dx + m[6] * dy + m[10] * dz;
@@ -276,13 +295,33 @@
       }
       for (const child of node.children) projectHead(child);
     };
+    let actorMinX = Infinity, actorMinY = Infinity, actorMaxX = -Infinity, actorMaxY = -Infinity;
+    const boundActor = (node) => {
+      if (!node.visible || node.cameraHidden) return;
+      const entry = records.get(node)?.[0];
+      if (entry && entry.frame === frame) {
+        actorMinX = Math.min(actorMinX, entry.minX); actorMinY = Math.min(actorMinY, entry.minY);
+        actorMaxX = Math.max(actorMaxX, entry.maxX); actorMaxY = Math.max(actorMaxY, entry.maxY);
+      }
+      for (const child of node.children) boundActor(child);
+    };
+    const selectCandidates = (owner) => {
+      actorMinX = actorMinY = Infinity; actorMaxX = actorMaxY = -Infinity;
+      boundActor(owner);
+      const previous = candidateCount; candidateCount = 0;
+      // One conservative character bound excludes unrelated scenery before
+      // thousands of exact witness rays, preserving the active entry order.
+      for (const entry of active) if (entry.maxX >= actorMinX && entry.minX <= actorMaxX && entry.maxY >= actorMinY && entry.minY <= actorMaxY && !belongs(entry.node, owner)) candidates[candidateCount++] = entry;
+      for (let i = candidateCount; i < previous; i++) candidates[i] = null;
+    };
     const query = (cave) => {
       let result = memo.get(cave);
       if (!result) { result = { frame: -1, visible: false, x: 0, y: 0 }; memo.set(cave, result); }
       if (result.frame === frame) return result;
       result.frame = frame; result.visible = false;
-      if (!present(cave.root)) return result;
+      if (!present(cave.root) || occluded && occluded(cave)) return result;
       prepare();
+      selectCandidates(cave.root);
       if (!visiblePart(cave.root, cave.root)) return result;
       result.visible = true; result.x = (witnessX + 1) * width / 2; result.y = (1 - witnessY) * height / 2;
       const head = cave.parts.head;
@@ -298,7 +337,7 @@
       begin: () => { frame++; prepared = false; },
       visible: (cave) => query(cave).visible,
       anchor: (cave, out) => { const result = query(cave); if (!result.visible) return false; out.x = result.x; out.y = result.y; return true; },
-      dispose: () => { active.length = 0; records = new WeakMap(); memo = new WeakMap(); hitEntry = null; }
+      dispose: () => { active.length = candidates.length = candidateCount = 0; records = new WeakMap(); memo = new WeakMap(); hitEntry = null; }
     };
   };
   BL.characterVisibility = { create };

@@ -6,7 +6,7 @@ OogaBoogaX repository can make an Ooga work; each project keeps its own timestam
 work routes can choose the corresponding cave. The existing static roster remains a
 historical fallback and does not pretend that its old commits just happened.
 With `?debug=1`, an explicit fixture instead starts three Oogas working, three
-chilling, and two sleeping so the routines can be previewed without a live feed.
+chilling, and three sleeping so the routines can be previewed without a live feed.
 `seedDebugActivity()` is called only on that debug path.
 
 Roster activity labels use yellow **workin**, orange **chillin**, and gray **sleepin**.
