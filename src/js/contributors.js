@@ -12,7 +12,8 @@
     ["MrHodlX", 1788200000],
     ["timechainb", 1788171200],
     ["YellowBrokeIt", 1788225311],
-    ["DrNeski", 1788219000]
+    ["DrNeski", 1788219000],
+    ["genXbtc", 1788215311]
   ].map(([name, unixSeconds, defaultState]) => ({ name, lastCommitAt: unixSeconds * 1e3, defaultState }));
   const SNAPSHOT_AT = 1788225311 * 1e3;
   const stateFor = (contributor, at = SNAPSHOT_AT) => {
@@ -40,13 +41,18 @@
     RandyMcMillan: { bee: true, skin: "#f3b52a", hair: "#151515" },
     timechainb: { anunnaki: true, skin: "#b8703c", hair: "#33200f" },
     YellowBrokeIt: { bald: true, cleanShaven: true, wideEyes: true, yellowFace: true, cigarette: true, energyCan: true, orangeChest: true, skin: "#ffe36a", hair: "#21160e", fur: "#ed9b24" },
-    DrNeski: { laserEyes: true, headband: true, stethoscope: true, newspaper: true, hair: "#f2ece0" }
+    DrNeski: { laserEyes: true, headband: true, stethoscope: true, newspaper: true, hair: "#f2ece0" },
+    genXbtc: { topHat: true, skeleton: true, pumpkin: true, bald: true, cleanShaven: true, skin: "#cfc8b4", hair: "#151515", fur: "#141414", height: 1.16 }
   };
   // Opt-in voices per handle: a signature line when poked, and idle lines mixed with the tribe's
   const VOICES = {
     DrNeski: {
       poke: "You've got 10 seconds!",
       idle: ["You are fired!", "Where is Kortik??", "Go rebalance your Node!", "Get laid on the 1st date", "What's your question for DrNeski?", "I sold my neighbor ex's cat for sats"]
+    },
+    genXbtc: {
+      poke: "POWER OVERWHELMING",
+      idle: ["Shut up you larp", "Rules Without Rulers"]
     }
   };
   const voiceFor = (name) => VOICES[name] || null;
@@ -60,7 +66,7 @@
     const rand = mulberry32(fnv1a(name));
     const skin = SKINS[Math.floor(rand() * SKINS.length)];
     const hashedHair = (slim ? HAIRS_SLIM : HAIRS)[Math.floor(rand() * HAIRS.length)];
-    return {
+    const traits = {
       name,
       slim,
       bald: !!likeness.bald,
@@ -80,6 +86,9 @@
       headband: !!likeness.headband,
       stethoscope: !!likeness.stethoscope,
       newspaper: !!likeness.newspaper,
+      topHat: !!likeness.topHat,
+      skeleton: !!likeness.skeleton,
+      pumpkin: !!likeness.pumpkin,
       skin: likeness.skin || skin,
       hair: likeness.hair || hashedHair,
       fur: likeness.fur || FURS[Math.floor(rand() * FURS.length)],
@@ -87,6 +96,10 @@
       belly: (0.9 + rand() * 0.35) * (slim ? 0.8 : 1),
       rand: mulberry32(fnv1a(name + "/body"))
     };
+    // An explicit stature replaces the hashed one after every draw, so the
+    // other hashed traits keep their sequence.
+    if (likeness.height) traits.height = likeness.height;
+    return traits;
   };
   BL.contributors = { roster, stateFor, ageLabel, traitsFor, voiceFor };
 })();

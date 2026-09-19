@@ -1944,6 +1944,8 @@
       }
       cave.highlight = damp(cave.highlight, cave.highlightTarget, 12, dt);
       for (let i = 0; i < BODY_PARTS.length; i++) parts[BODY_PARTS[i]].highlight = cave.highlight;
+      // A carved head breathes its candlelight from dim to bright
+      if (cave.traits.pumpkin) parts.head.glow = 0.62 + 0.38 * Math.sin(elapsed * 2.1 + cave.phase);
       if (cave.hopV > 0 || cave.hop > 0) {
         cave.hopV -= WALK.gravity * dt;
         // Fruit slows travel in either vertical direction without changing
