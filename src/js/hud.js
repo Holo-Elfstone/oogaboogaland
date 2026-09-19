@@ -4,7 +4,7 @@
   const { canvasRenderer } = BL;
   const { formatLarge } = BL.game;
   const { createNode, addChild, createCamera, boundsOf } = BL.scene;
-  const STATE_LABELS = { working: "workin", chilling: "chillin", sleeping: "sleepin", away: "chillin", online: "online" };
+  const STATE_LABELS = { working: "clankin", chilling: "chillin", sleeping: "sleepin", away: "chillin", online: "online" };
   // Tooltip dots retain their human-presence color without changing NPC activity.
   const statusFor = (cave) => cave.humanControlled ? "online" : cave.state === "away" ? "chilling" : cave.state;
   const $ = (id) => document.getElementById(id);
@@ -141,7 +141,9 @@
     };
     let toastTimer = 0, toastHideTimer = 0, hintTimer = 0, hintHideTimer = 0;
     const rosterRows = new Map();
-    for (const contributor of roster) {
+    const orderedRoster = [...roster].sort((a, b) => b.lastCommitAt - a.lastCommitAt);
+    for (let rosterIndex = 0; rosterIndex < orderedRoster.length; rosterIndex++) {
+      const contributor = orderedRoster[rosterIndex];
       const li = document.createElement("li");
       li.dataset.name = contributor.name;
       const presence = document.createElement("span");
@@ -161,8 +163,20 @@
       state.append("");
       li.append(presence, name, age, state);
       el.roster.append(li);
-      rosterRows.set(contributor.name, { li, presence, state, age, online: false });
+      rosterRows.set(contributor.name, { li, presence, state, age, contributor, rosterIndex, online: false });
     }
+    const placeRosterRow = (row) => {
+      let before = null;
+      for (const sibling of el.roster.children) {
+        if (sibling === row.li) continue;
+        const other = rosterRows.get(sibling.dataset.name);
+        if (other.contributor.lastCommitAt < row.contributor.lastCommitAt ||
+          other.contributor.lastCommitAt === row.contributor.lastCommitAt && other.rosterIndex > row.rosterIndex) { before = sibling; break; }
+      }
+      if (before) {
+        if (row.li.nextElementSibling !== before) el.roster.insertBefore(row.li, before);
+      } else if (el.roster.lastElementChild !== row.li) el.roster.append(row.li);
+    };
     const setRosterRow = (name, stateKey, ageText, online = false) => {
       const row = rosterRows.get(name);
       if (!row) return;
@@ -178,6 +192,7 @@
         row.presence.title = online ? "Online" : "Offline";
         row.presence.setAttribute("aria-label", row.presence.title);
       }
+      placeRosterRow(row);
     };
     // Mutate the text nodes so updates make no DOM
     for (const node of [el.meterCount, el.meterForecast, el.worldBananaCount]) if (!node.firstChild) node.append("");

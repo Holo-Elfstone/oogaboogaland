@@ -1036,6 +1036,9 @@
         }
         if (!settle && (target === "working" || target === "chilling") && cave.state !== "working" && cave.state !== "chilling") beginWalk(cave, target);
         else applyState(cave, target, settle);
+        // State can stay unchanged for hours, but its last-seen label advances
+        // every minute and accepted activity may move this row up the roster.
+        refreshRosterRow(cave);
         if (cave.traits.stoneAxe) poseWeapon(cave);
       }
     };
@@ -2759,7 +2762,8 @@
       // route: another Ooga's head is not a recovery platform.
       if (!shoulderClear(cave, endX, endZ)) return;
       const landing = groundAt(endX, endZ, feet + 2.1, feet + 2.1, cave), clearance = Math.max(feet, landing) + 0.08;
-      if (landing < feet - 3 || landing > feet + 2.1 || !flyable(endX, endZ, endX, endZ, landing + 1e-5, cave.bodyHeight, cave)
+      const maxDrop = ctx.npcRecoveryDrop && ctx.npcRecoveryDrop(p.x, feet, p.z, cave) ? 4 : 3;
+      if (landing < feet - maxDrop || landing > feet + 2.1 || !flyable(endX, endZ, endX, endZ, landing + 1e-5, cave.bodyHeight, cave)
         || ctx.npcLandingAllowed && !ctx.npcLandingAllowed(endX, landing, endZ, cave.bodyHeight, cave)) return;
       const double = landing > feet + 0.85;
       let x = p.x, z = p.z, y = feet, velocity = JUMP_SPEED, boosted = false, moving = false;
@@ -2780,7 +2784,7 @@
           cave.leap.vx = cave.leap.vz = 0;
           return;
         }
-        if (nextY < feet - 3 || !flyable(x, z, nx, nz, Math.min(y, nextY) + 1e-5, cave.bodyHeight, cave)
+        if (nextY < feet - maxDrop || !flyable(x, z, nx, nz, Math.min(y, nextY) + 1e-5, cave.bodyHeight, cave)
           || !flyable(nx, nz, nx, nz, nextY + 1e-5, cave.bodyHeight, cave)) return;
         x = nx; z = nz; y = nextY;
       }

@@ -2485,6 +2485,19 @@
     for (const zone of closedCaveZones) if (workZoneContains(zone, x, y === null ? zone.floor : y, z, height)) return true;
     return false;
   };
+  // Cave-mouth frames are narrow structural ledges, not NPC destinations.
+  // Recovery may otherwise jump onto the top bar and find no legal walking
+  // step back down to the apron.
+  const npcCaveRimAt = (x, y, z) => {
+    for (let i = 0; i < CAMERA_OPENINGS.length; i++) {
+      const entry = CAMERA_OPENINGS[i], m = entry.mouth;
+      if (y <= m.floorY + STEP_MAX) continue;
+      const dx = x - m.x, dz = z - m.z;
+      const across = dx * entry.cr - dz * entry.sr, along = dx * entry.sr + dz * entry.cr;
+      if (Math.abs(across) <= 3 + PLAYER_RADIUS && along >= -PLAYER_RADIUS && along <= 1 + PLAYER_RADIUS) return true;
+    }
+    return false;
+  };
   const npcClosedCaveClear = (x, y, z, toX, toY, toZ, height) => {
     for (const zone of closedCaveZones) {
       // A released player may already be beside the boards. Keep the way out open.
@@ -4631,7 +4644,8 @@
       && matrixGateSegmentClear(x, y, z, toX, toY, toZ, 0.001, 0.002);
     shared.inBananas = inBananas;
     shared.npcDestinationBlocked = npcDestinationBlocked;
-    shared.npcLandingAllowed = (x, y, z, height, cave) => !npcClosedCaveAt(x, z, y, height) && !npcPileAt(x, y, z, height) && !npcWorkZoneAt(cave, x, y, z) && npcFireClear(x, y, z, x, y, z, height);
+    shared.npcLandingAllowed = (x, y, z, height, cave) => !npcCaveRimAt(x, y, z) && !npcClosedCaveAt(x, z, y, height) && !npcPileAt(x, y, z, height) && !npcWorkZoneAt(cave, x, y, z) && npcFireClear(x, y, z, x, y, z, height);
+    shared.npcRecoveryDrop = (x, y, z) => npcCaveRimAt(x, y, z);
     shared.npcHazardClear = (x, y, z, toX, toY, toZ, height, cave) => npcClosedCaveClear(x, y, z, toX, toY, toZ, height) && npcFireClear(x, y, z, toX, toY, toZ, height) && npcWorkZoneClear(cave, x, y, z, toX, toY, toZ);
     shared.onModelChange = refreshObjectGuides;
     shared.trackMirrorObject = trackMirrorObject;

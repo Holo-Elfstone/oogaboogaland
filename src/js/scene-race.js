@@ -756,6 +756,7 @@
     cam.garageYaw = cam.garageLift = 0;
     toGarage();
     stateTimer = window.setInterval(() => {
+      for (const cave of contributors.activeRoster) hud.setRosterRow(cave.name, contributors.stateFor(cave), contributors.ageLabel(cave));
       fx.trimPool();
     }, 6e4);
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Tap an Ooga, a ride and a track, then Race!" : "Pick an Ooga, a ride and a track, then Race! (Enter)"), 1200);

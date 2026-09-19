@@ -2486,6 +2486,39 @@ const { npcRecoveryProbe } = (() => {
           bounded: nav.path.length === 441 && nav.costs.length === 441 && nav.parents.length === 441 && nav.closed.length === 441,
           debug: !cave.walk ? null : { x: cave.root.position.x, z: cave.root.position.z, mode: nav.mode, count: nav.count, index: nav.index, movingX: moving.position.x, movingZ: moving.position.z, node: nav.path[nav.index], originX: nav.x, originZ: nav.z, stalled: a.stalled } });
       }
+      // A real mouth frame is high enough that the ordinary recovery drop
+      // limit used to hold an Ooga on its narrow top bar indefinitely.
+      const mouth = B.island.mouths[0], sr = Math.sin(mouth.ry), cr = Math.cos(mouth.ry);
+      const rimX = mouth.x + sr * 0.5, rimZ = mouth.z + cr * 0.5;
+      const targetX = mouth.apron.x, targetZ = mouth.apron.z;
+      cave.root.visible = true; cave.state = "working"; cave.root.quaternion = null;
+      cave.root.rotation.x = cave.root.rotation.z = 0; cave.build = null; cave.bedTravel.mode = ""; cave.cloudSupport = null;
+      cave.hop = cave.hopV = cave.cheer = cave.catchT = cave.yawn = 0; cave.nextBuildAt = 1e12;
+      cave.act.kind = "wander"; cave.act.until = 1e12; cave.act.spot.x = targetX; cave.act.spot.z = targetZ; cave.act.spot.ry = 0;
+      Object.assign(cave.root.position, { x: rimX, y: mouth.floorY + 3.5 + cave.baseY, z: rimZ });
+      cave.walk = { tx: targetX, tz: targetZ, speed: 1.7, phase: 0, heading: mouth.ry, to: "spot" };
+      const a = cave.avoidance, nav = a.navigation;
+      a.active = false; a.tx = a.tz = NaN; nav.mode = 0; cave.pathing.tx = NaN;
+      const searches = nav.searches, jumps = nav.jumps;
+      let frames = 0, maximumStep = 0, relandings = 0, leftRim = false, lastX = rimX, lastZ = rimZ;
+      const onRim = () => {
+        const p = cave.root.position, dx = p.x - mouth.x, dz = p.z - mouth.z;
+        const across = dx * cr - dz * sr, along = dx * sr + dz * cr, feet = p.y - cave.baseY;
+        return feet > mouth.floorY + BL.pilot.WALK.step && Math.abs(across) <= 3.3 && along >= -0.3 && along <= 1.3;
+      };
+      sync();
+      while (cave.walk && frames++ < Math.ceil(16 / dt)) {
+        B.crew.update(dt, time += dt); sync();
+        const rim = onRim();
+        if (!rim) leftRim = true;
+        else if (leftRim) relandings++;
+        const p = cave.root.position;
+        maximumStep = Math.max(maximumStep, Math.hypot(p.x - lastX, p.z - lastZ)); lastX = p.x; lastZ = p.z;
+      }
+      rows.push({ name: "cave rim", dt, arrived: !cave.walk, distance: Math.hypot(cave.root.position.x - targetX, cave.root.position.z - targetZ), frames,
+        intersections: 0, maximumWork: 6, minimumZ: cave.root.position.z, maximumStep, maximumFeet: cave.root.position.y - cave.baseY,
+        changed: false, searches: nav.searches - searches, jumps: nav.jumps - jumps, bounded: nav.path.length === 441,
+        leftRim, relandings, debug: !cave.walk ? null : { x: cave.root.position.x, z: cave.root.position.z, mode: nav.mode, stalled: a.stalled } });
       return rows;
     } finally { solids.remove(fixture); S.removeChild(scene.root, fixture); sync(); }
   };
@@ -13650,15 +13683,17 @@ const { jumbotronProbe } = (() => {
     const data = (() => {
       try {
         const parsed = BL.jumbotron.parseStats(BL.jumbotronData);
-        const privateFields = ["display_name", "avatar_url", "first_seen_at", "last_seen_at"];
+        const privateFields = ["display_name", "avatar_url", "first_seen_at"];
         const noPersonalMetadata = BL.jumbotronData.contributors.every((c) => privateFields.every((key) => !(key in c)))
           && parsed.contributors.every((c) => privateFields.every((key) => !(key in c)));
+        const activityTimes = BL.jumbotronData.contributors.every((c) => typeof c.last_seen_at === "string"
+          && Number.isFinite(Date.parse(c.last_seen_at)));
         const anonymous = BL.jumbotron.parseStats({ ...BL.jumbotronData,
           contributors: [{ ...BL.jumbotronData.contributors.find((c) => c.login.startsWith("email:")), display_name: "private-profile-label" }]
         });
         const anonymousLabel = anonymous.tickerText.includes("ANONYMOUS:")
           && !anonymous.tickerText.includes("PRIVATE-PROFILE-LABEL") && !anonymous.tickerText.includes("EMAIL:");
-        return { contributors: parsed.contributors.length, schemaGuard: false, noPersonalMetadata, anonymousLabel };
+        return { contributors: parsed.contributors.length, schemaGuard: false, noPersonalMetadata, activityTimes, anonymousLabel };
       } catch {
         return { contributors: 0, schemaGuard: false };
       }
@@ -15448,15 +15483,30 @@ const { characterStatusProbe, humanPresenceProbe } = (() => {
       age: row.querySelector(".roster-age").textContent, online: row.querySelector(".roster-presence").dataset.online === "true",
       children: [...row.children], textNodes: [...row.children].map((child) => child.firstChild) }));
     const panel = document.querySelector('[data-panel="roster"]'), panelHidden = panel.hidden;
-    const states = ["working", "chilling", "sleeping", "away"], labels = { working: "workin", chilling: "chillin", sleeping: "sleepin", online: "online" };
+    const states = ["working", "chilling", "sleeping", "away"], ageLabels = ["3m ago", "1h ago", "12h ago", "2d ago", "no activity"];
+    const labels = { working: "clankin", chilling: "chillin", sleeping: "sleepin", online: "online" };
     const colors = { working: "rgb(255, 216, 74)", chilling: "rgb(216, 137, 43)", sleeping: "rgb(166, 166, 162)", online: "rgb(34, 197, 94)" };
+    const contributorByName = new Map(window.BL.contributors.activeRoster.map((entry) => [entry.name, entry]));
+    const originalOrder = rosterRows.map((row) => row.dataset.name);
+    const recentFirst = originalOrder.every((name, i) => !i || contributorByName.get(originalOrder[i - 1]).lastCommitAt >= contributorByName.get(name).lastCommitAt);
+    const promotedRow = rosterRows[rosterRows.length - 1], promoted = contributorByName.get(promotedRow.dataset.name), promotedAt = promoted.lastCommitAt;
+    promoted.lastCommitAt = Date.now();
+    B.hud.setRosterRow(promoted.name, promotedRow.querySelector(".roster-state").dataset.state, promotedRow.querySelector(".roster-age").textContent,
+      promotedRow.querySelector(".roster-presence").dataset.online === "true");
+    const acceptedActivityMovesFirst = document.querySelector("#roster li") === promotedRow;
+    promoted.lastCommitAt = promotedAt;
+    B.hud.setRosterRow(promoted.name, promotedRow.querySelector(".roster-state").dataset.state, promotedRow.querySelector(".roster-age").textContent,
+      promotedRow.querySelector(".roster-presence").dataset.online === "true");
+    const orderRestored = [...document.querySelectorAll("#roster li")].every((row, i) => row.dataset.name === originalOrder[i]);
     const selectedList = document.createElement("ul"), selectedButton = document.createElement("button"), selectedState = document.createElement("span");
     selectedList.className = "garage-list"; selectedList.hidden = true;
     selectedButton.setAttribute("aria-pressed", "true"); selectedState.className = "roster-state";
     selectedButton.append(selectedState); selectedList.append(selectedButton); document.body.append(selectedList);
     const layout = () => rosterRows.map((row) => {
       const r = row.getBoundingClientRect(), name = row.querySelector(".roster-name").getBoundingClientRect(), dot = row.querySelector(".roster-presence").getBoundingClientRect();
-      return { left: name.left - r.left, width: name.width, dotLeft: dot.left - r.left, dotRight: dot.right - r.left, dotWidth: dot.width };
+      const age = row.querySelector(".roster-age").getBoundingClientRect(), state = row.querySelector(".roster-state").getBoundingClientRect();
+      return { left: name.left - r.left, width: name.width, dotLeft: dot.left - r.left, dotRight: dot.right - r.left, dotWidth: dot.width,
+        ageLeft: age.left - r.left, ageRight: age.right - r.left, stateLeft: state.left - r.left, stateRight: state.right - r.left };
     });
     try {
       panel.hidden = false;
@@ -15467,7 +15517,7 @@ const { characterStatusProbe, humanPresenceProbe } = (() => {
         cave.state = state; cave.humanControlled = online; tooltip.update(false);
         // Mix activity labels and presence across the entire roster, including
         // its longest usernames, at the desktop or mobile viewport under test.
-        for (let i = 0; i < rosterRows.length; i++) B.hud.setRosterRow(rosterRows[i].dataset.name, states[(i + rows.length) % states.length], `${i + 1}h ago`, i % 2 === Number(online));
+        for (let i = 0; i < rosterRows.length; i++) B.hud.setRosterRow(rosterRows[i].dataset.name, states[(i + rows.length) % states.length], ageLabels[i % ageLabels.length], i % 2 === Number(online));
         B.hud.setRosterRow(cave.traits.name, state, "1h ago", online); selectedState.dataset.state = activity;
         const dot = getComputedStyle(node, "::before"), presenceStyle = getComputedStyle(presence), positions = layout();
         rows.push({ state, online, displayedState: node.dataset.state, color: dot.backgroundColor,
@@ -15485,7 +15535,14 @@ const { characterStatusProbe, humanPresenceProbe } = (() => {
             && presenceStyle.width === presenceStyle.height && parseFloat(presenceStyle.width) >= 6 && presenceStyle.borderRadius === "50%",
           aligned: positions.every((p, i) => p.width > 0 && Math.abs(p.left - positions[0].left) < 0.1
             && Math.abs(p.left - initialLayout[i].left) < 0.1 && p.dotWidth >= 6 && p.dotRight < p.left),
+          agesAligned: positions.every((p) => Math.abs(p.ageLeft - positions[0].ageLeft) < 0.1
+            && Math.abs(p.ageRight - positions[0].ageRight) < 0.1 && Math.abs(p.stateLeft - positions[0].stateLeft) < 0.1
+            && Math.abs(p.stateRight - positions[0].stateRight) < 0.1),
           usernamesStable: rosterRows.every((row, i) => row.querySelector(".roster-name").textContent === originals[i].name),
+          namesComplete: rosterRows.every((row) => {
+            const name = row.querySelector(".roster-name");
+            return name.scrollWidth <= name.clientWidth;
+          }),
           positions });
       }
       tooltip.show("Banana pile", 100, 100);
@@ -15493,9 +15550,10 @@ const { characterStatusProbe, humanPresenceProbe } = (() => {
         && !node.hasAttribute("aria-label") && getComputedStyle(node, "::before").content === "none";
       tooltip.hide();
       const cleared = node.hidden && !node.hasAttribute("data-state") && !node.hasAttribute("aria-label");
-      return { username: cave.traits.name, rows, prop, cleared,
+      return { username: cave.traits.name, rows, prop, cleared, recentFirst, acceptedActivityMovesFirst, orderRestored,
         displayLabels: rows.every((row) => row.labelMatches), matchingColors: rows.every((row) => row.colorMatches),
-        independentPresence: rows.every((row) => row.presenceMatches), alignedNames: rows.every((row) => row.aligned && row.usernamesStable),
+        independentPresence: rows.every((row) => row.presenceMatches), alignedNames: rows.every((row) => row.aligned && row.usernamesStable && row.namesComplete),
+        alignedAges: rows.every((row) => row.agesAligned),
         stableNodes: rosterRows.every((row, i) => row.children.length === originals[i].children.length
           && [...row.children].every((child, j) => child === originals[i].children[j] && child.firstChild === originals[i].textNodes[j])) };
     } finally {
@@ -15509,8 +15567,9 @@ const { characterStatusProbe, humanPresenceProbe } = (() => {
   // switching, sleeping and release, while tooltips retain their online overlay.
   const humanPresenceProbe = () => {
     const BL = window.BL, root = BL.scene.createNode(), noop = () => {}, rows = new Map();
+    let activityEntry = null, activityAt = 0;
     const crew = BL.crew.create({ root, world: { level: 100 }, input: { add: noop, remove: noop },
-      hud: { setRosterRow: (name, state, ageText, online = false) => rows.set(name, { state, online }) }, game: { state: { assignments: {}, inventory: [] } },
+      hud: { setRosterRow: (name, state, ageText, online = false) => rows.set(name, { state, ageText, online }) }, game: { state: { assignments: {}, inventory: [] } },
       pile: { footprintEdge: 1, pileEdge: () => 1 }, groundAt: () => 0, walkable: () => true,
       buildSpots: [], walkIn: { x: 0, z: 3 }, viewYaw: 0,
       fx: { say: noop, zzzAt: noop, burst: noop, puff: noop, spawnParticle: noop } });
@@ -15522,6 +15581,13 @@ const { characterStatusProbe, humanPresenceProbe } = (() => {
         crew.refreshRosterRow(actor);
       }
       worker.state = worker.override = "working";
+      activityEntry = worker.contributor; activityAt = activityEntry.lastCommitAt;
+      const at = Date.now();
+      activityEntry.lastCommitAt = at - 2 * 60000; crew.refreshStates();
+      const firstAge = rows.get(worker.traits.name).ageText;
+      activityEntry.lastCommitAt = at - 3 * 60000; crew.refreshStates();
+      const liveAge = firstAge === "2m ago" && rows.get(worker.traits.name).ageText === "3m ago" && worker.state === "working";
+      activityEntry.lastCommitAt = activityAt;
       const status = (actor) => rows.get(actor.traits.name).state === actor.state
         && rows.get(actor.traits.name).online === !!actor.humanControlled
         && BL.hud.statusFor(actor) === (actor.humanControlled ? "online" : actor.state);
@@ -15547,8 +15613,11 @@ const { characterStatusProbe, humanPresenceProbe } = (() => {
       const remotePresence = worker.state === "working" && status(worker);
       worker.humanControlled = false; crew.refreshRosterRow(worker);
       const remoteReleased = worker.state === "working" && status(worker);
-      return { controlled, refreshed, activityChangedOnline, switched, released, sleepingOnline, sleepingReleased, remotePresence, remoteReleased };
-    } finally { crew.dispose(); }
+      return { controlled, refreshed, activityChangedOnline, switched, released, sleepingOnline, sleepingReleased, remotePresence, remoteReleased, liveAge };
+    } finally {
+      if (activityEntry) activityEntry.lastCommitAt = activityAt;
+      crew.dispose();
+    }
   };
   return { characterStatusProbe, humanPresenceProbe };
 })();
@@ -16094,15 +16163,17 @@ const { contributorActivityProbe } = (() => {
     const HOUR = 3600000, { roster, stateFor, ageLabel, applyActivity, applySnapshot, hasRecentActivity, subscribe } = contributors;
     const saved = roster.map((entry) => ({ at: entry.lastCommitAt, activity: [...entry.activity] }));
     const state = (age) => stateFor({ lastCommitAt: at - age }, at);
-    const boundaries = state(0) === "working" && state(HOUR - 1) === "working" && state(HOUR) === "chilling" &&
-      state(24 * HOUR - 1) === "chilling" && state(24 * HOUR) === "sleeping" && state(8 * 24 * HOUR) === "sleeping";
+    const boundaries = state(0) === "working" && state(4 * HOUR - 1) === "working" && state(4 * HOUR) === "chilling" &&
+      state(48 * HOUR - 1) === "chilling" && state(48 * HOUR) === "sleeping" && state(8 * 24 * HOUR) === "sleeping";
     const invalidStates = [NaN, Infinity, 0, -1, at + 1].every((lastCommitAt) => stateFor({ lastCommitAt }, at) === "sleeping");
-    const labels = ageLabel({ lastCommitAt: at - HOUR / 2 }, at) === "just now" &&
+    const labels = ageLabel({ lastCommitAt: at }, at) === "0m ago" &&
+      ageLabel({ lastCommitAt: at - HOUR / 2 }, at) === "30m ago" &&
+      ageLabel({ lastCommitAt: at - HOUR + 1 }, at) === "59m ago" &&
       ageLabel({ lastCommitAt: at - 3 * HOUR }, at) === "3h ago" && ageLabel({ lastCommitAt: at - 49 * HOUR }, at) === "2d ago";
     let notifications = 0;
     const unsubscribe = subscribe(() => { notifications++; });
     try {
-      const first = roster[0], second = roster[1], firstAt = at - 15 * 60000, secondAt = at - 2 * HOUR;
+      const first = roster[0], second = roster[1], firstAt = at - 15 * 60000, secondAt = at - 8 * HOUR;
       const accepted = applyActivity([
         { name: first.name.toUpperCase(), lastCommitAt: firstAt - 1 },
         { name: first.name, lastCommitAt: firstAt },
@@ -16116,7 +16187,7 @@ const { contributorActivityProbe } = (() => {
         { name: "unknown-contributor", lastCommitAt: at }, { lastCommitAt: at }
       ], at) === 0 && applyActivity(null, at) === 0 && applyActivity([], NaN) === 0 &&
         first.lastCommitAt === firstAt && notifications === 1;
-      const expires = stateFor(first, firstAt + HOUR) === "chilling" && stateFor(first, firstAt + 24 * HOUR) === "sleeping";
+      const expires = stateFor(first, firstAt + 4 * HOUR) === "chilling" && stateFor(first, firstAt + 48 * HOUR) === "sleeping";
       const snapshot = (repo, login, age) => ({ meta: { repo, schema_version: 1, generated_at: new Date(at).toISOString() },
         contributors: [{ login, last_seen_at: new Date(at - age).toISOString() }] });
       const alias = roster.find((entry) => entry.name === "bc1gui");
@@ -16126,7 +16197,7 @@ const { contributorActivityProbe } = (() => {
       ], at);
       const projects = snapshotUpdates === 2 && hasRecentActivity(alias, "oogaboogax/entropylab", at) &&
         hasRecentActivity(second, "oogaboogax/another-project", at) && !hasRecentActivity(second, "oogaboogax/entropylab", at) &&
-        stateFor(second, at) === "working" && !hasRecentActivity(second, "oogaboogax/another-project", at + HOUR);
+        stateFor(second, at) === "working" && !hasRecentActivity(second, "oogaboogax/another-project", at + 4 * HOUR);
       const otherRepo = applySnapshot(snapshot("another-org/entropylab", first.name, 0), at) === 0;
       const absentTime = snapshot("OogaBoogaX/entropylab", first.name, 0);
       delete absentTime.contributors[0].last_seen_at;
@@ -26990,7 +27061,16 @@ const contributorActivityChecks = async () => {
   const context = { window: {}, URLSearchParams, location: { search: "" } };
   for (const name of ["math", "contributors"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const r = contributorActivityProbe(context.window.BL.contributors, Date.now());
-  record("banana weapon activity: timestamp boundaries, per-project updates, invalid data, and debug mix", Object.values(r).every(Boolean), JSON.stringify(r));
+  record("banana weapon activity: four-hour work and 48-hour chill boundaries, per-project updates, invalid data, and debug mix", Object.values(r).every(Boolean), JSON.stringify(r));
+  const liveContext = { window: {}, URLSearchParams, location: { search: "" } };
+  for (const name of ["math", "contributors", "jumbotron-data"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), liveContext);
+  const live = liveContext.window.BL, generatedAt = Date.parse(live.jumbotronData.meta.generated_at), aliases = { bc1gui: "ottoz0r" };
+  const byLogin = new Map(live.jumbotronData.contributors.map((entry) => [entry.login.toLowerCase(), entry]));
+  const matched = live.contributors.roster.map((entry) => ({ entry, source: byLogin.get((aliases[entry.name] || entry.name).toLowerCase()) })).filter((row) => row.source);
+  const accepted = live.contributors.applySnapshot(live.jumbotronData, generatedAt);
+  const current = matched.every(({ entry, source }) => entry.lastCommitAt === Date.parse(source.last_seen_at)
+    && entry.activity.get("oogaboogax/entropylab") === Date.parse(source.last_seen_at));
+  record("Oogatron snapshot: every matched Ooga uses the backend last-seen time, including aliases and timestamps older than the historical fallback", matched.length >= 7 && accepted === matched.length && current, JSON.stringify({ matched: matched.map(({ entry, source }) => [entry.name, source.login, source.last_seen_at]), accepted }));
 };
 task("banana weapon activity", contributorActivityChecks);
 const soloDebugChecks = async () => {
@@ -27122,10 +27202,11 @@ for (const backend of ["webgl2", "canvas2d"]) task(`work movement formation ${ba
 }));
 const characterStatusChecks = async (b) => {
   const s = await b.evaluate(`(${characterStatusProbe.toString()})()`);
-  record("character status: roster activity stays workin/chillin/sleepin while tooltip colors remain unchanged", s.displayLabels && s.matchingColors && s.rows.length === 8 && s.rows.every(row => row.circle && row.usernameOnly) && s.prop && s.cleared, JSON.stringify(s));
-  record("character status: independent online/offline dots keep every name aligned and reuse their DOM nodes", s.independentPresence && s.alignedNames && s.stableNodes, JSON.stringify(s));
+  record("character status: roster activity stays clankin/chillin/sleepin while tooltip colors remain unchanged", s.displayLabels && s.matchingColors && s.rows.length === 8 && s.rows.every(row => row.circle && row.usernameOnly) && s.prop && s.cleared, JSON.stringify(s));
+  record("character status: presence dots, names and last-seen times stay aligned while reusing their DOM nodes", s.independentPresence && s.alignedNames && s.alignedAges && s.stableNodes, JSON.stringify(s));
+  record("character status: newest Oogas stay first and accepted activity immediately promotes its row", s.recentFirst && s.acceptedActivityMovesFirst && s.orderRestored, JSON.stringify(s));
   const presence = await b.evaluate(`(${humanPresenceProbe.toString()})()`);
-  record("character status: control, release and activity changes update presence separately from activity", Object.values(presence).every(Boolean), JSON.stringify(presence));
+  record("character status: control, release and activity changes update presence separately from activity while minute ages advance", Object.values(presence).every(Boolean), JSON.stringify(presence));
 };
 for (const mobile of [false, true]) task(`character status ${mobile ? "mobile" : "desktop"}`, () => withPage(`character status ${mobile ? "mobile" : "desktop"}`, hubPage(src), characterStatusChecks, mobile ? { w: 390, h: 844, mobile: true } : {}));
 for (const mobile of [false, true]) task(`banana weapon HUD ${mobile ? "mobile" : "desktop"}`, () => withPage(`banana weapon HUD ${mobile ? "mobile" : "desktop"}`, hubPage(src), async (b) => {
@@ -27821,9 +27902,11 @@ for (const backend of ["webgl2", "canvas2d"]) task(`NPC stairs ${backend}`, () =
 const npcRecovery = (backend) => [`NPC recovery ${backend}`, async (b) => {
   for (const dt of [1 / 20, 1 / 120]) {
     const rows = await b.evaluate(`(${npcRecoveryProbe.toString()})(${JSON.stringify({ dt })})`);
-    record(`NPC recovery ${backend}: ${1 / dt}Hz walkers avoid narrow gaps, escape dead ends, jump clear and respect low ceilings`, rows.length === 5 && rows.every((r) => r.intersections === 0 && r.bounded && r.maximumWork <= 6 && (r.name === "no safe jump"
+    record(`NPC recovery ${backend}: ${1 / dt}Hz walkers avoid narrow gaps, escape dead ends, leave cave rims, jump clear and respect low ceilings`, rows.length === 6 && rows.every((r) => r.intersections === 0 && r.bounded && r.maximumWork <= 6 && (r.name === "no safe jump"
       ? !r.arrived && r.jumps === 0 && r.maximumFeet < 12.10001 && r.searches <= 12
-      : r.arrived && r.distance < 1e-6 && r.maximumStep <= (r.name === "jump escape" ? 3 : 1.7) * dt + 1e-6 && (r.name === "jump escape" ? r.jumps > 0 && r.maximumFeet > 14.1 : r.maximumFeet < 12.10001 && (r.name === "narrow gap" || r.searches > 0 && r.minimumZ < -2.2)) && (r.name !== "changed recovery path" || r.changed && r.searches >= 2))), JSON.stringify(rows));
+      : r.arrived && r.distance < 1e-6 && r.maximumStep <= (r.name === "jump escape" || r.name === "cave rim" ? 3 : 1.7) * dt + 1e-6
+        && (r.name === "cave rim" ? r.leftRim && r.relandings === 0 && r.jumps > 0 : r.name === "jump escape" ? r.jumps > 0 && r.maximumFeet > 14.1 : r.maximumFeet < 12.10001 && (r.name === "narrow gap" || r.searches > 0 && r.minimumZ < -2.2))
+        && (r.name !== "changed recovery path" || r.changed && r.searches >= 2))), JSON.stringify(rows));
   }
 }];
 for (const backend of ["webgl2", "canvas2d"]) task(`treetop camera ${backend}`, () => withPage(`treetop camera ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
@@ -28009,7 +28092,7 @@ const roomLifeHash = ["room LifeHash", async (b) => {
 task("window flares + convex collision + room LifeHash", () => fold(hubPage(src), [windowFlares, convexCollision, roomLifeHash]));
 for (const backend of ["webgl2", "canvas2d"]) task(`jumbotron ${backend}`, () => withPage(`jumbotron ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
   const r = await b.evaluate(`(${jumbotronProbe.toString()})()`);
-  record(`jumbotron ${backend}: the board is solid on the north rim, facing the meadow with public stats parsed and guarded`, r.exists && r.placement.onNorthRim && r.placement.aboveGround && r.placement.facesCenter && r.placement.scale > 1 && r.placement.solid && r.data.contributors > 0 && r.data.schemaGuard && r.data.noPersonalMetadata && r.data.anonymousLabel, JSON.stringify({ placement: r.placement, data: r.data }));
+  record(`jumbotron ${backend}: the board is solid on the north rim, facing the meadow with public timestamped stats parsed and guarded`, r.exists && r.placement.onNorthRim && r.placement.aboveGround && r.placement.facesCenter && r.placement.scale > 1 && r.placement.solid && r.data.contributors > 0 && r.data.schemaGuard && r.data.noPersonalMetadata && r.data.activityTimes && r.data.anonymousLabel, JSON.stringify({ placement: r.placement, data: r.data }));
   record(`jumbotron ${backend}: view changes rebuild the screen quads and pokes select contributors by handle or roster alias`, r.initial.view === "totals" && r.initial.screenFaces > 200 && r.initial.cabinetFaces === 84 && r.leaderboard.view === "leaderboard" && r.leaderboard.changed && r.poked.accepted && r.poked.view === "contributor" && r.poked.login === "portlandhodl" && r.alias.accepted && r.alias.login === "ottoz0r" && r.alias.caseInsensitive && r.pokeUnknown === false && r.advanced.drew, JSON.stringify({ initial: r.initial, leaderboard: r.leaderboard, poked: r.poked, alias: r.alias, advanced: r.advanced }));
   // The board stands above the default framing; walk the camera up to it
   // the way a visitor would before tapping.

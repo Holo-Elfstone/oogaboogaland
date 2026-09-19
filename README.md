@@ -178,10 +178,12 @@ their cave if they have ammunition, or to a free pile slot if empty, avoiding
 obstacles on the way. Normal path-following resumes after that trip.
 EntropyLab is the first registered work cave; adding a repository to
 an open cave's `repo` field includes it in this rotation. See
-[the activity data contract](docs/activity-contract.md) for the pending Oogatron
-snapshot integration. Historical snapshot dates do not imply current activity.
+[the activity data contract](docs/activity-contract.md) for the Oogatron snapshot
+integration. Historical snapshot dates do not imply current activity.
+The newest contribution keeps an Ooga clankin for four hours, chillin through 48
+hours, and sleepin afterward.
 Debug mode seeds three workers, three chilling Oogas, and two sleepers.
-Roster labels show yellow for workin, orange for chillin, and gray for sleepin.
+Roster labels show yellow for clankin, orange for chillin, and gray for sleepin.
 A separate dot before each roster name is green while a human controls that Ooga
 and gray while offline; activity labels stay visible in either case. Hovered names
 keep their existing dot colors: green while human-controlled, otherwise the activity
@@ -510,9 +512,10 @@ stylesheet and every script inlined and the content policy pinned to their hashe
 committed with the sources; rebuild it whenever they change. Deploy that one file, served
 as `index.html`. Nothing under `src/` goes to a server.
 
-GitHub Pages deploys through `.github/workflows/pages.yml` on pushes to `rock`, or
-manually with **Actions → Deploy GitHub Pages → Run workflow**. The workflow rebuilds
-the page and uploads only `_site/index.html`, a copy of `oogaboogaland.html`.
+GitHub Pages deploys through `.github/workflows/pages.yml` on pushes to `rock`, every
+ten minutes after refreshing the Oogatron activity snapshot, or manually with
+**Actions → Deploy GitHub Pages → Run workflow**. The workflow rebuilds the page and
+uploads only `_site/index.html`, a copy of `oogaboogaland.html`.
 Set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**.
 The default site URL is https://oogaboogax.github.io/oogaboogaland/.
 Configure a custom domain in **Settings → Pages** before pointing its DNS at GitHub;

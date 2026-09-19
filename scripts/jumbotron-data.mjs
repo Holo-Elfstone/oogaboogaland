@@ -34,6 +34,7 @@ const snapshot = {
   ])),
   contributors: stats.contributors.map((c) => ({
     login: c.login,
+    last_seen_at: c.last_seen_at,
     counts: counts(c.counts),
     weekly: c.weekly.map(({ week, commits, prs, reviews, comments }) => ({ week, commits, prs, reviews, comments }))
   }))

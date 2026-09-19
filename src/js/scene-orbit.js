@@ -1968,7 +1968,10 @@
     cam.buildPitch = 0.18;
     cam.buildZoom = 1;
     toBuild();
-    stateTimer = window.setInterval(() => fx.trimPool(), 6e4);
+    stateTimer = window.setInterval(() => {
+      for (const c of contributors.roster) hud.setRosterRow(c.name, contributors.stateFor(c), contributors.ageLabel(c));
+      fx.trimPool();
+    }, 6e4);
     hintTimer = window.setTimeout(() => hud.hint(COARSE ? "Stack a rocket, then Launch!" : "Stack a rocket, then Launch! (Enter)"), 1200);
     Object.assign(orbitScene, {
       root, camera, input,
