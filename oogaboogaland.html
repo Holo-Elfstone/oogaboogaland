@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-AlHXjh7BWDtu99/874mdofYeIrD4SHCFc8cpq0FDABA='; style-src 'sha256-vkwCieuqGdQfgZAb08WxO++kDVR21NwlkPdRmbLP14g='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-waY3HcIVHWa+aHrpIXAcO/Hk8v9LP7US2l1hW2Tuv3Y='; style-src 'sha256-vkwCieuqGdQfgZAb08WxO++kDVR21NwlkPdRmbLP14g='; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -15750,6 +15750,14 @@ void main() {
     YellowBrokeIt: { bald: true, cleanShaven: true, wideEyes: true, yellowFace: true, cigarette: true, energyCan: true, orangeChest: true, skin: "#ffe36a", hair: "#21160e", fur: "#ed9b24" },
     DrNeski: { laserEyes: true, headband: true, stethoscope: true, newspaper: true, hair: "#f2ece0" }
   };
+  // Opt-in voices per handle: a signature line when poked, and idle lines mixed with the tribe's
+  const VOICES = {
+    DrNeski: {
+      poke: "You've got 10 seconds!",
+      idle: ["You are fired!", "Where is Kortik??", "Go rebalance your Node!", "Get laid on the 1st date", "What's your question for DrNeski?", "I sold my neighbor ex's cat for sats"]
+    }
+  };
+  const voiceFor = (name) => VOICES[name] || null;
   const SKINS = ["#c98a5b", "#a9744c", "#8a5a3a", "#d9a06b", "#b58057"];
   const HAIRS = ["#2b1b10", "#4a2c14", "#151312", "#5c4425", "#7a2e12"];
   const HAIRS_SLIM = ["#ece5d3", "#e0dac6", "#f2eee2", "#b9dcaa", "#a3d19a"];
@@ -15788,7 +15796,7 @@ void main() {
       rand: mulberry32(fnv1a(name + "/body"))
     };
   };
-  BL.contributors = { roster, stateFor, ageLabel, traitsFor };
+  BL.contributors = { roster, stateFor, ageLabel, traitsFor, voiceFor };
 })();
 
 // ---- js/donations.js ----
@@ -19058,6 +19066,8 @@ void main() {
     night: ["Stars many.", "Fire warm.", "Moon big.", "Dark out there.", "Ooga count star.", "Owl."],
     midnight: ["Ooga not sleepy.", "Owl says hoo.", "Very dark. Very quiet.", "Rock cold.", "Booga snore.", "Moon watch."]
   };
+  // A voiced contributor says his own idle line half the time, held a beat longer to read
+  const VOICE_MIX = 0.5, VOICE_SECONDS = 3;
   // Meal and idle timings for a working caveman
   const EAT_MIN = 14, EAT_SPREAD = 20, HUNGRY_LINGER = 4, IDLE_MIN = 3, IDLE_SPREAD = 6, TRIPS_MAX = 3;
   const { WALK } = BL.pilot;
@@ -20741,6 +20751,12 @@ void main() {
       const table = ctx.phase ? PHASE_QUOTES[ctx.phase()] : IDLE_QUOTES;
       return table[Math.floor(Math.random() * table.length)];
     };
+    // Everyone without a voice draws exactly what they did before
+    const idleSay = (cave) => {
+      const voice = contributors.voiceFor(cave.traits.name);
+      if (voice && Math.random() < VOICE_MIX) ctx.fx.say(cave, voice.idle[Math.floor(Math.random() * voice.idle.length)], VOICE_SECONDS);
+      else ctx.fx.say(cave, quoteFor(), 2);
+    };
     // A midnight yawn, arms up and head back, settling like a cheer
     const runYawn = (cave) => {
       // Re-armed in every phase so the stagger holds when midnight arrives mid-visit
@@ -20784,7 +20800,7 @@ void main() {
       parts.armL.rotation.x = damp(parts.armL.rotation.x, -0.2, 10, dt);
       if (!a.said && elapsed > a.sayAt) {
         a.said = true;
-        if (Math.random() < 0.6) ctx.fx.say(cave, quoteFor(), 2);
+        if (Math.random() < 0.6) idleSay(cave);
       }
       if (elapsed < a.until) return;
       parts.head.rotation.y = 0;
@@ -21405,7 +21421,8 @@ void main() {
         if (travel.mode === "rest" && travel.roll === 1 && cave.bedroll.sleep && randomInt(3) === 0) turnSleep(cave, SLEEP_POSES[(SLEEP_POSES.indexOf(travel.pose) + 1 + randomInt(3)) % SLEEP_POSES.length]);
         return;
       }
-      ctx.fx.say(cave, POKES[randomInt(POKES.length)], 1.8);
+      const voice = contributors.voiceFor(cave.traits.name);
+      ctx.fx.say(cave, voice ? voice.poke : POKES[randomInt(POKES.length)], 1.8);
     };
     // Build quotes, drawn by fx.drawOverlay
     const drawQuotes = (ctx2d, project, drawBubble) => {
@@ -21625,7 +21642,7 @@ void main() {
     };
     const stats = () => ({ built: builtEquipment.length });
     return {
-      cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, drawQuotes,
+      cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawQuotes,
       control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, ignite, dropRoll, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, wearJetpack, removeJetpack, thrust, update, dispose, stats,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
