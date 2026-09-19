@@ -3,10 +3,11 @@
   const BL = window.BL = window.BL || {};
   const { mat4 } = BL.math;
   const EPS = 1e-7, geometries = new WeakMap();
-  // The render mesh is also the collision shell. A shared local-space tree
+  // Props use their render mesh or an explicit collision shell. A shared local-space tree
   // preserves openings in arches, branches and aircraft without voxelizing
   // each placed copy or rebuilding its triangles when a prop moves.
   const geometryOf = (geometry) => {
+    geometry = geometry.collisionGeometry || geometry;
     let cached = geometries.get(geometry);
     if (cached) return cached;
     const vertices = geometry.verts, triangles = [], bounds = [], order = [];

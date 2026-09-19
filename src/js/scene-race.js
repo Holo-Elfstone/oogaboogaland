@@ -43,7 +43,7 @@
     performance.mark(`ooga:${name}`);
   };
   // The garage remembers the last pick for the page's life
-  const selection = { racer: contributors.roster[0].name, mount: "kart", track: "bay" };
+  const selection = { racer: contributors.activeRoster[0]?.name || null, mount: "kart", track: "bay" };
 
   // One visit's state, made in enter and dropped in leave
   let renderer, game, world, go, lootEnabled, testBananas, root, camera, hud, rhud, hooks, input, fx, controls, track, racers, items, audio, weather;
@@ -51,7 +51,7 @@
   let meterTimer = 0, stateTimer = 0, hintTimer = 0;
   const cam = { yaw: 0, offset: 0, dist: CHASE.dist, shake: 0, lookBack: false, x: 0, y: 0, z: 0, tx: 0, ty: 0, tz: 0, warm: false, garageYaw: 0, garageLift: 0 };
   const targets = [];
-  const cup = { active: false, round: 0, done: false, points: new Float32Array(contributors.roster.length) };
+  const cup = { active: false, round: 0, done: false, points: new Float32Array(contributors.activeRoster.length) };
   const nearestTorches = new Float32Array(LIGHT_CAPACITY * 2);
   const raceScene = {
     id: "race", renderOpts: null, root: null, camera: null, input: null, debug: null,
@@ -68,7 +68,7 @@
     }
     const detail = renderer.kind === "canvas2d" ? 0.35 : renderer.quality === "low" ? 0.6 : renderer.quality === "medium" ? 0.8 : 1;
     const rain = rainParam !== null ? rainParam === "1" : math.randomInt(100) < RAIN_CHANCE;
-    track = raceTrack.build(raceTrack.trackById(id), { renderer, detail, rain });
+    track = raceTrack.build(raceTrack.trackById(id), { renderer, detail, rain, spectators: !contributors.solo });
     addChild(root, track.root);
     buildWeather();
     raceScene.renderOpts = track.renderOpts;
@@ -158,6 +158,7 @@
     hud.setSubtitle(`Ooga Rally · garage${track.precipitation ? ` · ${track.precipitation}` : ""}`);
   };
   const startRace = () => {
+    if (!racers.racers.length) return;
     placeRacers();
     phase = "countdown";
     countdown = COUNTDOWN;
@@ -185,6 +186,7 @@
     return i >= 0 && i < list.length - 1 ? list[i + 1].id : null;
   };
   const startCup = () => {
+    if (!racers.player) return;
     cup.active = true;
     cup.done = false;
     cup.round = 0;
@@ -196,6 +198,7 @@
   };
   // Next track: the following round of the cup, or the following track after a podium
   const nextRace = () => {
+    if (!racers.player) return;
     if (cup.active) {
       cup.round++;
       selection.track = raceTrack.TRACKS[cup.round].id;
@@ -244,6 +247,7 @@
   };
   let recordImproved = false, cupRecord = false;
   const finishRace = () => {
+    if (!racers.player) return;
     phase = "finished";
     const p = racers.player;
     recordImproved = p.finished && game.recordRace(track.id, Math.round(p.bestLap * 1000), Math.round(p.finishTime * 1000));
@@ -485,7 +489,7 @@
     a.boosting = p.boost > 0 ? 1 : 0;
     a.offroad = p.offroad && !p.airborne ? 1 : 0;
     const g = track.grid[0];
-    a.crowd = 1 - clamp(Math.hypot(p.x - g.x, p.z - g.z) / 70, 0, 1);
+    a.crowd = contributors.solo ? 0 : 1 - clamp(Math.hypot(p.x - g.x, p.z - g.z) / 70, 0, 1);
     a.rain = track.precipitation === "rain" ? 1 : 0;
     if (phase === "racing") {
       // Hard cornering at speed chirps the tyres now and then, and crew karts do the same when they pass close by
@@ -547,7 +551,7 @@
   };
   const tooltipFor = (hit) => {
     const o = hit.owner;
-    if (o.kind === "racer") return `${o.racer.name} · ${o.racer.mount ? o.racer.mount.name : ""}${o.racer === racers.player ? " · you" : ""}`;
+    if (o.kind === "racer") return o.racer.name;
     return "";
   };
   const simulate = (dt) => {
@@ -651,12 +655,12 @@
     ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
     camera = createCamera({ fov: 50, near: 0.3, far: 280 });
     root = createNode();
-    hud = hudMod.create({ roster: contributors.roster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled });
+    hud = hudMod.create({ roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled });
     hooks = {};
     input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
-    fx = fxMod.create({ root, renderer, overlay: ctx.overlay, tickerAt: TICKER_AT });
+    fx = fxMod.create({ root, renderer, camera, hud, overlay: ctx.overlay, tickerAt: TICKER_AT });
     rhud = raceHud.create({
-      tracks: raceTrack.TRACKS, mounts: racersMod.MOUNTS, roster: contributors.roster, best: () => game.state.race.best,
+      tracks: raceTrack.TRACKS, mounts: racersMod.MOUNTS, roster: contributors.activeRoster, best: () => game.state.race.best,
       onPick: (kind, key) => {
         selection[kind] = key;
         if (kind === "track") {
@@ -666,7 +670,7 @@
       }
     });
     Object.assign(rhud.selection, selection);
-    rhud.buildGarage((name) => contributors.stateFor(contributors.roster.find((c) => c.name === name)));
+    rhud.buildGarage((name) => contributors.stateFor(contributors.activeRoster.find((c) => c.name === name)));
     buildTrack(selection.track);
     racers = racersMod.create({ root, input, fx, game, track });
     mark("racers");
@@ -699,10 +703,10 @@
     });
     Object.assign(hooks, {
       onHover: (hit, p) => {
-        if (hit) hud.tooltip.show(tooltipFor(hit), p.x, p.y);
+        if (hit) hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.kind === "racer" ? hit.owner.racer.cave : null);
         else hud.tooltip.hide();
       },
-      onHoverMove: (hit, p) => hud.tooltip.show(tooltipFor(hit), p.x, p.y),
+      onHoverMove: (hit, p) => hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.kind === "racer" ? hit.owner.racer.cave : null),
       onTap: (hit) => {
         if (hit && hit.owner.kind === "racer") {
           if (phase === "garage") rhud.el.racers.querySelector(`[data-racer="${hit.owner.racer.name}"]`).click();
@@ -741,7 +745,7 @@
         location.reload();
       }
     });
-    for (const cave of contributors.roster) hud.setRosterRow(cave.name, contributors.stateFor(cave), contributors.ageLabel(cave));
+    for (const cave of contributors.activeRoster) hud.setRosterRow(cave.name, contributors.stateFor(cave), contributors.ageLabel(cave));
     if (lootEnabled) renderLocker();
     hud.setStats(game.state);
     hud.el.sheet.dataset.open = "false";

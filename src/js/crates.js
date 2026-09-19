@@ -44,6 +44,7 @@
       if (crate.slot) crate.slot.taken = false;
       input.remove(crate.body);
       if (ctx.removeSolid) ctx.removeSolid(crate.node);
+      if (ctx.untrackMirrorObject) ctx.untrackMirrorObject(crate.node);
       removeChild(root, crate.node);
       if (ctx.onModelChange) ctx.onModelChange();
     };
@@ -61,6 +62,7 @@
       const reveal = crate.loot.item.buildNode();
       Object.assign(reveal.position, { x: 0, y: 0.4, z: 0 });
       addChild(crate.node, reveal);
+      if (ctx.refreshMirrorObject) ctx.refreshMirrorObject(crate.node);
       if (ctx.onModelChange) ctx.onModelChange();
       addTween({
         dur: 1.5, ease: ease.outQuad, update: (k) => {
@@ -98,6 +100,7 @@
       const crate = { node, lid, body: node.children[0], loot, donationId: donation.id, opened: false, phase: fnv1a(donation.id) % 7, slot: spot };
       input.add(crate.body, { kind: "crate", crate, priority: 2 }, { radius: 0.7 });
       crates.push(crate);
+      if (ctx.trackMirrorObject) ctx.trackMirrorObject(node, 3);
       if (ctx.addSolid) ctx.addSolid(node);
       if (ctx.onModelChange) ctx.onModelChange();
       addTween({

@@ -34,7 +34,8 @@
       listeners.push(() => target.removeEventListener(type, fn));
     };
     for (const node of [el.rank, el.lap, el.time, el.speed, el.center, el.notice, el.itemName]) if (!node.firstChild) node.append("");
-    const selection = { racer: roster[0].name, mount: "kart", track: tracks[0].id };
+    const selection = { racer: roster[0]?.name || null, mount: "kart", track: tracks[0].id };
+    for (const button of el.race.querySelectorAll('[data-action="race-start"], [data-action="cup-start"], [data-action="race-again"]')) button.disabled = !roster.length;
     const buttons = { racer: new Map(), mount: new Map(), track: new Map() };
     const mark = (kind) => {
       for (const [key, b] of buttons[kind]) b.setAttribute("aria-pressed", String(key === selection[kind]));
@@ -84,7 +85,7 @@
         const state = document.createElement("span");
         state.className = "roster-state";
         state.dataset.state = stateOf(c.name);
-        state.textContent = { working: "EATING", sleeping: "ZZZ", away: "AWAY" }[state.dataset.state];
+        state.textContent = BL.hud.STATE_LABELS[state.dataset.state];
         b.append(name, state);
       })));
       el.mounts.replaceChildren(...mounts.map((m) => row("mount", m.id, (b) => {

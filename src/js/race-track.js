@@ -271,7 +271,7 @@
   };
 
   // ---------- build ----------
-  const build = (def, { renderer, detail = 1, rain = false }) => {
+  const build = (def, { renderer, detail = 1, rain = false, spectators: showSpectators = true }) => {
     const theme = THEMES[def.theme];
     // Weather: rain on the outdoor tracks, snow on the peak, never in the gorge
     const wet = rain && !theme.ceiling;
@@ -730,6 +730,7 @@
             const px = S.x[mid] + rightX(mid) * off, pz = S.z[mid] + rightZ(mid) * off;
             if (!waterAt(px, pz)) block(standsGeo, px, groundAt(px, pz) - 0.3, pz, 1.1, 0.3 + r * 0.25, cols * 2 * STEP + 0.5, mid, r % 2 ? rgb("#8f6538") : rgb("#9c7040"));
           }
+          if (!showSpectators) continue;
           for (let c = 0; c < cols; c++) {
             for (let half = 0; half < 2; half++) {
               const k = (i + c * 2) % n;
@@ -756,9 +757,12 @@
         spectators.phase[i] = rand() * Math.PI * 2;
       }
       spectators.count = count;
-      spectators.node = createNode({ geometry: raceModels.spectator(def.seed % 3), instanceData: new Float32Array(SPECTATOR_CAP * 20), instanceCount: count, instanceVersion: 0, fixedInstanceCapacity: true });
-      addChild(root, spectators.node, createNode({ geometry: keep(standsGeo) }));
-      geometries.push(spectators.node.geometry);
+      if (count) {
+        spectators.node = createNode({ geometry: raceModels.spectator(def.seed % 3), instanceData: new Float32Array(SPECTATOR_CAP * 20), instanceCount: count, instanceVersion: 0, fixedInstanceCapacity: true });
+        addChild(root, spectators.node);
+        geometries.push(spectators.node.geometry);
+      }
+      addChild(root, createNode({ geometry: keep(standsGeo) }));
     }
     // Checkpoints, grid, spawn points
     const checkpoints = new Int32Array(CHECKPOINTS);

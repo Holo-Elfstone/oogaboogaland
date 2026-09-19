@@ -76,7 +76,7 @@
     while (node) {
       if (node.matrixLiving) return 2;
       if (node.matrixCloud) return 4;
-      if (node.matrixEmissiveLiving) partial = 3;
+      if (node.matrixEmissiveLiving || node.matrixSignLiving) partial = 3;
       node = node.parent;
     }
     return partial;

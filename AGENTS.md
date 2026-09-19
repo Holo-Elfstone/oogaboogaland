@@ -23,7 +23,7 @@ do not add network code before it exists. Visitor-facing controls are in the REA
 - Never run git commands. The maintainer commits. No branches, stashes, or `.gitignore`
   changes unless asked.
 - Vanilla JavaScript only: no frameworks, TypeScript, bundler, npm dependencies,
-  external scripts or fonts. `package.json` exists only for `npm test` and `npm run build`.
+  external scripts or fonts. `package.json` exists only for the build and test scripts.
 - Keep the content policy strict. `src/index.html` allows `self` scripts and styles and
   nothing else; the build pins inline blocks by hash. Never add `unsafe-inline`,
   `unsafe-eval`, or a remote origin.
@@ -79,16 +79,21 @@ every scene has registered on `BL.scenes`.
 | `terrain.js` | `BL.terrain` | voxel grid, greedy meshing, the island: `heightAt`, `surfaceAt`, `onLand`, `isPath`, mouths |
 | `hub-models.js` | `BL.hubModels` | cached hub props: cave rim, gate, shelves, sign, lantern, trees, bushes, grass, rocks, barrels, torches, fire pit, clouds, dock, critter bodies |
 | `jumbotron-data.js`, `jumbotron.js` | `BL.jumbotronData`, `BL.jumbotron` | baked contributor statistics and the hub board: cached cabinet, bitmap views, bounded screen geometry replaced and released on refresh; no runtime requests |
-| `caves.js` | `BL.caves` | the seven cave slots (clock position, status, scene, name) and the gate |
-| `contributors.js` | `BL.contributors` | roster snapshot, state by commit age, hashed traits, `LIKENESS` |
+| `caves.js` | `BL.caves` | the eight cave slots (clock position, status, scene, name, repository) and the gate |
+| `contributors.js` | `BL.contributors` | ten-member roster, bounded repository activity snapshots, working/chilling/sleeping state, active solo roster, hashed traits, `LIKENESS` |
 | `donations.js` | `BL.donations` | donation request, simulator, event contract, `sanitize` |
+| `weapon-targets.js` | `BL.weaponTargets` | cached stable-sort triangle BVHs, exact weapon rays and swept melee contacts; nearest contact is independent of BVH traversal order |
+| `character-visibility.js` | `BL.characterVisibility` | shared geometry bakes and per-frame visibility/anchor scratch for partly visible characters |
+| `cursor.js` | `BL.cursor` | virtual cursor, pointer-lock handoff and smooth aim-entry cursor motion |
+| `mirror-ripples.js`, `mirror-body.js`, `mirror-damage.js` | `BL.mirrorRipples`, `BL.mirrorBody`, `BL.mirrorDamage` | bounded impact waves and tracked-object contact atlas; initial cracks, per-panel health, shared-reflection falling panels and two-phase healing; full shattering lasts for the session; remaining glass is shared by rendering and weapon queries |
+| `breakables.js` | `BL.breakables` | capped destructible prop registry, reusable loot pickups, delayed safe respawns and disposal |
 | `interact.js` | `BL.interact` | pointer gestures, ray picking, drag, long-press, double tap |
 | `controls.js` | `BL.controls` | held keys, two on-screen sticks, a hold button and the both-mouse-buttons chord on the canvas, folded into one axes object per frame |
 | `pilot.js` | `BL.pilot` | the visitor's view of any scene: orbit camera and presets, free flight, third person over a caveman, act button and Space (the jetpack throttle while one is worn) |
 | `game.js` | `BL.game` | loot tiers, deterministic loot, inventory, localStorage, `formatLarge` |
 | `hud.js` | `BL.hud` | DOM panel: roster, meter, feed dialog, locker, toasts, tooltip, `renderIcon` |
 | `fx.js` | `BL.fx` | particle pool and bursts, speech bubbles, zzz marks, ticker, overlay drawing |
-| `crew.js` | `BL.crew` | cavemen from the roster: states, fan slots, walk / eat / sleep / cheer / build, strolls, the rush to fresh bananas, the driven caveman and jetpack flight, swag, pokes |
+| `crew.js` | `BL.crew` | cavemen from the roster: activity and presence, repository work trips, weapons and magazines, pile reloading, sleep, grounded cheers, strolls, possession and jetpack flight, swag, pokes |
 | `pile.js` | `BL.pile` | inflating yellow-backed surface layer through 302, then the layered banana shell over a growing mound; drop-in, hatch, `MAX_BANANAS`; level on the shared `world` |
 | `crates.js` | `BL.crates` | loot crates: landing ring, spawn, open, remove |
 | `critters.js` | `BL.critters` | instanced butterflies by day, fireflies and embers by night, populations by phase and tier, bursts |
@@ -97,7 +102,7 @@ every scene has registered on `BL.scenes`.
 | `drop-models.js` | `BL.dropModels` | cached drop props: the roof plane (body, propeller node, shared kart wheels), the windsock, the unit hoop, the canopy with its lines, the pack, the target, the wind streak; `roofSpot` places the plane over a mouth's room |
 | `race-models.js` | `BL.raceModels` | cached rally props: Rock Kart and Dino mounts, gantry and lamps, boost pad, item crate, rock, peel, boulder, spectators, banners, torch stands, and the themed decor (palms, lagoon rocks, lava rocks, obsidian, bones, pines, crystals, ice spikes, snow rocks, buoys) |
 | `race-track.js` | `BL.raceTrack` | `TRACKS` and `THEMES`; `build` turns a closed Catmull-Rom spline into a road ribbon with curbs, walls and lips before gaps, a terrain skirt in chunks, decor baked per sector, spectators, torches, checkpoints, the grid, item spawns and the minimap; `nearest`, `project`, `heightAt`, `surfaceAt`, `roadY` |
-| `racers.js` | `BL.racers` | the seven contributors as racers on a mount (`MOUNTS`): a fixed-step arcade controller (throttle, steer, drift charge and tiered boost, hop, launches and landings, walls, falls, hazards, respawn), racer pushes, checkpoints, laps, ranks, rubber band, the AI driver, mount animation |
+| `racers.js` | `BL.racers` | the active contributors as racers on a mount (`MOUNTS`): a fixed-step arcade controller (throttle, steer, drift charge and tiered boost, hop, launches and landings, walls, falls, hazards, respawn), racer pushes, checkpoints, laps, ranks, rubber band, the AI driver, mount animation |
 | `race-items.js` | `BL.raceItems` | fixed pools: banana pickups and the turbo meter, item crates, boost pads, thrown rocks, dropped peels, boulders, skid marks in a ring buffer; `use` |
 | `race-hud.js` | `BL.raceHud` | the garage board, the in-race strip, countdown and notices, results, pause, minimap and speed lines on the overlay |
 | `race-audio.js` | `BL.raceAudio` | procedural sound: one `AudioContext` opened on the first real gesture, a fixed pool of eight pre-started oscillator voices gated by gain envelopes, one looped noise buffer behind wind, drift scrub and crowd filters, a three-speed engine (first gear pulls from idle, later gears drop in at half revs and wind to a limiter, two cruise shifts drop the note flat out, a held throttle blips it in place during the countdown) or a growl pitched by speed, footfalls on foot; `cues`, `update`, `quiet`, `setMuted`, `dispose` |
@@ -136,9 +141,12 @@ pause, `game`, `world`, the donation subscription, `BL.scenes`, `?scene=` routin
 transitions, the `[data-scene]` HUD sections, `__ooga`, and `destroy` on pagehide. A
 scene builds its root, camera, input, HUD and systems in `enter` and drops them in `leave`.
 
-`world` is `{ level, pilot, jetpack }`: the shared banana level, the handle of the
+`world` starts with `{ level, pilot, jetpack, magazine, mirrorBroken }`: the shared banana level, the handle of the
 Ooga driven into a launcher (the drop reads and clears it in `enter`), and jetpack ownership
-and fuel. The delivery system can also attach `delivery`. Keep the reset in the suite's
+and fuel. `mirrorBroken` preserves a shattered mirror across scene visits until page reload.
+`magazine` holds the pending debug grant and carrier; `crew` attaches a
+`weapons` Map with per-contributor ammo, up to two spares and selected weapon. The
+delivery system can also attach `delivery`. Keep the reset in the suite's
 `reenterHub` synchronized with every persistent field. With `game` it is the
 only gameplay state that crosses a transition.
 
@@ -178,19 +186,26 @@ measure exactly that.
 `hud`, `applyAllSwag`, `renderLocker`, `demoTip`, `refreshStates`, `trimPool`, `shown`,
 `island`, `mouths`, `camera`, `crew`, `controls`, `pilot`, `renderOpts`, `lamps`, `fireSeats`,
 `critters`, `daylight`, `setHour`, `track`, `racers`, `items`, `race`, `launchers`, `drop`,
-`diver`, `plane`, `course` and `jumbotron`; a scene fills in what it has.
+`diver`, `plane`, `course`, `jumbotron`, `orbit`, `flight` and `site`; a scene fills in what it has.
+The hub also exposes `headquarters`, `cameraCave`, `props`, `altar`, `path`, `scenery`,
+`jetpack`, `magazine`, `mirrorCave`, `matrixCave`, `matrixGate`, `entranceLights` and
+`lighting`. Per-character weapon and spare state is on `crew.cavemen` entries;
+`magazine` is the visit's pickup facade, not a shared character inventory.
 
 ## Engine patterns to keep
 
 - **Allocation-free frame loop.** Nothing in `frame`, `updateCaveman`, `drawOverlay`, or
   the renderers allocates per frame. Hoist literals, write into scratch objects
   (`setVec`, `SCREEN`, `MUZZLE`), reuse arrays.
+  Put director simulation, input and overlay work in `step`, shared by `frame` and
+  debug `advance`, so fixed-step checks exercise the displayed-frame behavior.
 - **Pool and cap.** Particles, bullets, bubbles, sleep marks, crates, inventory and the
   pile have fixed capacities. Anything spawned repeatedly needs a pool or a cap; prove it
   with the soak pattern if in doubt.
 - **Instance by geometry.** Nodes sharing a geometry object are one draw call. Reuse
   geometry; cache builders with `cached()` or a `Map` keyed by parameters, as `models.js`
-  does.
+  does. Cached character clones share immutable geometry but own their nodes,
+  mutable quaternions and arrays of parts; remap every array member to the clone.
 - **Shared builders and index sorts.** Use `BL.models.makeVox`, `voxCoords` and
   `voxelGeometry` for voxel props. Bounding-volume indexes use `BL.math.sortByKey`
   with one `sortScratch` allocation during construction, rather than comparator sorts.
@@ -220,8 +235,8 @@ measure exactly that.
 - **The clock is the hub's.** `daylight.sample` writes the hub's `RENDER_OPTS` in place every
   frame; phases (dawn, morning, noon, dusk, night, midnight) drive lamps, critters, quotes
   and toasts. The lab is inside the rock and passes no sky. The drop samples the same clock
-  parameters so its sky matches the island it left. The roster's sleep and eat states
-  come from commit age, never from the clock.
+  parameters so its sky matches the island it left. The roster's working, chilling
+  and sleeping states come from contribution age, never from the solar clock.
 - **Free rotation is a quaternion.** Bodies that turn about all three axes (the plane, the
   diver) carry `node.quaternion` and integrate a world-frame angular velocity with
   `quat.integrate`; Euler `rotation` stays for everything that only yaws or swings. The
@@ -255,8 +270,11 @@ so a full item never appears as a crate, and `addItem` refuses the tenth.
 
 **A caveman behaviour.** Add state to the `cave` object created in `crew.js`, drive it in
 `updateCaveman`, reset it in `resetPose` if it changes limbs. One-off arm animations must
-settle back; see cheer and catch. A working day is `cave.act.kind`: `eat` or `rush` at
-the fan slot, `wander` to a spot, `idle` there, `player` under the visitor. Strolls run
+settle back; see cheer and catch. Repository workers use `cave.work.phase`:
+`outbound`, `station`, `shoot`, `return`, then `reload` at the pile. `act.kind` still
+tracks legacy meals/builds, wandering, idling and player control. A donation pauses
+worker movement, bursts and reload timers while the free hand cheers; keep its work
+phase, ammunition and rifle grip intact so work resumes afterward. Strolls run
 only when the scene passes `wanderSpot` (the lab does not); `walkToSlot` leaves a
 stroller alone unless forced, which `rush` does. Walkers stand on `groundAt`, so a scene
 with terrain passes its `heightAt`. The hub supplies `bedRoute` and `bedRouteClear`
@@ -303,7 +321,7 @@ point pushed onto `launchers`, a `presets.drop` view and `enterLaunch` (the cave
 another view, then `go("drop")`). A tap, Space in reach and a driven Ooga within
 `LAUNCH_REACH` at roof height all enter. Claim its footprint so the scatter keeps off it.
 
-**A cave.** The seven mouths exist in the terrain, one per slot in `caves.js`. Opening
+**A cave.** The eight cave mouths exist in the terrain, one per slot in `caves.js`. Opening
 one is one line there (`scene`, `status: "open"`, `name`) plus a scene module registering
 `BL.scenes.<scene>`. An open mouth gets shelves, torches, a label, a camera preset and a
 tap that dollies in and calls `go(slot.scene)`; `"sleeping"` gets a bedroll and zzz;
@@ -342,7 +360,15 @@ desktop and docks to the bottom under 720px.
 
 ## Debug keys and flags
 
-Keys: B add 100 test bananas, L legendary tip, P fill the pile, 1 to 9 force a contributor to eating,
+Keys: B add 100 test bananas, L legendary tip, P fill the pile. While controlling an Ooga,
+1 selects the primary melee weapon and 2 selects the AK; neither changes the view.
+Scroll steps between carry, shoulder and first person; right-click enters shoulder view
+from carry or focuses aim in shooter view. Left-click attacks only with the cursor locked
+(the first click with a visible cursor captures it). R swaps to the fullest spare magazine,
+even at equal ammo. Space starts pile loading in range, then jumps or powers the jetpack
+while loading continues within horizontal and vertical reach. G toggles the AK and V attacks.
+Other number keys retain the debug contributor action when not consumed by weapon selection.
+
 Shift+Delete clear the locker (loot on), Shift+R reset everything. Keys are ignored while typing in
 a text field and on auto-repeat. The hub hides one jetpack under a random meadow prop each
 load; its `highlight` pulses after `HINT_AFTER` seconds of scene time, and a driven
@@ -387,6 +413,55 @@ pinned hour when both are given). `__ooga.daylight` exposes the bounded celestia
 `pile.MAX_BANANAS` (ten million). Loot ships off behind `LOOT_DEFAULT` in `director.js`;
 `?debug=1&loot=1` turns it on for a page, which is how the loot checks run.
 
+Debug equipment and fixtures: `&mag=1` or `&mag=2` grants full spare magazines on
+first control; falling off the island removes spares. `&solo=1&character=<handle>`
+constructs only that Ooga, and solo without a valid handle constructs none, including
+across scenes. `&weapon=1|2` holds the primary or secondary on hub/direct-lab startup,
+selecting a default actor when `character` is omitted. `&ammo=N` initializes only that
+actor's magazine (integer, clamped 0–30); `&ammo=unlimited` preserves finite magazine
+and spare counts while bypassing firing consumption and empty-magazine stops. The HUD
+shows infinity, swaps still conserve physical rounds, and catch-up shots remain capped.
+Both flags apply only at startup; existing per-character weapon state survives visits.
+The hub position readout is on by default with debug; `&pos=0` hides it. Clicking copies
+a `pose=` URL with exact character/camera transforms, mode and equipment state,
+held until movement/look/zoom/action input. Manual setup accepts `pos`, `body` and
+`head` as three comma-separated values (rotation angles in radians), plus `camera`,
+`look` and `mode=carry|shoulder|first-person|orbit|eye-level`. The readout, manual pose
+flags and copied replay are hub-only; weapon/ammo flags also support direct lab startup. `&character=`,
+`&firstperson=1`, `&jetpack=1` and `&view=` are startup fixtures.
+
+Combat uses one damage unit for a default melee swing, 1.5 for a full hold charge and
+0.5 per AK banana. Boxes/barrels/rocks have 1/2.25/4.25 health; vegetation is excluded
+from weapon targets. The mirror's first 20 damage forms all cracks without holes;
+each of its 48 fixed panels then has one health point.
+The derived compatibility maximum is 68, not a shared panel-health pool. AK damage
+of 0.5 takes two hits to break a full panel; default melee damage of 1 breaks it, and
+overflow carries to the nearest next panel. Panel health spans 0–1 and recovers in
+proportion to restored glass area, so center-out geometry scales by the square root
+of health. Each panel heals independently at `2 / 48` health per second, taking 24
+seconds from empty; damaged but unbroken panels heal too. Hits detach glass
+locally, with a capped reflective debris pool that settles flat above its support.
+After three quiet seconds, each missing panel grows from its center to its original
+cracked edges.
+Only after all panels return do cracks seal over the final 1.5 seconds. Crack-only
+damage skips the panel phase. Interrupted repair preserves unhit panels' growth and
+crack contours and clips debris to glass present before the hit. Repair state and
+caches remain bounded and reused.
+Until the mirror is fully shattered, its whole plane keeps the actor's head geometry, first-person
+eye and near-plane corners outside even over missing panels; weapon contacts still work.
+Complete shattering removes that barrier, lasts for the session and releases the outside gate.
+Broken glass must also disable the empty doorway glyph hint and its animation work.
+The room button explicitly opens
+the mirror bars even before full shattering; pressing it out closes them. Outside with
+the button off, living geometry changes material at the physical mirror plane.
+Occupancy or the latched button enables full character glyphs and the island-wide wave.
+Static mirror-room floor, ceiling, wall and path-tile faces are permanently glyphed
+behind that same finite plane, including crossing terrain/rim faces; exterior fragments and other caves
+retain their normal materials when the world wave is off.
+New event geometry and pickup nodes must stay capped and participate in liveGeometry
+and scene disposal. Contributor activity is local snapshot data (`docs/activity-contract.md`);
+working, chilling and sleeping are separate from human control presence.
+
 ## Testing
 
 **`test/` contains exactly two files: `run.mjs` and `browser.mjs`. Never add a third.**
@@ -417,6 +492,8 @@ guaranteed even when nothing is wrong. A session that hits a driver error (`Chro
 failed runs once more on a fresh Chrome and prints `RETRY`; only a second failure is
 recorded, and assertion failures are never retried. A targeted run has none of that
 noise, which is exactly why it is the better signal about your change.
+Catch only expected page conditions inside checks; rethrow every error tagged
+`driver` so the session retry can replace a failed Chrome.
 
 **Frame-rate dependence is a real failure mode.** The page is vsync-locked, so a check that
 counts rendered frames is measuring the host display. One movement check asserted easing
@@ -450,6 +527,9 @@ hub checks open the page without it and hold keys through `hold`. New behaviour 
 against ~2.4 s for a page build. Diff the loop's records against page builds before
 switching; a probe whose results then differ keeps its page builds. A failure prints `FAIL` with its detail, so
 `npm test 2>&1 | grep -E '^FAIL|checks passed'` is enough to read a result.
+Share pages with `fold` only for read-only probes, naming the fold `a + b + c` so
+each case stays discoverable with `ONLY`. Frame-rate tasks use `serial: true` in
+the perf lane and run without other browser loads.
 Use crew state overrides and `refreshStates` to isolate other actors in movement
 fixtures. Sleeping-pose fitting requires visible body geometry.
 Walking speed checks exclude motion inherited from a confirmed standing support while

@@ -256,6 +256,12 @@
     colorFn: (t) => t < 0.08 || t > 0.92 ? "#5a3a1a" : t < 0.2 || t > 0.8 ? "#c9b23a" : "#f5c542"
   }));
   const banana = () => createNode({ geometry: bananaGeometry() });
+  const magazineBananaGeometry = cached(() => {
+    const source = bananaGeometry();
+    // Crop the hidden ends of each oversized indicator so a lower row cannot
+    // stick past the magazine's narrower curve above it.
+    return { ...source, verts: source.verts.map((v, i) => i % 3 === 0 ? Math.max(-0.3, Math.min(0.3, v)) : i % 3 === 1 ? Math.min(0.25, v) : v) };
+  });
   // A centered copy for the pile skin. It has the full depth and dimensions of a
   // carried banana, while its origin lets it sit evenly across the mound surface.
   const bananaTileNearGeometry = cached(() => tube({
@@ -367,12 +373,148 @@
   const GOLD_NEWS_PALETTE = [hexToRgb("#e0b53a"), hexToRgb("#c99a2e"), hexToRgb("#6b5416"), hexToRgb("#f0c95a")];
   const GUN_PALETTE = { body: "#3a3a3a", stock: "#5c4425", barrel: "#2b2b2b", emissive: 0 };
   const GOLD_GUN_PALETTE = { body: "#e0b53a", stock: "#5c4425", barrel: "#f0c95a", emissive: 0.25 };
-  const gunGeometry = (h, pal) => merge(
-    box({ w: 0.11 * h, h: 0.13 * h, d: 0.55 * h, color: pal.body, emissive: pal.emissive, offset: { z: 0.02 * h } }),
-    box({ w: 0.09 * h, h: 0.12 * h, d: 0.24 * h, color: pal.stock, offset: { z: -0.32 * h, y: 0.01 * h } }),
-    box({ w: 0.05 * h, h: 0.05 * h, d: 0.36 * h, color: pal.barrel, emissive: pal.emissive, offset: { z: 0.46 * h, y: 0.03 * h } }),
-    box({ w: 0.06 * h, h: 0.14 * h, d: 0.08 * h, color: pal.stock, offset: { y: -0.12 * h, z: -0.08 * h } })
-  );
+  const beveledStone = (outline, center, bodyDepth, edgeDepth, color, chipColor) => {
+    const geo = geometry(), innerFront = [], innerBack = [], outerFront = [], outerBack = [];
+    const bodyHalf = bodyDepth / 2, edgeHalf = edgeDepth / 2;
+    // Both outlines wind counterclockwise around a center inside every facet.
+    // The thick shoulder ends well before the cutting edge: no flat extrusion
+    // lies underneath the bevel and hides its taper when viewed from the side.
+    for (let i = 0; i < outline.length; i++) {
+      const point = outline[i], inset = 0.68 + (i % 3) * 0.025;
+      const x = center[0] + (point[0] - center[0]) * inset;
+      const y = center[1] + (point[1] - center[1]) * inset;
+      const shoulder = bodyHalf * (0.84 + (i % 4) * 0.04);
+      innerFront.push(pushVert(geo, x, y, shoulder));
+      innerBack.push(pushVert(geo, x, y, -shoulder));
+      outerFront.push(pushVert(geo, point[0], point[1], edgeHalf));
+      outerBack.push(pushVert(geo, point[0], point[1], -edgeHalf));
+    }
+    const front = pushVert(geo, center[0], center[1], bodyHalf);
+    const back = pushVert(geo, center[0], center[1], -bodyHalf);
+    const stone = hexToRgb(color), chip = hexToRgb(chipColor);
+    for (let i = 0; i < outline.length; i++) {
+      const next = (i + 1) % outline.length;
+      face(geo, [front, innerFront[i], innerFront[next]], stone);
+      face(geo, [back, innerBack[next], innerBack[i]], stone);
+      // Separate triangles preserve the changing angle of each chipped facet
+      // in both renderers instead of assigning one normal to a twisted quad.
+      face(geo, [innerFront[i], outerFront[i], outerFront[next]], i % 3 ? chip : stone);
+      face(geo, [innerFront[i], outerFront[next], innerFront[next]], i % 3 ? stone : chip);
+      face(geo, [innerBack[i], outerBack[next], outerBack[i]], i % 3 ? chip : stone);
+      face(geo, [innerBack[i], innerBack[next], outerBack[next]], i % 3 ? stone : chip);
+      face(geo, [outerFront[i], outerBack[i], outerBack[next], outerFront[next]], i % 3 ? chip : stone);
+    }
+    return geo;
+  };
+  const stoneAxeGeometry = (h, gold = false) => {
+    const u = h / 16, pieces = [];
+    const wood = "#4a2b16", woodShade = "#2f1a0d", woodLight = "#68401f";
+    const stone = gold ? "#b28b35" : "#68635a";
+    const stoneChip = gold ? "#d1ad56" : "#918a7c";
+    const profile = (points) => points.map(([x, y]) => [x * 0.84 * u, y * u]);
+    // One slightly bowed hardwood haft, spanning the same twenty voxels as
+    // timechainb's staff from its butt to the point above the axe head.
+    pieces.push(
+      tube({
+        rings: 12, segments: 8,
+        path: (t) => ({ x: Math.sin(t * Math.PI) * 0.7 * u, y: (-3 + t * 16.6) * u, z: Math.sin(t * Math.PI * 2) * 0.08 * u }),
+        radius: (t) => (1.08 + 0.16 * Math.cos(t * Math.PI * 2) + 0.16 * t) * u,
+        colorFn: (t) => t < 0.22 ? woodShade : t > 0.72 ? wood : woodLight
+      }),
+      lathe({ profile: [[0, -3 * u], [1.45 * u, -2.85 * u], [1.3 * u, -2.3 * u], [1.15 * u, -2.05 * u]], segments: 8, color: woodShade })
+    );
+    // A single fieldstone head tapers from its thick center to a narrow rim on
+    // both the rounded left blade and pointed right blade. Angled chipped faces
+    // form the stone itself, including its irregular underside.
+    pieces.push(
+      beveledStone(profile([[0, 14.1], [-2.3, 14.75], [-4.8, 14.95], [-6.7, 14.3], [-7.65, 13.05], [-7.85, 11.65], [-7.25, 10.4], [-6.1, 9.55], [-4.4, 9.3], [-2.75, 9.85], [-0.95, 10.75], [0.6, 11.35], [2.25, 11.55], [3.75, 11.25], [4.9, 11.7], [6.4, 12.5], [7.25, 13.25], [6, 14], [4.25, 14.5], [2.35, 14.65]]),
+        [0, 12.7 * u], 2.3 * u, 0.12 * u, stone, stoneChip)
+    );
+    // A separate matching stone point is wedged vertically above the head;
+    // both rims share their adjacent stone facets' color without a dark seam.
+    pieces.push(
+      beveledStone(profile([[-1.25, 13.7], [1.2, 14.05], [0.45, 15.95], [-0.3, 17], [-0.9, 15.15]]),
+        [0, 14.9 * u], 2.15 * u, 0.1 * u, stone, stoneChip)
+    );
+    const axe = merge(...pieces);
+    axe.stoneAxe = true;
+    axe.weaponLength = 20 * u;
+    return axe;
+  };
+  const appendMagazineShell = (pieces, h, pal) => {
+    // Thin curved shell, with broad side cheeks framing a narrow window. The
+    // large banana marks overlap inside it; the casing hides their cropped tips.
+    for (let i = 0; i < 6; i++) {
+      const y = (-0.09 - i * 0.035) * h, z = (0.045 + i * i * 0.0018) * h;
+      for (const end of [-1, 1]) {
+        pieces.push(box({ w: 0.065 * h, h: 0.038 * h, d: 0.02 * h, color: pal.body, offset: { y, z: z + end * 0.055 * h } }));
+        for (const side of [-1, 1]) pieces.push(box({ w: 0.007 * h, h: 0.038 * h, d: 0.04 * h, color: pal.body, offset: { x: side * 0.029 * h, y, z: z + end * 0.045 * h } }));
+      }
+      if (!i || i === 5) pieces.push(box({ w: 0.065 * h, h: 0.021 * h, d: 0.13 * h, color: pal.body, offset: { y: y + (i ? -0.0195 : 0.0195) * h, z } }));
+    }
+  };
+  const spareMagazineShell = cached(() => {
+    const pieces = [];
+    appendMagazineShell(pieces, 1, GUN_PALETTE);
+    const geo = merge(...pieces);
+    for (let i = 0; i < geo.verts.length; i += 3) { geo.verts[i + 1] += 0.1825; geo.verts[i + 2] -= 0.0675; }
+    return geo;
+  });
+  const spareMagazine = () => {
+    const node = createNode({ geometry: spareMagazineShell() }), bananas = [];
+    for (let i = 0; i < 10; i++) {
+      const curve = i * 5 / 9;
+      const round = createNode({ geometry: magazineBananaGeometry(), position: { x: 0, y: 0.0762 - i * 0.02044, z: -0.0225 + curve * curve * 0.0018 },
+        rotation: { x: 0, y: Math.PI / 2, z: 0 }, scale: { x: 0.135, y: 0.175, z: 0.11 } });
+      bananas.push(round); addChild(node, round);
+    }
+    let shown = 30;
+    const setAmmo = (ammo) => {
+      if (ammo === shown) return;
+      shown = ammo;
+      for (let i = 0; i < bananas.length; i++) {
+        const fill = Math.max(0, Math.min(1, (ammo - i * 3) / 3));
+        bananas[i].visible = fill > 0;
+        bananas[i].scale.y = 0.175 * fill;
+      }
+    };
+    return { node, bananas, setAmmo };
+  };
+  const gunGeometry = (h, pal) => {
+    const stock = box({ w: 0.085 * h, h: 0.13 * h, d: 0.28 * h, color: pal.stock, offset: { z: -0.37 * h } });
+    for (let i = 0; i < stock.verts.length; i += 3) {
+      const front = (stock.verts[i + 2] / h + 0.51) / 0.28;
+      stock.verts[i] *= 1 - front * 0.12;
+      stock.verts[i + 1] = stock.verts[i + 1] * (1 - front * 0.35) + (-0.04 + front * 0.025) * h;
+    }
+    // The upper gas tube meets the front of the wood and slopes into the barrel.
+    const gasBlock = box({ w: 0.029 * h, h: 0.029 * h, d: Math.hypot(0.06, 0.05) * h, color: pal.barrel, emissive: pal.emissive });
+    const angle = Math.atan2(0.05, 0.06), cos = Math.cos(angle), sin = Math.sin(angle);
+    for (let i = 0; i < gasBlock.verts.length; i += 3) {
+      const y = gasBlock.verts[i + 1], z = gasBlock.verts[i + 2];
+      gasBlock.verts[i + 1] = y * cos - z * sin - 0.005 * h;
+      gasBlock.verts[i + 2] = y * sin + z * cos + 0.46 * h;
+    }
+    const pieces = [
+      // Long receiver, tapered wooden stock, low barrel and raised gas tube.
+      box({ w: 0.11 * h, h: 0.13 * h, d: 0.4 * h, color: pal.body, emissive: pal.emissive, offset: { z: -0.035 * h } }),
+      stock,
+      box({ w: 0.09 * h, h: 0.14 * h, d: 0.02 * h, color: pal.barrel, offset: { z: -0.516 * h, y: -0.04 * h } }),
+      box({ w: 0.09 * h, h: 0.095 * h, d: 0.22 * h, color: pal.stock, offset: { z: 0.24 * h } }),
+      box({ w: 0.035 * h, h: 0.035 * h, d: 0.38 * h, color: pal.barrel, emissive: pal.emissive, offset: { z: 0.47 * h, y: -0.03 * h } }),
+      box({ w: 0.026 * h, h: 0.026 * h, d: 0.095 * h, color: pal.barrel, emissive: pal.emissive, offset: { z: 0.3925 * h, y: 0.02 * h } }),
+      gasBlock,
+      box({ w: 0.03 * h, h: 0.085 * h, d: 0.03 * h, color: pal.barrel, offset: { z: 0.59 * h, y: 0.0075 * h } }),
+      box({ w: 0.065 * h, h: 0.18 * h, d: 0.066 * h, color: pal.stock, offset: { y: -0.14 * h, z: -0.184 * h } }),
+      // A hollow guard ends behind the magazine, leaving a visible gap.
+      box({ w: 0.045 * h, h: 0.012 * h, d: 0.106 * h, color: pal.body, offset: { y: -0.13 * h, z: -0.098 * h } }),
+      box({ w: 0.045 * h, h: 0.077 * h, d: 0.012 * h, color: pal.body, offset: { y: -0.0975 * h, z: -0.045 * h } }),
+      box({ w: 0.045 * h, h: 0.077 * h, d: 0.012 * h, color: pal.body, offset: { y: -0.0975 * h, z: -0.151 * h } }),
+      box({ w: 0.014 * h, h: 0.045 * h, d: 0.012 * h, color: pal.barrel, offset: { y: -0.083 * h, z: -0.112 * h } })
+    ];
+    appendMagazineShell(pieces, h, pal);
+    return merge(...pieces);
+  };
   // Re-axis a lathe to +Z, reversing the winding
   const forward = (geo, { x = 0, y = 0, z = 0 } = {}) => {
     const out = geometry();
@@ -574,15 +716,16 @@
     const parts = {};
     const legH = 5 * u;
     const root = createNode({ position: { x: 0, y: legH, z: 0 } });
-    const legVox = () => {
+    const legVox = (side) => {
       const v = makeVox();
       v.fill(0, 3, 2, 4, 0, 3, skinJ);
       v.fill(0, 3, 0, 1, 0, 5, skinJ);
-      v.set(0, 0, 6, P.skin);
-      v.set(2, 0, 6, P.skin);
+      // Mirror the toes so each pair starts at the foot's inner edge.
+      v.set(side < 0 ? 3 : 0, 0, 6, P.skin);
+      v.set(side < 0 ? 1 : 2, 0, 6, P.skin);
       return v;
     };
-    const leg = (side) => createNode({ position: { x: side * 2.5 * u, y: 0, z: 0 }, geometry: vg(legVox(), { x: -2 * u, y: -5 * u, z: -2.5 * u }) });
+    const leg = (side) => createNode({ position: { x: side * 2.5 * u, y: 0, z: 0 }, geometry: vg(legVox(side), { x: -2 * u, y: -5 * u, z: -2.5 * u }) });
     parts.legL = leg(-1);
     parts.legR = leg(1);
     const torsoVox = () => {
@@ -632,16 +775,26 @@
         v.fill(-1, 3, 8, 10, -1, 3, skinJ);
       }
       v.fill(-1, 3, 0, 1, -1, 3, skinJ);
-      v.set(0, 1, 4, P.skin);
-      v.set(2, 1, 4, P.skin);
       return v;
     };
+    // A fixed pair sits on one square palm side and rotates with the arm.
+    const fingerVox = makeVox();
+    fingerVox.set(0, 1, 4, P.skin);
+    fingerVox.set(2, 1, 4, P.skin);
+    const fingerGeometry = vg(fingerVox, { x: -1.5 * u, y: -u, z: -1.5 * u });
     const armX = 0.29 * h * belly + 0.09 * h;
-    const arm = (side) => createNode({
-      position: { x: side * armX, y: 0.46 * h, z: 0 },
-      rotation: { x: -0.2, y: 0, z: side * 0.1 },
-      geometry: vg(armVox(), { x: -1.5 * u, y: -11 * u, z: -1.5 * u })
-    });
+    const arm = (side) => {
+      const node = createNode({
+        position: { x: side * armX, y: 0.46 * h, z: 0 },
+        rotation: { x: -0.2, y: 0, z: side * 0.1 },
+        geometry: vg(armVox(), { x: -1.5 * u, y: -11 * u, z: -1.5 * u })
+      });
+      const fingers = createNode({ position: { x: 0, y: -10 * u, z: 0 }, geometry: fingerGeometry, quaternion: BL.math.quat.create() });
+      BL.math.quat.fromEuler(fingers.quaternion, 0, -side * Math.PI / 2, 0);
+      parts[side < 0 ? "fingersL" : "fingersR"] = fingers;
+      addChild(node, fingers);
+      return node;
+    };
     parts.armL = arm(-1);
     parts.armR = arm(1);
     // Two finishes of one model, default and gold
@@ -650,13 +803,14 @@
     const clubPalette = traits.newspaper ? NEWS_PALETTE : CLUB_PALETTE;
     const goldClubPalette = traits.newspaper ? GOLD_NEWS_PALETTE : GOLD_CLUB_PALETTE;
     const skins = {
-      club: { default: traits.energyCan ? energyCanGeometry(h) : voxelGeometry(clubV, { unit: u, palette: clubPalette, origin: clubOrigin }), gold: traits.energyCan ? energyCanGeometry(h, true) : voxelGeometry(clubV, { unit: u, palette: goldClubPalette, origin: clubOrigin }) },
+      club: traits.stoneAxe ? { default: stoneAxeGeometry(h), gold: stoneAxeGeometry(h, true) }
+        : { default: traits.energyCan ? energyCanGeometry(h) : voxelGeometry(clubV, { unit: u, palette: clubPalette, origin: clubOrigin }), gold: traits.energyCan ? energyCanGeometry(h, true) : voxelGeometry(clubV, { unit: u, palette: goldClubPalette, origin: clubOrigin }) },
       gun: { default: gunGeometry(h, GUN_PALETTE), gold: gunGeometry(h, GOLD_GUN_PALETTE) }
     };
     // The staff stands upright in the grip; the club hangs forward
     parts.club = createNode({
       position: { x: 0, y: -0.62 * h, z: 0.08 * h },
-      rotation: { x: traits.energyCan ? 0 : traits.anunnaki || traits.newspaper ? 0.2 : 0.95, y: 0, z: traits.newspaper ? 0.1 : 0 },
+      rotation: { x: traits.energyCan ? 0 : traits.anunnaki || traits.newspaper ? 0.2 : traits.stoneAxe ? 0.24 : 0.95, y: 0, z: traits.newspaper ? 0.1 : 0 },
       geometry: skins.club.default
     });
     addChild(parts.armL, parts.club);
@@ -668,10 +822,19 @@
       visible: false
     });
     addChild(parts.armR, parts.snack);
-    parts.gun = createNode({ position: { x: 0, y: -0.6 * h, z: 0.17 * h }, rotation: { x: Math.PI / 2, y: 0, z: 0 }, visible: false });
+    parts.gun = createNode({ quaternion: BL.math.quat.create(), visible: false });
+    parts.gun.ammoReloading = false;
     parts.gunBody = createNode({ geometry: skins.gun.default });
     addChild(parts.gun, parts.gunBody);
-    addChild(parts.armR, parts.gun);
+    parts.gunBananas = [];
+    for (let i = 0; i < 9; i++) {
+      const curve = i * 5 / 8;
+      const round = createNode({ geometry: magazineBananaGeometry(), position: { x: 0, y: (-0.1063 - i * 0.023) * h, z: (0.045 + curve * curve * 0.0018) * h }, rotation: { x: 0, y: Math.PI / 2, z: 0 }, scale: { x: 0.135 * h, y: 0.175 * h, z: 0.11 * h } });
+      round.ammoPopAt = -Infinity;
+      parts.gunBananas.push(round);
+      addChild(parts.gun, round);
+    }
+    addChild(root, parts.gun);
     if (traits.stethoscope) addChild(root, createNode({ geometry: stethoscopeGeometry(h) }));
     if (traits.cigarette) addChild(parts.armR, createNode({ position: { x: 0, y: -0.62 * h, z: 0.16 * h }, geometry: cigaretteGeometry(h) }));
     const headVox = makeVox();
@@ -879,7 +1042,7 @@
       addChild(root, parts.lion);
     }
     if (traits.skater) addChild(root, createNode({ position: { x: 0, y: 0.28 * h, z: -0.35 * h }, rotation: { x: 0, y: 0, z: 0.4 }, geometry: skateboardGeometry(h) }));
-    return { root, parts, traits, headOffset: 1.1 * h, headOpen, headClosed, skins };
+    return { root, parts, traits, headOffset: 1.1 * h, headOpen, headClosed, skins, gunHeadBounds: BL.scene.boundsOf(headOpen) };
   };
   // Traits hash from the handle, so one handle always builds the same voxels.
   // Each caller gets fresh nodes over one shared set of geometry objects: one
@@ -888,6 +1051,7 @@
   const cavemen = new Map();
   const cloneNode = (node, copies) => {
     const copy = createNode({ ...node, position: { ...node.position }, rotation: { ...node.rotation }, scale: { ...node.scale }, parent: null, children: [], world: new Float32Array(node.world), local: new Float32Array(node.local) });
+    if (node.quaternion) copy.quaternion = new Float32Array(node.quaternion);
     copies.set(node, copy);
     for (const child of node.children) addChild(copy, cloneNode(child, copies));
     return copy;
@@ -896,9 +1060,12 @@
     let template = cavemen.get(traits.name);
     if (!template) cavemen.set(traits.name, template = buildCaveman(traits));
     const copies = new Map(), root = cloneNode(template.root, copies), parts = {};
-    for (const key of Object.keys(template.parts)) parts[key] = copies.get(template.parts[key]);
+    for (const key of Object.keys(template.parts)) {
+      const part = template.parts[key];
+      parts[key] = Array.isArray(part) ? part.map((node) => copies.get(node)) : copies.get(part);
+    }
     const skins = { club: { ...template.skins.club }, gun: { ...template.skins.gun } };
-    return { root, parts, traits, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed, skins };
+    return { root, parts, traits, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed, skins, gunHeadBounds: template.gunHeadBounds };
   };
   // A real die, opposite faces summing to seven
   const die = ({ size = 0.3 } = {}) => {
@@ -1289,5 +1456,5 @@
       item.buildNode = () => createNode({ geometry: swagGeo(item.id, item.build) });
     }
   }
-  BL.models = { geometry, pushVert, face, voxCoords, box, panel, lathe, tube, ring, polyline, merge, cached, variants, noShadow, makeVox, voxelGeometry, voxelFaces, banana, bananaGeometry, bananaTileGeometry, bananaPileCoreGeometry, bananaPileRadiusScale, bananaPileHeightOffset, BANANA_AMMO_SCALE, BANANA_PILE_PROFILE, particleGeometry, caveman, labRoom, buildableGeos, crate, dieRotationFor, SWAG, TIER_COLORS };
+  BL.models = { geometry, pushVert, face, voxCoords, box, panel, lathe, tube, ring, polyline, merge, cached, variants, noShadow, makeVox, voxelGeometry, voxelFaces, banana, bananaGeometry, bananaTileGeometry, bananaPileCoreGeometry, bananaPileRadiusScale, bananaPileHeightOffset, BANANA_AMMO_SCALE, BANANA_PILE_PROFILE, particleGeometry, spareMagazine, caveman, labRoom, buildableGeos, crate, dieRotationFor, SWAG, TIER_COLORS };
 })();

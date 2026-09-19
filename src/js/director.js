@@ -1,9 +1,13 @@
 (() => {
   "use strict";
   const { scene, models, donations, glRenderer, canvasRenderer, game: gameMod, pile: pileMod, scenes } = window.BL;
+  // The optional build-time Oogatron snapshot loads before the director.
+  // Activity uses each contributor's timestamp, never the snapshot build time.
+  if (window.BL.jumbotronData) window.BL.contributors.applySnapshot(window.BL.jumbotronData);
   const { clearTweens, tweenCount } = scene;
   const params = new URLSearchParams(location.search);
   const DEBUG = params.has("debug");
+  if (DEBUG) window.BL.contributors.seedDebugActivity();
   // Donation loot crates, the locker tab and worn swag; the suite turns them on with ?debug=1&loot=1
   const LOOT_DEFAULT = false;
   const LOOT_ENABLED = DEBUG && params.has("loot") ? params.get("loot") === "1" : LOOT_DEFAULT;
@@ -53,9 +57,11 @@
   };
   showQuality();
   const game = gameMod.create({ catalog: models.SWAG });
-  // The banana level, visitor-owned jetpack, and Ooga handed from the hub to a
+  // The banana level, equipment ownership, and Ooga handed from the hub to a
   // launched scene persist while scenes exchange their own temporary systems.
-  const world = { level: START_BANANAS, pilot: null, jetpack: { owned: false, fuel: 1 } };
+  const world = { level: START_BANANAS, pilot: null, jetpack: { owned: false, fuel: 1 }, mirrorBroken: false };
+  const debugMagazines = DEBUG ? (params.get("mag") === "2" ? 2 : params.get("mag") === "1" ? 1 : 0) : 0;
+  world.magazine = { owned: debugMagazines > 0, count: debugMagazines, ammo: debugMagazines ? 30 : 0, carrier: null };
 
   // ---------- scenes ----------
   // One active scene owns its root, camera and systems
@@ -180,21 +186,30 @@
   };
 
   // ---------- quality auto-tier ----------
-  const perf = { frames: 0, total: 0, checked: 0 };
+  const perf = { frames: 0, total: 0, elapsed: 0, slow: 0, settleUntil: 0 };
   const QUALITY_ORDER = ["high", "medium", "low"];
-  const autoTier = (frameMs) => {
-    if (renderer.kind !== "webgl2" || perf.checked >= 2) return;
+  const autoTier = (frameMs, intervalMs, now) => {
+    if (renderer.kind !== "webgl2" || renderer.quality === "low") return;
+    // Keep measuring after startup: the pile, effects and camera can all add
+    // load later. Frame cadence also catches GPU work that finishes after JS.
+    // Pauses, background throttling and scene construction are not evidence
+    // that the current rendering tier is too expensive.
+    if (!document.hasFocus() || transition || renderedFrames < 30 || intervalMs > 100 && frameMs < 19 || now < perf.settleUntil) {
+      perf.frames = perf.total = perf.elapsed = perf.slow = 0;
+      return;
+    }
     perf.frames++;
     perf.total += frameMs;
-    if (perf.frames < 120) return;
-    const avg = perf.total / perf.frames;
-    perf.frames = 0;
-    perf.total = 0;
-    perf.checked++;
+    perf.elapsed += intervalMs;
+    if (intervalMs > 22) perf.slow++;
+    if (perf.frames < 120 || perf.elapsed < 2000) return;
+    const overloaded = perf.total / perf.frames > 19 || perf.elapsed / perf.frames > 22 && perf.slow / perf.frames > 0.6;
+    perf.frames = perf.total = perf.elapsed = perf.slow = 0;
     const idx = QUALITY_ORDER.indexOf(renderer.quality);
-    if (avg > 19 && idx < QUALITY_ORDER.length - 1) {
+    if (overloaded && idx < QUALITY_ORDER.length - 1) {
       renderer.setQuality(QUALITY_ORDER[idx + 1]);
       showQuality();
+      perf.settleUntil = now + 6000;
     }
   };
 
@@ -224,7 +239,7 @@
   let raf = 0;
   // One frame of simulation and drawing, shared by the display loop and the
   // debug `advance`, so a stepped frame is exactly a displayed one
-  const step = (dt, now, t0) => {
+  const step = (dt, now, t0, intervalMs = dt * 1e3) => {
     elapsed += dt;
     if (transition) stepTransition(dt);
     sceneTime += dt;
@@ -242,10 +257,10 @@
       location.replace(`${location.pathname}?${params}`);
       return;
     }
-    active.overlay(dt);
     active.input.update();
+    active.overlay(dt);
     if (fade > 0) drawFade();
-    if (perf.checked < 2) autoTier(performance.now() - t0);
+    autoTier(performance.now() - t0, intervalMs, now);
   };
   const frame = (now) => {
     raf = window.requestAnimationFrame(frame);
@@ -255,9 +270,10 @@
     renderedFrames++;
     if (renderedFrames <= 3) mark(`frame${renderedFrames}`);
     const t0 = performance.now();
-    const dt = Math.min(0.1, (now - lastTime) / 1e3);
+    const intervalMs = now - lastTime;
+    const dt = Math.min(0.1, intervalMs / 1e3);
     lastTime = now;
-    step(dt, now, t0);
+    step(dt, now, t0, intervalMs);
   };
 
   // ---------- lifecycle ----------
@@ -350,7 +366,7 @@
         return world.level;
       }
     };
-    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron", "orbit", "flight", "site"]) {
+    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron", "orbit", "flight", "site"]) {
       Object.defineProperty(ooga, key, { get: () => active.debug && active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;

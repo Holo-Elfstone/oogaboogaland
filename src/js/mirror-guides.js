@@ -197,7 +197,18 @@
       mat4.multiply(panelView, view, panel.world);
       ctx.save(); ctx.scale(screenWidth / width, screenHeight / height);
       ctx.beginPath();
-      if (!panelCell(left, bottom, right, top, ctx)) { ctx.restore(); return; }
+      const geometry = panel.geometry, verts = geometry.verts, m = panelView;
+      let visible = false;
+      for (const face of geometry.faces) for (let fan = 1; fan + 1 < face.i.length; fan++) {
+        for (let n = 0; n < 3; n++) {
+          const at = face.i[n ? fan + n - 1 : 0] * 3, x = verts[at], y = verts[at + 1], z = verts[at + 2];
+          polygon[n * 3] = m[0] * x + m[4] * y + m[8] * z + m[12];
+          polygon[n * 3 + 1] = m[1] * x + m[5] * y + m[9] * z + m[13];
+          polygon[n * 3 + 2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+        }
+        if (projectPolygon(3, ctx) === 1) visible = true;
+      }
+      if (!visible) { ctx.restore(); return; }
       ctx.clip(); ctx.fillStyle = "#d9c9a9";
       for (let n = 0; n < streamCount; n++) {
         const at = n * 8;
@@ -237,6 +248,15 @@
       for (let at = 0; at < 16; at++) if (lastView[at] !== view[at]) changed = true;
       panelVisible = false;
       for (const entry of entries) {
+        if (entry.geometry !== entry.node.geometry) {
+          const geometry = entry.node.geometry;
+          entry.geometry = geometry;
+          if (entry.points.length < geometry.verts.length) entry.points = new Float64Array(geometry.verts.length);
+          if (geometry.clipMinY !== undefined || geometry.clipMaxY !== undefined) {
+            if (!entry.heights || entry.heights.length < geometry.verts.length / 3) entry.heights = new Float64Array(geometry.verts.length / 3);
+          } else entry.heights = null;
+          changed = true;
+        }
         const visible = shown(entry);
         if (entry.shown !== visible) { entry.shown = visible; changed = true; }
         if (entry.clipMinY !== entry.geometry.clipMinY || entry.clipMaxY !== entry.geometry.clipMaxY) {
@@ -281,7 +301,8 @@
       const w = panel.world, eye = camera.position;
       // The selected Ooga owns whether this hint is needed; the real camera
       // side owns which face can show it. The exterior reflection is untouched.
-      const shown = !!enabled && panel.visible && (eye.x - w[12]) * w[8] + (eye.y - w[13]) * w[9] + (eye.z - w[14]) * w[10] < -1e-5;
+      const shown = !!enabled && panel.visible && !(panel.mirrorDamage && panel.mirrorDamage.broken)
+        && (eye.x - w[12]) * w[8] + (eye.y - w[13]) * w[9] + (eye.z - w[14]) * w[10] < -1e-5;
       state.doorway = shown; state.doorwayGlyphs = 0;
       for (let glyph = 0; glyph < doorwayNodes.length; glyph++) {
         const node = doorwayNodes[glyph]; node.visible = shown; node.instanceCount = node.drawInstanceCount = 0;
@@ -296,7 +317,9 @@
         for (let cell = first; cell <= last; cell++) {
           const tail = (cell % sequence + sequence) % sequence;
           if (tail >= train) continue;
-          const y = cell * GAP - travel, node = doorwayNodes[(cell + mutation + (seed & 7)) & 7], slot = node.instanceCount++, data = node.instanceData, offset = slot * 20;
+          const y = cell * GAP - travel;
+          if (panel.mirrorDamage && !panel.mirrorDamage.contains(x, y)) continue;
+          const node = doorwayNodes[(cell + mutation + (seed & 7)) & 7], slot = node.instanceCount++, data = node.instanceData, offset = slot * 20;
           if (slot >= doorwayCapacity) throw new Error("Mirror doorway glyph capacity exceeded");
           // Turn the rune to face into the cave without mirroring its letters.
           data[offset] = -w[0]; data[offset + 1] = -w[1]; data[offset + 2] = -w[2]; data[offset + 3] = 0;
