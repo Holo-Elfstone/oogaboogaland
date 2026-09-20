@@ -167,7 +167,7 @@
   };
 
   // One visit's state: created in enter, dropped in leave.
-  let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, jetpack, jetpackState, jetpackCarrier, jetpackWearer, lastJetpackCloud, mirrorCave, matrixCave, matrixControl, gateRain, fire, headquarters, jumbotron, positionDebug;
+  let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, jetpack, jetpackState, jetpackCarrier, jetpackWearer, lastJetpackCloud, mirrorCave, matrixCave, matrixControl, gateRain, fire, headquarters, jumbotron, positionDebug, agent, agentPlay;
   let magazine, magazineState, breakables;
   const JETPACK_HUD_STATE = { owned: false, equipped: false, fuel: 1, blocked: false };
   let enteringTween = null;
@@ -2773,6 +2773,8 @@
         return o.slot.status === "open" ? `${o.slot.name} · tap to enter` : o.slot.status === "headquarters" ? "Headquarters · walk down the ramp" : o.slot.status === "mirror" ? `${o.slot.name} · mirror` : o.slot.status === "sleeping" ? "A project sleeps here · zzz" : "An empty cave";
       case "gate":
         return `${caves.gate.name} · leads nowhere yet`;
+      case "agent":
+        return o.agent.driven ? "The Agent · you" : "The Agent · double-click to play · triple-click for its code";
       case "matrix-button":
         return matrixCave.unlocked ? "Matrix gate control · press out" : "Matrix gate control · press in";
       case "matrix-gate":
@@ -2995,7 +2997,29 @@
     world.pilot = pilot.player ? pilot.player.traits.name : null;
     enterScene(presets[id], id);
   };
+  // The Agent answers taps like an Ooga: a double-click plays it, a double-click
+  // anywhere else lets it go; a third quick tap toggles its Matrix model.
+  // A third click of a burst lands after the chase camera has moved, so it counts
+  // wherever it hits: the player wanted a look at its code, not to drive it.
+  const agentTripleClick = () => {
+    if (!agentPlay.active || performance.now() - agentPlay.startedAt > BL.agent.TRIPLE_MS) return false;
+    agent.reveal();
+    agentPlay.stop(true);
+    hud.toast("The Agent's true nature");
+    return true;
+  };
+  const agentDoubleTap = (hit, p) => {
+    if (hit && hit.owner.kind === "agent") {
+      // The second click of a double only arrives here; it still counts toward a triple.
+      if (agentPlay.active) agentPlay.stop();
+      else agentPlay.start(hubScene, false);
+      return;
+    }
+    if (agentPlay.active) agentPlay.stop();
+    pilot.hooks.onDoubleTap(hit, p);
+  };
   const onTap = (hit) => {
+    if (agentTripleClick()) return;
     if (!hit) return;
     const o = hit.owner;
     switch (o.kind) {
@@ -3005,6 +3029,9 @@
         break;
       case "crate":
         crates.openCrate(o.crate);
+        break;
+      case "agent":
+        if (!o.agent.driven) o.agent.poke();
         break;
       case "cave":
         if (o.slot.status === "open") enterCave(o.slot);
@@ -4052,6 +4079,8 @@
     syncMirrorDamage();
     mirrorCave.ripples.update(dt, elapsed);
     crew.update(dt, elapsed);
+    agent.setForm(agent.revealed || matrixCoverage(agent.root.position.x, agent.root.position.z) > 0.5 ? "code" : "ape");
+    agent.update(dt);
     updateRoomSigns(dt);
     pile.update(dt);
     const player = pilot.player;
@@ -4388,7 +4417,7 @@
   };
 
   const enter = (ctx) => {
-    ({ renderer, game, world, go, lootEnabled, testBananas } = ctx);
+    ({ renderer, game, world, go, lootEnabled, testBananas, agentPlay } = ctx);
     jetpackState = world.jetpack || (world.jetpack = { owned: false, fuel: 1 });
     magazineState = {
       get owned() { return !!crew && crew.hasMagazine(crew.player); },
@@ -4668,6 +4697,31 @@
       cave.solidBounds = new Float64Array(6);
       mirrorActorRadius(cave);
     }
+    // The Agent roams the meadow paths, an ape until the Matrix reaches it.
+    const agentFrom = { x: 0, y: 0, z: 0 }, agentTo = { x: 0, y: 0, z: 0 };
+    const agentSpot = (out) => {
+      const lines = island.path.centerlines;
+      for (let tries = 0; tries < 32; tries++) {
+        const line = lines[Math.floor(Math.random() * lines.length)], p = line[Math.floor(Math.random() * line.length)];
+        if (Math.hypot(p.x, p.z) < island.meadowRadius - 1 && !npcClosedCaveAt(p.x, p.z)) {
+          out.x = p.x; out.z = p.z;
+          return true;
+        }
+      }
+      return false;
+    };
+    agentSpot(agentFrom);
+    agent = BL.agent.create({ groundAt: (x, z) => island.surfaceAt(x, z), x: agentFrom.x, z: agentFrom.z, heading: Math.random() * Math.PI * 2 });
+    agent.onIdle = () => {
+      const p = agent.root.position;
+      agentFrom.x = p.x; agentFrom.z = p.z;
+      if (agentSpot(agentTo)) agent.walk(shared.npcPaths.route(agentFrom, agentTo), Math.hypot(agentTo.x - p.x, agentTo.z - p.z) > 12);
+    };
+    addChild(root, agent.root);
+    Object.assign(hubScene, { agent, agentView: pilot.orbit, agentControls: pilot.controls, agentHandoff: () => pilot.release(true) });
+    // One owner for every part, so a tap on any limb is a tap on the Agent
+    const agentOwner = { kind: "agent", agent };
+    for (const name of ["torso", "head", "armL", "armR", "legL", "legR"]) addTarget(agent.parts[name], agentOwner);
     headquarters.solids = { props: solids, supportAt: playerSupportAt, walkable, npcWalkable, flyable, ceilingAt, inBananas };
     headquarters.firingZones = workZones;
     headquarters.firingZoneAt = npcWorkZoneAt;
@@ -4715,7 +4769,8 @@
       },
       onHoverMove: (hit, p) => hud.tooltip.show(tooltipFor(hit), p.x, p.y, hit.owner.cave),
       onTap,
-      ...pilot.hooks
+      ...pilot.hooks,
+      onDoubleTap: agentDoubleTap
     });
     entering = false;
     enteringTween = null;
@@ -4792,7 +4847,7 @@
         get shown() {
           return pile.shown;
         },
-        island, mouths: island.mouths, labels, launchers, camera, storm, cameraPose: POSITION_POSE, crew, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron,
+        island, mouths: island.mouths, labels, launchers, camera, storm, cameraPose: POSITION_POSE, crew, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron, agent: agent.debug,
         scenery: {
           get candidateCount() { return scenery.length; },
           get visibleCount() { return sceneryVisible; },
@@ -5042,6 +5097,7 @@
     crates.dispose();
     pile.dispose();
     crew.dispose();
+    agent.dispose();
     critters.dispose();
     fx.dispose();
     cameraCover.dispose();
@@ -5094,15 +5150,16 @@
     input.dispose();
     hud.dispose();
     // Drop every per-visit ref but the cached island.
-    pathNode = altar = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = crates = critters = clock = presets = jetpack = jetpackState = jetpackCarrier = jetpackWearer = lastJetpackCloud = mirrorCave = matrixCave = matrixControl = gateRain = fire = headquarters = positionDebug = null;
+    pathNode = altar = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = crates = critters = clock = presets = jetpack = jetpackState = jetpackCarrier = jetpackWearer = lastJetpackCloud = mirrorCave = matrixCave = matrixControl = gateRain = fire = headquarters = positionDebug = agent = agentPlay = null;
     magazine = magazineState = breakables = storm = null;
-    hubScene.input = hubScene.debug = null;
+    hubScene.input = hubScene.debug = hubScene.agent = hubScene.agentView = hubScene.agentControls = hubScene.agentHandoff = null;
     return { targets: count };
   };
   const liveGeometry = (set) => {
     pile.liveGeometry(set);
     breakables.liveGeometry(set);
     mirrorCave.damage.liveGeometry(set);
+    agent.liveGeometry(set);
     for (const cave of crew.cavemen.values()) set.add(cave.headOpen).add(cave.headClosed);
   };
   const stats = () => {
@@ -5113,7 +5170,7 @@
   };
   const hubScene = {
     id: "hub", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
-    root: null, camera: null, input: null, debug: null,
+    root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
     get inMotion() {
       if (pile.inMotion || fx.inMotion || breakables.inMotion || storm.active || jetpack || magazine && magazine.revealed || MATRIX_WORLD.active || mirrorGuides.state.doorway || mirrorCave.damage.active || mirrorCave.ripples.active || mirrorCave.body.active) return true;
       for (const sign of headquarters.roomSigns) if (sign.velocity || sign.node.rotation.x) return true;
