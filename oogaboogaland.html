@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-IhkC7ERY+tIFDxAC3a10pFEtEeZH1Cx4jblo8h6Gl44='; style-src 'sha256-lv68KslPaBp0nzY6tFVa23cmEjIWG7lFrPlQ8lqGzSA='; img-src 'self' data:; connect-src wss://mempool.space; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-FBnf+l3q/MPoTmJEU+yb6ai0fYgjP/mBBFWM2ilt3d8='; style-src 'sha256-bclWwM2tAxbulAie13gw3rEoe/R/HSL3G4MpUtj7asQ='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -1887,6 +1887,32 @@ select {
   color: var(--paper);
   font-size: 11px;
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+/* The prompt is read and copied, so it takes the width a desktop can spare. */
+#recipe {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.recipe {
+  max-height: min(46vh, 420px);
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  background: var(--tablet);
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  box-shadow: var(--tablet-shadow);
+  color: var(--paper);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overscroll-behavior: contain;
+}
+
+.recipe-actions {
+  grid-template-columns: 1fr;
 }
 
 .race-results .actions {
@@ -4467,6 +4493,25 @@ body.orbit-dragging #tooltip {
       </div>
       <p class="help">Payments are simulated in this build.<span id="crate-help" hidden> Crates drop at 1K, 5K, 21K and
           100K sats.</span></p>
+    </dialog>
+    <dialog class="modal" id="recipe" aria-label="Add an Ooga">
+      <div class="panel-head">
+        <h2><span data-sign>Add an Ooga</span></h2>
+        <button type="button" class="link" data-action="recipe-close">Close</button>
+      </div>
+      <p class="help">2140data hands you the prompt. Paste it to your coding agent.</p>
+      <pre class="recipe" id="recipe-text">Add an Ooga to Ooga Booga Land. Create one new file, src/characters/&lt;handle&gt;.js, and change nothing else.
+
+It is a plain IIFE (const BL = window.BL;) calling BL.characters.add({ handle, joined, lastCommit, github, look, voice, dress }). joined and lastCommit are Unix seconds; joined orders the roster.
+
+look overrides the hashed skin, hair, fur and height and carries the flags build:"slim", bald, hairless, cleanShaven, noBrow, wideEyes, noPupils, face:"nose"|"smirk"|"beard"|"none", eyeColor with eyeGlow, and hatY in sixteenths of height. voice is { poke, idle: [...] }.
+
+dress hooks build the voxels, each called with the kit k (h, u, rand, P, color(hex), jit, vg, root, parts, eyeCells): torso(k, v), club(k), gear(k), skull(k, v), crown(k, v), eyes(k, v), mark(k, v), hatY(k), headgear(k), extras(k). The head is a 7x6x6 block with the eyes at z=5 and the brow at y=4. Keep accessory builders and their caches in the file, and draw from k.rand in build order.
+
+Then run npm run build and ONLY=characters node test/run.mjs.</pre>
+      <div class="actions recipe-actions">
+        <button type="button" data-action="recipe-copy">Copy prompt</button>
+      </div>
     </dialog>
     <div class="bottom-hud">
       <button type="button" class="act" id="act" data-action="act" hidden>JUMP!</button>
@@ -10944,6 +10989,8 @@ void main() {
   //   crown(k, v)  hats and hair over the head    eyes(k, v)   replaces the eyes
   //   mark(k, v)   face paint after the pupils    hatY(k)      where swag hats sit
   //   headgear(k)  nodes on the head              extras(k)    nodes on the root, last
+  //   tint(k, palette)  a second colourway: return an alternate palette and every
+  //                     voxel part is baked again under it, paired in `tint`
   // `look` flags read here: slim, bald, cleanShaven, wideEyes, hairless, noBrow, noPupils,
   // face ("nose" | "smirk" | "beard" | "none"), eyeColor, eyeGlow, hatY.
   const buildCaveman = (traits) => {
@@ -10990,7 +11037,14 @@ void main() {
         if (v.get(nx, y, z) === P.fur) v.set(nx, y, z, P.spot);
       }
     };
-    const vg = (v, origin, emissive) => voxelGeometry(v, { unit: u, palette, origin, emissive });
+    // Each voxel map is kept with what it was baked from, so a second colourway
+    // can bake the same maps again under another palette.
+    const bakes = [];
+    const vg = (v, origin, emissive) => {
+      const geo = voxelGeometry(v, { unit: u, palette, origin, emissive });
+      bakes.push({ v, origin, emissive, geo });
+      return geo;
+    };
     const parts = {};
     const legH = 5 * u;
     const root = createNode({ position: { x: 0, y: legH, z: 0 } });
@@ -11168,7 +11222,25 @@ void main() {
     if (dress.headgear) dress.headgear(k);
     addChild(root, parts.legL, parts.legR, parts.torso, parts.armL, parts.armR, parts.head);
     if (dress.extras) dress.extras(k);
-    return { root, parts, traits, headOffset: 1.1 * h, headOpen, headClosed, skins, clubRest, clubCarry, gunHeadBounds: BL.scene.boundsOf(headOpen) };
+    // A second colourway bakes every voxel part still in use under the alternate
+    // palette and pairs each geometry with its twin both ways, so swapping a
+    // clone's geometry twice returns it to the colour it was built in.
+    let tint = null;
+    if (dress.tint) {
+      const alt = dress.tint(k, palette), live = new Set([headClosed]);
+      const visit = (node) => {
+        if (node.geometry) live.add(node.geometry);
+        for (const child of node.children) visit(child);
+      };
+      visit(root);
+      tint = new Map();
+      for (const bake of bakes) {
+        if (!live.has(bake.geo) || tint.has(bake.geo)) continue;
+        const twin = voxelGeometry(bake.v, { unit: u, palette: alt, origin: bake.origin, emissive: bake.emissive });
+        tint.set(bake.geo, twin).set(twin, bake.geo);
+      }
+    }
+    return { root, parts, traits, headOffset: 1.1 * h, headOpen, headClosed, skins, clubRest, clubCarry, tint, gunHeadBounds: BL.scene.boundsOf(headOpen) };
   };
   // Traits hash from the handle, so one handle always builds the same voxels.
   // Callers get fresh nodes over shared geometry: one build per contributor, GPU records survive a scene swap.
@@ -11189,7 +11261,7 @@ void main() {
       parts[key] = Array.isArray(part) ? part.map((node) => copies.get(node)) : copies.get(part);
     }
     const skins = { club: { ...template.skins.club }, gun: { ...template.skins.gun } };
-    return { root, parts, traits, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed, skins, clubRest: template.clubRest, clubCarry: template.clubCarry, gunHeadBounds: template.gunHeadBounds };
+    return { root, parts, traits, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed, skins, clubRest: template.clubRest, clubCarry: template.clubCarry, tint: template.tint, gunHeadBounds: template.gunHeadBounds };
   };
   // A real die: opposite faces sum to seven.
   const die = ({ size = 0.3 } = {}) => {
@@ -14327,12 +14399,13 @@ void main() {
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  BL.jumbotronData = {"meta":{"generated_at":"2026-09-20T20:32:50.008Z","repo":"OogaBoogaX/entropylab","schema_version":1},"totals":{"contributors":44,"commits":929,"prs":357,"reviews":41,"comments":{"issue":285,"review":29,"commit":0,"all":314}},"leaderboards":{"commits":[{"login":"portlandhodl","count":386},{"login":"w-s-bitcoin","count":204},{"login":"MrHodlX","count":72},{"login":"timechainb","count":61},{"login":"dplusplus1024","count":44},{"login":"ottoz0r","count":24},{"login":"pdubl22","count":23},{"login":"J25dunn","count":13},{"login":"RandyMcMillan","count":12},{"login":"itme-brain","count":11},{"login":"claude","count":10},{"login":"2140data","count":9},{"login":"Hero-Gamer","count":8},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"SaniExp","count":2},{"login":"codex","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"rules-without-rulers","count":2},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"portlandhodl","count":81},{"login":"MrHodlX","count":80},{"login":"w-s-bitcoin","count":32},{"login":"timechainb","count":26},{"login":"ottoz0r","count":18},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"2140data","count":10},{"login":"Jdelg718","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"csuwildcat","count":2},{"login":"pdubl22","count":2},{"login":"rules-without-rulers","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"doggyballs","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":22},{"login":"J25dunn","count":14},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":46},{"login":"MrHodlX","count":23},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"timechainb","count":5},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Jdelg718","count":2},{"login":"rules-without-rulers","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"contributors":[{"login":"portlandhodl","last_seen_at":"2026-09-19T16:10:41Z","counts":{"commits":386,"prs":81,"reviews":4,"comments":{"issue":81,"review":3,"commit":0,"all":84}},"weekly":[{"week":"2026-W35","commits":111,"prs":34,"reviews":0,"comments":17},{"week":"2026-W36","commits":229,"prs":40,"reviews":2,"comments":58},{"week":"2026-W37","commits":21,"prs":2,"reviews":0,"comments":1},{"week":"2026-W38","commits":25,"prs":5,"reviews":2,"comments":8}]},{"login":"w-s-bitcoin","last_seen_at":"2026-09-17T16:19:10Z","counts":{"commits":204,"prs":32,"reviews":0,"comments":{"issue":46,"review":0,"commit":0,"all":46}},"weekly":[{"week":"2026-W35","commits":113,"prs":13,"reviews":0,"comments":9},{"week":"2026-W36","commits":51,"prs":13,"reviews":0,"comments":1},{"week":"2026-W37","commits":35,"prs":5,"reviews":0,"comments":31},{"week":"2026-W38","commits":5,"prs":1,"reviews":0,"comments":5}]},{"login":"MrHodlX","last_seen_at":"2026-09-20T17:55:40Z","counts":{"commits":72,"prs":80,"reviews":22,"comments":{"issue":23,"review":0,"commit":0,"all":23}},"weekly":[{"week":"2026-W35","commits":11,"prs":19,"reviews":0,"comments":1},{"week":"2026-W36","commits":10,"prs":20,"reviews":13,"comments":4},{"week":"2026-W37","commits":6,"prs":9,"reviews":7,"comments":5},{"week":"2026-W38","commits":45,"prs":32,"reviews":2,"comments":13}]},{"login":"timechainb","last_seen_at":"2026-09-19T20:58:17Z","counts":{"commits":61,"prs":26,"reviews":0,"comments":{"issue":5,"review":0,"commit":0,"all":5}},"weekly":[{"week":"2026-W35","commits":12,"prs":7,"reviews":0,"comments":0},{"week":"2026-W36","commits":12,"prs":7,"reviews":0,"comments":0},{"week":"2026-W37","commits":7,"prs":4,"reviews":0,"comments":1},{"week":"2026-W38","commits":30,"prs":8,"reviews":0,"comments":4}]},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T21:26:04Z","counts":{"commits":8,"prs":12,"reviews":1,"comments":{"issue":48,"review":5,"commit":0,"all":53}},"weekly":[{"week":"2026-W35","commits":0,"prs":0,"reviews":0,"comments":1},{"week":"2026-W36","commits":2,"prs":6,"reviews":0,"comments":31},{"week":"2026-W37","commits":6,"prs":4,"reviews":1,"comments":19},{"week":"2026-W38","commits":0,"prs":2,"reviews":0,"comments":2}]},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z","counts":{"commits":44,"prs":13,"reviews":0,"comments":{"issue":11,"review":0,"commit":0,"all":11}},"weekly":[{"week":"2026-W35","commits":16,"prs":6,"reviews":0,"comments":2},{"week":"2026-W36","commits":28,"prs":7,"reviews":0,"comments":9}]},{"login":"J25dunn","last_seen_at":"2026-09-14T12:31:24Z","counts":{"commits":13,"prs":16,"reviews":14,"comments":{"issue":7,"review":11,"commit":0,"all":18}},"weekly":[{"week":"2026-W35","commits":1,"prs":3,"reviews":2,"comments":3},{"week":"2026-W36","commits":7,"prs":7,"reviews":1,"comments":2},{"week":"2026-W37","commits":3,"prs":6,"reviews":10,"comments":11},{"week":"2026-W38","commits":2,"prs":0,"reviews":1,"comments":2}]},{"login":"ottoz0r","last_seen_at":"2026-09-02T02:19:20Z","counts":{"commits":24,"prs":18,"reviews":0,"comments":{"issue":6,"review":0,"commit":0,"all":6}},"weekly":[{"week":"2026-W35","commits":16,"prs":11,"reviews":0,"comments":5},{"week":"2026-W36","commits":8,"prs":7,"reviews":0,"comments":1}]},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z","counts":{"commits":12,"prs":4,"reviews":0,"comments":{"issue":10,"review":9,"commit":0,"all":19}},"weekly":[{"week":"2026-W35","commits":9,"prs":3,"reviews":0,"comments":16},{"week":"2026-W36","commits":3,"prs":1,"reviews":0,"comments":3}]},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z","counts":{"commits":11,"prs":11,"reviews":0,"comments":{"issue":9,"review":0,"commit":0,"all":9}},"weekly":[{"week":"2026-W35","commits":10,"prs":9,"reviews":0,"comments":6},{"week":"2026-W36","commits":1,"prs":2,"reviews":0,"comments":3}]},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z","counts":{"commits":23,"prs":2,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W36","commits":23,"prs":2,"reviews":0,"comments":0}]},{"login":"2140data","last_seen_at":"2026-08-31T04:54:04Z","counts":{"commits":9,"prs":10,"reviews":0,"comments":{"issue":1,"review":0,"commit":0,"all":1}},"weekly":[{"week":"2026-W35","commits":8,"prs":9,"reviews":0,"comments":1},{"week":"2026-W36","commits":1,"prs":1,"reviews":0,"comments":0}]},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z","counts":{"commits":3,"prs":2,"reviews":0,"comments":{"issue":14,"review":0,"commit":0,"all":14}},"weekly":[{"week":"2026-W35","commits":2,"prs":1,"reviews":0,"comments":4},{"week":"2026-W36","commits":0,"prs":0,"reviews":0,"comments":6},{"week":"2026-W37","commits":1,"prs":1,"reviews":0,"comments":4}]},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z","counts":{"commits":7,"prs":11,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W36","commits":7,"prs":11,"reviews":0,"comments":0}]},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z","counts":{"commits":5,"prs":5,"reviews":0,"comments":{"issue":2,"review":0,"commit":0,"all":2}},"weekly":[{"week":"2026-W35","commits":3,"prs":5,"reviews":0,"comments":1},{"week":"2026-W36","commits":2,"prs":0,"reviews":0,"comments":1}]},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z","counts":{"commits":2,"prs":3,"reviews":0,"comments":{"issue":7,"review":0,"commit":0,"all":7}},"weekly":[{"week":"2026-W35","commits":1,"prs":1,"reviews":0,"comments":1},{"week":"2026-W36","commits":1,"prs":2,"reviews":0,"comments":5},{"week":"2026-W37","commits":0,"prs":0,"reviews":0,"comments":1}]},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z","counts":{"commits":10,"prs":0,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W38","commits":10,"prs":0,"reviews":0,"comments":0}]},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z","counts":{"commits":2,"prs":4,"reviews":0,"comments":{"issue":4,"review":0,"commit":0,"all":4}},"weekly":[{"week":"2026-W36","commits":0,"prs":2,"reviews":0,"comments":2},{"week":"2026-W37","commits":1,"prs":2,"reviews":0,"comments":0},{"week":"2026-W38","commits":1,"prs":0,"reviews":0,"comments":2}]},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z","counts":{"commits":7,"prs":0,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W35","commits":7,"prs":0,"reviews":0,"comments":0}]},{"login":"rules-without-rulers","last_seen_at":"2026-09-12T17:11:11Z","counts":{"commits":2,"prs":2,"reviews":0,"comments":{"issue":2,"review":0,"commit":0,"all":2}},"weekly":[{"week":"2026-W35","commits":2,"prs":2,"reviews":0,"comments":0},{"week":"2026-W37","commits":0,"prs":0,"reviews":0,"comments":2}]},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z","counts":{"commits":0,"prs":3,"reviews":0,"comments":{"issue":3,"review":0,"commit":0,"all":3}},"weekly":[{"week":"2026-W35","commits":0,"prs":1,"reviews":0,"comments":0},{"week":"2026-W38","commits":0,"prs":2,"reviews":0,"comments":3}]},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z","counts":{"commits":1,"prs":2,"reviews":0,"comments":{"issue":2,"review":0,"commit":0,"all":2}},"weekly":[{"week":"2026-W36","commits":1,"prs":2,"reviews":0,"comments":2}]},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z","counts":{"commits":2,"prs":3,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W35","commits":0,"prs":2,"reviews":0,"comments":0},{"week":"2026-W36","commits":2,"prs":1,"reviews":0,"comments":0}]},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z","counts":{"commits":1,"prs":3,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W35","commits":0,"prs":2,"reviews":0,"comments":0},{"week":"2026-W36","commits":1,"prs":1,"reviews":0,"comments":0}]},{"login":"csuwildcat","last_seen_at":"2026-08-30T19:53:33Z","counts":{"commits":1,"prs":2,"reviews":0,"comments":{"issue":1,"review":0,"commit":0,"all":1}},"weekly":[{"week":"2026-W35","commits":1,"prs":2,"reviews":0,"comments":1}]},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z","counts":{"commits":4,"prs":0,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W36","commits":4,"prs":0,"reviews":0,"comments":0}]},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z","counts":{"commits":4,"prs":0,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W35","commits":4,"prs":0,"reviews":0,"comments":0}]},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z","counts":{"commits":0,"prs":3,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W35","commits":0,"prs":3,"reviews":0,"comments":0}]},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z","counts":{"commits":3,"prs":0,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W36","commits":2,"prs":0,"reviews":0,"comments":0},{"week":"2026-W37","commits":1,"prs":0,"reviews":0,"comments":0}]},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z","counts":{"commits":1,"prs":2,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W36","commits":1,"prs":2,"reviews":0,"comments":0}]},{"login":"codex","last_seen_at":"2026-09-20T12:27:29Z","counts":{"commits":2,"prs":0,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W38","commits":2,"prs":0,"reviews":0,"comments":0}]},{"login":"doggyballs","last_seen_at":"2026-09-01T18:55:14Z","counts":{"commits":1,"prs":1,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W36","commits":1,"prs":1,"reviews":0,"comments":0}]},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z","counts":{"commits":1,"prs":1,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W37","commits":1,"prs":1,"reviews":0,"comments":0}]},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z","counts":{"commits":0,"prs":1,"reviews":0,"comments":{"issue":1,"review":0,"commit":0,"all":1}},"weekly":[{"week":"2026-W36","commits":0,"prs":1,"reviews":0,"comments":1}]},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z","counts":{"commits":0,"prs":0,"reviews":0,"comments":{"issue":1,"review":0,"commit":0,"all":1}},"weekly":[{"week":"2026-W35","commits":0,"prs":0,"reviews":0,"comments":1}]},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z","counts":{"commits":0,"prs":0,"reviews":0,"comments":{"issue":1,"review":0,"commit":0,"all":1}},"weekly":[{"week":"2026-W36","commits":0,"prs":0,"reviews":0,"comments":1}]},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z","counts":{"commits":0,"prs":1,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W38","commits":0,"prs":1,"reviews":0,"comments":0}]},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z","counts":{"commits":0,"prs":1,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W37","commits":0,"prs":1,"reviews":0,"comments":0}]},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z","counts":{"commits":0,"prs":1,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W35","commits":0,"prs":1,"reviews":0,"comments":0}]},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z","counts":{"commits":1,"prs":0,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W35","commits":1,"prs":0,"reviews":0,"comments":0}]},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z","counts":{"commits":1,"prs":0,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W35","commits":1,"prs":0,"reviews":0,"comments":0}]},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z","counts":{"commits":1,"prs":0,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W38","commits":1,"prs":0,"reviews":0,"comments":0}]},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z","counts":{"commits":0,"prs":1,"reviews":0,"comments":{"issue":0,"review":0,"commit":0,"all":0}},"weekly":[{"week":"2026-W37","commits":0,"prs":1,"reviews":0,"comments":0}]},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z","counts":{"commits":0,"prs":0,"reviews":0,"comments":{"issue":0,"review":1,"commit":0,"all":1}},"weekly":[{"week":"2026-W37","commits":0,"prs":0,"reviews":0,"comments":1}]}]};
+  BL.jumbotronData = {"meta":{"generated_at":"2026-09-16T21:56:00.629Z","org":"OogaBoogaX","schema_version":2},"totals":{"contributors":40,"commits":837,"prs":323,"reviews":40},"leaderboards":{"commits":[{"login":"portlandhodl","count":369},{"login":"w-s-bitcoin","count":203},{"login":"dplusplus1024","count":44},{"login":"timechainb","count":42},{"login":"MrHodlX","count":31},{"login":"ottoz0r","count":24},{"login":"pdubl22","count":23},{"login":"J25dunn","count":13},{"login":"RandyMcMillan","count":12},{"login":"itme-brain","count":11},{"login":"2140data","count":9},{"login":"Hero-Gamer","count":8},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"SaniExp","count":2},{"login":"dani69654","count":2},{"login":"rules-without-rulers","count":2},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"hotpixelgroup","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"portlandhodl","count":78},{"login":"MrHodlX","count":55},{"login":"w-s-bitcoin","count":32},{"login":"timechainb","count":21},{"login":"ottoz0r","count":18},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"2140data","count":10},{"login":"Jdelg718","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"csuwildcat","count":2},{"login":"pdubl22","count":2},{"login":"rules-without-rulers","count":2},{"login":"zmeyer44","count":2},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"doggyballs","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":21},{"login":"J25dunn","count":14},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}]},"repos":[{"name":"entropylab","totals":{"contributors":40,"commits":837,"prs":323,"reviews":40},"weekly":[{"week":"2026-W35","commits":329,"prs":134,"reviews":2},{"week":"2026-W36","commits":397,"prs":136,"reviews":16},{"week":"2026-W37","commits":81,"prs":36,"reviews":18},{"week":"2026-W38","commits":30,"prs":17,"reviews":4}]}],"contributors":[{"login":"portlandhodl","last_seen_at":"2026-09-15T17:51:23Z"},{"login":"w-s-bitcoin","last_seen_at":"2026-09-16T16:03:54Z"},{"login":"MrHodlX","last_seen_at":"2026-09-16T13:18:12Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T21:26:04Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"timechainb","last_seen_at":"2026-09-16T19:39:25Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T12:31:24Z"},{"login":"ottoz0r","last_seen_at":"2026-09-02T02:19:20Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"2140data","last_seen_at":"2026-08-31T04:54:04Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-14T02:11:28Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-12T17:11:11Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T19:53:33Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-16T19:56:27Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"doggyballs","last_seen_at":"2026-09-01T18:55:14Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"}]};
 })();
 
 // ---- js/jumbotron.js ----
 // Jumbotron board, ported from rules-without-rulers/oogatron (its jumbotron/data.js + views.js).
-// Data baked in as BL.jumbotronData by scripts/jumbotron-data.mjs; the page never fetches.
+// Data baked in as BL.jumbotronData by scripts/jumbotron-data.mjs for the first paint;
+// oogatron-live.js may push fresher payloads in through refreshData at runtime.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -14349,7 +14422,6 @@ void main() {
     commits: "#46ff70",
     prs: "#3fd1c5",
     reviews: "#6f9fca",
-    comments: "#f5c542",
     plank: "#a9773f",
     woodDark: "#5c4425",
     screenBezel: "#1d2326",
@@ -14435,92 +14507,52 @@ void main() {
     return text.length <= maxChars ? text : text.slice(0, maxChars);
   };
 
-  const normalizeComments = (c) => ({
-    issue: (c && c.issue || 0) | 0, review: (c && c.review || 0) | 0,
-    commit: (c && c.commit || 0) | 0, all: (c && c.all || 0) | 0
-  });
   const normalizeCounts = (counts) => ({
     commits: (counts && counts.commits || 0) | 0, prs: (counts && counts.prs || 0) | 0,
-    reviews: (counts && counts.reviews || 0) | 0, comments: normalizeComments(counts && counts.comments)
+    reviews: (counts && counts.reviews || 0) | 0
   });
+  const normalizeWeekly = (weekly) => Array.isArray(weekly)
+    ? weekly.map((w) => ({ week: String(w.week), commits: w.commits | 0, prs: w.prs | 0, reviews: w.reviews | 0 })).sort((a, b) => a.week < b.week ? -1 : 1)
+    : [];
   const normalizeBoard = (b) => Array.isArray(b) ? b.map((e) => ({ login: String(e.login), count: e.count | 0 })) : [];
   const displayLabel = (c) => c.login.startsWith("email:") ? "anonymous" : c.login;
 
+  // Oogatron schema 2: org-wide totals/leaderboards plus a per-repo breakdown.
   const parseStats = (json) => {
     if (typeof json !== "object" || json === null) throw new Error("stats payload is not an object");
-    if (!json.meta || json.meta.schema_version !== 1) throw new Error("unsupported stats schema_version");
+    if (!json.meta || json.meta.schema_version !== 2) throw new Error("unsupported stats schema_version");
+    if (!Array.isArray(json.repos)) throw new Error("stats repos is not an array");
     if (!Array.isArray(json.contributors)) throw new Error("stats contributors is not an array");
-    const contributors = json.contributors.map((c) => ({
-      login: String(c.login),
-      counts: normalizeCounts(c.counts),
-      weekly: Array.isArray(c.weekly)
-        ? c.weekly.map((w) => ({ week: String(w.week), commits: w.commits | 0, prs: w.prs | 0, reviews: w.reviews | 0, comments: w.comments | 0 })).sort((a, b) => a.week < b.week ? -1 : 1)
-        : []
-    }));
+    const contributors = json.contributors.map((c) => ({ login: String(c.login) }));
     const byLogin = new Map(contributors.map((c) => [c.login, c]));
+    const repos = json.repos.map((r) => {
+      const weekly = normalizeWeekly(r.weekly);
+      return {
+        name: String(r.name),
+        totals: { contributors: (r.totals && r.totals.contributors || 0) | 0, ...normalizeCounts(r.totals) },
+        weeklyTotals: weekly.map((w) => ({ week: w.week, total: w.commits + w.prs + w.reviews }))
+      };
+    });
+    // Org-wide weekly series: the repos' weeks summed.
     const weeklyMap = new Map();
-    for (const c of contributors) {
-      for (const w of c.weekly) {
+    for (const r of repos) {
+      for (const w of r.weeklyTotals) {
         let agg = weeklyMap.get(w.week);
         if (!agg) { agg = { week: w.week, total: 0 }; weeklyMap.set(w.week, agg); }
-        agg.total += w.commits + w.prs + w.reviews + w.comments;
+        agg.total += w.total;
       }
     }
     const weeklyTotals = [...weeklyMap.values()].sort((a, b) => a.week < b.week ? -1 : 1);
-    const model = {
-      repo: String(json.meta.repo || ""),
-      totals: { contributors: json.totals.contributors | 0, commits: json.totals.commits | 0, prs: json.totals.prs | 0, reviews: json.totals.reviews | 0, comments: normalizeComments(json.totals.comments) },
+    return {
+      org: String(json.meta.org || ""),
+      totals: { contributors: json.totals.contributors | 0, ...normalizeCounts(json.totals) },
       leaderboards: {
         commits: normalizeBoard(json.leaderboards.commits), prs: normalizeBoard(json.leaderboards.prs),
-        reviews: normalizeBoard(json.leaderboards.reviews), comments: normalizeBoard(json.leaderboards.comments)
+        reviews: normalizeBoard(json.leaderboards.reviews)
       },
-      contributors, byLogin, weeklyTotals,
-      latestWeek: weeklyTotals.length ? weeklyTotals[weeklyTotals.length - 1].week : null,
-      tickerText: ""
+      repos, contributors, byLogin, weeklyTotals,
+      latestWeek: weeklyTotals.length ? weeklyTotals[weeklyTotals.length - 1].week : null
     };
-    model.tickerText = deriveTicker(model);
-    return model;
-  };
-
-  const deriveTicker = (model) => {
-    const t = model.totals, parts = [];
-    parts.push(`${model.repo}  ${t.contributors} CONTRIBUTORS  ${t.commits} COMMITS  ${t.prs} PRS  ${t.reviews} REVIEWS  ${t.comments.all} COMMENTS`);
-    if (model.latestWeek) {
-      const active = model.contributors
-        .map((c) => ({ c, w: c.weekly.find((w) => w.week === model.latestWeek) }))
-        .filter((e) => e.w && e.w.commits + e.w.prs + e.w.reviews + e.w.comments > 0)
-        .sort((a, b) => b.w.commits + b.w.prs + b.w.reviews + b.w.comments - (a.w.commits + a.w.prs + a.w.reviews + a.w.comments));
-      parts.push(`WEEK ${model.latestWeek}:`);
-      for (const { c, w } of active) {
-        const bits = [];
-        if (w.commits) bits.push(`${w.commits} COMMIT${w.commits === 1 ? "" : "S"}`);
-        if (w.prs) bits.push(`${w.prs} PR${w.prs === 1 ? "" : "S"}`);
-        if (w.reviews) bits.push(`${w.reviews} REVIEW${w.reviews === 1 ? "" : "S"}`);
-        if (w.comments) bits.push(`${w.comments} COMMENT${w.comments === 1 ? "" : "S"}`);
-        parts.push(`${displayLabel(c).toUpperCase()}: ${bits.join(" + ")}`);
-      }
-    }
-    return parts.join("   ***   ");
-  };
-
-  const lifehashCache = new Map();
-  const lifehashFor = (login) => {
-    let img = lifehashCache.get(login);
-    if (!img) {
-      img = BL.lifehash.make(`contributor:${login}`);
-      lifehashCache.set(login, img);
-    }
-    return img;
-  };
-  const drawIdenticon = (ctx, login, x, y) => {
-    const { width, height, colors } = lifehashFor(login);
-    for (let r = 0; r < height; r++) {
-      for (let c = 0; c < width; c++) {
-        const i = (r * width + c) * 3;
-        ctx.fillStyle = `rgb(${colors[i]},${colors[i + 1]},${colors[i + 2]})`;
-        ctx.fillRect(x + c, y + r, 1, 1);
-      }
-    }
   };
 
   const clearBoard = (ctx) => {
@@ -14528,32 +14560,34 @@ void main() {
     ctx.fillRect(0, 0, BOARD_W, BOARD_H);
   };
   const header = (ctx, title, right) => {
-    drawText(ctx, title, 3, 3, PALETTE.accent, 1);
+    // Repo names can outrun the board (25 glyphs > 192px beside the week label),
+    // so every header title truncates to the room the right label leaves.
+    const roomForTitle = BOARD_W - 6 - (right ? measureText(right, 1) + 4 : 0);
+    drawText(ctx, fitText(title, roomForTitle, 1), 3, 3, PALETTE.accent, 1);
     if (right) drawText(ctx, right, BOARD_W - 3 - measureText(right, 1), 3, PALETTE.dim, 1);
     ctx.fillStyle = PALETTE.dim;
     ctx.fillRect(0, 12, BOARD_W, 1);
   };
-  const countTotal = (c) => c.commits + c.prs + c.reviews + c.comments.all;
 
-  const renderTotals = (ctx, model) => {
+  // Shared body for the org (Live Wire) and per-repo totals boards:
+  // headline counts left, weekly activity sparkline right.
+  const renderTotalsBoard = (ctx, title, right, totals, weeklyTotals) => {
     clearBoard(ctx);
-    header(ctx, "ENTROPYLAB TOTALS", model.latestWeek || "");
-    const t = model.totals;
+    header(ctx, title, right);
     const rows = [
-      ["CONTRIBUTORS", t.contributors, PALETTE.accent],
-      ["COMMITS", t.commits, PALETTE.commits],
-      ["PRS", t.prs, PALETTE.prs],
-      ["REVIEWS", t.reviews, PALETTE.reviews],
-      ["COMMENTS", t.comments.all, PALETTE.comments]
+      ["CONTRIBUTORS", totals.contributors, PALETTE.accent],
+      ["COMMITS", totals.commits, PALETTE.commits],
+      ["PRS", totals.prs, PALETTE.prs],
+      ["REVIEWS", totals.reviews, PALETTE.reviews]
     ];
-    let y = 17;
+    let y = 20;
     for (const [label, value, color] of rows) {
       drawText(ctx, String(label), 6, y + 3, PALETTE.dim, 1);
       const v = String(value);
       drawText(ctx, v, BOARD_W - 66 - measureText(v, 2), y, color, 2);
-      y += 15;
+      y += 18;
     }
-    const spark = model.weeklyTotals.slice(-14);
+    const spark = weeklyTotals.slice(-14);
     if (spark.length > 0) {
       const maxV = Math.max(...spark.map((w) => w.total), 1);
       const bw = 4, bx = BOARD_W - 6 - spark.length * bw, baseY = BOARD_H - 12, maxH = 56;
@@ -14566,6 +14600,19 @@ void main() {
       drawText(ctx, label, BOARD_W - 6 - measureText(label), baseY + 3, PALETTE.dim, 1);
     }
     return false;
+  };
+
+  const renderTotals = (ctx, model) =>
+    renderTotalsBoard(ctx, `${(model.org || "OOGABOOGAX").toUpperCase()} TOTALS`, model.latestWeek || "", model.totals, model.weeklyTotals);
+
+  const renderRepo = (ctx, model, params) => {
+    const repo = model.repos.find((r) => r.name === (params && params.name)) || model.repos[0];
+    if (!repo) {
+      clearBoard(ctx);
+      drawText(ctx, "NO REPOS", 58, 48, PALETTE.dim, 1);
+      return false;
+    }
+    return renderTotalsBoard(ctx, repo.name.toUpperCase(), model.latestWeek || "", repo.totals, repo.weeklyTotals);
   };
 
   const renderLeaderboard = (ctx, model, params) => {
@@ -14592,77 +14639,9 @@ void main() {
     return false;
   };
 
-  const renderContributor = (ctx, model, params) => {
-    const login = params && params.login;
-    const c = login && model.byLogin.get(login) || model.contributors[0];
-    clearBoard(ctx);
-    if (!c) {
-      drawText(ctx, "NO CONTRIBUTORS", 40, 48, PALETTE.dim, 1);
-      return false;
-    }
-    header(ctx, "CONTRIBUTOR", model.latestWeek || "");
-    drawIdenticon(ctx, c.login, 6, 17);
-    const name = fitText(displayLabel(c).toUpperCase(), BOARD_W - 50, 1);
-    drawText(ctx, name, 44, 20, PALETTE.text, 1);
-    const counts = [
-      ["CM", c.counts.commits, PALETTE.commits],
-      ["PR", c.counts.prs, PALETTE.prs],
-      ["RV", c.counts.reviews, PALETTE.reviews],
-      ["MSG", c.counts.comments.all, PALETTE.comments]
-    ];
-    let x = 44;
-    for (const [label, value, color] of counts) {
-      drawText(ctx, String(label), x, 42, PALETTE.dim, 1);
-      drawText(ctx, String(value), x, 50, color, 1);
-      x += 36;
-    }
-    const weeks = c.weekly.slice(-26);
-    if (weeks.length > 0) {
-      const maxV = Math.max(...weeks.map((w) => w.commits + w.prs + w.reviews + w.comments), 1);
-      const bw = 5, bx = 6, baseY = BOARD_H - 12, maxH = 28;
-      weeks.forEach((w, i) => {
-        const total = w.commits + w.prs + w.reviews + w.comments;
-        const h = Math.max(total > 0 ? 1 : 0, Math.round(total / maxV * maxH));
-        if (h > 0) {
-          ctx.fillStyle = i === weeks.length - 1 ? PALETTE.accent : PALETTE.prs;
-          ctx.fillRect(bx + i * bw, baseY - h, bw - 1, h);
-        }
-      });
-      drawText(ctx, `${weeks.length} WEEKS`, bx, baseY + 3, PALETTE.dim, 1);
-    }
-    return false;
-  };
-
-  const TICKER_SPEED = 30;
-  // bandOnly repaints just the scrolling strip: the header and digest are the same pixels for the whole view.
-  const renderTicker = (ctx, model, _params, t, bandOnly) => {
-    if (!bandOnly) {
-      clearBoard(ctx);
-      header(ctx, "LIVE WIRE", model.latestWeek || "");
-      const digest = [
-        ["COMMITS", model.totals.commits, PALETTE.commits],
-        ["PRS", model.totals.prs, PALETTE.prs],
-        ["REVIEWS", model.totals.reviews, PALETTE.reviews],
-        ["COMMENTS", model.totals.comments.all, PALETTE.comments]
-      ];
-      let x = 6;
-      for (const [label, value, color] of digest) {
-        drawText(ctx, String(label), x, 26, PALETTE.dim, 1);
-        drawText(ctx, String(value), x, 36, color, 2);
-        x += 46;
-      }
-    }
-    const text = model.tickerText || "NO DATA";
-    const tw = measureText(text, 1) + BOARD_W;
-    const offset = (t || 0) * TICKER_SPEED % tw;
-    const y = BOARD_H - 20;
-    ctx.fillStyle = PALETTE.grid;
-    ctx.fillRect(0, y - 4, BOARD_W, 15);
-    drawText(ctx, text, BOARD_W - offset, y, PALETTE.accent, 1);
-    return true;
-  };
-
-  const VIEWS = { totals: renderTotals, leaderboard: renderLeaderboard, contributor: renderContributor, ticker: renderTicker };
+  const VIEWS = { totals: renderTotals, repo: renderRepo, leaderboard: renderLeaderboard };
+  // Repo boards are capped so the rotation stays under ~90s if the org grows.
+  const MAX_REPO_BOARDS = 6;
 
   const SW = 16 / 9, SH = 1, BORDER = 0.16, DEPTH = 0.14;
   // Wide thick frame: lit pixels keep a wood margin and sit back of the rails, so edge-on views show wood.
@@ -14713,19 +14692,16 @@ void main() {
     geo.faces.push({ i: [base, base + 1, base + 2, base + 3], color, emissive });
   };
 
-  // Only BAND_TOP..BOARD_H scrolls; the header and digest hold still, so the two are built and rebuilt apart.
-  const BAND_TOP = BOARD_H - 26;
-  const screenGeometryFrom = (ctx, y0 = 0, y1 = BOARD_H, withPanel = true) => {
+  const screenGeometryFrom = (ctx) => {
     const geo = { verts: [], faces: [], lines: [] };
     // Face colors are 0-255 like models.js hexToRgb; the renderer normalizes at upload.
-    if (withPanel) pushQuad(geo, -SW / 2, SW / 2, -SH / 2, SH / 2, SCREEN_Z, [10, 12, 10], 0.35);
-    // Read back only the rows being rebuilt, not the whole board.
-    const data = ctx.getImageData(0, y0, BOARD_W, y1 - y0).data;
+    pushQuad(geo, -SW / 2, SW / 2, -SH / 2, SH / 2, SCREEN_Z, [10, 12, 10], 0.35);
+    const data = ctx.getImageData(0, 0, BOARD_W, BOARD_H).data;
     // Skip background (10,12,10) and the scanline tint (19,25,18): it would shimmer at distance.
     const skip = (r, g, b) => (r === 10 && g === 12 && b === 10) || (r === 19 && g === 25 && b === 18);
-    for (let y = y0; y < y1; y++) {
+    for (let y = 0; y < BOARD_H; y++) {
       const wy0 = SH / 2 - (y + 1) * PX_H, wy1 = SH / 2 - y * PX_H;
-      const row = (y - y0) * BOARD_W;
+      const row = y * BOARD_W;
       let x = 0;
       while (x < BOARD_W) {
         const i = (row + x) * 4;
@@ -14763,33 +14739,28 @@ void main() {
     let cycleIndex = 0;
     let rotateEvery = 8;
     let lastSwitchAt = 0;
-    let suspendUntil = 0;
-    let lastTickerAt = 0;
     let dirty = true;
-    let bandDirty = false;
-    let animated = false;
 
-    const cycle = (() => {
-      const c = [
-        { name: "totals" },
+    // Rebuilt per model: live refreshes can change the repo roster.
+    const cycle = () => {
+      const c = [{ name: "totals" }];
+      if (model) for (const repo of model.repos.slice(0, MAX_REPO_BOARDS)) c.push({ name: "repo", params: { name: repo.name } });
+      c.push(
         { name: "leaderboard", params: { type: "commits" } },
         { name: "leaderboard", params: { type: "prs" } },
-        { name: "leaderboard", params: { type: "reviews" } },
-        { name: "leaderboard", params: { type: "comments" } }
-      ];
-      if (model) for (const entry of model.contributors.slice(0, 3)) c.push({ name: "contributor", params: { login: entry.login } });
-      c.push({ name: "ticker" });
+        { name: "leaderboard", params: { type: "reviews" } }
+      );
       return c;
-    })();
+    };
 
-    const renderBoard = (t, bandOnly) => {
+    const renderBoard = () => {
       if (!model) {
         clearBoard(ctx);
         drawText(ctx, "OOGATRON", 62, 44, PALETTE.accent, 2);
         drawText(ctx, "AWAITING DATA", 57, 60, PALETTE.dim, 1);
-        return false;
+        return;
       }
-      return !!(VIEWS[view.name] || VIEWS.totals)(ctx, model, view.params, t, bandOnly);
+      (VIEWS[view.name] || VIEWS.totals)(ctx, model, view.params);
     };
 
     const node = createNode({
@@ -14801,9 +14772,6 @@ void main() {
     // Drawn at board size then scaled in to clear the rails; z is left alone.
     const screenNode = createNode({ geometry: null, scale: { x: FX, y: FY, z: 1 } });
     addChild(node, screenNode);
-    // The moving part, kept off the still part so a scroll never rebuilds it.
-    const bandNode = createNode({ geometry: null, scale: { x: FX, y: FY, z: 1 } });
-    addChild(node, bandNode);
 
     const swapGeometry = (target, geometry, renderer) => {
       const old = target.geometry;
@@ -14811,18 +14779,10 @@ void main() {
       target.geometry = geometry;
       if (old && renderer && renderer.releaseGeometry) renderer.releaseGeometry(old);
     };
-    const refresh = (t, renderer, wantBand = false) => {
-      // Decided before painting, so the canvas and the geometry always agree.
-      const band = wantBand && view.name === "ticker" && !!screenNode.geometry;
-      animated = renderBoard(t, band);
-      const scrolling = animated && view.name === "ticker";
-      if (band) {
-        swapGeometry(bandNode, screenGeometryFrom(ctx, BAND_TOP, BOARD_H, false), renderer);
-      } else {
-        swapGeometry(screenNode, screenGeometryFrom(ctx, 0, scrolling ? BAND_TOP : BOARD_H, true), renderer);
-        swapGeometry(bandNode, scrolling ? screenGeometryFrom(ctx, BAND_TOP, BOARD_H, false) : null, renderer);
-      }
-      dirty = bandDirty = false;
+    const refresh = (renderer) => {
+      renderBoard();
+      swapGeometry(screenNode, screenGeometryFrom(ctx), renderer);
+      dirty = false;
     };
 
     const api = {
@@ -14834,50 +14794,41 @@ void main() {
         dirty = true;
       },
       nextView() {
-        cycleIndex = (cycleIndex + 1) % cycle.length;
-        view = cycle[cycleIndex];
+        const c = cycle();
+        cycleIndex = (cycleIndex + 1) % c.length;
+        view = c[cycleIndex];
         dirty = true;
       },
       autoRotate(seconds) {
         rotateEvery = seconds > 0 ? seconds : 0;
       },
-      // Poke an Ooga -> their stats on the big screen, keyed by public handles/aliases.
-      showContributor(name) {
-        if (!model) return false;
-        const login = model.byLogin.has(name) ? name : BL.characters.get(name)?.github;
-        if (!model.byLogin.has(login)) return false;
-        view = { name: "contributor", params: { login } };
+      // A fresh /v1/stats payload from the live poller; invalid data is
+      // ignored so a worker hiccup can never blank the board.
+      refreshData(json) {
+        let next;
+        try {
+          next = parseStats(json);
+        } catch (e) {
+          return false;
+        }
+        model = next;
+        // A repo view whose repo vanished falls back inside renderRepo.
         dirty = true;
-        suspendUntil = lastSwitchAt = -1; // -1 sentinel: resolved on the next update from elapsed.
-        api._suspend = 14;
         return true;
       },
       update(elapsed, renderer) {
-        if (api._suspend) {
-          suspendUntil = elapsed + api._suspend;
-          lastSwitchAt = elapsed;
-          api._suspend = 0;
-        }
-        if (rotateEvery > 0 && elapsed >= suspendUntil && elapsed - lastSwitchAt >= rotateEvery) {
+        if (rotateEvery > 0 && elapsed - lastSwitchAt >= rotateEvery) {
           lastSwitchAt = elapsed;
           api.nextView();
         }
-        // Step the ticker every 0.25s, not every frame; when only the text moved rebuild the band, not the screen.
-        if (animated && view.name === "ticker" && elapsed - lastTickerAt >= 0.25) {
-          lastTickerAt = elapsed;
-          bandDirty = true;
-        }
-        if (dirty) refresh(elapsed, renderer);
-        else if (bandDirty) refresh(elapsed, renderer, true);
+        if (dirty) refresh(renderer);
       },
       dispose(renderer) {
         if (renderer && renderer.releaseGeometry) {
           if (screenNode.geometry) renderer.releaseGeometry(screenNode.geometry);
-          if (bandNode.geometry) renderer.releaseGeometry(bandNode.geometry);
           if (node.geometry) renderer.releaseGeometry(node.geometry);
         }
         screenNode.geometry = null;
-        bandNode.geometry = null;
         node.geometry = null;
       }
     };
@@ -18412,9 +18363,9 @@ void main() {
   const slots = [
     slot("c11", 11, "lab", "open", "EntropyLab", "oogaboogax/entropylab"),
     slot("c10", 10),
-    slot("c9", 9, "race", "open", "Ooga Rally"),
+    slot("c9", 9, "race", "open", "Ooga Rally", "oogaboogax/oogaboogaland"),
     slot("c730", 7.5, null, "headquarters", "Headquarters"),
-    slot("c1", 1, null, "mirror", "Ooga Booga Land"),
+    slot("c1", 1, null, "mirror", "Ooga Booga Land", "oogaboogax/oogaboogaland"),
     slot("c2", 2),
     slot("c3", 3),
     slot("c5", 5, null, "headquarters", "Headquarters")
@@ -18447,6 +18398,262 @@ void main() {
 
 // ---- js/characters.gen.js ----
 // Generated by scripts/characters.mjs from src/characters/; do not edit.
+// ---- characters/2140data.js ----
+(() => {
+  "use strict";
+  const BL = window.BL;
+  const { makeVox, voxelGeometry } = BL.models;
+  const { createNode, addChild } = BL.scene;
+  const { hexToRgb } = BL.math;
+  // An android in plating with code running over its shell. Every plate colour is
+  // registered as a pair, red now and green later: tint() hands models.js the
+  // second palette and crew.js changes the whole body between the two.
+  const twins = new Map();
+  let slots = null;
+  const colors = (k) => {
+    if (slots) return slots;
+    const pair = (red, green) => {
+      const slot = k.color(red);
+      twins.set(slot, green);
+      return slot;
+    };
+    return slots = {
+      plate: pair("#d2382c", "#1f9a48"),
+      light: pair("#f2694f", "#3ad46e"),
+      dark: pair("#6e1811", "#0d5227"),
+      shell: pair("#c03429", "#1d8a45"),
+      glyph: pair("#dd6f57", "#3fb463"),
+      glyphDk: pair("#651610", "#0a3f1c"),
+      core: pair("#ffe6c8", "#d8ffe0"),
+      // The hardware stays the same colour in both states, and so do the eyes.
+      joint: k.color("#191b1e"),
+      // Hands, boots, neckpiece and spine are their own black and dark grey,
+      // the same in both colourways.
+      grip: k.color("#0f1013"),
+      gripLt: k.color("#3a3e45"),
+      wire: k.color("#f2b81c"),
+      laser: k.color("#ff2a1e")
+    };
+  };
+  const glowOf = (C) => ({ [C.core]: 1, [C.glyph]: 0.22, [C.laser]: 1, [C.light]: 0.2 });
+  // Code runs over the shell as it does on the Agent: every third column carries
+  // it, and inside a column each cell is lit, dark or a gap, so it breaks into
+  // symbols rather than stripes and reads differently from every side.
+  const code = (v, C) => {
+    for (const [key, c] of v.map) {
+      if (c !== C.shell) continue;
+      const [x, y, z] = key.split(",").map(Number);
+      if ((Math.imul(x + 64, 73856093) ^ Math.imul(z + 64, 19349663)) % 3) continue;
+      const cell = (Math.imul(x + 31, 83492791) ^ Math.imul(y + 17, 19349663) ^ Math.imul(z + 7, 73856093)) >>> 0;
+      if (cell % 4 === 3) continue;
+      v.map.set(key, cell % 4 ? C.glyph : C.glyphDk);
+    }
+  };
+  // Android limbs: a plate over each long bone, a dark joint at every hinge, a
+  // black hand or boot at the end and one lamp where the plating opens.
+  const legVox = (C, side) => {
+    const v = makeVox();
+    v.fill(0, 3, 4, 4, 0, 3, C.plate);
+    v.fill(0, 3, 3, 3, 0, 3, C.dark);
+    v.fill(0, 3, 2, 2, 1, 2, C.joint);
+    v.fill(0, 3, 0, 1, 0, 5, C.gripLt);
+    v.fill(0, 3, 0, 0, 0, 5, C.grip);
+    v.fill(0, 3, 1, 1, 4, 5, C.grip);
+    v.set(side < 0 ? 0 : 3, 4, 4, C.core);
+    return v;
+  };
+  const armVox = (C) => {
+    const v = makeVox();
+    v.fill(-1, 3, 9, 10, -1, 3, C.plate);
+    v.fill(-1, 3, 10, 10, -1, 3, C.light);
+    v.fill(-1, 3, 8, 8, -1, 3, C.joint);
+    v.fill(0, 2, 5, 7, 0, 2, C.plate);
+    v.fill(0, 2, 4, 4, 0, 2, C.joint);
+    v.fill(0, 2, 2, 3, 0, 2, C.plate);
+    v.fill(0, 2, 2, 3, 2, 2, C.dark);
+    v.fill(-1, 3, 0, 1, -1, 3, C.gripLt);
+    v.fill(-1, 3, 0, 0, -1, 3, C.grip);
+    v.set(1, 6, 2, C.core);
+    return v;
+  };
+  // A chest plate over an open waist: the machinery between them is the tell that
+  // this Ooga is a machine, and the core sits where a heart would.
+  const torsoVox = (C) => {
+    const v = makeVox();
+    v.fill(0, 8, 0, 7, 0, 5, C.plate);
+    v.fill(0, 8, 7, 7, 0, 5, C.gripLt);
+    v.fill(0, 8, 6, 6, 0, 5, C.light);
+    // The waist pinches in and shows its wiring front and back.
+    for (const y of [2, 3]) {
+      for (let z = 0; z <= 5; z++) {
+        v.del(0, y, z);
+        v.del(8, y, z);
+      }
+      v.fill(1, 7, y, y, 0, 5, C.joint);
+    }
+    for (const x of [2, 4, 6]) {
+      v.set(x, 2, 5, C.wire);
+      v.set(x, 3, 0, C.wire);
+    }
+    // Chest: a lit ring with the core at its centre, seams down the side plates.
+    v.fill(3, 5, 4, 5, 5, 5, C.light);
+    v.set(4, 5, 5, C.core);
+    v.set(4, 4, 5, C.dark);
+    v.fill(1, 1, 4, 5, 5, 5, C.dark);
+    v.fill(7, 7, 4, 5, 5, 5, C.dark);
+    // Pelvis under the waist: its top row carries the machinery on down, so the
+    // dark band reads taller than the pinch itself.
+    v.fill(0, 8, 1, 1, 0, 5, C.joint);
+    v.fill(3, 5, 4, 5, 0, 0, C.gripLt);
+    v.fill(1, 2, 4, 5, 0, 0, C.dark);
+    v.fill(6, 7, 4, 5, 0, 0, C.dark);
+    v.set(4, 6, 0, C.core);
+    return v;
+  };
+  const fingerVox = (C) => {
+    const v = makeVox();
+    v.set(0, 1, 4, C.grip);
+    v.set(2, 1, 4, C.grip);
+    return v;
+  };
+  // A bald human skull in plating: rounded crown, brow shelf, nose ridge and a
+  // narrow jaw, code over all of it, and the emitters set deep in shadow.
+  const skullVox = (v, C) => {
+    v.fill(0, 6, 0, 6, 0, 5, C.shell);
+    // A high cranium domed at the top, and a jaw narrowed under the cheekbones.
+    for (const x of [0, 6]) {
+      for (let z = 0; z <= 5; z++) {
+        v.del(x, 6, z);
+        v.del(x, 0, z);
+      }
+      for (const z of [0, 5]) v.del(x, 5, z);
+    }
+    for (const x of [1, 5]) {
+      v.del(x, 6, 0);
+      v.del(x, 6, 5);
+    }
+    for (const x of [1, 5]) {
+      v.del(x, 0, 0);
+      v.del(x, 0, 5);
+    }
+    // A brow shelf over the sockets, a nose ridge under it, cheekbones beside.
+    v.fill(1, 5, 4, 4, 6, 6, C.shell);
+    v.fill(3, 3, 2, 3, 6, 6, C.shell);
+    v.set(1, 2, 6, C.shell);
+    v.set(5, 2, 6, C.shell);
+    code(v, C);
+    // The features keep their own colour, so the code never swallows the face.
+    v.fill(0, 6, 3, 3, 5, 5, C.dark);
+    v.fill(2, 4, 1, 1, 5, 5, C.dark);
+    v.set(3, 1, 6, C.dark);
+    v.fill(1, 5, 6, 6, 2, 2, C.dark);
+    v.fill(2, 4, 4, 4, 6, 6, C.joint);
+  };
+  // Nunchaku: two matte sticks on a short chain, their own palette so the gold
+  // skin and the body's two colourways never fight over them.
+  const CHUK_PALETTE = [hexToRgb("#17181b"), hexToRgb("#767c85"), hexToRgb("#3b3f45")];
+  const GOLD_CHUK_PALETTE = [hexToRgb("#c79a2f"), hexToRgb("#e8c669"), hexToRgb("#8a6a18")];
+  const STICK = 0, COLLAR = 1, CHAIN = 2;
+  // The handle carries the chain stub, so the gap stays filled at every angle.
+  const handleVox = () => {
+    const v = makeVox();
+    v.fill(0, 1, 0, 6, 0, 1, STICK);
+    v.fill(0, 1, 1, 1, 0, 1, COLLAR);
+    v.fill(0, 1, 6, 6, 0, 1, COLLAR);
+    v.fill(0, 1, 7, 7, 0, 0, CHAIN);
+    v.fill(0, 1, 8, 8, 1, 1, CHAIN);
+    return v;
+  };
+  const freeVox = () => {
+    const v = makeVox();
+    v.fill(0, 1, 0, 4, 0, 1, STICK);
+    v.fill(0, 1, 0, 0, 0, 1, COLLAR);
+    return v;
+  };
+  // The pivot sits at the top of the handle's chain, in the club's own space.
+  const CHAIN_Y = 8;
+  // No pack on his back: the thrust comes out of his soles. One node at the
+  // feet holds both plumes, so crew.js lights and stretches them as it does any
+  // jetpack flame, and they keep their own colours through both colourways.
+  const FLAME_PALETTE = [hexToRgb("#ffb13b"), hexToRgb("#ffe9a8")];
+  const FLAME_GLOW = { 0: 1, 1: 1 };
+  const flameVox = () => {
+    const v = makeVox();
+    for (const x of [1, 6]) {
+      v.fill(x, x + 1, -2, -1, 0, 1, 1);
+      v.fill(x, x + 1, -3, -3, 0, 1, 0);
+      v.set(x, -4, 0, 0);
+      v.set(x + 1, -4, 1, 0);
+    }
+    return v;
+  };
+  BL.characters.add({
+    handle: "2140data",
+    joined: 1789933421,
+    lastCommit: 1789890221,
+    // nunchaku swings the free stick in crew.js, recipe answers a poke with the
+    // prompt for adding an Ooga, and the tint hook below drives the colourway.
+    // He co-built this island and keeps every project on it, so `maintainer`
+    // works him at all of them until the backend reports his commits.
+    look: {
+      maintainer: true, nunchaku: true, recipe: true,
+      bald: true, hairless: true, cleanShaven: true, noBrow: true, noPupils: true,
+      face: "none", hatY: 12, height: 1.12,
+      skin: "#c03429", hair: "#191b1e", fur: "#6e1811"
+    },
+    voice: {
+      poke: "Take the prompt. Build your own.",
+      idle: ["Blocks do not lie.", "Ooga, in binary.", "Twenty one million.", "I index the chain.", "I hunt Agents.", "The year is 2140."]
+    },
+    dress: {
+      // The whole body is plating, so every voxel part is rebuilt here rather
+      // than painted over the caveman underneath. k.vg keeps them in the tint.
+      gear(k) {
+        const C = colors(k), u = k.u, glow = glowOf(C);
+        k.parts.legL.geometry = k.vg(legVox(C, -1), { x: -2 * u, y: -5 * u, z: -2.5 * u }, glow);
+        k.parts.legR.geometry = k.vg(legVox(C, 1), { x: -2 * u, y: -5 * u, z: -2.5 * u }, glow);
+        k.parts.torso.geometry = k.vg(torsoVox(C), { x: -4.5 * u, y: 0, z: -3 * u }, glow);
+        const arm = k.vg(armVox(C), { x: -1.5 * u, y: -11 * u, z: -1.5 * u }, glow);
+        k.parts.armL.geometry = k.parts.armR.geometry = arm;
+        const fingers = k.vg(fingerVox(C), { x: -1.5 * u, y: -u, z: -1.5 * u });
+        k.parts.fingersL.geometry = k.parts.fingersR.geometry = fingers;
+      },
+      club: (k) => ({ voxels: handleVox(), palette: CHUK_PALETTE, goldPalette: GOLD_CHUK_PALETTE, rest: { x: 0.24, z: 0 }, carry: { x: 0.95, z: 0 } }),
+      skull(k, v) {
+        skullVox(v, colors(k));
+        return true;
+      },
+      eyes(k, v) {
+        const C = colors(k);
+        // One burning point each side, deep in its socket: the flare does the work.
+        for (const x of [1, 5]) {
+          v.set(x, 3, 5, C.laser);
+          v.set(x, 3, 6, C.laser);
+          k.eyeCells.push([x, 3]);
+        }
+        k.lid = C.joint;
+        k.headEmissive = glowOf(C);
+        return true;
+      },
+      // The second colourway: the same palette with every registered plate green.
+      tint: (k, palette) => palette.map((rgb, i) => twins.has(i) ? hexToRgb(twins.get(i)) : rgb),
+      extras(k) {
+        const u = k.u, origin = { x: -u, y: 0, z: -u };
+        const geometry = voxelGeometry(freeVox(), { unit: u, palette: CHUK_PALETTE, origin });
+        const gold = voxelGeometry(freeVox(), { unit: u, palette: GOLD_CHUK_PALETTE, origin });
+        k.parts.chuk = createNode({ position: { x: 0, y: CHAIN_Y * u, z: 0 }, geometry, skins: { default: geometry, gold } });
+        addChild(k.parts.club, k.parts.chuk);
+        // crew.js flies him exactly as it flies the world jetpack, and nothing
+        // takes his thrusters off. The mount sits on the sole plane, under both feet.
+        k.parts.jetpack = createNode({ position: { x: 0, y: -5 * u, z: 0 } });
+        k.parts.jetFlame = createNode({ geometry: voxelGeometry(flameVox(), { unit: u, palette: FLAME_PALETTE, origin: { x: -4.5 * u, y: 0, z: -u }, emissive: FLAME_GLOW }), visible: false });
+        addChild(k.parts.jetpack, k.parts.jetFlame);
+        addChild(k.root, k.parts.jetpack);
+      }
+    }
+  });
+})();
+
 // ---- characters/DrNeski.js ----
 (() => {
   "use strict";
@@ -19046,7 +19253,11 @@ void main() {
   // Historical EntropyLab activity; a backend can refresh it with applyActivity.
   // One entry per file in src/characters/, in join order.
   const characters = BL.characters.all();
-  const roster = characters.map(({ handle, lastCommit }) => ({ name: handle, lastCommitAt: lastCommit * 1e3, activity: new Map([[ENTROPY, lastCommit * 1e3]]) }));
+  // `look.maintainer` marks someone who keeps every project on the island: until
+  // the backend reports their commits they are busy in all of them, whatever the
+  // clock or the debug fixture says. Delete the flag from the character file once
+  // real activity arrives and the dates take over again.
+  const roster = characters.map(({ handle, lastCommit, look }) => ({ name: handle, lastCommitAt: lastCommit * 1e3, activity: new Map([[ENTROPY, lastCommit * 1e3]]), maintainer: !!(look && look.maintainer) }));
   // Filter construction, not visibility: solo worlds do no work for absent Oogas.
   // Keep the canonical roster intact for activity, likenesses and stable indices.
   const params = new URLSearchParams(location.search);
@@ -19064,16 +19275,19 @@ void main() {
   };
   // Callers use the canonical lowercase repository key, keeping frame queries allocation-free.
   const hasRecentActivity = (contributor, repo, at = Date.now()) => {
+    if (contributor.maintainer) return true;
     const seen = contributor.activity.get(repo);
     return seen > 0 && seen <= at && at - seen < WORK_WINDOW;
   };
   const stateFor = (contributor, at = Date.now()) => {
+    if (contributor.maintainer) return "working";
     const age = at - contributor.lastCommitAt;
     if (!Number.isFinite(age) || contributor.lastCommitAt <= 0 || age < 0) return "sleeping";
     if (age < WORK_WINDOW) return "working";
     return age < CHILL_WINDOW ? "chilling" : "sleeping";
   };
   const ageLabel = (contributor, at = Date.now()) => {
+    if (contributor.maintainer) return "building";
     if (!Number.isFinite(contributor.lastCommitAt) || contributor.lastCommitAt <= 0) return "no activity";
     const minutes = Math.max(0, Math.floor((at - contributor.lastCommitAt) / MINUTE));
     if (minutes < 60) return `${minutes}m ago`;
@@ -19099,13 +19313,21 @@ void main() {
     if (changed.size) for (const notify of listeners) notify();
     return changed.size;
   };
-  // Oogatron schema 1, one snapshot or an array of project snapshots. generated_at
-  // describes the snapshot, never the contributor's most recent activity.
+  // Oogatron snapshots, one or an array: schema 2 (org-wide, what the baked
+  // jumbotron payload is) or legacy schema 1 project snapshots keyed by
+  // meta.repo. generated_at describes the snapshot, never the contributor's
+  // most recent activity. Contributor identity is org-wide in schema 2, so
+  // last_seen_at lands on the lab's repo key: the wake/sleep state is
+  // org-wide by construction (stateFor takes the max across repos) and the
+  // lab work sites keep animating for whoever the org last saw active.
   const applySnapshot = (snapshots, at = Date.now()) => {
     const rows = [];
     for (const snapshot of Array.isArray(snapshots) ? snapshots : [snapshots]) {
-      if (!snapshot || !snapshot.meta || snapshot.meta.schema_version !== 1 || !Array.isArray(snapshot.contributors)) continue;
-      const repo = repositoryOf(snapshot.meta.repo);
+      if (!snapshot || !snapshot.meta || !Array.isArray(snapshot.contributors)) continue;
+      const version = snapshot.meta.schema_version;
+      const repo = version === 2
+        ? (typeof snapshot.meta.org === "string" && snapshot.meta.org.toLowerCase() === "oogaboogax" ? ENTROPY : null)
+        : version === 1 ? repositoryOf(snapshot.meta.repo) : null;
       if (!repo) continue;
       const firstSnapshot = !snapshotRepos.has(repo), accepted = [];
       for (const contributor of snapshot.contributors) {
@@ -19249,7 +19471,7 @@ void main() {
 // Subscribers get plain events, { type: "tx", vsize, weight, fee } for each transaction the
 // mempool accepts, { type: "block", height, txCount } for each block mined after connect and
 // { type: "fees", nextFee, blocks } whenever the projected next block's median fee moves.
-// The only network code on the page; the content policy allows exactly this origin.
+// One of the page's two live feeds (the other polls the oogatron worker in oogatron-live.js).
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -19360,6 +19582,94 @@ void main() {
     subscribers.clear();
   };
   BL.mempool = { ENDPOINT, state, start, subscribe, dispose, emit, parse: onMessage };
+})();
+
+// ---- js/oogatron-live.js ----
+// Live OogaBoogaX stats from the deployed oogatron worker: one poller for the
+// page life, every minute while the tab is visible. Subscribers get plain
+// events: { type: "stats", stats } for every good poll (the full /v1/stats
+// payload, schema 2), and { type: "contribution", delta, activity } when the
+// org's commits+prs+reviews rose since the previous poll — the fireworks
+// signal. The baseline is the first successful poll, never the baked
+// snapshot: a stale bake must not fire celebration on every page load.
+// Network errors are silent (counted in state); the page always keeps the
+// baked board. Like the mempool feed, this stays off under nosim and can be
+// disabled with oogatron=0.
+(() => {
+  "use strict";
+  const BL = window.BL = window.BL || {};
+  const ENDPOINT = "https://oogatron.sterlingbreck.workers.dev/v1/stats";
+  const POLL_MS = 60000;
+  const subscribers = new Set();
+  const state = { enabled: false, polls: 0, failures: 0, activity: -1, contributions: 0, lastAt: 0, lastError: "" };
+  let timer = 0, inFlight = false, dueAt = 0;
+
+  const emit = (event) => {
+    for (const fn of subscribers) fn(event);
+  };
+
+  const poll = async () => {
+    if (inFlight) return;
+    inFlight = true;
+    dueAt = Date.now() + POLL_MS;
+    try {
+      const res = await fetch(ENDPOINT);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const stats = await res.json();
+      if (!stats || !stats.meta || stats.meta.schema_version !== 2 || !stats.totals) {
+        throw new Error("unexpected stats shape");
+      }
+      const t = stats.totals;
+      const activity = (t.commits | 0) + (t.prs | 0) + (t.reviews | 0);
+      state.polls++;
+      state.lastAt = Date.now();
+      state.lastError = "";
+      if (state.activity >= 0 && activity > state.activity) {
+        state.contributions++;
+        emit({ type: "contribution", delta: activity - state.activity, activity });
+      }
+      state.activity = activity;
+      emit({ type: "stats", stats });
+    } catch (e) {
+      state.failures++;
+      state.lastError = e && e.message || String(e);
+    } finally {
+      inFlight = false;
+    }
+  };
+
+  // Background tabs skip their polls; coming back polls at once when one was
+  // missed, so a returning visitor sees fresh numbers (and any fireworks due).
+  const tick = () => {
+    if (document.hidden) return;
+    poll();
+  };
+  const onVisibility = () => {
+    if (!document.hidden && state.enabled && Date.now() >= dueAt) poll();
+  };
+
+  const start = () => {
+    if (state.enabled) return;
+    state.enabled = true;
+    poll();
+    timer = window.setInterval(tick, POLL_MS);
+    document.addEventListener("visibilitychange", onVisibility);
+  };
+
+  const subscribe = (fn) => {
+    subscribers.add(fn);
+    return () => subscribers.delete(fn);
+  };
+
+  const dispose = () => {
+    if (timer) window.clearInterval(timer);
+    timer = 0;
+    document.removeEventListener("visibilitychange", onVisibility);
+    state.enabled = false;
+    subscribers.clear();
+  };
+
+  BL.oogatronLive = { start, subscribe, dispose, state, ENDPOINT };
 })();
 
 // ---- js/weapon-targets.js ----
@@ -20076,7 +20386,7 @@ void main() {
       }
     };
   };
-  BL.interact = { create };
+  BL.interact = { create, DOUBLE_MS };
 })();
 
 // ---- js/controls.js ----
@@ -22808,7 +23118,9 @@ void main() {
       message: $("message"),
       qr: $("qr"),
       qrUrl: $("qr-url"),
-      feed: $("feed")
+      feed: $("feed"),
+      recipe: $("recipe"),
+      recipeText: $("recipe-text")
     };
     el.lootTab.hidden = !lootEnabled;
     el.crateHelp.hidden = !lootEnabled;
@@ -22821,7 +23133,7 @@ void main() {
       target.addEventListener(type, fn, opts);
       listeners.push(() => target.removeEventListener(type, fn, opts));
     };
-    let toastTimer = 0, toastHideTimer = 0, hintTimer = 0, hintHideTimer = 0;
+    let toastTimer = 0, toastHideTimer = 0, hintTimer = 0, hintHideTimer = 0, copyTimer = 0;
     const rosterRows = new Map();
     const orderedRoster = [...roster].sort((a, b) => b.lastCommitAt - a.lastCommitAt);
     for (let rosterIndex = 0; rosterIndex < orderedRoster.length; rosterIndex++) {
@@ -23096,10 +23408,40 @@ void main() {
       e.preventDefault();
       closeFeed();
     });
+    const openRecipe = () => {
+      if (!el.recipe.open) el.recipe.showModal();
+    };
+    const closeRecipe = () => {
+      if (el.recipe.open) el.recipe.close();
+    };
+    on(el.recipe, "keydown", (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      closeRecipe();
+    });
+    // The prompt is written to be pasted, so it leaves in one click.
+    const copyRecipe = (button) => {
+      const text = el.recipeText.textContent;
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).catch(() => {});
+      else {
+        const field = document.createElement("textarea");
+        field.value = text;
+        document.body.append(field);
+        field.select();
+        document.execCommand("copy");
+        field.remove();
+      }
+      // A toast would sit behind the modal's backdrop, so the button answers.
+      window.clearTimeout(copyTimer);
+      button.textContent = "Copied";
+      copyTimer = window.setTimeout(() => { button.textContent = "Copy prompt"; }, 1600);
+    };
     for (const b of el.actions) on(b, "click", () => {
       b.blur();
       if (b.dataset.action === "feed") openFeed();
       else if (b.dataset.action === "feed-close") closeFeed();
+      else if (b.dataset.action === "recipe-close") closeRecipe();
+      else if (b.dataset.action === "recipe-copy") copyRecipe(b);
       else actionHandler && actionHandler(b.dataset.action);
     });
     const toast = (text) => {
@@ -23375,6 +23717,7 @@ void main() {
       window.clearTimeout(toastHideTimer);
       window.clearTimeout(hintTimer);
       window.clearTimeout(hintHideTimer);
+      window.clearTimeout(copyTimer);
       for (const off of listeners) off();
       el.roster.replaceChildren();
       el.inventory.replaceChildren();
@@ -23387,8 +23730,9 @@ void main() {
       setMagazine(0, 0, 0, false);
       setJetpack(false, false, 0);
       closeFeed();
+      closeRecipe();
     };
-    return { el, openFeed, closeFeed, setRosterRow, setMeter, setStats, setAct, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
+    return { el, openFeed, closeFeed, openRecipe, closeRecipe, setRosterRow, setMeter, setStats, setAct, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
   };
   BL.hud = { create, renderIcon, signLettering, STATE_LABELS, statusFor };
 })();
@@ -24466,6 +24810,20 @@ void main() {
   const MELEE_CHARGE_TIME = 1;
   const meleeWindAngle = (w) => -1.1 * ease.inOutQuad(clamp((MELEE_TIME - w.meleeTime) / MELEE_WIND, 0, 1)) - 0.55 * w.meleeCharge;
   const AXE_STICK_DELAY = 1, AXE_STICK_BLEND = 0.3, AXE_STICK_ARM = -1.5;
+  // A body built with a second colourway changes between the two on its own,
+  // never sooner than TINT_MIN and never later than TINT_MAX.
+  // A maintainer runs the whole island's circuit, so it stands at the pile for a
+  // while between trips instead of scurrying from one cave straight to the next.
+  const WORK_REST_MIN = 7, WORK_REST_SPREAD = 16;
+  // How long a character carries one weapon before swapping to the other.
+  const SWAP_MIN = 20, SWAP_SPREAD = 40;
+  const swapWait = () => SWAP_MIN + Math.random() * SWAP_SPREAD;
+  const TINT_MIN = 360, TINT_MAX = 900;
+  const tintWait = () => TINT_MIN + Math.random() * (TINT_MAX - TINT_MIN);
+  // The free stick folds against the handle, trails as the swing winds up, then
+  // whips a whole turn through the strike and lands folded again.
+  const TAU = Math.PI * 2;
+  const CHUK_FOLD = 2.4, CHUK_TRAIL = 1.15, CHUK_FLICK = 0.55, CHUK_SPIN = 7.5;
   const GUN_HOLD = 0.24, GUN_KICK = 0.045, GUN_FLASH_TIME = 0.035;
   const MAGAZINE_SWAP_TIME = 0.44;
   const RELOAD_HANDOFF_TIME = 0.32, RELOAD_FULL_HOLD = 0.24;
@@ -24802,6 +25160,7 @@ void main() {
     const crewList = [];
     if (!world.weapons) world.weapons = new Map();
     const legacyMagazine = world.magazine || (world.magazine = { owned: false, count: 0, ammo: 0, carrier: null });
+    let recipeTimer = 0;
     const claimLegacyMagazines = (weapon) => {
       const count = legacyMagazine.count === 2 ? 2 : 1;
       for (let i = 0; i < count && weapon.spareAmmo.length < 2; i++) weapon.spareAmmo.push(legacyMagazine.ammo);
@@ -24849,6 +25208,10 @@ void main() {
       weapon.meleeStrikeFrom = -1.1;
       Object.assign(cave, {
         weapon,
+        tintTime: cave.tint ? tintWait() : 0,
+        chukAngle: CHUK_FOLD,
+        meleeOut: Math.random() < 0.5,
+        meleeSwap: swapWait(),
         axeRotation: math.quat.create(),
         gunHandRotation: math.quat.create(),
         gunSupportRotation: math.quat.create(),
@@ -24856,7 +25219,7 @@ void main() {
         meleePoints: meleeExtremes(cave.parts.club.geometry),
         clubSlingProfile: clubSlingProfile(cave.parts.club.geometry),
         clubTorsoBounds: BL.scene.boundsOf(cave.parts.torso.geometry),
-        work: { phase: "", site: 0, index: 0, gait: 0, timer: i * 0.137, emptyTime: 0, reloadSlot: false, direct: false, position: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 0 } },
+        work: { phase: "", site: 0, index: 0, gait: 0, timer: i * 0.137, emptyTime: 0, rest: 0, reloadSlot: false, direct: false, position: { x: 0, y: 0, z: 0 }, target: { x: 0, y: 0, z: 0 } },
         slot: null,
         pileApproach: false,
         index: i,
@@ -24915,6 +25278,9 @@ void main() {
         act: { kind: "eat", until: 0, trips: 0, sayAt: 0, said: true, phase: 0, spot: { x: 0, z: 0, ry: NaN } },
         swagNodes: []
       });
+      // A character built with its own pack wears it from the first frame: the
+      // same flight, fuel and recovery as the world jetpack, minus the pickup.
+      if (cave.parts.jetpack) cave.jet = { node: cave.parts.jetpack, flame: cave.parts.jetFlame, thrust: false, spending: false, power: 0, puff: 0 };
       cave.root.visible = false;
       addChild(root, cave.root);
       addChild(root, cave.sleepWeapons);
@@ -25770,6 +26136,27 @@ void main() {
       && (cave === player ? !cave.weapon.equipped : cave.state === "chilling")
       && !cave.weapon.aiming && cave.weapon.meleeTime <= 0 && !cave.weapon.reloading && !cave.weapon.reloadHandoff
       && !cave.build && !cave.bedTravel.mode && !cave.camp.seat && !cave.camp.burning && !cave.camp.rolling && !cave.camp.panic.active;
+    // The whip is written straight from the swing's own phase, so it reads the
+    // same at any frame rate; only the settle back to the fold is damped.
+    const poseNunchaku = (cave, dt) => {
+      const w = cave.weapon, chuk = cave.parts.chuk;
+      const release = w.meleeStrikeTime + MELEE_RECOVER;
+      if (w.primaryEquipped && (w.meleeHeld || w.meleeTime > release)) {
+        cave.chukAngle = CHUK_FOLD + CHUK_TRAIL * ease.inOutQuad(clamp((MELEE_TIME - w.meleeTime) / MELEE_WIND, 0, 1)) + 0.5 * w.meleeCharge;
+      } else if (w.primaryEquipped && w.meleeTime > 0) {
+        const from = CHUK_FOLD + CHUK_TRAIL + 0.5 * w.meleeCharge;
+        cave.chukAngle = from + (CHUK_FOLD + TAU - from) * ease.inOutQuad(1 - w.meleeTime / release);
+      } else {
+        const ready = cave.root.visible && (w.primaryEquipped && w.aiming || meleeDrawn(cave));
+        cave.chukAngle = damp(cave.chukAngle % TAU, CHUK_FOLD + (ready ? CHUK_FLICK * Math.sin(elapsed * CHUK_SPIN) : 0), 14, dt);
+      }
+      chuk.rotation.x = cave.chukAngle;
+    };
+    // An Ooga with its own melee weapon swaps hands now and then: the rifle rides
+    // its back while the melee weapon is out, and comes back for the shooting.
+    const meleeDrawn = (cave) => cave.traits.nunchaku && cave.meleeOut && cave !== player
+      && cave.work.phase !== "station" && cave.work.phase !== "shoot"
+      && !cave.weapon.reloading && !cave.weapon.reloadHandoff && !cave.build;
     const poseFingers = (arm, fingers, held, side) => {
       fingers.highlight = arm.highlight;
       // Select a square side with an exact quarter turn about the palm. The
@@ -25809,7 +26196,7 @@ void main() {
       const working = cave !== player && cave.state === "working";
       const celebrating = working && cave.cheer > 0;
       const spareLoading = ready && reloadingSpare(cave) && !celebrating;
-      const drawn = ready && !spareLoading && (working || cave === player && w.equipped || !w.reloading && (!!cave.build || w.recoil > 0));
+      const drawn = ready && !spareLoading && !meleeDrawn(cave) && (working || cave === player && w.equipped || !w.reloading && (!!cave.build || w.recoil > 0));
       parts.gunFlash.visible = drawn && w.recoil > GUN_HOLD - GUN_FLASH_TIME;
       gun.visible = ready;
       const slungClub = (drawn || spareLoading) && (cave === player || working);
@@ -25818,7 +26205,8 @@ void main() {
       // The axe's ordinary stance is independent of combat selection, both
       // before possession and when moving in the initial navigation view.
       const primaryCarry = !slungClub && carryingStoneAxe(cave);
-      const axeSideSling = slungClub && cave.traits.stoneAxe && !!cave.jet;
+      // A pack takes the centre of the back, and the nunchaku rides the hip either way.
+      const sideSling = slungClub && (cave.traits.nunchaku || cave.traits.stoneAxe && !!cave.jet);
       const clubParent = slungClub ? cave.root : parts.armL;
       if (parts.club.parent !== clubParent) {
         removeChild(parts.club.parent, parts.club);
@@ -25843,11 +26231,17 @@ void main() {
         setVec(parts.club.position, gripX - MUZZLE[0], -0.625 * h - MUZZLE[1], 0.15 * h - MUZZLE[2]);
         setVec(parts.club.rotation, 0, 0, 0);
         parts.club.quaternion = cave.axeRotation;
-      } else if (axeSideSling) {
-        // A jetpack takes the centre of the back. The axe hangs tight against
-        // its anatomical left side (+X), with the stone above the tanks.
-        setVec(parts.club.position, 0.36 * h, 0.04 * h + cave.viewLift, -0.255 * h);
-        setVec(parts.club.rotation, -0.035, 0, 0.04);
+      } else if (sideSling) {
+        // The axe hangs against the anatomical left side (+X) with its stone above
+        // the tanks; the shorter nunchaku rides the drawing hand's hip, head down.
+        if (cave.traits.nunchaku) {
+          // Tucked at the drawing hand's hip, sticks up, clear of the thigh.
+          setVec(parts.club.position, -0.34 * h, -0.05 * h + cave.viewLift, -0.02 * h);
+          setVec(parts.club.rotation, 0.18, 0, -0.16);
+        } else {
+          setVec(parts.club.position, 0.36 * h, 0.04 * h + cave.viewLift, -0.255 * h);
+          setVec(parts.club.rotation, -0.035, 0, 0.04);
+        }
       } else {
         setVec(parts.club.position, slungClub ? -0.25 * h : 0, (slungClub ? 0.25 : primaryReady ? -0.625 : -0.62) * h, (slungClub ? -0.3 : primaryReady ? 0.15 : 0.08) * h);
         setVec(parts.club.rotation, slungClub ? cave.traits.stoneAxe ? 0 : CLUB_SLING_TILT : primaryReady ? 0 : cave.clubCarry.x,
@@ -25857,7 +26251,7 @@ void main() {
       if (slungClub) {
         clubSlingAxes(parts.club);
         const contact = Math.min(clubRearContact(cave, parts.head, cave.gunHeadBounds),
-          axeSideSling ? parts.club.position.z : clubRearContact(cave, parts.torso, cave.clubTorsoBounds));
+          sideSling ? parts.club.position.z : clubRearContact(cave, parts.torso, cave.clubTorsoBounds));
         if (contact !== Infinity) parts.club.position.z = contact;
       }
       parts.club.visible = slungClub || !drawn;
@@ -27437,6 +27831,7 @@ void main() {
         if (site.position) site.position(cave, cave.work.position);
         else setVec(cave.work.position, site.route[site.route.length - 1].x, 0, site.route[site.route.length - 1].z);
         cave.work.phase = "outbound";
+        cave.work.rest = cave.traits.maintainer ? WORK_REST_MIN + Math.random() * WORK_REST_SPREAD : 0;
         cave.work.reloadSlot = cave.work.direct = cave.pileApproach = false;
         cave.act.kind = "work";
         cave.weapon.equipped = true;
@@ -27549,7 +27944,13 @@ void main() {
         standPose(cave);
         cave.root.rotation.y = Math.atan2(-cave.root.position.x, -cave.root.position.z);
         if (!nearReload(cave)) { work.phase = "return"; work.index = -1; return; }
-        if (!reloadMissing(cave)) { if (!weapon.reloadHandoff) selectWorkSite(cave); return; }
+        if (!reloadMissing(cave)) {
+          if (weapon.reloadHandoff) return;
+          // Loaded and in no hurry: stand at the pile before the next trip.
+          if (work.rest > 0) { work.rest -= dt; return; }
+          selectWorkSite(cave);
+          return;
+        }
         if (!weapon.reloading) startReload(cave);
         runReload(cave, dt);
       }
@@ -27760,6 +28161,27 @@ void main() {
         cave.parts.head.rotation.x = -k * 0.2;
       } else cave.parts.head.rotation.x = 0;
     };
+    // Every voxel part is paired with its twin both ways, so one pass over the
+    // body changes the colourway and a second pass changes it back.
+    const swapTint = (cave) => {
+      const tint = cave.tint;
+      const visit = (node) => {
+        const twin = node.geometry && tint.get(node.geometry);
+        if (twin) node.geometry = twin;
+        for (let i = 0; i < node.children.length; i++) visit(node.children[i]);
+      };
+      visit(cave.root);
+      cave.headOpen = tint.get(cave.headOpen) || cave.headOpen;
+      cave.headClosed = tint.get(cave.headClosed) || cave.headClosed;
+      cave.parts.head.geometry = cave.state === "sleeping" ? cave.headClosed : cave.headOpen;
+    };
+    // A hand toggle restarts the timer too, so it does not flip again seconds later.
+    const toggleTint = (cave) => {
+      if (!cave || !cave.tint) return false;
+      swapTint(cave);
+      cave.tintTime = tintWait();
+      return true;
+    };
     const updateCaveman = (cave, dt) => {
       clearHeadLook(cave);
       const parts = cave.parts;
@@ -27774,6 +28196,14 @@ void main() {
       for (let i = 0; i < BODY_PARTS.length; i++) parts[BODY_PARTS[i]].highlight = cave.highlight;
       // A carved head breathes its candlelight from dim to bright
       if (cave.traits.pumpkin) parts.head.glow = 0.62 + 0.38 * Math.sin(elapsed * 2.1 + cave.phase);
+      if (cave.traits.nunchaku && (cave.meleeSwap -= dt) <= 0) {
+        cave.meleeOut = !cave.meleeOut;
+        cave.meleeSwap = swapWait();
+      }
+      if (cave.tint && (cave.tintTime -= dt) <= 0) {
+        swapTint(cave);
+        cave.tintTime = tintWait();
+      }
       if (cave.hopV > 0 || cave.hop > 0) {
         cave.hopV -= WALK.gravity * dt;
         // Fruit halves vertical travel without changing ballistic momentum; leaving restores normal movement at once.
@@ -27924,8 +28354,17 @@ void main() {
       if (cave.jetFuel < JET_LAUNCH_FUEL && grounded(cave)) cave.jetRecovering = true;
       return node;
     };
+    const builtInJetpack = (cave) => !!cave.parts.jetpack;
+    const cutJet = (cave) => {
+      const jet = cave.jet;
+      jet.thrust = jet.spending = false;
+      jet.power = jet.puff = 0;
+      jet.flame.visible = false;
+    };
     const removeJetpack = (cave) => {
       if (!cave.jet) return false;
+      // Built in: it cannot come off, so a scene asking for it back only stops it burning.
+      if (builtInJetpack(cave)) { cutJet(cave); return false; }
       removeChild(cave.root, cave.jet.node);
       cave.jet = null;
       if (ctx.refreshMirrorObject) ctx.refreshMirrorObject(cave.root);
@@ -28242,6 +28681,7 @@ void main() {
       }
       cave.swagNodes.length = 0;
       cave.parts.club.geometry = cave.skins.club.default;
+      if (cave.parts.chuk) cave.parts.chuk.geometry = cave.parts.chuk.skins.default;
       cave.parts.gunBody.geometry = cave.skins.gun.default;
       const entryId = game.state.assignments[cave.traits.name];
       const item = entryId ? game.itemOf(entryId) : null;
@@ -28249,6 +28689,8 @@ void main() {
       if (item.skin) {
         const target = item.skin === "club" ? cave.parts.club : cave.parts.gunBody;
         target.geometry = cave.skins[item.skin].gold;
+        // A weapon that carries a second stick takes the same skin.
+        if (item.skin === "club" && cave.parts.chuk) cave.parts.chuk.geometry = cave.parts.chuk.skins.gold;
         return;
       }
       const anchor = item.slot === "face" ? cave.parts.face : cave.parts.hat;
@@ -28273,7 +28715,19 @@ void main() {
       return item ? item.name : null;
     };
     const renderLocker = () => hud.renderInventory(game.state.inventory, game.assignedTo, wornBy);
+    // The first tap of a double-tap takes an Ooga, so the prompt waits out that
+    // window: a modal opening under the second tap would swallow it.
+    const openRecipeSoon = (cave) => {
+      window.clearTimeout(recipeTimer);
+      recipeTimer = window.setTimeout(() => {
+        recipeTimer = 0;
+        if (player !== cave) hud.openRecipe();
+      }, BL.interact.DOUBLE_MS + 40);
+    };
     const pokeCave = (cave) => {
+      // One Ooga answers a poke with the prompt for building another one. It is
+      // a machine: it answers asleep as well as awake.
+      if (cave.traits.recipe) openRecipeSoon(cave);
       if (cave.state === "sleeping") {
         ctx.fx.say(cave, SLEEP_POKES[randomInt(SLEEP_POKES.length)], 1.8);
         const travel = cave.bedTravel;
@@ -28471,6 +28925,7 @@ void main() {
         || cave.cheer > 0 || cave.catchT > 0 || cave.yawn > 0;
       w.axeIdle = carryingStoneAxe(cave) && !axeMoving ? Math.min(AXE_STICK_DELAY + AXE_STICK_BLEND, w.axeIdle + dt) : 0;
       poseShoulder(cave, dt);
+      if (cave.parts.chuk) poseNunchaku(cave, dt);
       poseWeapon(cave);
       if (striking && w.meleeTime > 0 && club.visible && club.parent === cave.parts.armL && !cave.camp.burning && !cave.camp.rolling && !cave.bedTravel.mode) {
         BL.scene.updateWorld(cave.root);
@@ -28591,6 +29046,8 @@ void main() {
       for (let i = 0; i < crewList.length; i++) crewList[i].riding.support = null;
     };
     const dispose = () => {
+      window.clearTimeout(recipeTimer);
+      recipeTimer = 0;
       player = null;
       for (let caveIndex = 0; caveIndex < crewList.length; caveIndex++) {
         const cave = crewList[caveIndex];
@@ -28618,7 +29075,7 @@ void main() {
     return {
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawQuotes,
       control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, ignite, dropRoll, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, thrust, update, dispose, stats,
-      toggleWeapon, selectWeapon, configureWeapon, swingWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
+      builtInJetpack, toggleTint, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
         return player;
@@ -33531,7 +33988,7 @@ void main() {
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, rocketModels, rocketParts, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod, storm: stormMod, mempool } = BL;
+  const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, rocketModels, rocketParts, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod, storm: stormMod, mempool, oogatronLive } = BL;
   const { clamp, lerp, ease, fnv1a, mulberry32 } = math;
   const { createNode, addChild, removeChild, createCamera, addTween, stepTweens, tweenCount, traverseVisible } = BL.scene;
   const { JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS } = crewMod;
@@ -33674,7 +34131,7 @@ void main() {
   const WANDER_COUNT = 36, WANDER_INNER = 5.5;
   const ALTAR_HEIGHT = 0.34, ALTAR_BLOCK_WIDTH = 0.2, ALTAR_BLOCK_ARC = 0.3, ALTAR_RING_GAP = 0.02, ALTAR_MAX_BLOCKS = 512;
   const RIPEN = 25, TREE_CHANCE = 0.5, BUSH_CHANCE = 0.25;
-  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", magazine: "Spare magazine · walk into it to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", launchpad: "Ooga Orbit · tap to build a rocket", rocket: "Ooga Orbit · tap to fly", tower: "Launch tower · steady", orbitsign: "Ooga Orbit · the pad past the bridge", bridge: "Rope bridge · to the launch pad", windsock: "Windsock · a fair wind", jumbotron: "Jumbotron · EntropyLab on the big screen · tap for the next board", gate: null };
+  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", magazine: "Spare magazine · walk into it to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", launchpad: "Ooga Orbit · tap to build a rocket", rocket: "Ooga Orbit · tap to fly", tower: "Launch tower · steady", orbitsign: "Ooga Orbit · the pad past the bridge", bridge: "Rope bridge · to the launch pad", windsock: "Windsock · a fair wind", jumbotron: "Jumbotron · OogaBoogaX on the big screen · tap for the next board", gate: null };
   const MATRIX_LIVING_PROPS = new Set(["tree"]);
   const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "jumbotron", "launchpad", "rocket", "tower", "bridge", "orbitsign"]);
   const BUSH_WORDS = ["Something rustles.", "A beetle. Ooga leaves it.", "Just a bush."];
@@ -33683,6 +34140,8 @@ void main() {
   const CHIP = models.particleGeometry("#6b625a", 0.1, 0);
   const SPARK = models.particleGeometry("#ffb13b", 0.08, 1);
   const DUST = models.particleGeometry("#a3874f", 0.1, 0);
+  // Fireworks reuse the board's own stat colors, fully emissive so they read at night.
+  const FIREWORK = ["#46ff70", "#3fd1c5", "#6f9fca", "#f5c542", "#e04a3a"].map((c) => models.particleGeometry(c, 0.11, 1));
   const WALK_IN = { x: 0, z: -(MEADOW + 0.5) };
   const TICKER_AT = { x: 0, y: 0, z: -(RADIUS - 2) };
   const setVec = (v, x, y, z) => {
@@ -33697,7 +34156,7 @@ void main() {
   };
 
   // One visit's state: created in enter, dropped in leave.
-  let renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, jetpack, jetpackState, jetpackCarrier, jetpackWearer, lastJetpackCloud, mirrorCave, matrixCave, matrixControl, gateRain, fire, headquarters, jumbotron, positionDebug, agent, agentPlay;
+  let jumbotronSpot, oogatronUnsub, renderer, game, world, go, lootEnabled, testBananas, root, camera, island, pathNode, altar, hud, hooks, input, pilot, fx, cameraCover, bananaCover, solids, rockGuides, objectGuides, sightGuides, bananaGuides, pileGuides, platformGuides, mirrorGuides, pile, crew, crates, critters, clock, presets, entering, jetpack, jetpackState, jetpackCarrier, jetpackWearer, lastJetpackCloud, mirrorCave, matrixCave, matrixControl, gateRain, fire, headquarters, jumbotron, positionDebug, agent, agentPlay;
   let magazine, magazineState, breakables;
   const JETPACK_HUD_STATE = { owned: false, equipped: false, fuel: 1, blocked: false };
   let enteringTween = null;
@@ -35232,9 +35691,11 @@ void main() {
     if (i >= 0) list.splice(i, 1);
   };
   const jetpackHudStatus = (cave) => {
-    JETPACK_HUD_STATE.owned = !!jetpackState && jetpackState.owned;
+    // A built-in pack owns itself: its gauge is the wearer's own fuel.
+    const builtIn = !!(cave && crew.builtInJetpack(cave));
+    JETPACK_HUD_STATE.owned = builtIn || !!jetpackState && jetpackState.owned;
     JETPACK_HUD_STATE.equipped = !!(cave && cave.jet);
-    JETPACK_HUD_STATE.fuel = cave && jetpackCarrier === cave ? cave.jetFuel : jetpackState ? jetpackState.fuel : 1;
+    JETPACK_HUD_STATE.fuel = cave && (builtIn || jetpackCarrier === cave) ? cave.jetFuel : jetpackState ? jetpackState.fuel : 1;
     JETPACK_HUD_STATE.blocked = JETPACK_HUD_STATE.owned && (cave ? !jetpackAllowed(cave) : cameraCaveIndex !== 0);
     return JETPACK_HUD_STATE;
   };
@@ -35242,6 +35703,7 @@ void main() {
     if (jetpackState && jetpackState.owned && jetpackCarrier) jetpackState.fuel = jetpackCarrier.jetFuel;
   };
   const equipJetpack = (cave) => {
+    if (crew.builtInJetpack(cave)) return true;
     if (!jetpackState.owned) return false;
     if (jetpackWearer && jetpackWearer !== cave) crew.removeJetpack(jetpackWearer);
     if (jetpackCarrier !== cave) {
@@ -35272,7 +35734,8 @@ void main() {
     refreshObjectGuides();
   };
   const collectJetpack = (cave) => {
-    if (!jetpack || jetpack.falling) return false;
+    // Leave the world's pack on its cloud for someone who needs one.
+    if (!jetpack || jetpack.falling || crew.builtInJetpack(cave)) return false;
     removeJetpackPickup();
     jetpackState.owned = true;
     jetpackState.fuel = cave.jetFuel = 1;
@@ -35294,6 +35757,10 @@ void main() {
   };
   const toggleJetpack = () => {
     const cave = crew.player;
+    if (cave && crew.builtInJetpack(cave)) {
+      hud.toast("Built in. It never comes off.");
+      return false;
+    }
     if (!jetpackState.owned) {
       hud.toast("Find the jetpack on a distant cloud");
       return false;
@@ -36555,7 +37022,6 @@ void main() {
     switch (o.kind) {
       case "caveman":
         crew.pokeCave(o.cave);
-        if (jumbotron) jumbotron.showContributor(o.cave.traits.name);
         break;
       case "crate":
         crates.openCrate(o.crate);
@@ -37589,6 +38055,41 @@ void main() {
     if (first) hud.setSubtitle("an island of caves");
     if (!first) hud.toast(PHASE_TOASTS[next]);
   };
+  // Contribution fireworks: shells rise from the jumbotron and burst in the
+  // board's stat colors. Queued with absolute scene-clock times and stepped in
+  // update(), so a waiting shell costs nothing per frame.
+  const fireworksShells = [];
+  const launchFireworks = (strength = 1) => {
+    if (!jumbotronSpot || !fx) return 0;
+    const shells = Math.min(6, 2 + Math.min(4, strength | 0));
+    for (let i = 0; i < shells; i++) {
+      fireworksShells.push({
+        at: now + i * 0.38 + Math.random() * 0.2,
+        phase: "launch",
+        x: jumbotronSpot.x + (Math.random() - 0.5) * 2.6,
+        y: jumbotronSpot.y,
+        z: jumbotronSpot.z + (Math.random() - 0.5) * 1.4,
+        rise: 2.2 + Math.random() * 1.4
+      });
+    }
+    return shells;
+  };
+  const updateFireworks = () => {
+    for (let i = fireworksShells.length - 1; i >= 0; i--) {
+      const shell = fireworksShells[i];
+      if (now < shell.at) continue;
+      if (shell.phase === "launch") {
+        // The rising shell: a fast spark streak with lift instead of drop.
+        fx.spawnParticle(SPARK, shell.x, shell.y, shell.z, 0, shell.rise * 2.4, 0, 0.5, 10, -1.5, 0.03);
+        shell.phase = "burst";
+        shell.at = now + 0.5;
+      } else {
+        fx.burst(shell.x, shell.y + shell.rise, shell.z, 26, FIREWORK, 3.4);
+        fx.burst(shell.x, shell.y + shell.rise, shell.z, 8, [SPARK], 1.6);
+        fireworksShells.splice(i, 1);
+      }
+    }
+  };
   const update = (dt, elapsed) => {
     now = elapsed;
     hour = clock.read();
@@ -37597,6 +38098,7 @@ void main() {
     storm.update(dt, RENDER_OPTS);
     updateLamps(dt, elapsed, phase !== null);
     if (jumbotron) jumbotron.update(elapsed, renderer);
+    if (fireworksShells.length) updateFireworks();
     const next = daylight.phaseAt(hour);
     if (next !== phase) setPhase(next);
     if (DEBUG) syncDaylightDebug(hour);
@@ -37933,6 +38435,8 @@ void main() {
     }
     // J mirrors the carried jetpack button without changing its fuel.
     if ((e.key === "j" || e.key === "J") && !e.repeat) toggleJetpack();
+    // C changes the colourway of a driven Ooga that was built with two.
+    if ((e.key === "c" || e.key === "C") && !e.repeat && crew.toggleTint(crew.player)) return;
     if (e.key === "g" || e.key === "G") pilot.weaponAction("weapon-toggle");
     if (e.key === "v" || e.key === "V") pilot.weaponAction("weapon-fire");
     const digit = parseInt(e.key, 10);
@@ -38073,6 +38577,13 @@ void main() {
       addChild(root, jumbotron.node);
       placed.push(jumbotron.node);
       addProp("jumbotron", jumbotron.node, jx, jz, 3.4);
+      // Shells launch from just above the cabinet's top rail.
+      jumbotronSpot = { x: jx, y: jumbotron.node.position.y + 0.7 * jScale, z: jz };
+      // Live stats land on the board; a rise in org activity earns fireworks.
+      oogatronUnsub = oogatronLive.subscribe((event) => {
+        if (event.type === "stats" && jumbotron) jumbotron.refreshData(event.stats);
+        else if (event.type === "contribution") launchFireworks(event.delta);
+      });
     }
     scatter();
     reflowScenery();
@@ -38170,7 +38681,9 @@ void main() {
       sleepRouteFrom.x = p.x; sleepRouteFrom.y = p.y - cave.baseY; sleepRouteFrom.z = p.z;
       return sleepNavigation.clearSegment(sleepRouteFrom, to, false, 0.3);
     };
-    shared.workSites = caves.slots.filter((slot) => slot.repo && slot.status === "open").map((slot) => {
+    // Any dressed mouth with a repository is a work site: the lab, the games cave
+    // and the island's own cave, which is the mirror.
+    shared.workSites = caves.slots.filter((slot) => slot.repo && (slot.status === "open" || slot.status === "mirror")).map((slot) => {
       const mouth = island.mouths.find((entry) => entry.id === slot.id), sr = Math.sin(mouth.ry), cr = Math.cos(mouth.ry);
       workZones.push({ x: mouth.x, z: mouth.z, floor: mouth.floorY, sr, cr, active: false, half: 3.4, front: 5.8 });
       const aimX = mouth.x + sr * 5.8, aimZ = mouth.z + cr * 5.8, approach = { x: aimX, z: aimZ };
@@ -38377,7 +38890,7 @@ void main() {
         get shown() {
           return pile.shown;
         },
-        island, mouths: island.mouths, labels, launchers, camera, storm, cameraPose: POSITION_POSE, crew, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron, agent: agent.debug,
+        island, mouths: island.mouths, labels, launchers, camera, storm, cameraPose: POSITION_POSE, crew, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron, fireworks: launchFireworks, get fireworksPending() { return fireworksShells.length; }, agent: agent.debug,
         scenery: {
           get candidateCount() { return scenery.length; },
           get visibleCount() { return sceneryVisible; },
@@ -38645,6 +39158,12 @@ void main() {
     mirrorCave.ripples.dispose();
     mirrorCave.body.dispose();
     pilot.dispose();
+    if (oogatronUnsub) {
+      oogatronUnsub();
+      oogatronUnsub = null;
+    }
+    fireworksShells.length = 0;
+    jumbotronSpot = null;
     if (jumbotron) {
       jumbotron.dispose(renderer);
       jumbotron = null;
@@ -39033,6 +39552,8 @@ void main() {
       if (pilot.player) pilot.release();
       else go("hub");
     }
+    // C changes the colourway of a driven Ooga that was built with two.
+    if ((e.key === "c" || e.key === "C") && !e.repeat && crew.toggleTint(crew.player)) return;
     if (e.key === "g" || e.key === "G") pilot.weaponAction("weapon-toggle");
     if (e.key === "v" || e.key === "V") pilot.weaponAction("weapon-fire");
     if (e.key === "b" || e.key === "B") addTestBananas(testBananas);
@@ -47420,9 +47941,11 @@ void main() {
   window.addEventListener("keydown", onKeyDown);
   document.addEventListener("visibilitychange", onVisibility);
   if (params.has("nosim")) donations.config.simulate = false;
-  // The live feed stays off under nosim (the suite) and mempool=0; checks drive the hub's storm through emit.
+  // The live feeds stay off under nosim (the suite) and mempool=0 / oogatron=0;
+  // checks drive the hub's storm through emit and the jumbotron through refreshData.
   const mempool = window.BL.mempool;
   if (!params.has("nosim") && params.get("mempool") !== "0") mempool.start();
+  if (!params.has("nosim") && params.get("oogatron") !== "0") window.BL.oogatronLive.start();
   const unsubscribeDonations = donations.subscribe((donation) => active.onDonation(donation), { identity: () => game.state });
   // The feed panel: the Konami code toggles a page-wide readout of the socket, its counters and its last events.
   // It subscribes and ticks only while open, and its text nodes change only with their value.
@@ -47532,7 +48055,7 @@ void main() {
         return world.level;
       }
     };
-    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron", "orbit", "flight", "site", "agent"]) {
+    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron", "fireworks", "fireworksPending", "orbit", "flight", "site", "agent"]) {
       Object.defineProperty(ooga, key, { get: () => active.debug && active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;
