@@ -11228,6 +11228,17 @@ const { yellowLikenessProbe, drNeskiVoiceProbe, pumpkinLikenessProbe } = (() => 
 })();
 
 // ---- debug-url.mjs ----
+  const jetpackStartupSnapshot = () => {
+    const B = window.__ooga, cave = B.pilot.player, button = document.getElementById("jetpack-hud"), bounds = button.getBoundingClientRect();
+    return { selected: cave ? cave.traits.name : null,
+      firstWorking: window.BL.contributors.roster.find((entry) => B.crew.stateOf(B.cavemen.get(entry.name)) === "working").name,
+      mode: B.pilot.mode, owned: B.jetpack.owned, owner: B.jetpack.state.owner, equipped: !!cave?.jet, fuel: cave && cave.jetFuel,
+      hidden: button.hidden, disabled: button.disabled, opacity: Number(getComputedStyle(button).opacity),
+      label: button.getAttribute("aria-label"), title: button.title, width: bounds.width, height: bounds.height,
+      x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2,
+      eyeY: B.camera.position.y, scene: B.scene, backend: B.renderer.kind };
+  };
+
 // ---- driven-smoke.mjs ----
 const { drivenSmokeGroundProbe } = (() => {
   // Keep the effect pool still while the real controller walks and leaves a prop.
@@ -23903,6 +23914,288 @@ const basementShaftJetpack = (backend) => withPage(`basement shaft jetpack ${bac
   }
 });
 
+const jetpackDebugStartup = (backend) => withPage(`jetpack debug startup ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
+  const base = backend === "canvas2d" ? dist : src, snapshot = `(${jetpackStartupSnapshot.toString()})()`;
+  for (const fixture of [
+    { query: "jetpack=1", mode: "trailing", selected: "first", owned: true, equipped: true },
+    { query: "jetpack=1&character=%20W-S-BITCOIN%20&firstperson=1", mode: "first-person", selected: "w-s-bitcoin", owned: true, equipped: true },
+    ...["hq", "bsmt"].flatMap((view) => [
+      { query: `jetpack=1&view=${view}`, mode: "orbit", selected: null, owned: true, equipped: false, underground: true },
+      { query: `jetpack=1&view=${view}&firstperson=1`, mode: "eye-level", selected: null, owned: true, equipped: false, underground: true },
+      { query: `jetpack=1&view=${view}&character=w-s-bitcoin&firstperson=1`, mode: "first-person", selected: "w-s-bitcoin", owned: true, equipped: false, underground: true }
+    ]),
+    { query: "jetpack=1&character=unknown-ooga", mode: "orbit", selected: null, owned: false, equipped: false },
+    { query: "jetpack=0&character=w-s-bitcoin", mode: "trailing", selected: "w-s-bitcoin", owned: false, equipped: false }
+  ]) {
+    await b.open(hubPage(base, `${backend === "canvas2d" ? "canvas2d=1&" : ""}${fixture.query}`)); await untilReady(b);
+    const r = await b.evaluate(snapshot), name = `jetpack debug startup ${backend}: ${fixture.query}`;
+    const expectedSelected = fixture.selected === "first" ? r.firstWorking : fixture.selected;
+    const selectedOwnsPack = fixture.owned && !!expectedSelected && r.owner === expectedSelected;
+    record(`${name} preserves its requested selection, view and character-bound jetpack ownership`, r.selected === expectedSelected && r.mode === fixture.mode && r.equipped === fixture.equipped && r.owned === fixture.owned && (!fixture.owned || !!r.owner) && r.hidden === !selectedOwnsPack && r.disabled === !!(fixture.underground && selectedOwnsPack) && (!fixture.equipped || r.fuel === 1) && (!fixture.underground || r.eyeY < 0) && (!fixture.underground || !selectedOwnsPack || r.width === 78 && r.height > 0 && r.opacity === 0.5 && r.label === "Jetpack unavailable underground" && r.title === r.label) && r.scene === "hub" && r.backend === backend, JSON.stringify(r));
+    if (fixture.underground) {
+      let keyed = null, clicked = null;
+      if (selectedOwnsPack) {
+        await b.key("j"); await untilPage(b, "true");
+        keyed = await b.evaluate(snapshot);
+        await b.click(keyed.x, keyed.y); await untilPage(b, "true");
+        clicked = await b.evaluate(snapshot);
+        record(`${name} J and clicking the disabled icon cannot equip or change selection`, [keyed, clicked].every((s) => !s.equipped && s.owned && !s.hidden && s.disabled && s.selected === r.selected && s.mode === r.mode && s.eyeY < 0), JSON.stringify({ keyed, clicked }));
+      } else {
+        record(`${name} keeps its bound jetpack control hidden while no character is selected`, r.owned && !!r.owner && r.hidden && !r.disabled && !r.selected, JSON.stringify(r));
+      }
+      await b.evaluate(`document.querySelector('nav[data-scene="hub"] [data-preset="pile"]').click()`);
+      await untilPage(b, 'B.cameraCave.index === 0 && !document.getElementById("jetpack-hud").disabled');
+      const surfaced = await b.evaluate(snapshot);
+      if (!r.selected) {
+        await b.evaluate(`(() => { const B = window.__ooga; B.pilot.possess(B.jetpack.carrier); document.querySelector('nav[data-scene="hub"] [data-preset="pile"]').click(); })()`);
+        await untilPage(b, 'B.cameraCave.index === 0 && !document.getElementById("jetpack-hud").disabled');
+      }
+      const ready = await b.evaluate(snapshot);
+      await b.click(ready.x, ready.y); await untilPage(b, "!!B.pilot.player?.jet");
+      const equipped = await b.evaluate(snapshot);
+      record(`${name} returning above ground restores a usable icon for its owner`, surfaced.owned && surfaced.hidden === !r.selected && !surfaced.disabled && !surfaced.equipped && surfaced.selected === r.selected && surfaced.mode === r.mode && equipped.owned && equipped.equipped && !equipped.hidden && !equipped.disabled && equipped.fuel === 1 && equipped.selected === (r.selected || r.owner), JSON.stringify({ surfaced, equipped }));
+    }
+  }
+  await b.open(hubPage(src, `jetpack=1&firstperson=1${backend === "canvas2d" ? "&canvas2d=1" : ""}`)); await untilReady(b);
+  const travel = async (id) => {
+    await b.evaluate(`window.__ooga.go(${JSON.stringify(id)}); true`);
+    return untilPage(b, `B.scene === ${JSON.stringify(id)} && !B.transitioning`, 15000);
+  };
+  const reachedLab = await travel("lab"), reachedHub = await travel("hub"), returned = await b.evaluate(snapshot);
+  record(`jetpack debug startup ${backend}: returning to the hub keeps ownership without reapplying equipment or selection`, reachedLab && reachedHub && !returned.selected && !returned.equipped && returned.mode === "orbit" && returned.hidden, JSON.stringify({ reachedLab, reachedHub, returned }));
+  await b.open(hubPage(src, `scene=lab&jetpack=1&character=w-s-bitcoin&firstperson=1${backend === "canvas2d" ? "&canvas2d=1" : ""}`)); await untilReady(b);
+  const routed = await b.evaluate(`({ scene: window.__ooga.scene, selected: !!window.__ooga.crew.player, equipped: [...window.__ooga.cavemen.values()].some((c) => !!c.jet), hidden: document.getElementById("jetpack-hud").hidden })`);
+  record(`jetpack debug startup ${backend}: an explicit lab route ignores the hub equipment preload`, routed.scene === "lab" && !routed.selected && !routed.equipped && routed.hidden, JSON.stringify(routed));
+  await b.open(`${src}?nosim=1&jetpack=1&character=w-s-bitcoin&firstperson=1${backend === "canvas2d" ? "&canvas2d=1" : ""}`);
+  const started = Date.now(); let ignored = null;
+  while (!ignored && Date.now() - started < 20000) {
+    try { ignored = await b.evaluate(`(() => { const s = window.BL?.scenes.hub; if (!s?.debug || document.getElementById("curtain")) return null; return { exposed: !!window.__ooga, selected: !!s.debug.pilot.player, mode: s.debug.pilot.mode, hidden: document.getElementById("jetpack-hud").hidden }; })()`); } catch (err) { if (err.driver) throw err; }
+    if (!ignored) await b.sleep(40);
+  }
+  record(`jetpack debug startup ${backend}: normal URLs ignore the debug equipment and character flags`, !!ignored && !ignored.exposed && !ignored.selected && ignored.mode === "orbit" && ignored.hidden, JSON.stringify(ignored));
+});
+
+const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD ${landscape ? "landscape" : mobile ? "mobile" : "desktop"}`, hubPage(src), async (b) => {
+  const r = await b.evaluate(`(${jetpackHudProbe.toString()})()`), shown = [r.full, r.low, r.reequipped];
+  record(`jetpack HUD ${landscape ? "landscape" : mobile ? "mobile" : "desktop"}: a themed clickable left-side fuel meter fits without covering navigation or controls`, shown.every((s) => !s.hidden && s.fits && s.leftSide && !s.overlap && s.pointerEvents === "auto" && s.equipped === "true" && s.gauge === "visible" && s.width === 164) && r.full.role === "progressbar" && r.full.label === "Jetpack fuel" && r.full.min === 0 && r.full.max === 100 && r.full.value === 100 && r.carried.compactRole === "meter" && r.carried.compactValue === 100 && r.carried.compactFill === "scaleY(1)" && r.carried.compactWidth === 10 && r.carried.compactHeight === 32, JSON.stringify(r));
+  record(`jetpack HUD ${landscape ? "landscape" : mobile ? "mobile" : "desktop"}: equipped fuel is yellow and the active control uses the selected orange underline`, shown.every((s) => s.fillColor === r.full.fillColor && s.border === r.full.border) && r.full.fillColor !== r.carried.fillColor && r.full.border !== r.carried.border, JSON.stringify({ carried: r.carried, shown }));
+  record(`jetpack HUD ${landscape ? "landscape" : mobile ? "mobile" : "desktop"}: pickup and removal retain a compact icon while free roam hides character equipment`, r.hidden.hidden && [r.carried, r.removed].every((s) => !s.hidden && s.equipped === "false" && s.gauge === "hidden" && s.width === 78) && r.released.hidden && r.low.value === 14 && r.low.text === "14%" && r.low.fill === "scaleX(0.14)" && r.reequipped.value >= r.low.value && r.reequipped.value < 25, JSON.stringify(r));
+  await b.evaluate(`{ const B = window.__ooga; B.pilot.possess(B.jetpack.carrier); window.BL.scenes.hub.update(1 / 60, B.renderOpts.matrix.time + 1 / 60); }`);
+  const hover = await b.evaluate(`(() => { const panel = document.getElementById("jetpack-hud"), r = panel.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, base: getComputedStyle(panel).backgroundImage }; })()`);
+  await b.mouse("mouseMoved", hover.x, hover.y);
+  await b.sleep(80);
+  hover.active = await b.evaluate(`getComputedStyle(document.getElementById("jetpack-hud")).backgroundImage`);
+  record(`jetpack HUD ${landscape ? "landscape" : mobile ? "mobile" : "desktop"}: hover uses a subtle opaque gray highlight`, hover.active !== hover.base && hover.active.includes("rgb(80, 75, 71)") && !hover.active.includes("rgba"), JSON.stringify(hover));
+  if (!mobile && !landscape) {
+    const point = await b.evaluate(`(() => { const r = document.getElementById("mode-hud").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+    const readMode = () => b.evaluate(`(() => { const B = window.__ooga, button = document.getElementById("mode-hud"), face = document.getElementById("mode-face-icon"), free = document.getElementById("freeroam-icon"); return { player: B.pilot.player?.traits.name || null, selected: button.dataset.selected, battle: button.dataset.battle, view: button.dataset.view, mode: B.pilot.mode, reticle: !document.getElementById("weapon-reticle").hidden, cursorHidden: document.pointerLockElement === document.getElementById("scene") || document.body.classList.contains("aim-cursor-focused"), width: button.getBoundingClientRect().width, face: !face.hidden && getComputedStyle(face).display !== "none", free: !free.hidden && getComputedStyle(free).display !== "none", jetpack: !document.getElementById("jetpack-hud").hidden }; })()`);
+    const selected = await readMode();
+    await b.key("0");
+    await b.sleep(80);
+    const orbitBattle = await readMode();
+    const orbitAim = await b.evaluate(`(() => {
+      const B = window.__ooga, scene = window.BL.scenes.hub, cave = B.pilot.player;
+      const target = [...B.cavemen.values()].find((other) => other !== cave && other.root.visible);
+      const heading = B.pilot.orbit.yaw + Math.PI, p = cave.root.position;
+      target.root.position.x = p.x + Math.sin(heading) * cave.traits.height * 4;
+      target.root.position.y = p.y;
+      target.root.position.z = p.z + Math.cos(heading) * cave.traits.height * 4;
+      window.BL.scene.updateWorld(scene.root);
+      B.pilot.update(0.06);
+      const before = B.pilot.assistedTarget;
+      const aimedTooltip = { hidden: document.getElementById("tooltip").hidden,
+        name: document.getElementById("tooltip-text").textContent,
+        health: document.getElementById("tooltip-health").getAttribute("aria-valuenow") };
+      const beforeNode = before && before.node;
+      const retained = before && { x: before.x, y: before.y, z: before.z };
+      const characterCenter = before && Math.hypot(before.x - target.root.position.x,
+        before.y - (target.root.position.y - target.baseY + target.bodyHeight * 0.5), before.z - target.root.position.z) < 1e-5;
+      const farRadius = parseFloat(getComputedStyle(document.getElementById("weapon-reticle")).getPropertyValue("--reticle-radius"));
+      B.pilot.hooks.onZoom(0.01, 701, innerWidth / 2, innerHeight / 2);
+      B.pilot.update(0.06);
+      const shoulder = B.pilot.assistedTarget;
+      const kept = !!(retained && shoulder && Math.hypot(shoulder.x - retained.x, shoulder.y - retained.y, shoulder.z - retained.z) < 1e-5);
+      B.pilot.hooks.onZoom(2, 702, innerWidth / 2, innerHeight / 2);
+      B.pilot.update(0.06);
+      const returned = B.pilot.assistedTarget;
+      const returnedKept = !!(beforeNode && returned && returned.node === beforeNode);
+      target.root.position.x = p.x + Math.sin(heading) * cave.traits.height * 0.72;
+      target.root.position.z = p.z + Math.cos(heading) * cave.traits.height * 0.72;
+      window.BL.scene.updateWorld(scene.root);
+      B.pilot.update(0.06);
+      const near = B.pilot.assistedTarget;
+      const reticle = document.getElementById("weapon-reticle");
+      const close = reticle.dataset.close, circleHidden = getComputedStyle(reticle.querySelector("svg")).visibility === "hidden";
+      const hidden = [];
+      for (const other of B.cavemen.values()) if (other !== cave && other.root.visible) { hidden.push(other); other.root.visible = false; }
+      const geometry = window.BL.models.box({ w: 0.8, h: 1.4, d: 0.8, color: "#fff" });
+      const blocked = window.BL.scene.createNode({ geometry, position: { x: p.x + Math.sin(heading) * 2, y: p.y + 0.3, z: p.z + Math.cos(heading) * 2 } });
+      const allowed = window.BL.scene.createNode({ geometry, position: { x: p.x + Math.sin(heading) * 3, y: p.y + 0.7, z: p.z + Math.cos(heading) * 3 } });
+      window.BL.scene.addChild(scene.root, blocked, allowed);
+      B.input.add(blocked, { kind: "prop", prop: "rocket", active: true });
+      B.input.add(allowed, { kind: "prop", prop: "crate", active: true });
+      window.BL.scene.updateWorld(scene.root);
+      B.pilot.update(0.06);
+      const filtered = B.pilot.assistedTarget;
+      const restricted = filtered?.owner?.prop === "crate";
+      const centered = restricted && Math.hypot(filtered.x - allowed.position.x, filtered.y - allowed.position.y, filtered.z - allowed.position.z) < 1e-5;
+      B.input.remove(blocked); B.input.remove(allowed);
+      window.BL.scene.removeChild(scene.root, blocked); window.BL.scene.removeChild(scene.root, allowed);
+      for (const other of hidden) other.root.visible = true;
+      window.BL.scene.updateWorld(scene.root);
+      return { found: !!before, characterCenter, aimedTooltip, farRadius, kept, returnedKept, shoulderMode: B.pilot.mode === "orbit" && !!returned,
+        near: !!near, close, circleHidden, restricted, centered };
+    })()`);
+    const health = await b.evaluate(`(() => {
+      const B = window.__ooga, cave = B.pilot.player, scene = window.BL.scenes.hub, clock = B.renderOpts.matrix.time;
+      const others = [...B.cavemen.values()].filter((other) => other !== cave), visibility = others.map((other) => other.root.visible);
+      for (const other of others) other.root.visible = false;
+      if (!B.crew.hasMagazine(cave)) B.crew.collectMagazine(cave);
+      const gearBefore = { ammo: cave.weapon.ammo, spare: [...cave.weapon.spareAmmo], jetpack: cave.jetpackOwned, worn: !!cave.jet };
+      B.crew.damage(cave, 1);
+      B.crew.update(3.9, clock + 3.9);
+      const delayed = cave.health.value;
+      B.crew.update(0.2, clock + 4.1);
+      B.crew.update(0.2, clock + 4.3);
+      const regenerated = cave.health.value;
+      B.crew.damage(cave, 25);
+      const stunned = cave.health.stunned && cave.stunBirds.visible === false;
+      const dropped = cave.stunGear.drops.filter((drop) => drop.active);
+      const gearDropped = { count: dropped.length, visible: dropped.every((drop) => drop.node.visible), spread: new Set(dropped.map((drop) => drop.node.position.x.toFixed(3) + "/" + drop.node.position.z.toFixed(3))).size,
+        primary: !cave.weapon.primaryOwned, secondary: !cave.weapon.secondaryOwned, ammo: cave.weapon.ammo, spares: cave.weapon.spareAmmo.length, jetpack: !cave.jetpackOwned && !cave.jet };
+      const x = cave.root.position.x, z = cave.root.position.z;
+      B.crew.steer(1, 0, 0, 1, 0, 1);
+      for (let i = 0; i < 4; i++) B.crew.update(1, clock + 5.3 + i);
+      B.hud.setMode(cave, true, "orbit");
+      B.hud.tooltip.show(cave.traits.name, innerWidth / 2, innerHeight / 2, cave);
+      const frozen = Math.hypot(cave.root.position.x - x, cave.root.position.z - z) < 1e-8;
+      const modeBar = document.getElementById("mode-health"), tooltipBar = document.getElementById("tooltip-health");
+      const modeButton = document.getElementById("mode-hud").getBoundingClientRect(), modeRect = modeBar.getBoundingClientRect();
+      const faceRect = document.getElementById("mode-face-icon").getBoundingClientRect(), primaryRect = document.getElementById("primary-strength").getBoundingClientRect();
+      const modeStyle = getComputedStyle(modeBar), primaryStyle = getComputedStyle(document.getElementById("primary-strength"));
+      const modeButtonStyle = getComputedStyle(document.getElementById("mode-hud"));
+      const bars = { mode: modeBar.getAttribute("aria-valuenow"), modeFill: document.getElementById("mode-health-fill").style.transform,
+        tooltip: tooltipBar.getAttribute("aria-valuenow"), tooltipFill: document.getElementById("tooltip-health-fill").style.transform,
+        visible: !modeBar.hidden && !tooltipBar.hidden, tooltipWidth: tooltipBar.getBoundingClientRect().width,
+        gaugeMatch: modeRect.width === primaryRect.width && modeRect.height === primaryRect.height && modeStyle.backgroundColor === primaryStyle.backgroundColor && modeStyle.borderRadius === primaryStyle.borderRadius,
+        faceCentered: Math.abs((faceRect.left + faceRect.right) * 0.5 - (modeButton.left + parseFloat(modeButtonStyle.borderLeftWidth) + modeRect.left) * 0.5) < 0.1 };
+      const birds = cave.stunBirds.visible && cave.stunBirds.rotation.y > 0;
+      const limp = Math.abs(cave.parts.armL.rotation.x - 0.05) < 1e-8 && Math.abs(cave.parts.armR.rotation.x - 0.05) < 1e-8;
+      const dizzy = Math.abs(cave.parts.head.rotation.x) + Math.abs(cave.parts.head.rotation.y) + Math.abs(cave.parts.head.rotation.z) > 0.05;
+      B.crew.update(1, clock + 9.3);
+      B.crew.steer(0, 0);
+      scene.update(0, clock + 9.3);
+      const gearAfter = { ammo: cave.weapon.ammo, spare: [...cave.weapon.spareAmmo], jetpack: cave.jetpackOwned, worn: !!cave.jet,
+        active: cave.stunGear.drops.map((drop) => drop.active) };
+      const gearRestored = cave.weapon.primaryOwned && cave.weapon.secondaryOwned && cave.weapon.ammo === gearBefore.ammo
+        && JSON.stringify(cave.weapon.spareAmmo) === JSON.stringify(gearBefore.spare) && cave.jetpackOwned === gearBefore.jetpack
+        && !!cave.jet === gearBefore.worn && cave.stunGear.drops.every((drop) => !drop.active && (!drop.node || !drop.node.visible));
+      const thief = others.find((other) => !other.health.stunned);
+      thief.root.visible = true;
+      B.crew.removeMagazines(thief);
+      const thiefX = thief.root.position.x, thiefY = thief.root.position.y, thiefZ = thief.root.position.z;
+      B.crew.damage(cave, 25);
+      const looseMagazine = cave.stunGear.drops.find((drop) => drop.active && drop.kind === "magazine"), looseAmmo = looseMagazine?.ammo;
+      const looseAk = cave.stunGear.drops.find((drop) => drop.active && drop.kind === "secondary"), looseAkAmmo = looseAk?.ammo;
+      if (looseMagazine && looseAk) {
+        looseMagazine.node.position.x = looseAk.node.position.x + 6;
+        looseMagazine.node.position.y = looseAk.node.position.y;
+        looseMagazine.node.position.z = looseAk.node.position.z;
+      }
+      thief.weapon.ammo = 27;
+      if (looseAk) {
+        Object.assign(thief.root.position, { x: looseAk.node.position.x, y: looseAk.node.position.y, z: looseAk.node.position.z });
+        B.crew.update(0, clock + 9.4);
+      }
+      const akTransfer = !!looseAk && looseAk.active && looseAk.ammo === looseAkAmmo - 3 && thief.weapon.ammo === 30;
+      if (looseMagazine) {
+        Object.assign(thief.root.position, { x: looseMagazine.node.position.x, y: looseMagazine.node.position.y, z: looseMagazine.node.position.z });
+        B.crew.update(0, clock + 9.5);
+      }
+      const claimed = !!looseMagazine && !looseMagazine.active && thief.weapon.spareAmmo[0] === looseAmmo && cave.weapon.spareAmmo.length === 0;
+      if (claimed) cave.weapon.spareAmmo.push(thief.weapon.spareAmmo.pop());
+      Object.assign(thief.root.position, { x: thiefX, y: thiefY, z: thiefZ });
+      cave.health.value = 25; cave.health.recovering = true;
+      B.crew.update(1, clock + 10.4);
+      others.forEach((other, index) => { other.root.visible = visibility[index]; });
+      return { delayed, regenerated, stunned, frozen, birds, limp, dizzy, gearBefore, gearAfter, gearDropped, gearRestored, claimed, akTransfer,
+        looseAkAmmo, looseMagazineAmmo: looseAmmo, dropsAfter: cave.stunGear.drops.map((drop) => ({ kind: drop.kind, active: drop.active, ammo: drop.ammo })),
+        bars, recovered: cave.health.value, released: !cave.health.stunned && !cave.stunBirds.visible };
+    })()`);
+    await b.key("0");
+    await b.sleep(80);
+    const orbitCarry = await readMode();
+    await b.evaluate(`{ const B = window.__ooga; B.pilot.hooks.onZoom(0.01, 101, innerWidth / 2, innerHeight / 2); for (let i = 0; i < 120; i++) window.BL.scenes.hub.update(1 / 60, B.renderOpts.matrix.time + i / 60); }`);
+    const shoulderCarry = await readMode();
+    await b.evaluate(`document.getElementById("mode-hud").click()`); await b.sleep(80);
+    const shoulderBattle = await readMode();
+    await b.evaluate(`document.getElementById("mode-hud").click()`); await b.sleep(80);
+    const shoulderCarryAgain = await readMode();
+    await b.evaluate(`{ const B = window.__ooga; B.pilot.hooks.onZoom(0.5, 102, innerWidth / 2, innerHeight / 2); for (let i = 0; i < 120; i++) window.BL.scenes.hub.update(1 / 60, B.renderOpts.matrix.time + i / 60); }`);
+    const firstCarry = await readMode();
+    await b.evaluate(`document.getElementById("mode-hud").click()`); await b.sleep(80);
+    const firstBattle = await readMode();
+    await b.evaluate(`document.getElementById("mode-hud").click()`); await b.sleep(80);
+    const firstCarryAgain = await readMode();
+    const ownership = await b.evaluate(`(() => { const B = window.__ooga, owner = B.jetpack.carrier, other = [...B.cavemen.values()].find((cave) => cave !== owner && cave.state !== "away"); B.pilot.possess(other); window.BL.scenes.hub.update(1 / 60, B.renderOpts.matrix.time + 1 / 60); const hiddenForOther = document.getElementById("jetpack-hud").hidden; B.pilot.possess(owner); window.BL.scenes.hub.update(1 / 60, B.renderOpts.matrix.time + 2 / 60); return { hiddenForOther, visibleForOwner: !document.getElementById("jetpack-hud").hidden, owner: B.jetpack.state.owner, selected: B.pilot.player.traits.name }; })()`);
+    const portraits = await b.evaluate(`(() => {
+      const B = window.__ooga, canvas = document.getElementById("mode-face-icon"), rows = [];
+      let frame = 3;
+      for (const cave of B.cavemen.values()) {
+        B.pilot.possess(cave);
+        window.BL.scenes.hub.update(1 / 60, B.renderOpts.matrix.time + frame++ / 60);
+        const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+        let opaque = 0, minX = canvas.width, minY = canvas.height, maxX = -1, maxY = -1;
+        for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) if (pixels[(y * canvas.width + x) * 4 + 3]) {
+          opaque++; minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+        }
+        const outlineNames = ["dplusplus1024", "RandyMcMillan", "bc1gui"];
+        const geometry = cave.portraitHead, bounds = window.BL.scene.boundsOf(geometry);
+        const hairOutline = !outlineNames.includes(cave.traits.name) || bounds.max[0] - bounds.min[0] >= cave.traits.height * 0.55;
+        rows.push({ name: cave.traits.name, portrait: document.getElementById("mode-hud").dataset.portrait, opaque, width: maxX - minX + 1, height: maxY - minY + 1, centerX: (minX + maxX) / 2, hiddenHeadwear: cave.parts.head.children.filter((child) => child.portraitHidden).length, hairOutline });
+      }
+      return rows;
+    })()`);
+    await b.mouse("mouseMoved", point.x, point.y, { button: "none" });
+    await b.mouse("mousePressed", point.x, point.y, { buttons: 1 });
+    await b.sleep(300);
+    const holding = await b.evaluate(`(() => { const button = document.getElementById("mode-hud"), progress = getComputedStyle(button, "::after"); return { holding: button.dataset.holding, animation: progress.animationName, opacity: progress.opacity, transform: progress.transform }; })()`);
+    await b.sleep(400);
+    await b.mouse("mouseReleased", point.x, point.y, { buttons: 0 });
+    await b.sleep(80);
+    const free = await readMode();
+    const dotLayout = await b.evaluate(`(() => { const dots = document.getElementById("detached-destinations").getBoundingClientRect(), icon = document.getElementById("freeroam-icon").getBoundingClientRect(); return { dotsBottom: dots.bottom, iconTop: icon.top }; })()`);
+    const labDot = await b.evaluate(`(() => { const r = document.querySelector('[data-detached-preset="lab"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+    await b.click(labDot.x, labDot.y); await b.sleep(120);
+    const direct = await b.evaluate(`(() => ({ current: document.querySelector('.detached-dot[data-current="true"]')?.dataset.detachedPreset, label: document.getElementById('detached-destination-name').textContent, showing: document.getElementById('detached-destination-name').classList.contains('show'), topHidden: document.querySelector('.hub-presets').hidden }))()`);
+    await b.click(point.x, point.y); await b.sleep(120);
+    const cycled = await b.evaluate(`(() => ({ current: document.querySelector('.detached-dot[data-current="true"]')?.dataset.detachedPreset, label: document.getElementById('detached-destination-name').textContent }))()`);
+    record("mode HUD desktop: 0 toggles battle and carry independently from orbit, shoulder and first-person views", selected.player && selected.selected === "true" && selected.battle === "false" && selected.mode === "orbit" && selected.face && !selected.free && selected.jetpack && selected.width === 78 && orbitBattle.battle === "true" && orbitBattle.mode === "orbit" && orbitBattle.reticle && orbitBattle.cursorHidden && orbitCarry.battle === "false" && orbitCarry.mode === "orbit" && !orbitCarry.reticle && shoulderCarry.mode === "shoulder" && shoulderCarry.battle === "false" && !shoulderCarry.reticle && shoulderBattle.mode === "shoulder" && shoulderBattle.battle === "true" && shoulderBattle.reticle && shoulderCarryAgain.mode === "shoulder" && !shoulderCarryAgain.reticle && firstCarry.mode === "first-person" && firstCarry.battle === "false" && !firstCarry.reticle && firstBattle.mode === "first-person" && firstBattle.battle === "true" && firstBattle.reticle && firstCarryAgain.mode === "first-person" && !firstCarryAgain.reticle, JSON.stringify({ selected, orbitBattle, orbitCarry, shoulderCarry, shoulderBattle, shoulderCarryAgain, firstCarry, firstBattle, firstCarryAgain }));
+    record("mode HUD desktop: orbit battle targets only eligible centers, shows aimed character health, snaps vertically, tightens adjacent hits and retains its world target through shoulder view", orbitAim.found && orbitAim.characterCenter && !orbitAim.aimedTooltip.hidden && orbitAim.aimedTooltip.name && orbitAim.aimedTooltip.health === "25" && orbitAim.restricted && orbitAim.centered && orbitAim.farRadius > 0 && orbitAim.kept && orbitAim.returnedKept && orbitAim.shoulderMode && orbitAim.near && orbitAim.close === "true" && orbitAim.circleHidden, JSON.stringify(orbitAim));
+    record("mode HUD desktop: a depleted Ooga freezes with limp arms and a dizzy head while bounded equipment drops spread around it, nearby Oogas claim loose gear or draw only needed AK rounds, and every unclaimed item returns", health.delayed === 24 && health.regenerated === 25 && health.stunned && health.frozen && health.birds && health.limp && health.dizzy && health.gearDropped.count >= 3 && health.gearDropped.visible && health.gearDropped.spread === health.gearDropped.count && health.gearDropped.primary && health.gearDropped.secondary && health.gearDropped.ammo === 0 && health.gearDropped.spares === 0 && health.gearDropped.jetpack && health.gearRestored && health.claimed && health.akTransfer && health.bars.visible && health.bars.mode === "20" && health.bars.tooltip === "20" && health.bars.modeFill === "scaleY(0.8)" && health.bars.tooltipFill === "scaleX(0.8)" && health.bars.tooltipWidth === 72 && health.bars.gaugeMatch && health.bars.faceCentered && health.recovered === 25 && health.released, JSON.stringify(health));
+    record("mode HUD desktop: every character icon uses a centered face crop, dplusplus1024, RandyMcMillan, and bc1gui keep their head outlines, and headwear stays outside the portrait", portraits.length === 10 && portraits.every((row) => row.portrait === "face-crop" && row.opaque > 100 && row.width >= 16 && row.height >= 16 && Math.abs(row.centerX - 23.5) < 7 && row.hairOutline) && portraits.find((row) => row.name === "genXbtc")?.hiddenHeadwear >= 1, JSON.stringify(portraits));
+    record("mode HUD desktop: a completed underline hold detaches, dots sit above the icon, direct dots navigate, and the compass cycles destinations", holding.holding === "true" && holding.animation === "mode-release-progress" && holding.opacity === "1" && holding.transform !== "none" && free.player === null && free.selected === "false" && free.mode === "detached" && free.free && !free.face && !free.jetpack && dotLayout.dotsBottom <= dotLayout.iconTop && direct.current === "lab" && direct.label === "Lab" && direct.showing && direct.topHidden && cycled.current === "mirror" && cycled.label === "Mirror", JSON.stringify({ holding, free, dotLayout, direct, cycled }));
+    record("jetpack HUD desktop: ownership stays with its finder when control changes", ownership.hiddenForOther && ownership.visibleForOwner && ownership.owner === ownership.selected, JSON.stringify(ownership));
+  }
+  if (mobile) {
+    const readMessages = () => b.evaluate(`(() => { const panel = document.getElementById("jetpack-hud").getBoundingClientRect(), stack = document.getElementById("message-stack"), read = (id) => { const node = document.getElementById(id), box = node.getBoundingClientRect(), style = getComputedStyle(node); return { hidden: node.hidden, box: box.toJSON(), opacity: style.opacity, color: style.color, border: style.borderTopWidth, background: style.backgroundImage, backgroundColor: style.backgroundColor, shadow: style.boxShadow, padding: style.paddingTop, textShadow: style.textShadow, whiteSpace: style.whiteSpace }; }; return { viewport: innerWidth, panel: panel.toJSON(), stack: stack.getBoundingClientRect().toJSON(), order: [...stack.children].map((node) => node.id), toast: read("toast"), hint: read("hint") }; })()`);
+    await b.evaluate(`{ window.__ooga.hud.hint("Older white message", 400); window.setTimeout(() => window.__ooga.hud.toast("Newer yellow message"), 50); }`);
+    await b.sleep(250);
+    const stacked = await readMessages();
+    await b.sleep(550);
+    const shifted = await readMessages(), floating = (entry, state) => !entry.hidden && entry.opacity === "1" && entry.box.width <= 220 && entry.box.left === state.panel.left && entry.box.right <= state.viewport - 12 && entry.border === "0px" && entry.background === "none" && entry.backgroundColor === "rgba(0, 0, 0, 0)" && entry.shadow === "none" && entry.padding === "0px" && entry.textShadow !== "none" && entry.whiteSpace === "normal";
+    record(`jetpack HUD ${landscape ? "landscape" : "mobile"}: yellow and white messages share a narrow borderless stack and newer messages move up as older ones fade`, stacked.order.join("|") === "hint|toast" && stacked.stack.width <= 220 && stacked.hint.box.top >= stacked.panel.bottom + 5 && stacked.hint.box.top <= stacked.panel.bottom + 10 && stacked.hint.box.bottom <= stacked.toast.box.top && floating(stacked.hint, stacked) && floating(stacked.toast, stacked) && stacked.hint.color !== stacked.toast.color && shifted.hint.hidden && floating(shifted.toast, shifted) && shifted.toast.box.top < stacked.toast.box.top && Math.abs(shifted.toast.box.top - stacked.hint.box.top) < 0.1, JSON.stringify({ stacked, shifted }));
+    const target = await b.evaluate(`(() => { const B = window.__ooga, scene = window.BL.scenes.hub, cave = [...B.cavemen.values()].find((c) => c.state === "working"), mouth = B.mirrorCave.mouth; B.pilot.possess(cave); B.pilot.enterClose(); window.BL.scene.updateWorld(scene.root); const button = B.matrixGate.button.world; B.crew.relocatePlayer({ x: button[12] + Math.sin(mouth.ry) * 1.5, y: mouth.floorY, z: button[14] + Math.cos(mouth.ry) * 1.5 }, mouth.ry); if (!cave.jet) { window.dispatchEvent(new KeyboardEvent("keydown", { key: "j" })); window.dispatchEvent(new KeyboardEvent("keyup", { key: "j" })); } scene.update(1 / 60, B.renderOpts.matrix.time + 1 / 60); const rect = document.getElementById("act").getBoundingClientRect(), x = rect.x + rect.width / 2, y = rect.bottom - 6; return { x, y, element: document.elementFromPoint(x, y)?.id || null, box: rect.toJSON(), before: B.matrixGate.pressed, equipped: !!cave.jet }; })()`);
+    await b.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: target.x, y: target.y, id: 1 }] });
+    await untilPage(b, `B.matrixGate.pressed !== ${target.before}`);
+    const held = await b.evaluate(`(() => { const B = window.__ooga, cave = B.crew.player; return { pressed: B.matrixGate.pressed, hop: cave.hop, thrust: cave.jet.thrust }; })()`);
+    await b.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await untilPage(b, "B.renderedFrames > 0");
+    const released = await b.evaluate(`({ pressed: window.__ooga.matrixGate.pressed, up: window.__ooga.controls.read().up })`);
+    record(`jetpack HUD ${landscape ? "landscape" : "mobile"}: touching the nearby action fires once without thrust, and releasing cannot trigger a duplicate click`, target.equipped && held.pressed !== target.before && held.hop === 0 && !held.thrust && released.pressed === held.pressed && released.up === 0, JSON.stringify({ target, held, released }));
+  }
+}, mobile ? { w: landscape ? 667 : 390, h: landscape ? 375 : 844, mobile: true, motion: true } : { motion: true });
+
 const headquarters = () => withPage("headquarters", hubPage(src), async (b) => {
   const oldThemes = [0, 1, 2, 0, 1, 2, 0];
   await b.evaluate(`localStorage.setItem("ooga-headquarters-walls-v1", ${JSON.stringify(JSON.stringify(oldThemes))})`);
@@ -25830,6 +26123,10 @@ const characterStatusChecks = async (b) => {
   record("character status: control, release and activity changes update presence separately from activity while minute ages advance", Object.values(presence).every(Boolean), JSON.stringify(presence));
 };
 for (const mobile of [false]) task(`character status ${mobile ? "mobile" : "desktop"}`, () => withPage(`character status ${mobile ? "mobile" : "desktop"}`, hubPage(src), characterStatusChecks, mobile ? { w: 390, h: 844, mobile: true } : {}));
+for (const backend of BACKENDS) task(`jetpack debug startup ${backend}`, () => jetpackDebugStartup(backend));
+task("jetpack HUD desktop", () => jetpackHud());
+task("jetpack HUD mobile", () => jetpackHud(true));
+task("jetpack HUD landscape", () => jetpackHud(true, true));
 for (const mobile of [false]) task(`banana weapon HUD ${mobile ? "mobile" : "desktop"}`, () => withPage(`banana weapon HUD ${mobile ? "mobile" : "desktop"}`, hubPage(src), async (b) => {
   const r = await b.evaluate(`(${weaponHudProbe.toString()})()`);
   record("banana weapon HUD: thirty clock-style banana glyphs show exact ammunition and reload state", r.thirtySlots && r.clockGlyph && r.tinyGlyphs && r.noReloadButton && r.ammo29.count === "29 / 30" && r.ammo29.value === "29" && r.ammo29.segments.every((n, i) => n === (i < 29 ? 1 : 0)) && r.ammo25.segments.every((n, i) => n === (i < 25 ? 1 : 0)) && r.ammo0.segments.every((n) => n === 0) && r.full && r.reloading && r.actions.join() === "weapon-secondary", JSON.stringify(r));
