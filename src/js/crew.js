@@ -18,17 +18,25 @@
   // A maintainer runs the whole island's circuit, so it stands at the pile for a
   // while between trips instead of scurrying from one cave straight to the next.
   const WORK_REST_MIN = 7, WORK_REST_SPREAD = 16;
-  // How long a character carries one weapon before swapping to the other.
-  const SWAP_MIN = 20, SWAP_SPREAD = 40;
-  const swapWait = () => SWAP_MIN + Math.random() * SWAP_SPREAD;
+  // How long a character carries its rifle before swapping to the other weapon,
+  // and how long the spin that answers it lasts: a flourish, not a stance.
+  const SWAP_MIN = 20, SWAP_SPREAD = 40, TWIRL_MIN = 0.3, TWIRL_SPREAD = 1.7, TWIRL_SWAP = 0.35, TWIRL_FIRST = 0.35;
+  const swapWait = (melee) => melee ? TWIRL_MIN + Math.random() * TWIRL_SPREAD : SWAP_MIN + Math.random() * SWAP_SPREAD;
   const TINT_MIN = 360, TINT_MAX = 900;
   const tintWait = () => TINT_MIN + Math.random() * (TINT_MAX - TINT_MIN);
   // The free stick folds against the handle when the weapon is stowed and flies
   // out in line with it in the hand, where the wrist spins it at the hip.
   const TAU = Math.PI * 2;
-  const CHUK_FOLD = 2.4, CHUK_SPIN = 7.2;
-  // A weighted flail lands harder than a club; a held charge still scales on top.
-  const NUNCHAKU_POWER = 1.8;
+  // Spun overhead on a raised arm at CHUK_SPINS turns a second: the circle clears
+  // the ground, which a spin at the hip cannot, the pair being most of a metre long.
+  // Past about five turns a second a 60Hz frame steps more than a third of a turn
+  // and the spin strobes, reading slower than it is.
+  // Fifteen turns a second steps 90 degrees between frames at 60Hz, so the pair
+  // would strobe on its own. Six copies trail it by CHUK_TRAIL each: the fan is
+  // wider than a frame's step, consecutive frames overlap, and the eye reads an arc.
+  const CHUK_FOLD = 2.4, CHUK_SPINS = 15, CHUK_TRAIL = 0.32, CHUK_ARM = -2.05, CHUK_ARM_OUT = -0.32, CHUK_OUT = 0.16;
+  // A weighted flail lands harder than a club and moves faster than one.
+  const NUNCHAKU_POWER = 1.8, NUNCHAKU_RATE = 1.9;
   const GUN_HOLD = 0.24, GUN_KICK = 0.045, GUN_FLASH_TIME = 0.035;
   const MAGAZINE_SWAP_TIME = 0.44;
   const RELOAD_HANDOFF_TIME = 0.32, RELOAD_FULL_HOLD = 0.24;
@@ -68,6 +76,9 @@
   const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = WALK.speed;
   const PLAYER_STEP = 0.125;
   const SHOULDER_GAP = 0.68, SHOULDER_REACH = 1.3, SHOULDER_TWIST = 1.05;
+  // A body the scene owns rather than the roster can be bigger than an Ooga, so
+  // the gap kept from it is wider than the one walkers keep from each other.
+  const OUTSIDE_GAP = 0.86;
   const FOLLOW_GAP = 1.15, FOLLOW_RELEASE = 1.7, NPC_PASS_REACH = 1.9;
   const FIRE_FLEE_REACH = 8, FIRE_FLEE_CLEAR = 10, FIRE_MEMORY_RELEASE = 3, NPC_WALK_SPEED = 1.6;
   const NAV_WIDTH = 21, NAV_SIZE = NAV_WIDTH * NAV_WIDTH, NAV_HALF = 10, NAV_CELL = 0.5, NAV_STEP = 0.025, NAV_CENTER = NAV_HALF * NAV_WIDTH + NAV_HALF;
@@ -415,8 +426,11 @@
         weapon,
         tintTime: cave.tint ? tintWait() : 0,
         chukAngle: CHUK_FOLD,
-        meleeOut: Math.random() < 0.5,
-        meleeSwap: swapWait(),
+        meleeOut: false,
+        meleeSwap: swapWait(false),
+        twirlUntil: -Infinity,
+        twirlHand: 0,
+        twirlFlipAt: Infinity,
         axeRotation: math.quat.create(),
         gunHandRotation: math.quat.create(),
         gunSupportRotation: math.quat.create(),
@@ -1340,6 +1354,7 @@
     // Thrusters built into a character sit wherever its own model puts them, so
     // only the world's pack takes the centre of the back.
     const backPack = (cave) => !!cave.jet && !cave.parts.jetpack;
+    const jetTank = (cave) => cave.traits.jetTank > 0 ? cave.traits.jetTank : 1;
     const carryingStoneAxe = (cave) => cave.traits.stoneAxe && cave.root.visible && cave.state !== "sleeping"
       && (cave === player ? !cave.weapon.equipped : cave.state === "chilling")
       && !cave.weapon.aiming && cave.weapon.meleeTime <= 0 && !cave.weapon.reloading && !cave.weapon.reloadHandoff
@@ -1353,9 +1368,31 @@
     };
     // An Ooga with its own melee weapon swaps hands now and then: the rifle rides
     // its back while the melee weapon is out, and comes back for the shooting.
-    const meleeDrawn = (cave) => cave.traits.nunchaku && cave.meleeOut && cave !== player
-      && cave.work.phase !== "station" && cave.work.phase !== "shoot"
-      && !cave.weapon.reloading && !cave.weapon.reloadHandoff && !cave.build;
+    // Driven, it spins on demand instead, for one burst at a time.
+    const meleeDrawn = (cave) => {
+      if (!cave.traits.nunchaku || cave.weapon.reloading || cave.weapon.reloadHandoff) return false;
+      if (cave === player) return cave.twirlUntil > elapsed && !cave.weapon.aiming && cave.weapon.meleeTime <= 0;
+      return cave.meleeOut && cave.work.phase !== "station" && cave.work.phase !== "shoot" && !cave.build;
+    };
+    // Each bout picks a hand, and now and then passes the pair across. The hand
+    // it starts on always spins for less time than the one it ends on.
+    const startTwirl = (cave, seconds) => {
+      cave.twirlHand = Math.random() < 0.5 ? 1 : 0;
+      cave.twirlFlipAt = Math.random() < TWIRL_SWAP ? elapsed + seconds * TWIRL_FIRST : Infinity;
+    };
+    // N spins it for the same bout the idle loop rolls. A fresh press takes either
+    // hand; pressing again while it spins passes it across and starts a new bout.
+    const twirl = (cave = player) => {
+      if (!cave || !cave.traits.nunchaku || cave.state === "sleeping" || cave.camp.burning || cave.camp.rolling) return false;
+      const seconds = swapWait(true);
+      if (cave.twirlUntil <= elapsed) startTwirl(cave, seconds);
+      else {
+        cave.twirlHand = cave.twirlHand ? 0 : 1;
+        cave.twirlFlipAt = Infinity;
+      }
+      cave.twirlUntil = elapsed + seconds;
+      return true;
+    };
     const poseFingers = (arm, fingers, held, side) => {
       fingers.highlight = arm.highlight;
       // Select a square side with an exact quarter turn about the palm. The
@@ -1366,7 +1403,8 @@
     const poseHands = (cave, leftSupportsGun = false) => {
       const parts = cave.parts, drawn = cave.weapon.carry === "hands";
       const leftHeld = parts.club.visible && parts.club.parent === parts.armL || drawn || reloadingSpare(cave);
-      const rightHeld = parts.snack.visible || cave.traits.cigarette || leftSupportsGun;
+      const rightHeld = parts.snack.visible || cave.traits.cigarette || leftSupportsGun
+        || parts.club.visible && parts.club.parent === parts.armR;
       poseFingers(parts.armL, parts.fingersL, leftHeld, 1);
       poseFingers(parts.armR, parts.fingersR, rightHeld, -1);
     };
@@ -1406,10 +1444,19 @@
       const primaryCarry = !slungClub && carryingStoneAxe(cave);
       // A pack takes the centre of the back, and the nunchaku rides the hip either way.
       const sideSling = slungClub && (cave.traits.nunchaku || cave.traits.stoneAxe && backPack(cave));
-      const clubParent = slungClub ? cave.root : parts.armL;
+      const twirling = !slungClub && !primaryReady && cave.traits.nunchaku;
+      const clubParent = slungClub ? cave.root : twirling && cave.twirlHand ? parts.armR : parts.armL;
       if (parts.club.parent !== clubParent) {
         removeChild(parts.club.parent, parts.club);
         addChild(clubParent, parts.club);
+      }
+      // The trail follows the hand the weapon is in, on the few frames it changes.
+      if (parts.chukTrail && clubParent !== cave.root && parts.chukTrail[0].parent !== clubParent) {
+        for (let i = 0; i < parts.chukTrail.length; i++) {
+          const ghost = parts.chukTrail[i];
+          removeChild(ghost.parent, ghost);
+          addChild(clubParent, ghost);
+        }
       }
       parts.club.quaternion = null;
       if (primaryCarry) {
@@ -1441,12 +1488,32 @@
           setVec(parts.club.position, 0.36 * h, 0.04 * h + cave.viewLift, -0.255 * h);
           setVec(parts.club.rotation, -0.035, 0, 0.04);
         }
+      } else if (twirling) {
+        // Held, it spins flat over a raised arm. With x at a quarter turn the
+        // stick lies in the horizontal plane and y sweeps it round the hand.
+        // Either hand takes it, the whole pose mirroring with the side.
+        const side = cave.twirlHand ? 1 : -1, arm = side < 0 ? parts.armL : parts.armR;
+        arm.rotation.x = CHUK_ARM;
+        arm.rotation.y = 0;
+        arm.rotation.z = side < 0 ? CHUK_ARM_OUT : -CHUK_ARM_OUT;
+        // The circle sits a little outside the arm, so it sweeps past him.
+        const turn = (elapsed * CHUK_SPINS * TAU + cave.phase) % TAU, spin = side < 0 ? turn : -turn;
+        const out = side * CHUK_OUT * h;
+        setVec(parts.club.position, out, -0.62 * h, 0.08 * h);
+        setVec(parts.club.rotation, Math.PI / 2, spin, 0);
+        for (let i = 0; i < parts.chukTrail.length; i++) {
+          const ghost = parts.chukTrail[i];
+          ghost.visible = true;
+          setVec(ghost.position, out, -0.62 * h, 0.08 * h);
+          setVec(ghost.rotation, Math.PI / 2, spin + side * (i + 1) * CHUK_TRAIL, 0);
+        }
       } else {
-        // Carried in the hand, a nunchaku spins at the wrist until it is raised.
-        const twirl = cave.traits.nunchaku && !slungClub && !primaryReady;
         setVec(parts.club.position, slungClub ? -0.25 * h : 0, (slungClub ? 0.25 : primaryReady ? -0.625 : -0.62) * h, (slungClub ? -0.3 : primaryReady ? 0.15 : 0.08) * h);
-        setVec(parts.club.rotation, slungClub ? cave.traits.stoneAxe ? 0 : CLUB_SLING_TILT : primaryReady ? 0 : twirl ? (elapsed * CHUK_SPIN + cave.phase) % TAU : cave.clubCarry.x,
+        setVec(parts.club.rotation, slungClub ? cave.traits.stoneAxe ? 0 : CLUB_SLING_TILT : primaryReady ? 0 : cave.clubCarry.x,
           0, slungClub ? CLUB_SLING_ANGLE : primaryReady ? Math.PI / 2 : cave.clubCarry.z);
+      }
+      if (parts.chukTrail && !twirling) {
+        for (let i = 0; i < parts.chukTrail.length; i++) parts.chukTrail[i].visible = false;
       }
       parts.club.poseYaw = slungClub ? parts.torso.poseYaw : 0;
       if (slungClub) {
@@ -2561,16 +2628,40 @@
         if (crossingSoon(cave, other)) { traffic.waiting = true; break; }
       }
     };
+    // One swept gap, used by every walker on the island. Already inside it and
+    // moving apart is allowed, so a crowd unpicks itself instead of locking.
+    // Every body the scene walks that is not on the roster: the Agent and any it
+    // has called in. One array, rebuilt only when that crowd changes.
+    const outsideClear = (fromX, fromZ, x, z) => {
+      const bodies = ctx.outsideActors && ctx.outsideActors();
+      if (!bodies) return true;
+      for (let i = 0; i < bodies.length; i++) if (!gapClear(fromX, fromZ, x, z, bodies[i], OUTSIDE_GAP)) return false;
+      return true;
+    };
+    const gapClear = (fromX, fromZ, x, z, q, gap = SHOULDER_GAP) => {
+      const dx = x - fromX, dz = z - fromZ, length = dx * dx + dz * dz;
+      const ox = fromX - q.x, oz = fromZ - q.z, before = ox * ox + oz * oz;
+      if (before < gap * gap && (x - q.x) ** 2 + (z - q.z) ** 2 > before && ox * dx + oz * dz >= 0) return true;
+      const t = length ? clamp(-(ox * dx + oz * dz) / length, 0, 1) : 0;
+      return (ox + dx * t) ** 2 + (oz + dz * t) ** 2 >= gap * gap - 1e-8;
+    };
     // Same swept clearance as the hub's upright actors and the lab; passing changes the path, never body radii.
     const shoulderClear = (cave, x, z) => {
-      const p = cave.root.position, dx = x - p.x, dz = z - p.z, length = dx * dx + dz * dz;
+      const p = cave.root.position;
       for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
         const other = crewList[otherIndex];
         if (!shoulderNeighbor(cave, other)) continue;
-        const q = other.root.position, ox = p.x - q.x, oz = p.z - q.z, before = ox * ox + oz * oz;
-        if (before < SHOULDER_GAP * SHOULDER_GAP && (x - q.x) ** 2 + (z - q.z) ** 2 > before && ox * dx + oz * dz >= 0) continue;
-        const t = length ? clamp(-(ox * dx + oz * dz) / length, 0, 1) : 0;
-        if ((ox + dx * t) ** 2 + (oz + dz * t) ** 2 < SHOULDER_GAP * SHOULDER_GAP - 1e-8) return false;
+        if (!gapClear(p.x, p.z, x, z, other.root.position)) return false;
+      }
+      // Walking bodies the scene owns rather than the roster keep the same gap.
+      return outsideClear(p.x, p.z, x, z);
+    };
+    // The same gap from the other side: a scene's own walker against the whole crew.
+    const actorClear = (fromX, fromZ, x, z) => {
+      for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
+        const other = crewList[otherIndex];
+        if (!other.root.visible || other.state === "away" || other.root.quaternion || other.camp.seat) continue;
+        if (!gapClear(fromX, fromZ, x, z, other.root.position, OUTSIDE_GAP)) return false;
       }
       return true;
     };
@@ -2684,6 +2775,9 @@
         const threat = panic.threat.root.position;
         if (Math.hypot(x - threat.x, z - threat.z) < Math.min(1.1, Math.hypot(p.x - threat.x, p.z - threat.z)) - 1e-7) return false;
       }
+      // Bodies the scene owns are obstacles like any other: the walker's own
+      // avoidance steers around them rather than through them.
+      if (!outsideClear(p.x, p.z, x, z)) return false;
       return npcWalkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave) && groundAt(x, z, feet, feet, cave) >= feet - STEP - 1e-7;
     };
     const recoverWalker = (cave, tx, tz, dt) => {
@@ -3230,7 +3324,9 @@
       const moving = !cave.jetRecovering && (cave.hop > 0 || cave.hopV > 0) && Math.hypot(steer.x, steer.z) > 0.05;
       jet.power = (jet.thrust ? 2 : 0) + (moving ? 1 : 0);
       jet.spending = jet.power > 0;
-      if (jet.spending) cave.jetFuel = Math.max(0, cave.jetFuel - dt * jet.power / JET_MOVE_SECONDS);
+      // A character's own thrusters can hold less than the world's pack: the gauge
+      // still reads its own tank, that tank is just a shorter burn.
+      if (jet.spending) cave.jetFuel = Math.max(0, cave.jetFuel - dt * jet.power / (JET_MOVE_SECONDS * jetTank(cave)));
       if (cave.jetFuel < 1e-10) { cave.jetFuel = 0; jet.thrust = false; jet.power = 0; }
       if (jet.thrust) {
         cave.hopV = Math.min(cave.hopV + JET_ACCEL * dt, JET_RISE);
@@ -3250,6 +3346,8 @@
     const canStep = (cave, flying, fromX, fromZ, toX, toZ) => {
       const y = cave.root.position.y - cave.baseY;
       const height = cave.bodyHeight + Math.max(0, cave.viewLift);
+      // On foot, the scene's own walkers are bodies to walk round, not through.
+      if (!flying && cave.hop <= 0 && !outsideClear(fromX, fromZ, toX, toZ)) return false;
       return flying || cave.hop > 0
         ? flyable(fromX, fromZ, toX, toZ, y, height, cave) && groundAt(toX, toZ, y, y, cave) <= y
         : walkable(fromX, fromZ, toX, toZ, y, height, cave);
@@ -3399,7 +3497,12 @@
       if (cave.traits.pumpkin) parts.head.glow = 0.62 + 0.38 * Math.sin(elapsed * 2.1 + cave.phase);
       if (cave.traits.nunchaku && (cave.meleeSwap -= dt) <= 0) {
         cave.meleeOut = !cave.meleeOut;
-        cave.meleeSwap = swapWait();
+        cave.meleeSwap = swapWait(cave.meleeOut);
+        if (cave.meleeOut) startTwirl(cave, cave.meleeSwap);
+      }
+      if (cave.twirlFlipAt <= elapsed) {
+        cave.twirlHand = cave.twirlHand ? 0 : 1;
+        cave.twirlFlipAt = Infinity;
       }
       if (cave.tint && (cave.tintTime -= dt) <= 0) {
         swapTint(cave);
@@ -4103,8 +4206,9 @@
       const meleeRelease = w.meleeStrikeTime + MELEE_RECOVER;
       // Only the forward strike can hit. Held wind-up and recovery never
       // repeatedly disturb a surface, and idle actors do no contact work.
+      const meleeStep = dt * (cave.traits.nunchaku ? NUNCHAKU_RATE : 1);
       const striking = dt > 0 && (ctx.onMeleeStrike || input.weaponTargets || ctx.fireReachable) && cave === player && w.primaryEquipped && !w.meleeHeld && !w.meleeHit
-        && w.meleeTime > MELEE_RECOVER && w.meleeTime - dt < meleeRelease && !cave.camp.burning && !cave.camp.rolling && !cave.camp.seat && !cave.bedTravel.mode;
+        && w.meleeTime > MELEE_RECOVER && w.meleeTime - meleeStep < meleeRelease && !cave.camp.burning && !cave.camp.rolling && !cave.camp.seat && !cave.bedTravel.mode;
       if (striking) {
         BL.scene.updateWorld(cave.root);
         meleePreviousWorld.set(club.world);
@@ -4113,13 +4217,13 @@
       // Always display and check the end of the chop before recovering, even
       // when a frame would otherwise step across the horizontal limit.
       const meleeFloor = w.meleeHeld ? MELEE_RELEASE : w.meleeTime > MELEE_RECOVER ? MELEE_RECOVER : 0;
-      w.meleeTime = Math.max(meleeFloor, w.meleeTime - dt);
+      w.meleeTime = Math.max(meleeFloor, w.meleeTime - meleeStep);
       if (w.meleeHeld) {
         w.meleeHeldTime = Math.min(MELEE_WIND + MELEE_CHARGE_TIME, w.meleeHeldTime + dt);
         w.meleeCharge = ease.inOutQuad(clamp((w.meleeHeldTime - MELEE_WIND) / MELEE_CHARGE_TIME, 0, 1));
         w.meleePower = Math.max(w.meleePower, 1 + w.meleeCharge * 0.5);
       }
-      cave.weapon.meleeCooldown = Math.max(0, cave.weapon.meleeCooldown - dt);
+      cave.weapon.meleeCooldown = Math.max(0, cave.weapon.meleeCooldown - meleeStep);
       if (!runCamp(cave, dt)) updateCaveman(cave, dt);
       else stopReload(cave);
       const axeMoving = Math.hypot(p.x - x, p.z - z) > 1e-5 || cave.hop > 1e-4 || Math.abs(cave.hopV) > 1e-4
@@ -4209,7 +4313,7 @@
       }
       if (cave.jetFuel < 1 && grounded(cave)) {
         if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
-        if (!cave.jet || !cave.jet.spending) cave.jetFuel = Math.min(1, cave.jetFuel + dt / JET_REFILL_SECONDS);
+        if (!cave.jet || !cave.jet.spending) cave.jetFuel = Math.min(1, cave.jetFuel + dt / (JET_REFILL_SECONDS * jetTank(cave)));
       }
       if (cave.jetFuel > JET_LAUNCH_FUEL) cave.jetRecovering = false;
       // Check only this actor's own motion: a stack can add several legitimate walking velocities.
@@ -4278,7 +4382,7 @@
     return {
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawQuotes,
       control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, ignite, dropRoll, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, thrust, update, dispose, stats,
-      builtInJetpack, toggleTint, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
+      actorClear, builtInJetpack, toggleTint, twirl, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
         return player;

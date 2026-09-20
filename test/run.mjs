@@ -22001,10 +22001,11 @@ const core = (label, base) => withPage(label, page(base), async (b) => {
     B.advance(0.6, 0.05);
     const spin = [];
     for (let i = 0; i < 3; i++) {
-      B.advance(0.1, 0.02);
-      spin.push(+cave.parts.club.rotation.x.toFixed(2));
+      B.advance(0.03, 0.01);
+      spin.push(+cave.parts.club.rotation.y.toFixed(2));
     }
-    const held = { chuk: +cave.parts.chuk.rotation.x.toFixed(2), inHand: cave.parts.club.parent === cave.parts.armL, carry: cave.weapon.carry };
+    const held = { chuk: +cave.parts.chuk.rotation.x.toFixed(2), inHand: cave.parts.club.parent === cave.parts.armL, carry: cave.weapon.carry,
+      arm: +cave.parts.armL.rotation.x.toFixed(2), flat: +cave.parts.club.rotation.x.toFixed(2) };
     cave.meleeOut = carried;
     return { hooks: Object.keys(cave.traits.dress).sort().join(","), wait, changed, returned, head: cave.parts.head.geometry === cave.headOpen,
       shared: [...red].filter((c) => green.has(c)).length, recoloured: [...red].filter((c) => !green.has(c)).length,
@@ -22014,9 +22015,10 @@ const core = (label, base) => withPage(label, page(base), async (b) => {
   record(`${label}: 2140data changes between two whole-body colourways on a 6 to 15 minute timer, keeping his lasers red`,
     robot.hooks === "club,extras,eyes,gear,skull,tint" && robot.wait >= 360 && robot.wait <= 900 && robot.changed && robot.returned === ""
     && robot.recoloured >= 4 && robot.laser && robot.pairs === 14, JSON.stringify(robot));
-  record(`${label}: his nunchaku folds when stowed and spins at the wrist in his hands, the rifle swapping to his back`,
+  record(`${label}: his nunchaku folds when stowed and spins flat over a raised arm in his hands, the rifle swapping to his back`,
     robot.chukOnClub && robot.stowed.chuk > 2 && !robot.stowed.inHand && robot.stowed.carry === "hands"
     && robot.held.chuk < 0.25 && robot.held.inHand && robot.held.carry === "back"
+    && robot.held.arm < -2 && Math.abs(robot.held.flat - Math.PI / 2) < 0.01
     && new Set(robot.spin).size === robot.spin.length, JSON.stringify(robot));
   // Park him in front of the camera with the crew held still, so the pick is his.
   await b.evaluate(`(() => {

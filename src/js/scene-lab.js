@@ -194,7 +194,7 @@
   // As in the hub: a third click of a burst shows its code instead of driving it.
   const summonAgent = () => {
     if (agent) return agent;
-    agent = labScene.agent = BL.agent.create({ groundAt: () => 0, walkable: (x, z) => Math.abs(x) < WALL - 0.6 && Math.abs(z) < WALL - 0.6 && Math.hypot(x, z) > pile.pileEdge() + 0.6, x: WALL - 1.5, z: WALL - 1.5 });
+    agent = labScene.agent = BL.agent.create({ groundAt: () => 0, walkable: (fromX, fromZ, x, z) => Math.abs(x) < WALL - 0.6 && Math.abs(z) < WALL - 0.6 && Math.hypot(x, z) > pile.pileEdge() + 0.6, x: WALL - 1.5, z: WALL - 1.5 });
     addChild(root, agent.root);
     // One owner for every part, so a tap on any limb is a tap on the Agent
     const agentOwner = { kind: "agent", agent };
@@ -318,7 +318,8 @@
       if (pilot.player) pilot.release();
       else go("hub");
     }
-    // C changes the colourway of a driven Ooga that was built with two.
+    // N spins a driven Ooga's nunchaku, C changes the colourway of one built with two.
+    if ((e.key === "n" || e.key === "N") && !e.repeat && crew.twirl()) return;
     if ((e.key === "c" || e.key === "C") && !e.repeat && crew.toggleTint(crew.player)) return;
     if (e.key === "g" || e.key === "G") pilot.weaponAction("weapon-toggle");
     if (e.key === "v" || e.key === "V") pilot.weaponAction("weapon-fire");
