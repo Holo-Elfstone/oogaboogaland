@@ -436,7 +436,13 @@ returns to the builder. The best flight and your last rocket are kept in your br
 Keys: **B** add 100 test bananas, **J** toggle a collected jetpack on the controlled Ooga, **L** legendary
 tip, **P** fill the pile, **1** to **9** force a contributor to eating when not controlling an Ooga
 (**3** to **9** still do so while controlling), **Escape** leave a
-cave or let go, **Shift+R** reset the demo.
+cave or let go, **Shift+R** reset the demo, **Shift+A** play the Agent in any scene.
+
+Double-click the Agent to play it, exactly as you take an Ooga; double-click it again, double-click
+the ground or press **Escape** and it wanders off. Three quick clicks show its true colours for
+nine seconds; inside the Matrix it always wears its code. While you are the Agent: **WASD** walk,
+**Shift** gallops, **Space** jumps, **H** switches between knuckle-walking and walking hunched,
+**C** beats its chest, and drag and scroll move the camera as usual.
 
 URL flags: `?scene=lab` opens the lab directly, `?scene=race` the rally garage, `?scene=drop` the drop board and `?scene=orbit` the rocket builder, `?nosim=1` silences simulated tips,
 `?canvas2d=1` forces the Canvas 2D fallback, `?yaw=1.2` sets the starting camera angle,
@@ -509,9 +515,14 @@ npm run build
 ```
 
 Writes `oogaboogaland.html` at the repo root, a single self-contained page with the
-stylesheet and every script inlined and the content policy pinned to their hashes. It is
-committed with the sources; rebuild it whenever they change. Deploy that one file, served
-as `index.html`. Nothing under `src/` goes to a server.
+stylesheet and every script inlined and the content policy pinned to their hashes. The
+page is gitignored: pull requests carry only sources, and CI commits the deployed page
+back after each merge to `rock`. Deploy that one file, served as `index.html`.
+Nothing under `src/` goes to a server.
+
+To add your Ooga, add one file to `src/characters/` named after your GitHub handle; the
+existing files show the shape and AGENTS.md lists every option. `npm run characters` lists
+everyone, and `npm run characters:json` prints the same cast as database rows.
 
 GitHub Pages deploys through `.github/workflows/pages.yml` on pushes to `rock`, every
 ten minutes after refreshing the Oogatron activity snapshot, or manually with
