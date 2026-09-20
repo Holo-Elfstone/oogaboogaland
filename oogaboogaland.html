@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-n/c0Uelt7wJf/GqZbdGn2QlRAwXVX3YoekSdroo7gys='; style-src 'sha256-bclWwM2tAxbulAie13gw3rEoe/R/HSL3G4MpUtj7asQ='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-UBBp7PUPbzGnrWEEYIfbFEZkKaNGgkwrO9xYb4nQiGE='; style-src 'sha256-bclWwM2tAxbulAie13gw3rEoe/R/HSL3G4MpUtj7asQ='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -18557,21 +18557,30 @@ void main() {
   // The handle carries the chain stub, so the gap stays filled at every angle.
   const handleVox = () => {
     const v = makeVox();
-    v.fill(0, 1, 0, 6, 0, 1, STICK);
+    v.fill(0, 1, 0, 4, 0, 1, STICK);
     v.fill(0, 1, 1, 1, 0, 1, COLLAR);
-    v.fill(0, 1, 6, 6, 0, 1, COLLAR);
-    v.fill(0, 1, 7, 7, 0, 0, CHAIN);
-    v.fill(0, 1, 8, 8, 1, 1, CHAIN);
+    v.fill(0, 1, 4, 4, 0, 1, COLLAR);
+    v.fill(0, 1, 5, 5, 0, 0, CHAIN);
+    v.fill(0, 1, 6, 6, 1, 1, CHAIN);
     return v;
   };
   const freeVox = () => {
     const v = makeVox();
-    v.fill(0, 1, 0, 4, 0, 1, STICK);
+    v.fill(0, 1, 0, 2, 0, 1, STICK);
     v.fill(0, 1, 0, 0, 0, 1, COLLAR);
     return v;
   };
+  // Both sticks in line, as they sit while the pair is spinning: three copies of
+  // this trail the live weapon so a fast spin reads as an arc, not a strobe.
+  const pairVox = () => {
+    const v = handleVox();
+    v.fill(0, 1, 7, 9, 0, 1, STICK);
+    v.fill(0, 1, 7, 7, 0, 1, COLLAR);
+    return v;
+  };
+  const CHUK_TRAIL = 6;
   // The pivot sits at the top of the handle's chain, in the club's own space.
-  const CHAIN_Y = 8;
+  const CHAIN_Y = 6;
   // No pack on his back: the thrust comes out of his soles. One node at the
   // feet holds both plumes, so crew.js lights and stretches them as it does any
   // jetpack flame, and they keep their own colours through both colourways.
@@ -18596,7 +18605,7 @@ void main() {
     // He co-built this island and keeps every project on it, so `maintainer`
     // works him at all of them until the backend reports his commits.
     look: {
-      maintainer: true, nunchaku: true, recipe: true,
+      maintainer: true, nunchaku: true, recipe: true, jetTank: 0.3,
       bald: true, hairless: true, cleanShaven: true, noBrow: true, noPupils: true,
       face: "none", hatY: 12, height: 1.12,
       skin: "#c03429", hair: "#191b1e", fur: "#6e1811"
@@ -18643,6 +18652,13 @@ void main() {
         const gold = voxelGeometry(freeVox(), { unit: u, palette: GOLD_CHUK_PALETTE, origin });
         k.parts.chuk = createNode({ position: { x: 0, y: CHAIN_Y * u, z: 0 }, geometry, skins: { default: geometry, gold } });
         addChild(k.parts.club, k.parts.chuk);
+        const trail = voxelGeometry(pairVox(), { unit: u, palette: CHUK_PALETTE, origin: { x: -u, y: -u, z: -u } });
+        k.parts.chukTrail = [];
+        for (let i = 0; i < CHUK_TRAIL; i++) {
+          const ghost = createNode({ geometry: trail, visible: false });
+          k.parts.chukTrail.push(ghost);
+          addChild(k.parts.armL, ghost);
+        }
         // crew.js flies him exactly as it flies the world jetpack, and nothing
         // takes his thrusters off. The mount sits on the sole plane, under both feet.
         k.parts.jetpack = createNode({ position: { x: 0, y: -5 * u, z: 0 } });
@@ -24815,17 +24831,25 @@ void main() {
   // A maintainer runs the whole island's circuit, so it stands at the pile for a
   // while between trips instead of scurrying from one cave straight to the next.
   const WORK_REST_MIN = 7, WORK_REST_SPREAD = 16;
-  // How long a character carries one weapon before swapping to the other.
-  const SWAP_MIN = 20, SWAP_SPREAD = 40;
-  const swapWait = () => SWAP_MIN + Math.random() * SWAP_SPREAD;
+  // How long a character carries its rifle before swapping to the other weapon,
+  // and how long the spin that answers it lasts: a flourish, not a stance.
+  const SWAP_MIN = 20, SWAP_SPREAD = 40, TWIRL_MIN = 0.3, TWIRL_SPREAD = 1.7, TWIRL_SWAP = 0.35, TWIRL_FIRST = 0.35;
+  const swapWait = (melee) => melee ? TWIRL_MIN + Math.random() * TWIRL_SPREAD : SWAP_MIN + Math.random() * SWAP_SPREAD;
   const TINT_MIN = 360, TINT_MAX = 900;
   const tintWait = () => TINT_MIN + Math.random() * (TINT_MAX - TINT_MIN);
   // The free stick folds against the handle when the weapon is stowed and flies
   // out in line with it in the hand, where the wrist spins it at the hip.
   const TAU = Math.PI * 2;
-  const CHUK_FOLD = 2.4, CHUK_SPIN = 7.2;
-  // A weighted flail lands harder than a club; a held charge still scales on top.
-  const NUNCHAKU_POWER = 1.8;
+  // Spun overhead on a raised arm at CHUK_SPINS turns a second: the circle clears
+  // the ground, which a spin at the hip cannot, the pair being most of a metre long.
+  // Past about five turns a second a 60Hz frame steps more than a third of a turn
+  // and the spin strobes, reading slower than it is.
+  // Fifteen turns a second steps 90 degrees between frames at 60Hz, so the pair
+  // would strobe on its own. Six copies trail it by CHUK_TRAIL each: the fan is
+  // wider than a frame's step, consecutive frames overlap, and the eye reads an arc.
+  const CHUK_FOLD = 2.4, CHUK_SPINS = 15, CHUK_TRAIL = 0.32, CHUK_ARM = -2.05, CHUK_ARM_OUT = -0.32, CHUK_OUT = 0.16;
+  // A weighted flail lands harder than a club and moves faster than one.
+  const NUNCHAKU_POWER = 1.8, NUNCHAKU_RATE = 1.9;
   const GUN_HOLD = 0.24, GUN_KICK = 0.045, GUN_FLASH_TIME = 0.035;
   const MAGAZINE_SWAP_TIME = 0.44;
   const RELOAD_HANDOFF_TIME = 0.32, RELOAD_FULL_HOLD = 0.24;
@@ -24865,6 +24889,9 @@ void main() {
   const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = WALK.speed;
   const PLAYER_STEP = 0.125;
   const SHOULDER_GAP = 0.68, SHOULDER_REACH = 1.3, SHOULDER_TWIST = 1.05;
+  // A body the scene owns rather than the roster can be bigger than an Ooga, so
+  // the gap kept from it is wider than the one walkers keep from each other.
+  const OUTSIDE_GAP = 0.86;
   const FOLLOW_GAP = 1.15, FOLLOW_RELEASE = 1.7, NPC_PASS_REACH = 1.9;
   const FIRE_FLEE_REACH = 8, FIRE_FLEE_CLEAR = 10, FIRE_MEMORY_RELEASE = 3, NPC_WALK_SPEED = 1.6;
   const NAV_WIDTH = 21, NAV_SIZE = NAV_WIDTH * NAV_WIDTH, NAV_HALF = 10, NAV_CELL = 0.5, NAV_STEP = 0.025, NAV_CENTER = NAV_HALF * NAV_WIDTH + NAV_HALF;
@@ -25212,8 +25239,11 @@ void main() {
         weapon,
         tintTime: cave.tint ? tintWait() : 0,
         chukAngle: CHUK_FOLD,
-        meleeOut: Math.random() < 0.5,
-        meleeSwap: swapWait(),
+        meleeOut: false,
+        meleeSwap: swapWait(false),
+        twirlUntil: -Infinity,
+        twirlHand: 0,
+        twirlFlipAt: Infinity,
         axeRotation: math.quat.create(),
         gunHandRotation: math.quat.create(),
         gunSupportRotation: math.quat.create(),
@@ -26137,6 +26167,7 @@ void main() {
     // Thrusters built into a character sit wherever its own model puts them, so
     // only the world's pack takes the centre of the back.
     const backPack = (cave) => !!cave.jet && !cave.parts.jetpack;
+    const jetTank = (cave) => cave.traits.jetTank > 0 ? cave.traits.jetTank : 1;
     const carryingStoneAxe = (cave) => cave.traits.stoneAxe && cave.root.visible && cave.state !== "sleeping"
       && (cave === player ? !cave.weapon.equipped : cave.state === "chilling")
       && !cave.weapon.aiming && cave.weapon.meleeTime <= 0 && !cave.weapon.reloading && !cave.weapon.reloadHandoff
@@ -26150,9 +26181,31 @@ void main() {
     };
     // An Ooga with its own melee weapon swaps hands now and then: the rifle rides
     // its back while the melee weapon is out, and comes back for the shooting.
-    const meleeDrawn = (cave) => cave.traits.nunchaku && cave.meleeOut && cave !== player
-      && cave.work.phase !== "station" && cave.work.phase !== "shoot"
-      && !cave.weapon.reloading && !cave.weapon.reloadHandoff && !cave.build;
+    // Driven, it spins on demand instead, for one burst at a time.
+    const meleeDrawn = (cave) => {
+      if (!cave.traits.nunchaku || cave.weapon.reloading || cave.weapon.reloadHandoff) return false;
+      if (cave === player) return cave.twirlUntil > elapsed && !cave.weapon.aiming && cave.weapon.meleeTime <= 0;
+      return cave.meleeOut && cave.work.phase !== "station" && cave.work.phase !== "shoot" && !cave.build;
+    };
+    // Each bout picks a hand, and now and then passes the pair across. The hand
+    // it starts on always spins for less time than the one it ends on.
+    const startTwirl = (cave, seconds) => {
+      cave.twirlHand = Math.random() < 0.5 ? 1 : 0;
+      cave.twirlFlipAt = Math.random() < TWIRL_SWAP ? elapsed + seconds * TWIRL_FIRST : Infinity;
+    };
+    // N spins it for the same bout the idle loop rolls. A fresh press takes either
+    // hand; pressing again while it spins passes it across and starts a new bout.
+    const twirl = (cave = player) => {
+      if (!cave || !cave.traits.nunchaku || cave.state === "sleeping" || cave.camp.burning || cave.camp.rolling) return false;
+      const seconds = swapWait(true);
+      if (cave.twirlUntil <= elapsed) startTwirl(cave, seconds);
+      else {
+        cave.twirlHand = cave.twirlHand ? 0 : 1;
+        cave.twirlFlipAt = Infinity;
+      }
+      cave.twirlUntil = elapsed + seconds;
+      return true;
+    };
     const poseFingers = (arm, fingers, held, side) => {
       fingers.highlight = arm.highlight;
       // Select a square side with an exact quarter turn about the palm. The
@@ -26163,7 +26216,8 @@ void main() {
     const poseHands = (cave, leftSupportsGun = false) => {
       const parts = cave.parts, drawn = cave.weapon.carry === "hands";
       const leftHeld = parts.club.visible && parts.club.parent === parts.armL || drawn || reloadingSpare(cave);
-      const rightHeld = parts.snack.visible || cave.traits.cigarette || leftSupportsGun;
+      const rightHeld = parts.snack.visible || cave.traits.cigarette || leftSupportsGun
+        || parts.club.visible && parts.club.parent === parts.armR;
       poseFingers(parts.armL, parts.fingersL, leftHeld, 1);
       poseFingers(parts.armR, parts.fingersR, rightHeld, -1);
     };
@@ -26203,10 +26257,19 @@ void main() {
       const primaryCarry = !slungClub && carryingStoneAxe(cave);
       // A pack takes the centre of the back, and the nunchaku rides the hip either way.
       const sideSling = slungClub && (cave.traits.nunchaku || cave.traits.stoneAxe && backPack(cave));
-      const clubParent = slungClub ? cave.root : parts.armL;
+      const twirling = !slungClub && !primaryReady && cave.traits.nunchaku;
+      const clubParent = slungClub ? cave.root : twirling && cave.twirlHand ? parts.armR : parts.armL;
       if (parts.club.parent !== clubParent) {
         removeChild(parts.club.parent, parts.club);
         addChild(clubParent, parts.club);
+      }
+      // The trail follows the hand the weapon is in, on the few frames it changes.
+      if (parts.chukTrail && clubParent !== cave.root && parts.chukTrail[0].parent !== clubParent) {
+        for (let i = 0; i < parts.chukTrail.length; i++) {
+          const ghost = parts.chukTrail[i];
+          removeChild(ghost.parent, ghost);
+          addChild(clubParent, ghost);
+        }
       }
       parts.club.quaternion = null;
       if (primaryCarry) {
@@ -26238,12 +26301,32 @@ void main() {
           setVec(parts.club.position, 0.36 * h, 0.04 * h + cave.viewLift, -0.255 * h);
           setVec(parts.club.rotation, -0.035, 0, 0.04);
         }
+      } else if (twirling) {
+        // Held, it spins flat over a raised arm. With x at a quarter turn the
+        // stick lies in the horizontal plane and y sweeps it round the hand.
+        // Either hand takes it, the whole pose mirroring with the side.
+        const side = cave.twirlHand ? 1 : -1, arm = side < 0 ? parts.armL : parts.armR;
+        arm.rotation.x = CHUK_ARM;
+        arm.rotation.y = 0;
+        arm.rotation.z = side < 0 ? CHUK_ARM_OUT : -CHUK_ARM_OUT;
+        // The circle sits a little outside the arm, so it sweeps past him.
+        const turn = (elapsed * CHUK_SPINS * TAU + cave.phase) % TAU, spin = side < 0 ? turn : -turn;
+        const out = side * CHUK_OUT * h;
+        setVec(parts.club.position, out, -0.62 * h, 0.08 * h);
+        setVec(parts.club.rotation, Math.PI / 2, spin, 0);
+        for (let i = 0; i < parts.chukTrail.length; i++) {
+          const ghost = parts.chukTrail[i];
+          ghost.visible = true;
+          setVec(ghost.position, out, -0.62 * h, 0.08 * h);
+          setVec(ghost.rotation, Math.PI / 2, spin + side * (i + 1) * CHUK_TRAIL, 0);
+        }
       } else {
-        // Carried in the hand, a nunchaku spins at the wrist until it is raised.
-        const twirl = cave.traits.nunchaku && !slungClub && !primaryReady;
         setVec(parts.club.position, slungClub ? -0.25 * h : 0, (slungClub ? 0.25 : primaryReady ? -0.625 : -0.62) * h, (slungClub ? -0.3 : primaryReady ? 0.15 : 0.08) * h);
-        setVec(parts.club.rotation, slungClub ? cave.traits.stoneAxe ? 0 : CLUB_SLING_TILT : primaryReady ? 0 : twirl ? (elapsed * CHUK_SPIN + cave.phase) % TAU : cave.clubCarry.x,
+        setVec(parts.club.rotation, slungClub ? cave.traits.stoneAxe ? 0 : CLUB_SLING_TILT : primaryReady ? 0 : cave.clubCarry.x,
           0, slungClub ? CLUB_SLING_ANGLE : primaryReady ? Math.PI / 2 : cave.clubCarry.z);
+      }
+      if (parts.chukTrail && !twirling) {
+        for (let i = 0; i < parts.chukTrail.length; i++) parts.chukTrail[i].visible = false;
       }
       parts.club.poseYaw = slungClub ? parts.torso.poseYaw : 0;
       if (slungClub) {
@@ -27358,16 +27441,40 @@ void main() {
         if (crossingSoon(cave, other)) { traffic.waiting = true; break; }
       }
     };
+    // One swept gap, used by every walker on the island. Already inside it and
+    // moving apart is allowed, so a crowd unpicks itself instead of locking.
+    // Every body the scene walks that is not on the roster: the Agent and any it
+    // has called in. One array, rebuilt only when that crowd changes.
+    const outsideClear = (fromX, fromZ, x, z) => {
+      const bodies = ctx.outsideActors && ctx.outsideActors();
+      if (!bodies) return true;
+      for (let i = 0; i < bodies.length; i++) if (!gapClear(fromX, fromZ, x, z, bodies[i], OUTSIDE_GAP)) return false;
+      return true;
+    };
+    const gapClear = (fromX, fromZ, x, z, q, gap = SHOULDER_GAP) => {
+      const dx = x - fromX, dz = z - fromZ, length = dx * dx + dz * dz;
+      const ox = fromX - q.x, oz = fromZ - q.z, before = ox * ox + oz * oz;
+      if (before < gap * gap && (x - q.x) ** 2 + (z - q.z) ** 2 > before && ox * dx + oz * dz >= 0) return true;
+      const t = length ? clamp(-(ox * dx + oz * dz) / length, 0, 1) : 0;
+      return (ox + dx * t) ** 2 + (oz + dz * t) ** 2 >= gap * gap - 1e-8;
+    };
     // Same swept clearance as the hub's upright actors and the lab; passing changes the path, never body radii.
     const shoulderClear = (cave, x, z) => {
-      const p = cave.root.position, dx = x - p.x, dz = z - p.z, length = dx * dx + dz * dz;
+      const p = cave.root.position;
       for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
         const other = crewList[otherIndex];
         if (!shoulderNeighbor(cave, other)) continue;
-        const q = other.root.position, ox = p.x - q.x, oz = p.z - q.z, before = ox * ox + oz * oz;
-        if (before < SHOULDER_GAP * SHOULDER_GAP && (x - q.x) ** 2 + (z - q.z) ** 2 > before && ox * dx + oz * dz >= 0) continue;
-        const t = length ? clamp(-(ox * dx + oz * dz) / length, 0, 1) : 0;
-        if ((ox + dx * t) ** 2 + (oz + dz * t) ** 2 < SHOULDER_GAP * SHOULDER_GAP - 1e-8) return false;
+        if (!gapClear(p.x, p.z, x, z, other.root.position)) return false;
+      }
+      // Walking bodies the scene owns rather than the roster keep the same gap.
+      return outsideClear(p.x, p.z, x, z);
+    };
+    // The same gap from the other side: a scene's own walker against the whole crew.
+    const actorClear = (fromX, fromZ, x, z) => {
+      for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
+        const other = crewList[otherIndex];
+        if (!other.root.visible || other.state === "away" || other.root.quaternion || other.camp.seat) continue;
+        if (!gapClear(fromX, fromZ, x, z, other.root.position, OUTSIDE_GAP)) return false;
       }
       return true;
     };
@@ -27481,6 +27588,9 @@ void main() {
         const threat = panic.threat.root.position;
         if (Math.hypot(x - threat.x, z - threat.z) < Math.min(1.1, Math.hypot(p.x - threat.x, p.z - threat.z)) - 1e-7) return false;
       }
+      // Bodies the scene owns are obstacles like any other: the walker's own
+      // avoidance steers around them rather than through them.
+      if (!outsideClear(p.x, p.z, x, z)) return false;
       return npcWalkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave) && groundAt(x, z, feet, feet, cave) >= feet - STEP - 1e-7;
     };
     const recoverWalker = (cave, tx, tz, dt) => {
@@ -28027,7 +28137,9 @@ void main() {
       const moving = !cave.jetRecovering && (cave.hop > 0 || cave.hopV > 0) && Math.hypot(steer.x, steer.z) > 0.05;
       jet.power = (jet.thrust ? 2 : 0) + (moving ? 1 : 0);
       jet.spending = jet.power > 0;
-      if (jet.spending) cave.jetFuel = Math.max(0, cave.jetFuel - dt * jet.power / JET_MOVE_SECONDS);
+      // A character's own thrusters can hold less than the world's pack: the gauge
+      // still reads its own tank, that tank is just a shorter burn.
+      if (jet.spending) cave.jetFuel = Math.max(0, cave.jetFuel - dt * jet.power / (JET_MOVE_SECONDS * jetTank(cave)));
       if (cave.jetFuel < 1e-10) { cave.jetFuel = 0; jet.thrust = false; jet.power = 0; }
       if (jet.thrust) {
         cave.hopV = Math.min(cave.hopV + JET_ACCEL * dt, JET_RISE);
@@ -28047,6 +28159,8 @@ void main() {
     const canStep = (cave, flying, fromX, fromZ, toX, toZ) => {
       const y = cave.root.position.y - cave.baseY;
       const height = cave.bodyHeight + Math.max(0, cave.viewLift);
+      // On foot, the scene's own walkers are bodies to walk round, not through.
+      if (!flying && cave.hop <= 0 && !outsideClear(fromX, fromZ, toX, toZ)) return false;
       return flying || cave.hop > 0
         ? flyable(fromX, fromZ, toX, toZ, y, height, cave) && groundAt(toX, toZ, y, y, cave) <= y
         : walkable(fromX, fromZ, toX, toZ, y, height, cave);
@@ -28196,7 +28310,12 @@ void main() {
       if (cave.traits.pumpkin) parts.head.glow = 0.62 + 0.38 * Math.sin(elapsed * 2.1 + cave.phase);
       if (cave.traits.nunchaku && (cave.meleeSwap -= dt) <= 0) {
         cave.meleeOut = !cave.meleeOut;
-        cave.meleeSwap = swapWait();
+        cave.meleeSwap = swapWait(cave.meleeOut);
+        if (cave.meleeOut) startTwirl(cave, cave.meleeSwap);
+      }
+      if (cave.twirlFlipAt <= elapsed) {
+        cave.twirlHand = cave.twirlHand ? 0 : 1;
+        cave.twirlFlipAt = Infinity;
       }
       if (cave.tint && (cave.tintTime -= dt) <= 0) {
         swapTint(cave);
@@ -28900,8 +29019,9 @@ void main() {
       const meleeRelease = w.meleeStrikeTime + MELEE_RECOVER;
       // Only the forward strike can hit. Held wind-up and recovery never
       // repeatedly disturb a surface, and idle actors do no contact work.
+      const meleeStep = dt * (cave.traits.nunchaku ? NUNCHAKU_RATE : 1);
       const striking = dt > 0 && (ctx.onMeleeStrike || input.weaponTargets || ctx.fireReachable) && cave === player && w.primaryEquipped && !w.meleeHeld && !w.meleeHit
-        && w.meleeTime > MELEE_RECOVER && w.meleeTime - dt < meleeRelease && !cave.camp.burning && !cave.camp.rolling && !cave.camp.seat && !cave.bedTravel.mode;
+        && w.meleeTime > MELEE_RECOVER && w.meleeTime - meleeStep < meleeRelease && !cave.camp.burning && !cave.camp.rolling && !cave.camp.seat && !cave.bedTravel.mode;
       if (striking) {
         BL.scene.updateWorld(cave.root);
         meleePreviousWorld.set(club.world);
@@ -28910,13 +29030,13 @@ void main() {
       // Always display and check the end of the chop before recovering, even
       // when a frame would otherwise step across the horizontal limit.
       const meleeFloor = w.meleeHeld ? MELEE_RELEASE : w.meleeTime > MELEE_RECOVER ? MELEE_RECOVER : 0;
-      w.meleeTime = Math.max(meleeFloor, w.meleeTime - dt);
+      w.meleeTime = Math.max(meleeFloor, w.meleeTime - meleeStep);
       if (w.meleeHeld) {
         w.meleeHeldTime = Math.min(MELEE_WIND + MELEE_CHARGE_TIME, w.meleeHeldTime + dt);
         w.meleeCharge = ease.inOutQuad(clamp((w.meleeHeldTime - MELEE_WIND) / MELEE_CHARGE_TIME, 0, 1));
         w.meleePower = Math.max(w.meleePower, 1 + w.meleeCharge * 0.5);
       }
-      cave.weapon.meleeCooldown = Math.max(0, cave.weapon.meleeCooldown - dt);
+      cave.weapon.meleeCooldown = Math.max(0, cave.weapon.meleeCooldown - meleeStep);
       if (!runCamp(cave, dt)) updateCaveman(cave, dt);
       else stopReload(cave);
       const axeMoving = Math.hypot(p.x - x, p.z - z) > 1e-5 || cave.hop > 1e-4 || Math.abs(cave.hopV) > 1e-4
@@ -29006,7 +29126,7 @@ void main() {
       }
       if (cave.jetFuel < 1 && grounded(cave)) {
         if (cave.jet && cave.jetFuel < JET_LAUNCH_FUEL) cave.jetRecovering = true;
-        if (!cave.jet || !cave.jet.spending) cave.jetFuel = Math.min(1, cave.jetFuel + dt / JET_REFILL_SECONDS);
+        if (!cave.jet || !cave.jet.spending) cave.jetFuel = Math.min(1, cave.jetFuel + dt / (JET_REFILL_SECONDS * jetTank(cave)));
       }
       if (cave.jetFuel > JET_LAUNCH_FUEL) cave.jetRecovering = false;
       // Check only this actor's own motion: a stack can add several legitimate walking velocities.
@@ -29075,7 +29195,7 @@ void main() {
     return {
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawQuotes,
       control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, ignite, dropRoll, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, thrust, update, dispose, stats,
-      builtInJetpack, toggleTint, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
+      actorClear, builtInJetpack, toggleTint, twirl, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
         return player;
@@ -33507,7 +33627,7 @@ void main() {
   const { makeVox, voxelGeometry, cached } = BL.models;
   const { createNode, addChild, removeChild } = BL.scene;
   const { damp, clamp, mulberry32, fnv1a } = BL.math;
-  const U = 0.075;
+  const U = 0.086;
   // Hip height, torso length, the shoulder on the chest, and the arm: the knuckles
   // reach the ground when the chest leans QUAD forward (8 + 11 cos 1.0 = 13.9 ≈ 14).
   const HIP = 8 * U, SHOULDER_Y = 11 * U, SHOULDER_X = 6 * U, NECK_Y = 10.5 * U;
@@ -33624,14 +33744,16 @@ void main() {
   });
   const PART_NAMES = ["legL", "legR", "torso", "armL", "armR", "head"];
 
-  // A driven step may climb at most STEP_UP and drop at most STEP_DOWN, so walls
-  // and cliff edges stop the Agent instead of lifting it or dropping it off the island.
-  const STEP_UP = 0.6, STEP_DOWN = 1.2;
+  // A step may climb at most STEP_UP and drop at most STEP_DOWN, so walls and
+  // cliff edges stop the Agent instead of lifting it or dropping it off the island.
+  // BODY is what it needs overhead, so it is barred by the same rock and props an Ooga is.
+  const STEP_UP = 0.6, STEP_DOWN = 1.2, BODY = 13 * U;
   const GRAVITY = 9.8, JUMP_SPEED = 4.4, REVEAL_TIME = 9;
   // A click this soon after taking the Agent was the third of a triple: a look, not a drive.
   const TRIPLE_MS = 500;
-  // groundAt(x, z) is the walking surface; walkable(x, z), when given, bounds a
-  // driven Agent (a room's walls). A walk is a list of { x, z } waypoints.
+  // groundAt(x, z) is the walking surface; walkable(fromX, fromZ, toX, toZ, y, height),
+  // when given, is the scene's own swept test, the one its Oogas walk by, and bounds
+  // every step the Agent takes. A walk is a list of { x, z } waypoints.
   const create = ({ groundAt, walkable = null, form = "ape", x = 0, z = 0, heading = 0 }) => {
     const geos = geometries();
     const root = createNode({ position: { x, y: groundAt(x, z), z }, rotation: { x: 0, y: heading, z: 0 } });
@@ -33712,6 +33834,21 @@ void main() {
     const toggleStyle = () => {
       state.walkStyle = state.walkStyle === "knuckle" ? "hunch" : "knuckle";
     };
+    // A step has to clear the ground limits and the scene's own sweep, so the
+    // Agent stops at what stops an Ooga instead of walking through it.
+    const stepTo = (nx, nz) => {
+      const p = root.position, ground = groundAt(p.x, p.z), ny = groundAt(nx, nz);
+      if (ny <= ground - STEP_DOWN || ny >= p.y + STEP_UP) return false;
+      if (walkable && !walkable(p.x, p.z, nx, nz, p.y, BODY)) return false;
+      p.x = nx;
+      p.z = nz;
+      return true;
+    };
+    // Blocked head on, try each axis alone, the way a walking Ooga slides along a wall.
+    const slideTo = (nx, nz) => {
+      const p = root.position;
+      return stepTo(nx, nz) || nx !== p.x && stepTo(nx, p.z) || nz !== p.z && stepTo(p.x, nz);
+    };
     const driven = (dt) => {
       const m = Math.hypot(state.inX, state.inZ);
       if (m < 0.1) {
@@ -33722,12 +33859,7 @@ void main() {
       const want = Math.atan2(state.inX, state.inZ), turn = Math.atan2(Math.sin(want - state.heading), Math.cos(want - state.heading));
       state.heading += turn * (1 - Math.exp(-8 * dt));
       const p = root.position, step = state.speed * dt * Math.min(1, m) * Math.max(0, Math.cos(turn));
-      const nx = p.x + Math.sin(state.heading) * step, nz = p.z + Math.cos(state.heading) * step, ny = groundAt(nx, nz);
-      // Mid-jump the body is higher, so a jump clears a step it could not walk up
-      if (ny > groundAt(p.x, p.z) - STEP_DOWN && ny < p.y + STEP_UP && (!walkable || walkable(nx, nz))) {
-        p.x = nx;
-        p.z = nz;
-      }
+      slideTo(p.x + Math.sin(state.heading) * step, p.z + Math.cos(state.heading) * step);
     };
     const jump = () => {
       if (state.air) return;
@@ -33766,8 +33898,12 @@ void main() {
       }
       // Slow while facing away, so it turns before it runs on
       const step = Math.min(distance, state.speed * dt * Math.max(0, Math.cos(turn)));
-      p.x += Math.sin(state.heading) * step;
-      p.z += Math.cos(state.heading) * step;
+      // Walled in: drop the route and idle, and onIdle picks somewhere else to go.
+      if (!slideTo(p.x + Math.sin(state.heading) * step, p.z + Math.cos(state.heading) * step)) {
+        state.route = null;
+        state.gait = "idle";
+        state.idleFor = 0.4 + Math.random() * 0.8;
+      }
     };
     const limb = (node, angle, dt) => {
       node.rotation.x = damp(node.rotation.x, angle, 18, dt);
@@ -35917,6 +36053,10 @@ void main() {
     return floor > -Infinity && floor > island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS) ? floor : island.smoothSupportAt(x, z, y, STEP_MAX, PLAYER_RADIUS);
   };
   const PLAYER_RADIUS = 0.3;
+  // Called-in Agents: a hard cap, ten seconds each, all sharing one set of geometry.
+  const EXTRA_AGENTS = 8, EXTRA_LIFE = 10;
+  const extraAgents = [], extraLives = [], agentBodies = [];
+  const AGENT_SPAWN = { x: 0, z: 0 }, AGENT_FROM = { x: 0, z: 0 }, AGENT_TO = { x: 0, z: 0 };
   const BODY_RADIUS = 0.38;
   const BODY_PARTS_SOLID = ["torso", "head", "armL", "armR", "legL", "legR"];
   const BODY_BOUNDS = new Float64Array(6);
@@ -38113,6 +38253,18 @@ void main() {
     crew.update(dt, elapsed);
     agent.setForm(agent.revealed || matrixCoverage(agent.root.position.x, agent.root.position.z) > 0.5 ? "code" : "ape");
     agent.update(dt);
+    // The called-in Agents live their ten seconds, then leave nothing behind.
+    for (let i = extraAgents.length - 1; i >= 0; i--) {
+      const extra = extraAgents[i];
+      extra.setForm(matrixCoverage(extra.root.position.x, extra.root.position.z) > 0.5 ? "code" : "ape");
+      extra.update(dt);
+      if ((extraLives[i] -= dt) > 0) continue;
+      removeChild(root, extra.root);
+      extra.dispose();
+      extraAgents.splice(i, 1);
+      extraLives.splice(i, 1);
+      agentBodies.splice(agentBodies.indexOf(extra.root.position), 1);
+    }
     updateRoomSigns(dt);
     pile.update(dt);
     const player = pilot.player;
@@ -38435,7 +38587,8 @@ void main() {
     }
     // J mirrors the carried jetpack button without changing its fuel.
     if ((e.key === "j" || e.key === "J") && !e.repeat) toggleJetpack();
-    // C changes the colourway of a driven Ooga that was built with two.
+    // N spins a driven Ooga's nunchaku, C changes the colourway of one built with two.
+    if ((e.key === "n" || e.key === "N") && !e.repeat && crew.twirl()) return;
     if ((e.key === "c" || e.key === "C") && !e.repeat && crew.toggleTint(crew.player)) return;
     if (e.key === "g" || e.key === "G") pilot.weaponAction("weapon-toggle");
     if (e.key === "v" || e.key === "V") pilot.weaponAction("weapon-fire");
@@ -38603,6 +38756,10 @@ void main() {
     if (mempool.state.projectedBlocks) storm.weather(mempool.state.nextFee);
     unsubscribeMempool = mempool.subscribe(onMempool);
     shared.characterSupportAt = characterSupportAt;
+    // Every Agent on the island, the called-in ones included, so the crew keeps
+    // its walker gap from all of them. Positions mutate in place; the array only
+    // changes when one arrives or leaves.
+    shared.outsideActors = () => agentBodies;
     shared.carryCharacter = carryCharacter;
     shared.npcWalkable = npcWalkable;
     shared.prepareNpcRoutes = refreshWorkZones;
@@ -38754,7 +38911,42 @@ void main() {
       return false;
     };
     agentSpot(agentFrom);
-    agent = BL.agent.create({ groundAt: (x, z) => island.surfaceAt(x, z), x: agentFrom.x, z: agentFrom.z, heading: Math.random() * Math.PI * 2 });
+    // Shift+A calls in more of them for a while. They share the Agent's cached
+    // geometry, so a crowd is still one draw per part, they are capped, and each
+    // one is disposed and off the graph the moment its EXTRA_LIFE is up.
+    const agentWalkable = (fromX, fromZ, toX, toZ, y, height) => walkable(fromX, fromZ, toX, toZ, y, height, null)
+      && crew.actorClear(fromX, fromZ, toX, toZ);
+    const spawnAgent = () => {
+      if (extraAgents.length >= EXTRA_AGENTS || !agentSpot(AGENT_SPAWN)) return false;
+      const extra = BL.agent.create({
+        groundAt: (x, z) => island.surfaceAt(x, z), walkable: agentWalkable,
+        x: AGENT_SPAWN.x, z: AGENT_SPAWN.z, heading: Math.random() * Math.PI * 2
+      });
+      extra.onIdle = () => {
+        const p = extra.root.position;
+        AGENT_FROM.x = p.x; AGENT_FROM.z = p.z;
+        if (agentSpot(AGENT_TO)) extra.walk(shared.npcPaths.route(AGENT_FROM, AGENT_TO), false);
+      };
+      addChild(root, extra.root);
+      extraAgents.push(extra);
+      extraLives.push(EXTRA_LIFE);
+      agentBodies.push(extra.root.position);
+      extra.onIdle();
+      hud.toast(`Agents: ${extraAgents.length + 1}`);
+      return true;
+    };
+    hubScene.spawnAgent = spawnAgent;
+    // The Agent walks by the crew's own rules: the hub's sweep for rock, props and
+    // gates, and the crew's own walker gap for the Oogas. It is nobody's actor, so
+    // nothing is excluded from the sweep.
+    agent = BL.agent.create({
+      groundAt: (x, z) => island.surfaceAt(x, z),
+      walkable: (fromX, fromZ, toX, toZ, y, height) => walkable(fromX, fromZ, toX, toZ, y, height, null)
+        && crew.actorClear(fromX, fromZ, toX, toZ),
+      x: agentFrom.x, z: agentFrom.z, heading: Math.random() * Math.PI * 2
+    });
+    agentBodies.length = 0;
+    agentBodies.push(agent.root.position);
     agent.onIdle = () => {
       const p = agent.root.position;
       agentFrom.x = p.x; agentFrom.z = p.z;
@@ -39199,6 +39391,12 @@ void main() {
     input.dispose();
     hud.dispose();
     // Drop every per-visit ref but the cached island.
+    for (let i = extraAgents.length - 1; i >= 0; i--) {
+      removeChild(root, extraAgents[i].root);
+      extraAgents[i].dispose();
+    }
+    extraAgents.length = extraLives.length = agentBodies.length = 0;
+    hubScene.spawnAgent = null;
     pathNode = altar = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = crates = critters = clock = presets = jetpack = jetpackState = jetpackCarrier = jetpackWearer = lastJetpackCloud = mirrorCave = matrixCave = matrixControl = gateRain = fire = headquarters = positionDebug = agent = agentPlay = null;
     magazine = magazineState = breakables = storm = null;
     hubScene.input = hubScene.debug = hubScene.agent = hubScene.agentView = hubScene.agentControls = hubScene.agentHandoff = null;
@@ -39219,7 +39417,7 @@ void main() {
   };
   const hubScene = {
     id: "hub", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
-    root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
+    root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null, spawnAgent: null,
     get inMotion() {
       if (pile.inMotion || fx.inMotion || breakables.inMotion || storm.active || jetpack || magazine && magazine.revealed || MATRIX_WORLD.active || mirrorGuides.state.doorway || mirrorCave.damage.active || mirrorCave.ripples.active || mirrorCave.body.active) return true;
       for (const sign of headquarters.roomSigns) if (sign.velocity || sign.node.rotation.x) return true;
@@ -39428,7 +39626,7 @@ void main() {
   // As in the hub: a third click of a burst shows its code instead of driving it.
   const summonAgent = () => {
     if (agent) return agent;
-    agent = labScene.agent = BL.agent.create({ groundAt: () => 0, walkable: (x, z) => Math.abs(x) < WALL - 0.6 && Math.abs(z) < WALL - 0.6 && Math.hypot(x, z) > pile.pileEdge() + 0.6, x: WALL - 1.5, z: WALL - 1.5 });
+    agent = labScene.agent = BL.agent.create({ groundAt: () => 0, walkable: (fromX, fromZ, x, z) => Math.abs(x) < WALL - 0.6 && Math.abs(z) < WALL - 0.6 && Math.hypot(x, z) > pile.pileEdge() + 0.6, x: WALL - 1.5, z: WALL - 1.5 });
     addChild(root, agent.root);
     // One owner for every part, so a tap on any limb is a tap on the Agent
     const agentOwner = { kind: "agent", agent };
@@ -39552,7 +39750,8 @@ void main() {
       if (pilot.player) pilot.release();
       else go("hub");
     }
-    // C changes the colourway of a driven Ooga that was built with two.
+    // N spins a driven Ooga's nunchaku, C changes the colourway of one built with two.
+    if ((e.key === "n" || e.key === "N") && !e.repeat && crew.twirl()) return;
     if ((e.key === "c" || e.key === "C") && !e.repeat && crew.toggleTint(crew.player)) return;
     if (e.key === "g" || e.key === "G") pilot.weaponAction("weapon-toggle");
     if (e.key === "v" || e.key === "V") pilot.weaponAction("weapon-fire");
@@ -47914,11 +48113,14 @@ void main() {
       active.onLootCleared();
       return;
     }
-    // Shift+A: play the scene's Agent, or let it go
+    // Shift+A: call in another Agent where the scene can hold one, otherwise play
+    // the scene's own. A double-click on an Agent plays it either way.
     if (e.shiftKey && !e.metaKey && !e.ctrlKey && (e.key === "A" || e.key === "a")) {
       e.preventDefault();
-      if (agentPlay.active) agentPlay.stop();
-      else if (!transition) agentPlay.start(active);
+      if (transition) return;
+      if (active.spawnAgent) active.spawnAgent();
+      else if (agentPlay.active) agentPlay.stop();
+      else agentPlay.start(active);
       return;
     }
     if (e.shiftKey && !e.metaKey && !e.ctrlKey && (e.key === "R" || e.key === "r")) {
