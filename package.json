@@ -7,6 +7,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "serve": "node scripts/serve.mjs",
+    "watch": "node scripts/serve.mjs --watch",
     "characters": "node scripts/characters.mjs --list",
     "characters:json": "node scripts/characters.mjs --json",
     "test:unit": "LANE=unit node test/run.mjs",
