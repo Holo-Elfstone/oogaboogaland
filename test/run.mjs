@@ -21990,32 +21990,34 @@ const core = (label, base) => withPage(label, page(base), async (b) => {
     B.advance(0.05, 0.05);
     const returned = Object.keys(first).filter((key) => first[key] !== parts()[key]).join(",");
     cave.tintTime = wait;
-    // Swing the nunchaku and watch the free stick whip round and settle folded.
-    // The carry swap drives an idle flick of its own, so hold it off the settle.
+    // The carry swap alternates his two weapons: stowed, the nunchaku folds
+    // against its handle and the rifle is in his hands; out, it flies into line
+    // and spins at the wrist while the rifle rides his back.
     const carried = cave.meleeOut;
     cave.meleeOut = false;
-    cave.weapon.primaryEquipped = true;
-    B.advance(0.5, 0.05);
-    const fold = cave.parts.chuk.rotation.x;
-    B.crew.swingWeapon(cave);
-    let peak = 0;
-    for (let i = 0; i < 30; i++) {
-      B.advance(0.02, 0.02);
-      peak = Math.max(peak, cave.parts.chuk.rotation.x - fold);
+    B.advance(0.6, 0.05);
+    const stowed = { chuk: +cave.parts.chuk.rotation.x.toFixed(2), inHand: cave.parts.club.parent === cave.parts.armL, carry: cave.weapon.carry };
+    cave.meleeOut = true;
+    B.advance(0.6, 0.05);
+    const spin = [];
+    for (let i = 0; i < 3; i++) {
+      B.advance(0.1, 0.02);
+      spin.push(+cave.parts.club.rotation.x.toFixed(2));
     }
-    B.advance(0.4, 0.05);
-    cave.weapon.primaryEquipped = false;
+    const held = { chuk: +cave.parts.chuk.rotation.x.toFixed(2), inHand: cave.parts.club.parent === cave.parts.armL, carry: cave.weapon.carry };
     cave.meleeOut = carried;
     return { hooks: Object.keys(cave.traits.dress).sort().join(","), wait, changed, returned, head: cave.parts.head.geometry === cave.headOpen,
       shared: [...red].filter((c) => green.has(c)).length, recoloured: [...red].filter((c) => !green.has(c)).length,
       laser: redHead.has(laser) && greenHead.has(laser), pairs: cave.tint.size,
-      chukOnClub: cave.parts.chuk.parent === cave.parts.club, peak: +peak.toFixed(2), settled: +(cave.parts.chuk.rotation.x - fold).toFixed(2) };
+      chukOnClub: cave.parts.chuk.parent === cave.parts.club, stowed, held, spin };
   })()`);
   record(`${label}: 2140data changes between two whole-body colourways on a 6 to 15 minute timer, keeping his lasers red`,
     robot.hooks === "club,extras,eyes,gear,skull,tint" && robot.wait >= 360 && robot.wait <= 900 && robot.changed && robot.returned === ""
     && robot.recoloured >= 4 && robot.laser && robot.pairs === 14, JSON.stringify(robot));
-  record(`${label}: his free stick hangs off the handle and whips a full turn through a strike`,
-    robot.chukOnClub && robot.peak > 5.4 && Math.abs(robot.settled) < 0.2, JSON.stringify(robot));
+  record(`${label}: his nunchaku folds when stowed and spins at the wrist in his hands, the rifle swapping to his back`,
+    robot.chukOnClub && robot.stowed.chuk > 2 && !robot.stowed.inHand && robot.stowed.carry === "hands"
+    && robot.held.chuk < 0.25 && robot.held.inHand && robot.held.carry === "back"
+    && new Set(robot.spin).size === robot.spin.length, JSON.stringify(robot));
   // Park him in front of the camera with the crew held still, so the pick is his.
   await b.evaluate(`(() => {
     const B = window.__ooga, crew = B.crew, update = crew.update, cave = B.cavemen.get("2140data"), camera = B.camera;
