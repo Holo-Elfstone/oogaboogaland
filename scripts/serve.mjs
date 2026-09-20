@@ -81,6 +81,11 @@ const server = createServer((req, res) => {
 });
 
 await rebuild();
+server.on("error", (err) => {
+  if (err.code !== "EADDRINUSE") throw err;
+  console.error(`port ${port} is in use; pick another with PORT=<n>`);
+  process.exit(1);
+});
 server.listen(port, () => {
   console.log(`serving http://localhost:${port}/ (built page) and http://localhost:${port}/src/ (sources)`);
   if (!watching) return;

@@ -9,9 +9,14 @@ at the pile, run to their project's cave and shoot into it from outside, then re
 Visitors can poke the crew, roll the dice, and watch donated bananas rain onto the
 shared pile on the island and in the cave alike.
 
-Everything is plain JavaScript with no dependencies, no build requirement, and no
-network access. The page cannot make a request, payments are a simulator for now, and
-all visitor state stays in the visitor's own browser (for now).
+Everything is plain JavaScript with no dependencies, no build requirement, and one
+network connection: a websocket to mempool.space that makes the island's weather. Every
+transaction the Bitcoin mempool accepts rains on the hub, with bigger drops for heavier
+transactions, every mined block strikes lightning and rolls thunder, and the fee for the
+next block sets the weather, from sunny and dry to a full grey storm; the mapping is in
+[Weather](#weather). The time of day stays the island's real clock. Nothing is sent but
+the subscription. Payments are a simulator for now, and all visitor state stays in
+the visitor's own browser (for now).
 
 ## Run it
 
@@ -444,9 +449,11 @@ returns to the builder. The best flight and your last rocket are kept in your br
 Keys: **B** add 100 test bananas, **J** toggle a collected jetpack on the controlled Ooga, **L** legendary
 tip, **P** fill the pile, **1** to **9** force a contributor to eating when not controlling an Ooga
 (**3** to **9** still do so while controlling), **Escape** leave a
-cave or let go, **Shift+R** reset the demo.
+cave or let go, **Shift+R** reset the demo. The Konami code (up, up, down, down, left,
+right, left, right, B, A) opens a panel showing the live mempool.space socket: its state,
+message counts, the chain tip and next-block fee, the island's overcast and the last events.
 
-URL flags: `?scene=lab` opens the lab directly, `?scene=race` the rally garage, `?scene=drop` the drop board and `?scene=orbit` the rocket builder, `?nosim=1` silences simulated tips,
+URL flags: `?scene=lab` opens the lab directly, `?scene=race` the rally garage, `?scene=drop` the drop board and `?scene=orbit` the rocket builder, `?nosim=1` silences simulated tips and the mempool feed, `?mempool=0` only the feed,
 `?canvas2d=1` forces the Canvas 2D fallback, `?yaw=1.2` sets the starting camera angle,
 `?debug=1` exposes `window.__ooga`. In debug mode, add `&bananas=10000` (or another
 non-negative amount) to preview the pile at that starting level without changing saved state,
@@ -497,6 +504,41 @@ Add `&solo=1` (or bare `&solo`) in debug mode to load only the character named b
 loads the scenery alone. Solo stays active across scene changes, omits rally spectators,
 and never selects a fallback character for `jetpack=1`. Use `solo=0` to restore the full roster.
 
+## Weather
+
+The hub's weather is the Bitcoin mempool, live over one websocket to mempool.space.
+
+- **Rain** is transactions. Every transaction the mempool accepts falls as drops around the
+  view, two to eight of them, bigger and faster for a heavier transaction (by virtual size,
+  on a log scale from 140 vB). Big drops splash.
+- **Thunder** is blocks. Every block mined while the page is open strikes a bolt near the
+  view, flashes the sky twice and rolls a rumble half a second to a second and a half later.
+  A toast names the block and its transaction count.
+- **Overcast** is fee pressure: the median fee of the projected next block, on a log scale
+  from 0.1 sat/vB (or an empty mempool), which is clear, to 20 sat/vB, the full storm. It
+  scales how much each transaction rains; any overcast rains at least one drop. The first
+  projection after connecting sets it at once, later ones walk there over 1.5 seconds, and
+  swings under 0.05 are ignored.
+- **The sky** is separate from the rain. It stays exactly as the island's real-time clock
+  paints it until the overcast passes a clear band: a quarter at night, just over half by
+  day, blended through dawn and dusk. Above the band the sky, ground and light grey and dim
+  and fog closes in, in proportion. The clock itself is never touched, so a shower can fall
+  under a clear noon sky and clear weather at 3 AM is a clear starry night.
+
+| Next-block fee | Overcast | Rain | Daytime sky | Night sky |
+|---|---|---|---|---|
+| empty mempool | 0.00 | dry | clear | clear |
+| 0.34 sat/vB | 0.23 | drizzle, one drop a transaction | clear | clear |
+| 1 sat/vB | 0.43 | light | clear | light cloud |
+| 2 sat/vB | 0.57 | moderate | first cloud | cloudy |
+| 5 sat/vB | 0.74 | steady | partly grey | grey |
+| 10 sat/vB | 0.87 | heavy | grey | dark grey |
+| 20 sat/vB and up | 1.00 | full | full storm | full storm |
+
+The socket is off under `?nosim=1` and `?mempool=0`. The Konami code from the keys above
+opens a panel with the live socket state, counters, the chain tip and next-block fee, the
+overcast and cloud values, and the last events.
+
 ## Test
 
 ```sh
@@ -532,7 +574,8 @@ this workflow does not need a repository `CNAME` file.
 
 ## Privacy
 
-No analytics, no external requests, no personal data. The roster lists public
+No analytics, no personal data, and one external connection: the mempool.space
+websocket, which receives public chain data and sends nothing about the visitor. The roster lists public
 contributor handles only. The donation handle and message a visitor types are stored in
 their own localStorage and nowhere else.
 

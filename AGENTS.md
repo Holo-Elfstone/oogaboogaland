@@ -12,10 +12,11 @@ open caves are the EntropyLab lab, where donated bananas feed voxel cavemen who
 represent its contributors, and Ooga Rally, a three-track kart race for the same crew. On
 the rally cave's roof a plane launches Ooga Drop, a skydive back onto the island.
 Pile, crew, effects and loot crates are the same systems in the hub and the lab and the
-pile level is shared everywhere; the rally and the drop have their own systems over the same cavemen. The page is static and network-free: the
-content policy forbids every connection, payments are a simulator stub, all state lives
-in localStorage. A backend comes later and must fit the contract in `src/js/donations.js`;
-do not add network code before it exists. Visitor-facing controls are in the README.
+pile level is shared everywhere; the rally and the drop have their own systems over the same cavemen. The page is static and makes one
+connection: the content policy allows the mempool.space websocket in `src/js/mempool.js`
+and nothing else. Payments are a simulator stub, all state lives in localStorage. A
+backend comes later and must fit the contract in `src/js/donations.js`; do not add
+network code for it before it exists. Visitor-facing controls are in the README.
 
 ## Ground rules
 
@@ -25,8 +26,8 @@ do not add network code before it exists. Visitor-facing controls are in the REA
 - Vanilla JavaScript only: no frameworks, TypeScript, bundler, npm dependencies,
   external scripts or fonts. `package.json` exists only for the build and test scripts.
 - Keep the content policy strict. `src/index.html` allows `self` scripts and styles and
-  nothing else; the build pins inline blocks by hash. Never add `unsafe-inline`,
-  `unsafe-eval`, or a remote origin.
+  one `connect-src`, `wss://mempool.space`; the build pins inline blocks by hash. Never
+  add `unsafe-inline`, `unsafe-eval`, or another remote origin.
 - Smallest change that works. No refactors, reformatting, or renames the task does not
   require. Match the surrounding style.
 - No console noise. The suite fails a check if the console is not clean.
@@ -93,6 +94,7 @@ every scene has registered on `BL.scenes`.
 | `caves.js` | `BL.caves` | the eight cave slots (clock position, status, scene, name, repository) and the gate |
 | `contributors.js` | `BL.contributors` | ten-member roster, bounded repository activity snapshots, working/chilling/sleeping state, active solo roster, hashed traits, `LIKENESS` |
 | `donations.js` | `BL.donations` | donation request, simulator, event contract, `sanitize` |
+| `mempool.js` | `BL.mempool` | the live Bitcoin feed: one socket to mempool.space for the page life, reconnecting with backoff, `{ type: "tx", vsize, weight, fee }` per accepted transaction and `{ type: "block", height, txCount }` per block mined after connect (the tip list on connect only seeds the height) and `{ type: "fees", nextFee, blocks }` from each `mempool-blocks` projection, the next block's median sat/vB; `start`, `subscribe`, `dispose`, `parse`, `emit`, `state` (with `nextFee` and `projectedBlocks`). Off under `nosim` and `mempool=0` |
 | `weapon-targets.js` | `BL.weaponTargets` | cached stable-sort triangle BVHs, exact weapon rays and swept melee contacts; nearest contact is independent of BVH traversal order |
 | `character-visibility.js` | `BL.characterVisibility` | shared geometry bakes and per-frame visibility/anchor scratch for partly visible characters |
 | `cursor.js` | `BL.cursor` | virtual cursor, pointer-lock handoff and smooth aim-entry cursor motion |
@@ -113,6 +115,7 @@ every scene has registered on `BL.scenes`.
 | `mirror-guides.js` | `BL.mirrorGuides` | the mirror entrance as one continuous silhouette plus the small plane-bound hint of code behind the reflection; contributes no geometry of its own to the visibility queries: `draw`, `update`, `updateDoorway`, `doorwayNodes` |
 | `crates.js` | `BL.crates` | loot crates: landing ring, spawn, open, remove |
 | `critters.js` | `BL.critters` | instanced butterflies by day, fireflies and embers by night, populations by phase and tier, bursts |
+| `storm.js` | `BL.storm` | the hub's weather from the feed: `rain(vsize)` drops sized by transaction weight into one fixed-capacity instanced batch (480, 120 on Canvas 2D) around the camera target, `strike()` a polyline bolt, `weather(nextFee)` the overcast (`overcastFor`: 0 for an empty mempool or `SUNNY_FEE` 0.1 sat/vB, 1 at `STORM_FEE` 20, log scale, so a quiet night at 0.3 is light cloud; sunny until the first projection, which snaps, later ones walk there at a steady 1.5 s across the range with a 0.05 dead band; any overcast rains at least one drop a transaction and the full count comes with the full storm; the sky itself only clouds once the overcast passes a clear band, `cloudFor`: `CLEAR_NIGHT` 0.25 to `CLEAR_DAY` 0.55 by the clock's day factor, read and never written, so the island is sunny more often and by day a drizzle falls under a clear sky; the cloud greys and dims the sampled colours and light and pulls in fog), a two-strobe sky flash, all written over the clock's colours in `update(dt, renderOpts)` after `daylight.sample` so the clock, its sun, moon, phases and factors are never touched and sunny leaves the frame exactly as sampled; a thunder rumble on the rally's audio pattern (context only after a gesture, same mute key); splashes go through the shared fx pool; `state`, `active`, `stats`, `dispose` |
 | `solid-props.js` | `BL.solidProps` | props whose render mesh is also their collision shell, over one local-space tree per geometry, so arches, branches and wings keep their openings without voxelising each placed copy or retriangulating when it moves; `add`, `remove`, `sync`, `segmentClear`, `clearAt`, `supportAt`, `ceilingAt`, `shoulderAt`, `isActive` |
 | `scene-hub.js` | `BL.scenes.hub` | the island scene: the clock samples the sky and lamps each frame; registers first so it is the landing scene |
 | `scene-lab.js` | `BL.scenes.lab` | the lab scene; Escape and Leave cave return to the hub |
@@ -236,7 +239,7 @@ measure exactly that.
 `island`, `mouths`, `camera`, `crew`, `controls`, `pilot`, `renderOpts`, `lamps`, `fireSeats`,
 `critters`, `daylight`, `setHour`, `track`, `racers`, `items`, `race`, `launchers`, `drop`,
 `diver`, `plane`, `course`, `jumbotron`, `orbit`, `flight` and `site`; a scene fills in what it has.
-The hub also exposes `headquarters`, `cameraCave`, `props`, `altar`, `path`, `scenery`,
+The hub also exposes `storm`, `headquarters`, `cameraCave`, `props`, `altar`, `path`, `scenery`,
 `jetpack`, `magazine`, `mirrorCave`, `matrixCave`, `matrixGate`, `entranceLights` and
 `lighting`. Per-character weapon and spare state is on `crew.cavemen` entries;
 `magazine` is the visit's pickup facade, not a shared character inventory.
@@ -418,7 +421,11 @@ even at equal ammo. Space starts pile loading in range, then jumps or powers the
 while loading continues within horizontal and vertical reach. G toggles the AK and V attacks.
 Other number keys retain the debug contributor action when not consumed by weapon selection.
 
-Shift+Delete clear the locker (loot on), Shift+R reset everything. Keys are ignored while typing in
+Shift+Delete clear the locker (loot on), Shift+R reset everything. The Konami code (up, up,
+down, down, left, right, left, right, B, A) toggles the feed panel on any scene, without the
+debug flag: the socket state, message and byte counters, the chain tip and next-block fee, the
+event counts, the hub's overcast and the last 24 events; it subscribes and ticks only while
+open, and `__ooga.feedPanel` exposes `toggle`, `close`, `open` and `logged`. Keys are ignored while typing in
 a text field and on auto-repeat. The hub hides one jetpack under a random meadow prop each
 load; its `highlight` pulses after `HINT_AFTER` seconds of scene time, and a driven
 caveman flies at `crew.js`'s `JET_SPEED` within `flyable`.
@@ -452,7 +459,9 @@ the orbit, Escape returns to the board. `__ooga.drop` exposes `phase`, `score`, 
 URL flags: `?debug=1` exposes `window.__ooga` with the scene, game, renderer, input,
 `stats()`, `timing`, `frameInterval`, `advance(seconds, dt)` (whole frames at a fixed step, without waiting on the display), and in the hub `island`, `mouths`, `camera`;
 `?scene=<id>` opens that scene (unknown ids land on the hub); `?nosim=1` silences the
-simulator; `?canvas2d=1` forces the fallback; `?yaw=` sets the starting camera angle;
+simulator and keeps the mempool socket closed, as `?mempool=0` does alone; `__ooga.mempool`
+is the feed, whose `emit` and `parse` drive the hub's storm offline, which is how the
+`mempool storm` checks run; `?canvas2d=1` forces the fallback; `?yaw=` sets the starting camera angle;
 `?debug=1&bananas=` overrides the initial pile level for visual testing; `?debug=1&hour=`
 pins the solar clock, `?debug=1&day=` selects a day of year, bounded `?debug=1&latitude=`
 changes the test latitude, and `?debug=1&daylen=` runs a day in that many seconds (from the
