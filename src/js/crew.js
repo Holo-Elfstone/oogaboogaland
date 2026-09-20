@@ -20,7 +20,7 @@
   const WORK_REST_MIN = 7, WORK_REST_SPREAD = 16;
   // How long a character carries its rifle before swapping to the other weapon,
   // and how long the spin that answers it lasts: a flourish, not a stance.
-  const SWAP_MIN = 20, SWAP_SPREAD = 40, TWIRL_MIN = 0.2, TWIRL_SPREAD = 0.3, TWIRL_SECONDS = 3, TWIRL_SWAP = 0.35, TWIRL_FIRST = 0.35;
+  const SWAP_MIN = 20, SWAP_SPREAD = 40, TWIRL_MIN = 0.3, TWIRL_SPREAD = 1.7, TWIRL_SWAP = 0.35, TWIRL_FIRST = 0.35;
   const swapWait = (melee) => melee ? TWIRL_MIN + Math.random() * TWIRL_SPREAD : SWAP_MIN + Math.random() * SWAP_SPREAD;
   const TINT_MIN = 360, TINT_MAX = 900;
   const tintWait = () => TINT_MIN + Math.random() * (TINT_MAX - TINT_MIN);
@@ -76,6 +76,9 @@
   const WANDER_SPEED = 1.3, RUSH_SPEED = 2.8, PLAYER_SPEED = WALK.speed;
   const PLAYER_STEP = 0.125;
   const SHOULDER_GAP = 0.68, SHOULDER_REACH = 1.3, SHOULDER_TWIST = 1.05;
+  // A body the scene owns rather than the roster can be bigger than an Ooga, so
+  // the gap kept from it is wider than the one walkers keep from each other.
+  const OUTSIDE_GAP = 0.86;
   const FOLLOW_GAP = 1.15, FOLLOW_RELEASE = 1.7, NPC_PASS_REACH = 1.9;
   const FIRE_FLEE_REACH = 8, FIRE_FLEE_CLEAR = 10, FIRE_MEMORY_RELEASE = 3, NPC_WALK_SPEED = 1.6;
   const NAV_WIDTH = 21, NAV_SIZE = NAV_WIDTH * NAV_WIDTH, NAV_HALF = 10, NAV_CELL = 0.5, NAV_STEP = 0.025, NAV_CENTER = NAV_HALF * NAV_WIDTH + NAV_HALF;
@@ -1377,16 +1380,17 @@
       cave.twirlHand = Math.random() < 0.5 ? 1 : 0;
       cave.twirlFlipAt = Math.random() < TWIRL_SWAP ? elapsed + seconds * TWIRL_FIRST : Infinity;
     };
-    // N spins it. A fresh press takes either hand; pressing again while it spins
-    // passes it across to the other one and keeps it going.
+    // N spins it for the same bout the idle loop rolls. A fresh press takes either
+    // hand; pressing again while it spins passes it across and starts a new bout.
     const twirl = (cave = player) => {
       if (!cave || !cave.traits.nunchaku || cave.state === "sleeping" || cave.camp.burning || cave.camp.rolling) return false;
-      if (cave.twirlUntil <= elapsed) startTwirl(cave, TWIRL_SECONDS);
+      const seconds = swapWait(true);
+      if (cave.twirlUntil <= elapsed) startTwirl(cave, seconds);
       else {
         cave.twirlHand = cave.twirlHand ? 0 : 1;
         cave.twirlFlipAt = Infinity;
       }
-      cave.twirlUntil = elapsed + TWIRL_SECONDS;
+      cave.twirlUntil = elapsed + seconds;
       return true;
     };
     const poseFingers = (arm, fingers, held, side) => {
@@ -2624,16 +2628,40 @@
         if (crossingSoon(cave, other)) { traffic.waiting = true; break; }
       }
     };
+    // One swept gap, used by every walker on the island. Already inside it and
+    // moving apart is allowed, so a crowd unpicks itself instead of locking.
+    // Every body the scene walks that is not on the roster: the Agent and any it
+    // has called in. One array, rebuilt only when that crowd changes.
+    const outsideClear = (fromX, fromZ, x, z) => {
+      const bodies = ctx.outsideActors && ctx.outsideActors();
+      if (!bodies) return true;
+      for (let i = 0; i < bodies.length; i++) if (!gapClear(fromX, fromZ, x, z, bodies[i], OUTSIDE_GAP)) return false;
+      return true;
+    };
+    const gapClear = (fromX, fromZ, x, z, q, gap = SHOULDER_GAP) => {
+      const dx = x - fromX, dz = z - fromZ, length = dx * dx + dz * dz;
+      const ox = fromX - q.x, oz = fromZ - q.z, before = ox * ox + oz * oz;
+      if (before < gap * gap && (x - q.x) ** 2 + (z - q.z) ** 2 > before && ox * dx + oz * dz >= 0) return true;
+      const t = length ? clamp(-(ox * dx + oz * dz) / length, 0, 1) : 0;
+      return (ox + dx * t) ** 2 + (oz + dz * t) ** 2 >= gap * gap - 1e-8;
+    };
     // Same swept clearance as the hub's upright actors and the lab; passing changes the path, never body radii.
     const shoulderClear = (cave, x, z) => {
-      const p = cave.root.position, dx = x - p.x, dz = z - p.z, length = dx * dx + dz * dz;
+      const p = cave.root.position;
       for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
         const other = crewList[otherIndex];
         if (!shoulderNeighbor(cave, other)) continue;
-        const q = other.root.position, ox = p.x - q.x, oz = p.z - q.z, before = ox * ox + oz * oz;
-        if (before < SHOULDER_GAP * SHOULDER_GAP && (x - q.x) ** 2 + (z - q.z) ** 2 > before && ox * dx + oz * dz >= 0) continue;
-        const t = length ? clamp(-(ox * dx + oz * dz) / length, 0, 1) : 0;
-        if ((ox + dx * t) ** 2 + (oz + dz * t) ** 2 < SHOULDER_GAP * SHOULDER_GAP - 1e-8) return false;
+        if (!gapClear(p.x, p.z, x, z, other.root.position)) return false;
+      }
+      // Walking bodies the scene owns rather than the roster keep the same gap.
+      return outsideClear(p.x, p.z, x, z);
+    };
+    // The same gap from the other side: a scene's own walker against the whole crew.
+    const actorClear = (fromX, fromZ, x, z) => {
+      for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
+        const other = crewList[otherIndex];
+        if (!other.root.visible || other.state === "away" || other.root.quaternion || other.camp.seat) continue;
+        if (!gapClear(fromX, fromZ, x, z, other.root.position, OUTSIDE_GAP)) return false;
       }
       return true;
     };
@@ -2747,6 +2775,9 @@
         const threat = panic.threat.root.position;
         if (Math.hypot(x - threat.x, z - threat.z) < Math.min(1.1, Math.hypot(p.x - threat.x, p.z - threat.z)) - 1e-7) return false;
       }
+      // Bodies the scene owns are obstacles like any other: the walker's own
+      // avoidance steers around them rather than through them.
+      if (!outsideClear(p.x, p.z, x, z)) return false;
       return npcWalkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave) && groundAt(x, z, feet, feet, cave) >= feet - STEP - 1e-7;
     };
     const recoverWalker = (cave, tx, tz, dt) => {
@@ -3315,6 +3346,8 @@
     const canStep = (cave, flying, fromX, fromZ, toX, toZ) => {
       const y = cave.root.position.y - cave.baseY;
       const height = cave.bodyHeight + Math.max(0, cave.viewLift);
+      // On foot, the scene's own walkers are bodies to walk round, not through.
+      if (!flying && cave.hop <= 0 && !outsideClear(fromX, fromZ, toX, toZ)) return false;
       return flying || cave.hop > 0
         ? flyable(fromX, fromZ, toX, toZ, y, height, cave) && groundAt(toX, toZ, y, y, cave) <= y
         : walkable(fromX, fromZ, toX, toZ, y, height, cave);
@@ -4349,7 +4382,7 @@
     return {
       cavemen, list: crewList, fanSlots, stateOf, stateCounts, workingCavemen, eatingCavemen, workingCount, eatingCount, feedableCavemen, refreshStates, refreshRosterRow, updateFan, rush, headWorldOf, applyAllSwag, wornBy, renderLocker, pokeCave, idleSay, drawQuotes,
       control, release, relocatePlayer, sleepPlayer, wakePlayer, sitPlayer, standPlayer, ignite, dropRoll, steer: steerPlayer, look: lookPlayer, elevate: elevatePlayer, playerAction, jumpPlayer, poseWeapon, wearJetpack, removeJetpack, thrust, update, dispose, stats,
-      builtInJetpack, toggleTint, twirl, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
+      actorClear, builtInJetpack, toggleTint, twirl, toggleWeapon, selectWeapon, configureWeapon, swingWeapon, releaseSwing, fireWeapon, setWeaponTrigger, canFire, weaponOrigin, meleeReach, nearReload, canReload, startReload, stopReload, stopBurst, canSwapMagazine, swapMagazine, collectMagazine, collectAmmo, removeMagazines, hasMagazine, magazineCount, magazineAmmo, totalAmmo, workSites,
       get sleeping() { return !!(player && player.bedTravel.manual && player.state === "sleeping"); },
       get player() {
         return player;

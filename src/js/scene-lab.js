@@ -194,7 +194,7 @@
   // As in the hub: a third click of a burst shows its code instead of driving it.
   const summonAgent = () => {
     if (agent) return agent;
-    agent = labScene.agent = BL.agent.create({ groundAt: () => 0, walkable: (x, z) => Math.abs(x) < WALL - 0.6 && Math.abs(z) < WALL - 0.6 && Math.hypot(x, z) > pile.pileEdge() + 0.6, x: WALL - 1.5, z: WALL - 1.5 });
+    agent = labScene.agent = BL.agent.create({ groundAt: () => 0, walkable: (fromX, fromZ, x, z) => Math.abs(x) < WALL - 0.6 && Math.abs(z) < WALL - 0.6 && Math.hypot(x, z) > pile.pileEdge() + 0.6, x: WALL - 1.5, z: WALL - 1.5 });
     addChild(root, agent.root);
     // One owner for every part, so a tap on any limb is a tap on the Agent
     const agentOwner = { kind: "agent", agent };

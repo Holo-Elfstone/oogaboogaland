@@ -1930,6 +1930,10 @@
     return floor > -Infinity && floor > island.supportAt(x, z, y, STEP_MAX, ABYSS_FLOOR, PLAYER_RADIUS) ? floor : island.smoothSupportAt(x, z, y, STEP_MAX, PLAYER_RADIUS);
   };
   const PLAYER_RADIUS = 0.3;
+  // Called-in Agents: a hard cap, ten seconds each, all sharing one set of geometry.
+  const EXTRA_AGENTS = 8, EXTRA_LIFE = 10;
+  const extraAgents = [], extraLives = [], agentBodies = [];
+  const AGENT_SPAWN = { x: 0, z: 0 }, AGENT_FROM = { x: 0, z: 0 }, AGENT_TO = { x: 0, z: 0 };
   const BODY_RADIUS = 0.38;
   const BODY_PARTS_SOLID = ["torso", "head", "armL", "armR", "legL", "legR"];
   const BODY_BOUNDS = new Float64Array(6);
@@ -4126,6 +4130,18 @@
     crew.update(dt, elapsed);
     agent.setForm(agent.revealed || matrixCoverage(agent.root.position.x, agent.root.position.z) > 0.5 ? "code" : "ape");
     agent.update(dt);
+    // The called-in Agents live their ten seconds, then leave nothing behind.
+    for (let i = extraAgents.length - 1; i >= 0; i--) {
+      const extra = extraAgents[i];
+      extra.setForm(matrixCoverage(extra.root.position.x, extra.root.position.z) > 0.5 ? "code" : "ape");
+      extra.update(dt);
+      if ((extraLives[i] -= dt) > 0) continue;
+      removeChild(root, extra.root);
+      extra.dispose();
+      extraAgents.splice(i, 1);
+      extraLives.splice(i, 1);
+      agentBodies.splice(agentBodies.indexOf(extra.root.position), 1);
+    }
     updateRoomSigns(dt);
     pile.update(dt);
     const player = pilot.player;
@@ -4617,6 +4633,10 @@
     if (mempool.state.projectedBlocks) storm.weather(mempool.state.nextFee);
     unsubscribeMempool = mempool.subscribe(onMempool);
     shared.characterSupportAt = characterSupportAt;
+    // Every Agent on the island, the called-in ones included, so the crew keeps
+    // its walker gap from all of them. Positions mutate in place; the array only
+    // changes when one arrives or leaves.
+    shared.outsideActors = () => agentBodies;
     shared.carryCharacter = carryCharacter;
     shared.npcWalkable = npcWalkable;
     shared.prepareNpcRoutes = refreshWorkZones;
@@ -4768,7 +4788,42 @@
       return false;
     };
     agentSpot(agentFrom);
-    agent = BL.agent.create({ groundAt: (x, z) => island.surfaceAt(x, z), x: agentFrom.x, z: agentFrom.z, heading: Math.random() * Math.PI * 2 });
+    // Shift+A calls in more of them for a while. They share the Agent's cached
+    // geometry, so a crowd is still one draw per part, they are capped, and each
+    // one is disposed and off the graph the moment its EXTRA_LIFE is up.
+    const agentWalkable = (fromX, fromZ, toX, toZ, y, height) => walkable(fromX, fromZ, toX, toZ, y, height, null)
+      && crew.actorClear(fromX, fromZ, toX, toZ);
+    const spawnAgent = () => {
+      if (extraAgents.length >= EXTRA_AGENTS || !agentSpot(AGENT_SPAWN)) return false;
+      const extra = BL.agent.create({
+        groundAt: (x, z) => island.surfaceAt(x, z), walkable: agentWalkable,
+        x: AGENT_SPAWN.x, z: AGENT_SPAWN.z, heading: Math.random() * Math.PI * 2
+      });
+      extra.onIdle = () => {
+        const p = extra.root.position;
+        AGENT_FROM.x = p.x; AGENT_FROM.z = p.z;
+        if (agentSpot(AGENT_TO)) extra.walk(shared.npcPaths.route(AGENT_FROM, AGENT_TO), false);
+      };
+      addChild(root, extra.root);
+      extraAgents.push(extra);
+      extraLives.push(EXTRA_LIFE);
+      agentBodies.push(extra.root.position);
+      extra.onIdle();
+      hud.toast(`Agents: ${extraAgents.length + 1}`);
+      return true;
+    };
+    hubScene.spawnAgent = spawnAgent;
+    // The Agent walks by the crew's own rules: the hub's sweep for rock, props and
+    // gates, and the crew's own walker gap for the Oogas. It is nobody's actor, so
+    // nothing is excluded from the sweep.
+    agent = BL.agent.create({
+      groundAt: (x, z) => island.surfaceAt(x, z),
+      walkable: (fromX, fromZ, toX, toZ, y, height) => walkable(fromX, fromZ, toX, toZ, y, height, null)
+        && crew.actorClear(fromX, fromZ, toX, toZ),
+      x: agentFrom.x, z: agentFrom.z, heading: Math.random() * Math.PI * 2
+    });
+    agentBodies.length = 0;
+    agentBodies.push(agent.root.position);
     agent.onIdle = () => {
       const p = agent.root.position;
       agentFrom.x = p.x; agentFrom.z = p.z;
@@ -5213,6 +5268,12 @@
     input.dispose();
     hud.dispose();
     // Drop every per-visit ref but the cached island.
+    for (let i = extraAgents.length - 1; i >= 0; i--) {
+      removeChild(root, extraAgents[i].root);
+      extraAgents[i].dispose();
+    }
+    extraAgents.length = extraLives.length = agentBodies.length = 0;
+    hubScene.spawnAgent = null;
     pathNode = altar = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = crates = critters = clock = presets = jetpack = jetpackState = jetpackCarrier = jetpackWearer = lastJetpackCloud = mirrorCave = matrixCave = matrixControl = gateRain = fire = headquarters = positionDebug = agent = agentPlay = null;
     magazine = magazineState = breakables = storm = null;
     hubScene.input = hubScene.debug = hubScene.agent = hubScene.agentView = hubScene.agentControls = hubScene.agentHandoff = null;
@@ -5233,7 +5294,7 @@
   };
   const hubScene = {
     id: "hub", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
-    root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
+    root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null, spawnAgent: null,
     get inMotion() {
       if (pile.inMotion || fx.inMotion || breakables.inMotion || storm.active || jetpack || magazine && magazine.revealed || MATRIX_WORLD.active || mirrorGuides.state.doorway || mirrorCave.damage.active || mirrorCave.ripples.active || mirrorCave.body.active) return true;
       for (const sign of headquarters.roomSigns) if (sign.velocity || sign.node.rotation.x) return true;

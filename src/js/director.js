@@ -295,11 +295,14 @@
       active.onLootCleared();
       return;
     }
-    // Shift+A: play the scene's Agent, or let it go
+    // Shift+A: call in another Agent where the scene can hold one, otherwise play
+    // the scene's own. A double-click on an Agent plays it either way.
     if (e.shiftKey && !e.metaKey && !e.ctrlKey && (e.key === "A" || e.key === "a")) {
       e.preventDefault();
-      if (agentPlay.active) agentPlay.stop();
-      else if (!transition) agentPlay.start(active);
+      if (transition) return;
+      if (active.spawnAgent) active.spawnAgent();
+      else if (agentPlay.active) agentPlay.stop();
+      else agentPlay.start(active);
       return;
     }
     if (e.shiftKey && !e.metaKey && !e.ctrlKey && (e.key === "R" || e.key === "r")) {
