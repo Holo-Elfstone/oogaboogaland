@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-RGDDOmkDbAybre1dya5iz27th2Gr94Ql/cgZyShCGDs='; style-src 'sha256-bclWwM2tAxbulAie13gw3rEoe/R/HSL3G4MpUtj7asQ='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-n/c0Uelt7wJf/GqZbdGn2QlRAwXVX3YoekSdroo7gys='; style-src 'sha256-bclWwM2tAxbulAie13gw3rEoe/R/HSL3G4MpUtj7asQ='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -19470,7 +19470,7 @@ void main() {
 // Live Bitcoin feed from mempool.space: one socket for the page life, reconnecting with backoff.
 // Subscribers get plain events, { type: "tx", vsize, weight, fee } for each transaction the
 // mempool accepts, { type: "block", height, txCount } for each block mined after connect and
-// { type: "fees", nextFee, blocks } whenever the projected next block's median sat/vB moves.
+// { type: "fees", nextFee, blocks } whenever the projected next block's median fee moves.
 // One of the page's two live feeds (the other polls the oogatron worker in oogatron-live.js).
 (() => {
   "use strict";
@@ -19503,6 +19503,7 @@ void main() {
     }
     if (!data || typeof data !== "object" || Array.isArray(data)) return;
     state.lastKeys = Object.keys(data).join(", ");
+    // The tip list arrives once per connection and only seeds the height; a later, taller one is news.
     if (Array.isArray(data.blocks)) {
       let top = 0;
       for (const b of data.blocks) if (b && b.height > top) top = b.height;
@@ -19510,6 +19511,7 @@ void main() {
       else if (top > state.height) block({ height: top });
     }
     if (data.block) block(data.block);
+    // The projection is the fee pressure: the next block's median sat/vB, zero for an empty mempool.
     const projected = data["mempool-blocks"];
     if (Array.isArray(projected)) {
       const first = projected[0];
@@ -19525,27 +19527,15 @@ void main() {
       }
     }
   };
-  const liveNet = () => location.protocol !== "file:" && navigator.onLine !== false;
-  const hangUp = () => {
-    window.clearTimeout(timer);
-    timer = 0;
-    if (socket) {
-      const ws = socket;
-      socket = null;
-      ws.onclose = null;
-      ws.close();
-    }
-    state.connected = false;
-  };
   const retry = () => {
-    if (state.enabled && liveNet() && !timer) {
+    if (state.enabled && !timer) {
       timer = window.setTimeout(connect, backoff);
       backoff = Math.min(BACKOFF_MAX, backoff * 2);
     }
   };
   const connect = () => {
     timer = 0;
-    if (!state.enabled || socket || !liveNet()) return;
+    if (!state.enabled || socket) return;
     state.attempts++;
     let ws;
     try {
@@ -19572,23 +19562,26 @@ void main() {
   const start = () => {
     if (state.enabled || typeof WebSocket === "undefined") return;
     state.enabled = true;
-    if (liveNet()) connect();
+    connect();
   };
   const subscribe = (fn) => {
     subscribers.add(fn);
     return () => subscribers.delete(fn);
   };
-  const stop = () => {
-    state.enabled = false;
-    hangUp();
-  };
   const dispose = () => {
-    stop();
+    state.enabled = false;
+    window.clearTimeout(timer);
+    timer = 0;
+    if (socket) {
+      const ws = socket;
+      socket = null;
+      ws.onclose = null;
+      ws.close();
+    }
+    state.connected = false;
     subscribers.clear();
   };
-  window.addEventListener("online", () => { if (state.enabled) connect(); });
-  window.addEventListener("offline", hangUp);
-  BL.mempool = { ENDPOINT, state, start, stop, subscribe, dispose, emit, parse: onMessage };
+  BL.mempool = { ENDPOINT, state, start, subscribe, dispose, emit, parse: onMessage };
 })();
 
 // ---- js/oogatron-live.js ----
@@ -19601,8 +19594,7 @@ void main() {
 // snapshot: a stale bake must not fire celebration on every page load.
 // Network errors are silent (counted in state); the page always keeps the
 // baked board. Like the mempool feed, this stays off under nosim and can be
-// disabled with oogatron=0. file:// pages and a reported-offline browser
-// never open the worker; coming back online resumes an armed poller.
+// disabled with oogatron=0.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -19616,9 +19608,8 @@ void main() {
     for (const fn of subscribers) fn(event);
   };
 
-  const liveNet = () => location.protocol !== "file:" && navigator.onLine !== false;
   const poll = async () => {
-    if (inFlight || !liveNet()) return;
+    if (inFlight) return;
     inFlight = true;
     dueAt = Date.now() + POLL_MS;
     try {
@@ -19647,6 +19638,8 @@ void main() {
     }
   };
 
+  // Background tabs skip their polls; coming back polls at once when one was
+  // missed, so a returning visitor sees fresh numbers (and any fireworks due).
   const tick = () => {
     if (document.hidden) return;
     poll();
@@ -19658,7 +19651,7 @@ void main() {
   const start = () => {
     if (state.enabled) return;
     state.enabled = true;
-    if (liveNet()) poll();
+    poll();
     timer = window.setInterval(tick, POLL_MS);
     document.addEventListener("visibilitychange", onVisibility);
   };
@@ -19668,20 +19661,15 @@ void main() {
     return () => subscribers.delete(fn);
   };
 
-  const stop = () => {
+  const dispose = () => {
     if (timer) window.clearInterval(timer);
     timer = 0;
     document.removeEventListener("visibilitychange", onVisibility);
     state.enabled = false;
-  };
-  const dispose = () => {
-    stop();
     subscribers.clear();
   };
 
-  window.addEventListener("online", () => { if (state.enabled) poll(); });
-
-  BL.oogatronLive = { start, stop, subscribe, dispose, state, ENDPOINT };
+  BL.oogatronLive = { start, subscribe, dispose, state, ENDPOINT };
 })();
 
 // ---- js/weapon-targets.js ----
