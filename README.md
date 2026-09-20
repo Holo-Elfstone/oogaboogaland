@@ -17,6 +17,14 @@ all visitor state stays in the visitor's own browser (for now).
 
 Open `src/index.html` in a browser, or serve `src/` with any static server.
 
+```sh
+npm run serve   # build, then serve the built page at http://localhost:8080/
+npm run watch   # the same, rebuilding on every change under src/
+```
+
+`/` is the built page as GitHub Pages serves it and `/src/` the unbundled sources, which
+gives DevTools real file names; `PORT` picks another port. Reload the tab after a rebuild.
+
 The page lands on the hub: a floating island whose cliff caves are the projects. Tap the
 lit cave to enter EntropyLab; **Escape** or the **Leave cave** button brings you back.
 The 9 o'clock cave is **Ooga Rally**: press **Space** nearby to open a kart race the size

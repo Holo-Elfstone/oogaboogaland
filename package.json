@@ -7,6 +7,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
+    "serve": "node scripts/serve.mjs",
+    "watch": "node scripts/serve.mjs --watch",
     "test:unit": "LANE=unit node test/run.mjs",
     "test": "node scripts/build.mjs && LANE=fast node test/run.mjs",
     "test:canvas": "node scripts/build.mjs && LANE=canvas node test/run.mjs",
