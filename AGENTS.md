@@ -37,10 +37,12 @@ do not add network code before it exists. Visitor-facing controls are in the REA
 
 | Path | What it is |
 |---|---|
-| `src/index.html`, `src/style.css`, `src/js/` | the sources; open `src/index.html` directly to run them |
-| `oogaboogaland.html` | the built single-file page, committed; regenerate with `npm run build` after any change under `src/` |
+| `src/index.html`, `src/style.css`, `src/js/` | the sources; open `src/index.html` directly to run them (after one `npm run build`, which writes `src/js/characters.gen.js`) |
+| `src/characters/` | one file per contributor with a custom look, voice or alias; see Adding a contributor |
+| `oogaboogaland.html` | the built single-file page; gitignored, built locally with `npm run build`, and committed back by CI's `artifact` job after merges to `rock`. Never commit it by hand |
+| `scripts/characters.mjs` | joins `src/characters/*.js` into the gitignored `src/js/characters.gen.js`; the build and the suite run it first |
 | `scripts/build.mjs` | inlines `src/` in script order and pins the content policy hashes |
-| `.github/workflows/pages.yml` | builds and deploys the single-file page to GitHub Pages on pushes to `rock` or manual runs |
+| `.github/workflows/pages.yml` | builds and deploys the page on pushes to `rock`, a ten-minute cron, or manual runs. The deploy job's token stays read-only with `persist-credentials: false`; only the separate `artifact` job takes `contents: write`, and only on merges to `rock`. Keep that split |
 | `test/run.mjs`, `test/browser.mjs` | the suite and its headless Chrome driver; these two files are the whole of `test/` |
 | `untracked/` | local planning notes, ignored by git |
 
@@ -48,13 +50,12 @@ Nothing to install. `npm test` needs Node 22 or newer (the driver uses the globa
 `fetch` and `WebSocket`) and Chrome; the driver looks at the macOS application path, so
 on Linux or Windows set `CHROME` to the binary. `npm run test:unit` needs neither Chrome
 nor a build. Each case's closing record carries its seconds, and each page session prints
-a `TIME <names> · launch · boot · body` line, which is how the suite's cost was measured:
-launch is ~0.8 s, a hub boot ~2.0 s and a hub re-entry ~0.7 s, and a page build happens
-~200 times a run, so the way to make the suite faster is fewer page builds, not faster
+a `TIME <names> · launch · boot · body` line: a launch costs ~0.8 s, a hub boot ~2.0 s and a
+hub re-entry ~0.7 s, so the way to make the suite faster is fewer page builds, not faster
 checks. A DevTools command with no reply in 90 s (10 s while a Chrome is starting) fails
 its case, and a session still running after 5 minutes has its Chrome killed, so no hang can
-hold a lane; the longest healthy session is ~40 s. Never
-return a scene node or a pick hit from an evaluate, only the fields a check reads. Deploy only `oogaboogaland.html`, served as `index.html`.
+hold a lane. Never return a scene node or a pick hit from an evaluate, only the fields a
+check reads. Deploy only `oogaboogaland.html`, served as `index.html`.
 
 GitHub Pages uses the Actions workflow above. It rebuilds the page and uploads only
 `_site/index.html`; do not publish the source tree. The workflow deploys but does not
@@ -91,7 +92,8 @@ every scene has registered on `BL.scenes`.
 | `object-guides.js` | `BL.objectGuides` | the registry behind object outlines: camera silhouettes baked once per vertex array and never written again, exact local-space visibility, proximity, occlusion and actor tests; `register`, `collect`, `refresh`, `cameraClear`, `perceptionClear`, `perceived`, `concealed`, `distance`, `inView`, `actorVisible`, `ownerBoundaryAt`. Providers (the pile, the platform, the mirror) join the same registry |
 | `sight-guides.js` | `BL.sightGuides` | the outline pass itself: the surfaces and objects the Ooga can see in any direction while the camera cannot, as fading lines tagged with their owners; `update`, `reserve`, `state`. The hub creates two, one per camera view |
 | `caves.js` | `BL.caves` | the eight cave slots (clock position, status, scene, name, repository) and the gate |
-| `contributors.js` | `BL.contributors` | ten-member roster, bounded repository activity snapshots, working/chilling/sleeping state, active solo roster, hashed traits, `LIKENESS` |
+| `characters.js` | `BL.characters` | the registry the files in `src/characters/` call: `add`, `get`, `all` (join order); rejects duplicate handles |
+| `contributors.js` | `BL.contributors` | the roster from the character registry, bounded repository activity snapshots, working/chilling/sleeping state, active solo roster, hashed traits with each character's `look` over them |
 | `donations.js` | `BL.donations` | donation request, simulator, event contract, `sanitize` |
 | `weapon-targets.js` | `BL.weaponTargets` | cached stable-sort triangle BVHs, exact weapon rays and swept melee contacts; nearest contact is independent of BVH traversal order |
 | `character-visibility.js` | `BL.characterVisibility` | shared geometry bakes and per-frame visibility/anchor scratch for partly visible characters |
@@ -114,6 +116,7 @@ every scene has registered on `BL.scenes`.
 | `crates.js` | `BL.crates` | loot crates: landing ring, spawn, open, remove |
 | `critters.js` | `BL.critters` | instanced butterflies by day, fireflies and embers by night, populations by phase and tier, bursts |
 | `solid-props.js` | `BL.solidProps` | props whose render mesh is also their collision shell, over one local-space tree per geometry, so arches, branches and wings keep their openings without voxelising each placed copy or retriangulating when it moves; `add`, `remove`, `sync`, `segmentClear`, `clearAt`, `supportAt`, `ceilingAt`, `shoulderAt`, `isActive` |
+| `agent.js` | `BL.agent` | the Agent, a world NPC gorilla in shades: one voxel map per part in two palettes (`ape`, and glowing `code` for the Matrix and the games), a hips/chest rig, the `knuckle`, `gallop` and `hunch` gaits and a chest `beat`; `create`, `walk`, `pace`, `place`, `setForm`, `poke`, `liveGeometry`, `dispose`. Its root is `matrixNative` (matrix mode 5), so the renderers keep its palette inside the Matrix |
 | `scene-hub.js` | `BL.scenes.hub` | the island scene: the clock samples the sky and lamps each frame; registers first so it is the landing scene |
 | `scene-lab.js` | `BL.scenes.lab` | the lab scene; Escape and Leave cave return to the hub |
 | `drop-models.js` | `BL.dropModels` | cached drop props: the roof plane (body, propeller node, shared kart wheels), the windsock, the unit hoop, the canopy with its lines, the pack, the target, the wind streak; `roofSpot` places the plane over a mouth's room |
@@ -153,9 +156,9 @@ change on the build side has to hold for every later visit and a change on the s
 must come back to base in `leave`. `solid-props.js` loads last of the systems, after the
 prop geometry it collides against and before `scene-hub.js` registers them.
 `rockGuides` is a fifth of the boot, so `ensureRockGuides` memoises the build and `enter`
-calls it there. Deferring it past the first paint was tried and reverted: the build holds the
-main thread for about half a second with nothing painted, so the curtain jumps and the camera
-loses that much easing. Reading `headquarters.rockGuides` builds it too, and `resetSurface`
+calls it there; keep it there. Deferring it past the first paint holds the main thread for
+about half a second with nothing painted, so the curtain jumps and the camera loses that
+much easing. Reading `headquarters.rockGuides` builds it too, and `resetSurface`
 and `dispose` stay guarded, so anything new that reads it must guard as well, or call
 `ensureRockGuides()`.
 
@@ -179,16 +182,14 @@ scene builds its root, camera, input, HUD and systems in `enter` and drops them 
 The quality auto-tier steps down and never up. `autoTier` judges on the interval between
 delivered frames, never on the cost of issuing one: GL calls return long before the GPU has
 drawn, so a GPU-bound machine reports cheap frames and would never step down on cost alone.
-A window closes at 45 frames or 900ms, whichever comes first, so eight frames a second
-costs a tier in about two seconds rather than the fifteen a frame count alone would take,
-and two consecutive slow windows have to agree before it steps, because one slow window can
-be another program and the step lasts the session. Unfocused frames and transitions are not
-evidence, and the debug `advance` never tiers, because a stepped frame carries no real
-interval. `tierFromBoot` seeds the opening tier before any of that exists: how long the
-first scene took to build is the one device signal Safari cannot mask, so a build past
-`BOOT_MEDIUM` or `BOOT_LOW` starts the page a tier or two down. Those thresholds are
-measured against the hub, the most expensive scene by far, so anything that makes it slower
-to build has to be checked against them.
+A window closes at 45 frames or 900ms, whichever comes first, and two consecutive slow
+windows have to agree before it steps, because one slow window can be another program and
+the step lasts the session. Unfocused frames and transitions are not evidence, and the debug
+`advance` never tiers, because a stepped frame carries no real interval. `tierFromBoot` seeds
+the opening tier from how long the first scene took to build, the one device signal Safari
+cannot mask: past `BOOT_MEDIUM` or `BOOT_LOW` the page starts a tier or two down. Those
+thresholds are measured against the hub, the most expensive scene by far, so anything that
+makes it slower to build has to be checked against them.
 
 `world` starts with `{ level, pilot, jetpack, magazine, mirrorBroken }`: the shared banana level, the handle of the
 Ooga driven into a launcher (the drop reads and clears it in `enter`), and jetpack ownership
@@ -228,14 +229,14 @@ geometry under the new root plus its `liveGeometry`, then 0.25 s back in. Under
 `?debug=1` the director throws if the leave contract is broken: children left on the old
 root, input targets reported by `leave()`, tweens surviving `clearTweens`, or more GPU
 records than the new scene has live geometries. `leave` must also clear timers, dispose
-its systems, input and HUD, and null the visit's module-level references; the soak checks
-measure exactly that.
+its systems, input and HUD, and null the visit's module-level references.
 
 `__ooga` reads the active scene's `debug` object for `slots`, `cavemen`, `crates`, `lab`,
 `hud`, `applyAllSwag`, `renderLocker`, `demoTip`, `refreshStates`, `trimPool`, `shown`,
 `island`, `mouths`, `camera`, `crew`, `controls`, `pilot`, `renderOpts`, `lamps`, `fireSeats`,
 `critters`, `daylight`, `setHour`, `track`, `racers`, `items`, `race`, `launchers`, `drop`,
-`diver`, `plane`, `course`, `jumbotron`, `orbit`, `flight` and `site`; a scene fills in what it has.
+`diver`, `plane`, `course`, `jumbotron`, `orbit`, `flight`, `site` and `agent` (the Agent's `form`, `gait`,
+`pitch`, `setGait`, `setForm`, `poke`, `place`, `pace`, `parts`, `root`); a scene fills in what it has.
 The hub also exposes `headquarters`, `cameraCave`, `props`, `altar`, `path`, `scenery`,
 `jetpack`, `magazine`, `mirrorCave`, `matrixCave`, `matrixGate`, `entranceLights` and
 `lighting`. Per-character weapon and spare state is on `crew.cavemen` entries;
@@ -250,7 +251,7 @@ The hub also exposes `headquarters`, `cameraCave`, `props`, `altar`, `path`, `sc
   debug `advance`, so fixed-step checks exercise the displayed-frame behavior.
 - **Pool and cap.** Particles, bullets, bubbles, sleep marks, crates, inventory and the
   pile have fixed capacities. Anything spawned repeatedly needs a pool or a cap; prove it
-  with the soak pattern if in doubt.
+  by spawning it in a loop and reading `stats()` if in doubt.
 - **Instance by geometry.** Nodes sharing a geometry object are one draw call. Reuse
   geometry; cache builders with `cached()` or a `Map` keyed by parameters, as `models.js`
   does. Cached character clones share immutable geometry but own their nodes,
@@ -301,6 +302,40 @@ boundaries trust the code. No guards for states our own code cannot produce; a t
 error beats a silent fallback.
 
 ## Adding things
+
+**A contributor.** Add one file, `src/characters/<handle>.js`, and nothing else: no shared
+file, list or test changes, so two contributors never conflict. A plain IIFE (`const BL =
+window.BL;`) calling `BL.characters.add({ handle, joined, lastCommit, look, voice, github,
+dress })`:
+- `joined` (Unix seconds) orders the roster, which sets digit keys, grid slots and the
+  default pick. `lastCommit` is the historical activity until the backend refreshes it.
+- `look` overrides the hashed `skin`, `hair`, `fur` and `height` and carries body flags:
+  `build: "slim"`, `bald`, `cleanShaven`, `wideEyes`, `hairless`, `noBrow`, `noPupils`,
+  `face` (`"nose"`, `"smirk"`, `"beard"`, `"none"`), `eyeColor` with `eyeGlow`, `hatY` (in
+  sixteenths of height). Flags that drive behaviour (`gasMask`, `cigarette`, `skater`,
+  `pumpkin`, `stoneAxe`) are read by `crew.js`.
+- `voice` is `{ poke, idle: [...] }`; `github` is the login behind the handle.
+- `dress` hooks run inside `models.buildCaveman` at fixed points with the build kit `k`
+  (`h`, `u`, `rand`, `P`, `color(hex)`, `jit`, `skinJ`, `hairJ`, `leopard`, `vg`, `root`,
+  `parts`, `armX`, `eyeCells`, and the settable `nose`, `lid`, `headEmissive`): `torso(k, v)`,
+  `club(k)` (returns `{ voxels, palette, goldPalette }` or `{ default, gold }` geometry, plus
+  `rest` and `carry` angles), `gear(k)`, `skull(k, v)` (return true to replace the head
+  block), `crown(k, v)`, `eyes(k, v)` (return true to replace the eyes), `mark(k, v)`,
+  `hatY(k)`, `headgear(k)`, `extras(k)`. Keep accessory builders and their caches in the
+  file. Hooks draw from the shared `k.rand` in build order, so never reorder another
+  character's draws.
+Run `npm run build` (or any suite run) to regenerate `characters.gen.js`, then check the
+"characters" unit check. `npm run characters` lists the cast in one line each, which is the
+quickest way to see who has a custom look, a voice or an alias. Never commit
+`oogaboogaland.html`; CI builds it.
+
+**The character file is a database row plus its look code.** `npm run characters:json` prints
+every character as the row a backend would hold — `handle`, `github_login`, `joined_at`,
+`last_commit_at`, `look`, `voice` — so seeding a table, or checking one against the repository,
+is one command. `dress` has no column: geometry is code and stays here. When the backend
+arrives it owns the dates, exactly as `applyActivity` and `applySnapshot` already overwrite the
+bundled `lastCommit`; the files keep the looks and the voices. Keep the field names in step
+with the table so that mapping stays mechanical.
 
 **A prop in the lab.** Build geometry in `models.labRoom` from `box`, `lathe`, `tube`,
 `ring`, `polyline`, `merge`, or voxels via `makeVox` and `voxelGeometry`. Return the node
@@ -390,8 +425,7 @@ camera comes from `pilot.create` with the scene's presets and bounds (`clampTarg
 `pilot.hooks` into the input hooks, route the `act` and `reset-view` actions and the
 Escape and 0 keys to it, and `bind` it the shared systems. Give the crew `walkable` and
 `useNear`, and answer `onTap` for every prop worth a reaction. Round trips under
-`?debug=1` throw if any of that is missed, and a scene reachable from the hub needs its
-own turn in the soak blocks.
+`?debug=1` throw if any of that is missed.
 
 The race readouts sit in the top corners (`.race-hud-left`, `.race-hud-right`), the
 minimap bottom-left on pointers and under the left readout on touch layouts; the race
@@ -409,7 +443,15 @@ desktop and docks to the bottom under 720px.
 
 ## Debug keys and flags
 
-Keys: B add 100 test bananas, L legendary tip, P fill the pile. While controlling an Ooga,
+Keys: Shift+A plays the active scene's Agent in every scene, and in the hub and the lab a
+double-click on it does the same, as with an Ooga; a double-click on it again, on the ground,
+or Escape lets it go and it wanders off, and a third quick tap shows its code for nine seconds
+outside the Matrix. Driving it: WASD or arrows walk relative to the camera (the hub and lab
+share the pilot's trailing camera through `scene.agentView`, so drag and scroll work as usual;
+elsewhere Q E turn it), Shift gallops, Space jumps, H switches knuckle and hunched walking, C
+beats its chest. `BL.agent.createPlay` lives in the director, which passes it to scenes as
+`ctx.agentPlay` and takes those keys in the capture phase; a scene offers `agent`, `agentView`,
+`agentControls` and `agentHandoff`. B add 100 test bananas, L legendary tip, P fill the pile. While controlling an Ooga,
 1 selects the primary melee weapon and 2 selects the AK; neither changes the view.
 Scroll steps between carry, shoulder and first person; right-click enters shoulder view
 from carry or focuses aim in shooter view. Left-click attacks only with the cursor locked
@@ -479,34 +521,33 @@ held until movement/look/zoom/action input. Manual setup accepts `pos`, `body` a
 flags and copied replay are hub-only; weapon/ammo flags also support direct lab startup. `&character=`,
 `&firstperson=1`, `&jetpack=1` and `&view=` are startup fixtures.
 
-Combat uses one damage unit for a default melee swing, 1.5 for a full hold charge and
-0.5 per AK banana. Boxes/barrels/rocks have 1/2.25/4.25 health; vegetation is excluded
-from weapon targets. The mirror's first 20 damage forms all cracks without holes;
-each of its 48 fixed panels then has one health point.
-The derived compatibility maximum is 68, not a shared panel-health pool. AK damage
-of 0.5 takes two hits to break a full panel; default melee damage of 1 breaks it, and
-overflow carries to the nearest next panel. Panel health spans 0–1 and recovers in
-proportion to restored glass area, so center-out geometry scales by the square root
-of health. Each panel heals independently at `2 / 48` health per second, taking 24
-seconds from empty; damaged but unbroken panels heal too. Hits detach glass
-locally, with a capped reflective debris pool that settles flat above its support.
-After three quiet seconds, each missing panel grows from its center to its original
-cracked edges.
-Only after all panels return do cracks seal over the final 1.5 seconds. Crack-only
-damage skips the panel phase. Interrupted repair preserves unhit panels' growth and
-crack contours and clips debris to glass present before the hit. Repair state and
-caches remain bounded and reused.
-Until the mirror is fully shattered, its whole plane keeps the actor's head geometry, first-person
-eye and near-plane corners outside even over missing panels; weapon contacts still work.
-Complete shattering removes that barrier, lasts for the session and releases the outside gate.
-Broken glass must also disable the empty doorway glyph hint and its animation work.
-The room button explicitly opens
-the mirror bars even before full shattering; pressing it out closes them. Outside with
-the button off, living geometry changes material at the physical mirror plane.
-Occupancy or the latched button enables full character glyphs and the island-wide wave.
-Static mirror-room floor, ceiling, wall and path-tile faces are permanently glyphed
-behind that same finite plane, including crossing terrain/rim faces; exterior fragments and other caves
-retain their normal materials when the world wave is off.
+Combat deals one damage unit for a default melee swing, 1.5 for a full hold charge and 0.5
+per AK banana. Boxes, barrels and rocks have 1, 2.25 and 4.25 health; vegetation is not a
+weapon target. The mirror takes 68 damage in all: the first 20 form every crack without
+opening a hole, then each of its 48 panels holds one health point of its own. An AK banana
+needs two hits to break a full panel, a melee swing breaks it outright, and overflow carries
+to the nearest next panel. Hits detach glass locally into a capped debris pool that settles
+flat above its support.
+
+Repair runs per panel. Each heals at `2 / 48` a second, 24 seconds from empty, damaged but
+unbroken panels included; health spans 0–1 and the centre-out geometry scales by its square
+root, so glass area tracks health. A missing panel starts growing back to its cracked edges
+after three quiet seconds, and the cracks themselves seal over a final 1.5 seconds only once
+every panel has returned - crack-only damage skips the panel phase entirely. An interrupted
+repair keeps unhit panels' growth and crack contours and clips debris to the glass that was
+there before the hit. Keep its state and caches bounded and reused.
+
+Until the mirror is fully shattered its whole plane holds the actor's head geometry,
+first-person eye and near-plane corners outside, even over missing panels, while weapon
+contacts still pass. Full shattering removes that barrier for the session, releases the
+outside gate, and must also stop the empty doorway's glyph hint and its animation. The room
+button opens the mirror bars before full shattering and closes them when pressed out; outside
+with it off, living geometry changes material at the physical mirror plane. Occupancy or the
+latched button turns on full character glyphs and the island-wide wave. The mirror room's
+static floor, ceiling, wall and path-tile faces stay permanently glyphed behind that finite
+plane, crossing terrain and rim faces included, while exterior fragments and other caves keep
+their normal materials when the wave is off.
+
 New event geometry and pickup nodes must stay capped and participate in liveGeometry
 and scene disposal. Contributor activity is local snapshot data (`docs/activity-contract.md`);
 working, chilling and sleeping are separate from human control presence.
@@ -516,25 +557,34 @@ working, chilling and sleeping are separate from human control presence.
 **`test/` contains exactly two files: `run.mjs` and `browser.mjs`. Never add a third.**
 Every check, every probe and every fixture lives in `run.mjs`; `browser.mjs` is only the
 Chrome driver. Do not create `test/<feature>.mjs`, a per-probe module, a helper file, or a
-second entry point, however tidy the split looks: the suite had drifted to 72 extra probe
-modules and 11,149 lines spread across them, which hid the shape of the suite, let the same
-helper be written several times over, and made a check's real cost invisible. If a probe is
-long, keep it long and next to its check. Lanes, not files, separate concerns
-(`LANE=unit | fast | canvas | soak | perf | full`), and the Node tier is a lane inside
+second entry point, however tidy the split looks: splitting hides the shape of the suite,
+lets the same helper be written several times over, and makes a check's real cost
+invisible. If a probe is long, keep it long and next to its check. Lanes, not files, separate concerns
+(`LANE=unit | fast | canvas | perf | full`), and the Node tier is a lane inside
 `run.mjs`, not a file beside it.
 
 **Verify what you touched, not everything. Do not run the full suite unless asked.**
-`npm run test:full` is the maintainer's gate (~6 min on 8 lanes; `LANES=` overrides, and 8
-was measured as the widest that adds no contention), run once when the PR is reviewed. A
-contributor's loop is:
+`npm run test:full` is the maintainer's gate (`LANES=` overrides the 8 lanes, and 8 is the
+widest that adds no contention), run once when the PR is reviewed. A contributor's loop is:
 
 1. `npm run test:unit` — browser-free, about three seconds, run it freely.
 2. `ONLY=<substring> node test/run.mjs` — the checks covering your change. `ONLY` matches
    task names, so `ONLY=banana`, `ONLY="movement collision"` or `ONLY=race` is usually one
-   command and a few seconds. Add `LANE=full` to reach soak or frame-rate tasks.
+   command and a few seconds. Add `LANE=full` to reach the frame-rate tasks.
 3. `npm test` (the fast lane) only when a change is broad enough to warrant it.
 
-This is not only about time. A full run is ~200 Chrome launches, and at that volume a
+**Canvas2D has one check, `canvas2d fallback`, a two-second proof that the fallback still
+draws a scene.** `DRAWN_BACKENDS` is therefore unused, and a Canvas2D regression past "it
+renders" will reach a player before it reaches a check. A second canvas check needs both
+halves of the argument: that it can tell the backends apart, and that the
+seconds are worth more there than anywhere else. Weapons, aiming and the cursor run
+in the hub (`SCENES`), and the lab keeps its own tasks. One frame rate (`RATES`, the 20 Hz
+one, whose long steps have caught real bugs) except where comparing rates is the check
+itself. Tasks that only need a fresh hub share a page through `hubTask`, which folds them
+into groups whose steps re-enter the hub instead of booting again; a task that needs its own
+viewport, renderer or URL keeps `withPage`.
+
+A full run is well over a hundred Chrome launches, and at that volume a
 browser occasionally fails to start or its DevTools session wedges, so a clean run is not
 guaranteed even when nothing is wrong. A session that hits a driver error (`Chrome hung`,
 `the page did not draw its first frame`, `DevTools socket failed`) before any assertion has
@@ -545,24 +595,48 @@ Catch only expected page conditions inside checks; rethrow every error tagged
 `driver` so the session retry can replace a failed Chrome.
 
 **Frame-rate dependence is a real failure mode.** The page is vsync-locked, so a check that
-counts rendered frames is measuring the host display. One movement check asserted easing
-over 38 sampled frames; on battery, in Low Power Mode, the same machine rendered 30 fps, the
-walk took 19 frames and the check failed while the app was perfectly correct. Drive motion
+counts rendered frames is measuring the host display: on battery, in Low Power Mode, the
+same machine renders 30 fps and a walk that took 38 frames takes 19, failing a check while
+the app is perfectly correct. Drive motion
 with an explicit `dt` (as most probes already do, and as `race.simulate` / `drop.simulate`
 exist for) rather than counting real frames, and keep the genuine frame-rate floors in the
 `perf` lane where the limiter stays on. Before trusting any timing failure, check
 `pmset -g batt`.
 
+**There are exactly two frame-rate floors, and the `perf` lane is three tasks.**
+`hub pile` holds the million-banana hub with the mirror active at 50 FPS; `wall movement
+performance` holds movement, plain and behind cave walls during a donation, at 55 FPS with a
+p95 and max frame cost, at 1920x1080. Everything serial costs wall clock that cannot overlap
+anything, so a third floor has to earn its ~13 seconds against those two; do not add one to a
+task for incidental reassurance, because it makes the whole task serial. `matrix wave` keeps
+its per-frame cost budget on WebGL2 only. The third serial task is `donation performance`,
+which has no floor but asserts the quality governor never leaves "high": that is a frame-rate
+claim in disguise, and it fails in the pool.
+
+**A permanent cave is a volume, not a flag.** A probe that renders one has to ship what the hub
+ships: `matrix.caves` (mouth normal and plane offset), `matrix.caveBounds`
+(`[x, floorY, z, depth]`), `matrix.permanentPlane` (the inward plane through that mouth) and, if
+the default 2.5 / 3 / 0.5 opening is wrong for it, `matrix.permanentAperture`. With
+`permanentCave` alone, WebGL2 uploads `NO_MATRIX_CAVES` and renders an empty volume while
+Canvas2D bails on the missing bounds: nothing is backed, no glyphs appear, and the check fails on
+both backends for a reason that looks like a renderer bug and is not.
+The mirror cave's doorway - its rim, jamb and sign, as `matrixSourceGeometry`
+copies - carries continuous world code too, so a rule about where continuous code may live has to
+allow it as well as the HQ ramp triangles.
+
 **So is the calendar and the crew's dice.** The solar clock runs on the page's day of year,
 which is today unless the URL pins `day=`: a check that sets an hour and compares light must
-pin `day=80` like the daylight checks, because the moon phase alone flipped dusk and midnight
+pin `day=80` like the daylight checks, because the moon phase alone flips dusk and midnight
 between two consecutive days. The crew draws some choices with `randomInt` (crypto, not
 seedable), such as the bed the napping Ooga claims at boot, so a fixture must never be "the
 first free one" of something the crew also picks from; name the fixture and keep a fallback.
 
 `npm test` builds `oogaboogaland.html` and runs the fast lane of `test/run.mjs` in headless
-Chrome over the DevTools protocol. `npm run test:unit` runs the browser-free checks in about
-three seconds; `npm run test:full` is the pre-merge gate. Every check opens the page with `?debug=1&nosim=1&hour=12` (noon, unless the check asks for
+Chrome over the DevTools protocol, then the browser-free unit checks, which cost three
+seconds and carry the island geometry (window flares, convex collision, LifeHash) without a
+page build of their own. `npm run test:unit` runs those checks alone;
+`npm run test:full` is the pre-merge gate. A check that exists in both tiers is asserted
+twice there on purpose: it cross-validates the DOM shim against a real browser. Every check opens the page with `?debug=1&nosim=1&hour=12` (noon, unless the check asks for
 another hour) and asserts on real interaction: drags at projected positions, clicks, keys, DOM state, a clean console.
 Lab checks add `scene=lab`, rally checks `scene=race` (they drive the physics through
 `race.simulate` and `racers.setInput`, isolating the visitor with the `isolate` helper),
@@ -571,7 +645,11 @@ parked high in still air by `isolateDiver`), orbit checks `scene=orbit` (`orbit.
 `orbit.toOrbit` to skip the climb, `orbit.slots` for drops onto the rocket);
 hub checks open the page without it and hold keys through `hold`. New behaviour needs a check. Follow the existing shape: one `withPage` block,
 `record(name, ok, detail)` per assertion, no fixed sleeps where waiting on
-`renderedFrames` is possible. A loop over fixtures on a plain hub URL starts each one with
+`renderedFrames` is possible. A wait for game state belongs in `untilPage(b, cond, ms)`, which
+returns as soon as the condition holds and keeps the old sleep as its ceiling: countdowns, landing
+bananas and a settling jetpack all finish sooner than their worst case, and the predicate says what
+the check is actually waiting for. A duration that is itself the assertion stays a sleep - the
+governor's ten idle seconds prove the frame rate does not sag, so shortening it would delete the check. A loop over fixtures on a plain hub URL starts each one with
 `reenterHub(b)` rather than `b.open`: a scene re-entry with `world` reset costs ~0.7 s
 against ~2.4 s for a page build. Diff the loop's records against page builds before
 switching; a probe whose results then differ keeps its page builds. A failure prints `FAIL` with its detail, so
@@ -585,18 +663,11 @@ Walking speed checks exclude motion inherited from a confirmed standing support 
 keeping full world-space collision sweeps. Take resource baselines immediately around
 the behavior under test, and distinguish effect geometries when emitters share the FX pool.
 
-The `soak` blocks settle the memory question from `stats()`,
-`Memory.getDOMCounters` and the heap after a forced GC (code and non-code split; the
-bars apply to the non-code heap). The snapshot helper freezes the page while collecting
-stats, DOM and heap data, then restores activity and focus in `finally`; parallel
-heap parsing must not let the measured world advance between those readings. Scene cycles: ten hub / lab round trips leave node,
-target, tween, DOM, listener and GPU record counts identical and the heap within 10%.
-GPU residency: each scene after visiting the other holds only its own geometry.
-Donations, per scene: sixty tips over fifteen simulated seconds (`__ooga.advance`) with every crate opened end with
-crates, particles and tweens at zero, nodes and targets back to base plus the trimmed
-pool and what the crew built, GPU records bounded, heap within 15%. The rally, the drop and
-the orbit have their own turns: six hub round trips each, sixty tips mid-race, mid-fall and mid-climb. Anything a scene creates per visit
-must come back to base there.
+**The memory contract is not tested.** Nothing catches a leak that appears only after repeated
+scene entry or under donation load, or a GPU residency regression; that is a known hole. The
+leave contract in `scene-hub.js` and `scene-lab.js` is still the thing to follow, and `?debug=1`
+still throws on a broken round trip, but no check settles the heap behind you. `LANE=soak`
+parses and selects nothing, so covering this again means writing the blocks, not flipping a flag.
 
 Profile before optimizing. Boot phases are `performance.mark`s readable from
 `__ooga.timing`.
@@ -605,8 +676,8 @@ Profile before optimizing. Boot phases are `performance.mark`s readable from
 
 No analytics, no external requests, no personal data. Visitor handle and message stay in
 localStorage. The roster lists public contributor handles only. Every deliberate likeness
-lives in the `LIKENESS` table in `contributors.js`, one line per person, opt-in and
-removable; all other looks are hashed from the handle. No personal details about real
+lives in that person's own file in `src/characters/`, opt-in and removable; all other looks
+are hashed from the handle. No personal details about real
 people anywhere else. Test scripts must not embed absolute paths, user names, or machine
 names.
 
@@ -616,6 +687,6 @@ names.
 2. No new per-frame allocations, no new unbounded arrays, nothing left registered or on
    the GPU after removal.
 3. Both renderers still expose the same surface if you touched one.
-4. A scene you touched still keeps the leave contract and the soak checks stay green.
+4. A scene you touched still keeps the leave contract.
 5. Keys, phone layout, and the built `oogaboogaland.html` still work in both scenes.
 6. Your change is the smallest that does the job, and it reads like the code around it.
