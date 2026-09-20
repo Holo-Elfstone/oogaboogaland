@@ -1,7 +1,7 @@
 // Live Bitcoin feed from mempool.space: one socket for the page life, reconnecting with backoff.
 // Subscribers get plain events, { type: "tx", vsize, weight, fee } for each transaction the
 // mempool accepts, { type: "block", height, txCount } for each block mined after connect and
-// { type: "fees", nextFee, blocks } whenever the projected next block's median fee moves.
+// { type: "fees", nextFee, blocks } whenever the projected next block's median sat/vB moves.
 // One of the page's two live feeds (the other polls the oogatron worker in oogatron-live.js).
 (() => {
   "use strict";
@@ -58,15 +58,16 @@
       }
     }
   };
+  const liveNet = () => location.protocol !== "file:" && navigator.onLine !== false;
   const retry = () => {
-    if (state.enabled && !timer) {
+    if (state.enabled && liveNet() && !timer) {
       timer = window.setTimeout(connect, backoff);
       backoff = Math.min(BACKOFF_MAX, backoff * 2);
     }
   };
   const connect = () => {
     timer = 0;
-    if (!state.enabled || socket) return;
+    if (!state.enabled || socket || !liveNet()) return;
     state.attempts++;
     let ws;
     try {
@@ -91,7 +92,7 @@
     ws.onerror = () => {};
   };
   const start = () => {
-    if (state.enabled || typeof WebSocket === "undefined") return;
+    if (state.enabled || typeof WebSocket === "undefined" || !liveNet()) return;
     state.enabled = true;
     connect();
   };
@@ -99,7 +100,7 @@
     subscribers.add(fn);
     return () => subscribers.delete(fn);
   };
-  const dispose = () => {
+  const stop = () => {
     state.enabled = false;
     window.clearTimeout(timer);
     timer = 0;
@@ -110,7 +111,10 @@
       ws.close();
     }
     state.connected = false;
+  };
+  const dispose = () => {
+    stop();
     subscribers.clear();
   };
-  BL.mempool = { ENDPOINT, state, start, subscribe, dispose, emit, parse: onMessage };
+  BL.mempool = { ENDPOINT, state, start, stop, subscribe, dispose, emit, parse: onMessage };
 })();
