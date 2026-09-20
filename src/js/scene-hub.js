@@ -4448,7 +4448,8 @@
     }
     // J mirrors the carried jetpack button without changing its fuel.
     if ((e.key === "j" || e.key === "J") && !e.repeat) toggleJetpack();
-    // C changes the colourway of a driven Ooga that was built with two.
+    // N spins a driven Ooga's nunchaku, C changes the colourway of one built with two.
+    if ((e.key === "n" || e.key === "N") && !e.repeat && crew.twirl()) return;
     if ((e.key === "c" || e.key === "C") && !e.repeat && crew.toggleTint(crew.player)) return;
     if (e.key === "g" || e.key === "G") pilot.weaponAction("weapon-toggle");
     if (e.key === "v" || e.key === "V") pilot.weaponAction("weapon-fire");

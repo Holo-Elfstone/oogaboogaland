@@ -156,21 +156,30 @@
   // The handle carries the chain stub, so the gap stays filled at every angle.
   const handleVox = () => {
     const v = makeVox();
-    v.fill(0, 1, 0, 6, 0, 1, STICK);
+    v.fill(0, 1, 0, 4, 0, 1, STICK);
     v.fill(0, 1, 1, 1, 0, 1, COLLAR);
-    v.fill(0, 1, 6, 6, 0, 1, COLLAR);
-    v.fill(0, 1, 7, 7, 0, 0, CHAIN);
-    v.fill(0, 1, 8, 8, 1, 1, CHAIN);
+    v.fill(0, 1, 4, 4, 0, 1, COLLAR);
+    v.fill(0, 1, 5, 5, 0, 0, CHAIN);
+    v.fill(0, 1, 6, 6, 1, 1, CHAIN);
     return v;
   };
   const freeVox = () => {
     const v = makeVox();
-    v.fill(0, 1, 0, 4, 0, 1, STICK);
+    v.fill(0, 1, 0, 2, 0, 1, STICK);
     v.fill(0, 1, 0, 0, 0, 1, COLLAR);
     return v;
   };
+  // Both sticks in line, as they sit while the pair is spinning: three copies of
+  // this trail the live weapon so a fast spin reads as an arc, not a strobe.
+  const pairVox = () => {
+    const v = handleVox();
+    v.fill(0, 1, 7, 9, 0, 1, STICK);
+    v.fill(0, 1, 7, 7, 0, 1, COLLAR);
+    return v;
+  };
+  const CHUK_TRAIL = 6;
   // The pivot sits at the top of the handle's chain, in the club's own space.
-  const CHAIN_Y = 8;
+  const CHAIN_Y = 6;
   // No pack on his back: the thrust comes out of his soles. One node at the
   // feet holds both plumes, so crew.js lights and stretches them as it does any
   // jetpack flame, and they keep their own colours through both colourways.
@@ -195,7 +204,7 @@
     // He co-built this island and keeps every project on it, so `maintainer`
     // works him at all of them until the backend reports his commits.
     look: {
-      maintainer: true, nunchaku: true, recipe: true,
+      maintainer: true, nunchaku: true, recipe: true, jetTank: 0.3,
       bald: true, hairless: true, cleanShaven: true, noBrow: true, noPupils: true,
       face: "none", hatY: 12, height: 1.12,
       skin: "#c03429", hair: "#191b1e", fur: "#6e1811"
@@ -242,6 +251,13 @@
         const gold = voxelGeometry(freeVox(), { unit: u, palette: GOLD_CHUK_PALETTE, origin });
         k.parts.chuk = createNode({ position: { x: 0, y: CHAIN_Y * u, z: 0 }, geometry, skins: { default: geometry, gold } });
         addChild(k.parts.club, k.parts.chuk);
+        const trail = voxelGeometry(pairVox(), { unit: u, palette: CHUK_PALETTE, origin: { x: -u, y: -u, z: -u } });
+        k.parts.chukTrail = [];
+        for (let i = 0; i < CHUK_TRAIL; i++) {
+          const ghost = createNode({ geometry: trail, visible: false });
+          k.parts.chukTrail.push(ghost);
+          addChild(k.parts.armL, ghost);
+        }
         // crew.js flies him exactly as it flies the world jetpack, and nothing
         // takes his thrusters off. The mount sits on the sole plane, under both feet.
         k.parts.jetpack = createNode({ position: { x: 0, y: -5 * u, z: 0 } });
