@@ -13,6 +13,8 @@ const page = join(root, "oogaboogaland.html");
 const src = join(root, "src");
 const watching = process.argv.includes("--watch");
 const port = Number(process.env.PORT) || 8080;
+// Loopback only: `/src/` exposes the source tree, so reaching it from another machine is opt-in.
+const host = process.env.HOST || "127.0.0.1";
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -65,8 +67,13 @@ function serveFile(res, path) {
 }
 
 const server = createServer((req, res) => {
-  const url = new URL(req.url, "http://localhost");
-  const pathname = decodeURIComponent(url.pathname);
+  // A malformed escape such as `/src/%` throws here; that is the request's fault, not the server's.
+  let pathname;
+  try {
+    pathname = decodeURIComponent(new URL(req.url, "http://localhost").pathname);
+  } catch {
+    return send(res, 400, "bad request");
+  }
   if (pathname === "/" || pathname === "/index.html" || pathname === "/oogaboogaland.html") {
     return serveFile(res, page);
   }
@@ -81,8 +88,8 @@ const server = createServer((req, res) => {
 });
 
 await rebuild();
-server.listen(port, () => {
-  console.log(`serving http://localhost:${port}/ (built page) and http://localhost:${port}/src/ (sources)`);
+server.listen(port, host, () => {
+  console.log(`serving http://${host}:${port}/ (built page) and http://${host}:${port}/src/ (sources)`);
   if (!watching) return;
   let timer = null;
   watch(src, { recursive: true }, (_, file) => {
