@@ -6,8 +6,9 @@
 // signal. The baseline is the first successful poll, never the baked
 // snapshot: a stale bake must not fire celebration on every page load.
 // Network errors are silent (counted in state); the page always keeps the
-// baked board. Like the mempool feed, this stays off under nosim, offline=1,
-// file://, a reported-offline browser, and oogatron=0.
+// baked board. Like the mempool feed, this stays off under nosim and can be
+// disabled with oogatron=0. file:// pages and a reported-offline browser
+// never open the worker; coming back online resumes an armed poller.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -52,8 +53,6 @@
     }
   };
 
-  // Background tabs skip their polls; coming back polls at once when one was
-  // missed, so a returning visitor sees fresh numbers (and any fireworks due).
   const tick = () => {
     if (document.hidden) return;
     poll();
@@ -63,9 +62,9 @@
   };
 
   const start = () => {
-    if (state.enabled || !liveNet()) return;
+    if (state.enabled) return;
     state.enabled = true;
-    poll();
+    if (liveNet()) poll();
     timer = window.setInterval(tick, POLL_MS);
     document.addEventListener("visibilitychange", onVisibility);
   };
@@ -85,6 +84,8 @@
     stop();
     subscribers.clear();
   };
+
+  window.addEventListener("online", () => { if (state.enabled) poll(); });
 
   BL.oogatronLive = { start, stop, subscribe, dispose, state, ENDPOINT };
 })();
