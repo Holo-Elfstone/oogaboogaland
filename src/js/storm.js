@@ -68,7 +68,7 @@
 
   const create = ({ root, renderer, camera, heightAt, fx = null }) => {
     const cap = renderer.kind === "canvas2d" ? RAIN_CAP_CANVAS : RAIN_CAP;
-    const node = createNode({ geometry: rainDrop(), instanceData: new Float32Array(cap * 20), instanceCount: cap, drawInstanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
+    const node = createNode({ geometry: rainDrop(), instanceData: new Float32Array(cap * 20), instanceCount: 0, drawInstanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
     const x = new Float32Array(cap), y = new Float32Array(cap), z = new Float32Array(cap), w = new Float32Array(cap), h = new Float32Array(cap), vy = new Float32Array(cap);
     let count = 0, transactions = 0, strikes = 0, flash = 0, flashT = -1, boltT = -1, thunderAt = -1;
     // Sunny until the feed projects a fee, so an offline page keeps the clock's frame; the first projection snaps, later ones ease.
@@ -171,6 +171,7 @@
       boltNode.visible = true;
     };
     const update = (dt, opts) => {
+      const previousCount = node.instanceCount;
       // A steady walk, OVERCAST_EASE seconds across the whole range, so the target is reached exactly.
       if (overcast !== overcastTarget) {
         const step = dt / OVERCAST_EASE;
@@ -193,8 +194,8 @@
         data[o + 12] = x[i]; data[o + 13] = y[i]; data[o + 14] = z[i]; data[o + 15] = 1;
         data[o + 16] = 1; data[o + 17] = 0; data[o + 18] = 0; data[o + 19] = 0;
       }
-      node.drawInstanceCount = count;
-      node.instanceVersion++;
+      node.instanceCount = node.drawInstanceCount = count;
+      if (count || previousCount) node.instanceVersion++;
       if (rainGain) rainGain.gain.setTargetAtTime(Math.min(1, count / 120) * 0.14, ctx.currentTime, 0.2);
       if (boltT >= 0) {
         boltT += dt;

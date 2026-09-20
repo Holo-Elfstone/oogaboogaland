@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-HD7ZgRg51ig8lUCXjxfF9SL/5SrMNatyWwJtL4TKq/4='; style-src 'sha256-lv68KslPaBp0nzY6tFVa23cmEjIWG7lFrPlQ8lqGzSA='; img-src 'self' data:; connect-src wss://mempool.space; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-VY7qJ6TxDJSSlrgj9JsH/wbe/E/FnwNk05GDSLeS7bA='; style-src 'sha256-lv68KslPaBp0nzY6tFVa23cmEjIWG7lFrPlQ8lqGzSA='; img-src 'self' data:; connect-src wss://mempool.space; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -19279,6 +19279,7 @@ void main() {
     } catch {
       return;
     }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return;
     state.lastKeys = Object.keys(data).join(", ");
     // The tip list arrives once per connection and only seeds the height; a later, taller one is news.
     if (Array.isArray(data.blocks)) {
@@ -19304,11 +19305,24 @@ void main() {
       }
     }
   };
+  const retry = () => {
+    if (state.enabled && !timer) {
+      timer = window.setTimeout(connect, backoff);
+      backoff = Math.min(BACKOFF_MAX, backoff * 2);
+    }
+  };
   const connect = () => {
     timer = 0;
     if (!state.enabled || socket) return;
     state.attempts++;
-    const ws = socket = new WebSocket(ENDPOINT);
+    let ws;
+    try {
+      ws = new WebSocket(ENDPOINT);
+    } catch {
+      retry();
+      return;
+    }
+    socket = ws;
     ws.onopen = () => {
       state.connected = true;
       backoff = BACKOFF_MIN;
@@ -19319,10 +19333,7 @@ void main() {
     ws.onclose = () => {
       if (socket === ws) socket = null;
       state.connected = false;
-      if (state.enabled && !timer) {
-        timer = window.setTimeout(connect, backoff);
-        backoff = Math.min(BACKOFF_MAX, backoff * 2);
-      }
+      retry();
     };
     ws.onerror = () => {};
   };
@@ -30916,7 +30927,7 @@ void main() {
 
   const create = ({ root, renderer, camera, heightAt, fx = null }) => {
     const cap = renderer.kind === "canvas2d" ? RAIN_CAP_CANVAS : RAIN_CAP;
-    const node = createNode({ geometry: rainDrop(), instanceData: new Float32Array(cap * 20), instanceCount: cap, drawInstanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
+    const node = createNode({ geometry: rainDrop(), instanceData: new Float32Array(cap * 20), instanceCount: 0, drawInstanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
     const x = new Float32Array(cap), y = new Float32Array(cap), z = new Float32Array(cap), w = new Float32Array(cap), h = new Float32Array(cap), vy = new Float32Array(cap);
     let count = 0, transactions = 0, strikes = 0, flash = 0, flashT = -1, boltT = -1, thunderAt = -1;
     // Sunny until the feed projects a fee, so an offline page keeps the clock's frame; the first projection snaps, later ones ease.
@@ -31019,6 +31030,7 @@ void main() {
       boltNode.visible = true;
     };
     const update = (dt, opts) => {
+      const previousCount = node.instanceCount;
       // A steady walk, OVERCAST_EASE seconds across the whole range, so the target is reached exactly.
       if (overcast !== overcastTarget) {
         const step = dt / OVERCAST_EASE;
@@ -31041,8 +31053,8 @@ void main() {
         data[o + 12] = x[i]; data[o + 13] = y[i]; data[o + 14] = z[i]; data[o + 15] = 1;
         data[o + 16] = 1; data[o + 17] = 0; data[o + 18] = 0; data[o + 19] = 0;
       }
-      node.drawInstanceCount = count;
-      node.instanceVersion++;
+      node.instanceCount = node.drawInstanceCount = count;
+      if (count || previousCount) node.instanceVersion++;
       if (rainGain) rainGain.gain.setTargetAtTime(Math.min(1, count / 120) * 0.14, ctx.currentTime, 0.2);
       if (boltT >= 0) {
         boltT += dt;

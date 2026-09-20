@@ -24377,7 +24377,16 @@ const mempoolFeedChecks = async () => {
   const mined = events.length === 1 && events[0].type === "block" && events[0].height === 900001 && events[0].txCount === 3210 && feed.state.blocks === 1;
   feed.parse(JSON.stringify({ blocks: [{ height: 900002 }] }));
   const tallerTip = events.length === 2 && events[1].type === "block" && events[1].height === 900002 && feed.state.height === 900002;
-  feed.parse("not json");
+  let malformedSafe = true;
+  try {
+    feed.parse("not json");
+    feed.parse("null");
+    feed.parse("1");
+    feed.parse('"text"');
+    feed.parse("[]");
+  } catch {
+    malformedSafe = false;
+  }
   feed.parse(JSON.stringify({ "mempool-transactions": { sequence: 1, added: [{ txid: "a", vsize: 141, weight: 561, fee: 269 }, { vsize: 0 }, null, { txid: "b", vsize: 4000 }], removed: ["c"] } }));
   const txs = events.slice(2);
   const transactions = txs.length === 2 && txs.every((e) => e.type === "tx") && txs[0].vsize === 141 && txs[0].weight === 561 && txs[0].fee === 269 && txs[1].vsize === 4000 && txs[1].weight === 16000 && txs[1].fee === 0 && feed.state.transactions === 2;
@@ -24392,9 +24401,25 @@ const mempoolFeedChecks = async () => {
   feed.dispose();
   feed.emit({ type: "tx", vsize: 1 });
   const disposed = events.length === 6 && !feed.state.enabled;
+  let retries = 0, constructorSafe = true;
+  class BlockedWebSocket {
+    constructor() {
+      throw new Error("blocked");
+    }
+  }
+  const blockedContext = { WebSocket: BlockedWebSocket, window: { setTimeout() { retries++; return 1; }, clearTimeout() {} } };
+  runInNewContext(await readFile(new URL("../src/js/mempool.js", import.meta.url), "utf8"), blockedContext);
+  try {
+    blockedContext.window.BL.mempool.start();
+  } catch {
+    constructorSafe = false;
+  }
+  const backedOff = constructorSafe && blockedContext.window.BL.mempool.state.enabled && blockedContext.window.BL.mempool.state.attempts === 1 && retries === 1;
+  blockedContext.window.BL.mempool.dispose();
   record("mempool feed: the tip list seeds the height silently, a taller block thunders once, duplicates and lower blocks are ignored, a taller tip list counts", offline && seeded && mined && tallerTip, JSON.stringify({ offline, seeded, mined, tallerTip, events }));
-  record("mempool feed: each accepted transaction is one event with vsize, weight and fee, malformed entries and text are skipped, unsubscribe and dispose stop delivery", transactions && unsubscribed && disposed, JSON.stringify({ transactions, unsubscribed, disposed, txs }));
+  record("mempool feed: each accepted transaction is one event with vsize, weight and fee, malformed entries and messages are skipped, unsubscribe and dispose stop delivery", malformedSafe && transactions && unsubscribed && disposed, JSON.stringify({ malformedSafe, transactions, unsubscribed, disposed, txs }));
   record("mempool feed: a projection is one fees event with the next block's median fee, zero for an empty mempool", projection, JSON.stringify(fees));
+  record("mempool feed: a WebSocket constructor failure enters bounded retry instead of escaping startup", backedOff, JSON.stringify({ constructorSafe, enabled: blockedContext.window.BL.mempool.state.enabled, attempts: blockedContext.window.BL.mempool.state.attempts, retries }));
 };
 task("mempool feed", mempoolFeedChecks);
 // The hub's storm from injected feed events: no socket under nosim, so emit and parse drive it.

@@ -32,6 +32,7 @@
     } catch {
       return;
     }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return;
     state.lastKeys = Object.keys(data).join(", ");
     // The tip list arrives once per connection and only seeds the height; a later, taller one is news.
     if (Array.isArray(data.blocks)) {
@@ -57,11 +58,24 @@
       }
     }
   };
+  const retry = () => {
+    if (state.enabled && !timer) {
+      timer = window.setTimeout(connect, backoff);
+      backoff = Math.min(BACKOFF_MAX, backoff * 2);
+    }
+  };
   const connect = () => {
     timer = 0;
     if (!state.enabled || socket) return;
     state.attempts++;
-    const ws = socket = new WebSocket(ENDPOINT);
+    let ws;
+    try {
+      ws = new WebSocket(ENDPOINT);
+    } catch {
+      retry();
+      return;
+    }
+    socket = ws;
     ws.onopen = () => {
       state.connected = true;
       backoff = BACKOFF_MIN;
@@ -72,10 +86,7 @@
     ws.onclose = () => {
       if (socket === ws) socket = null;
       state.connected = false;
-      if (state.enabled && !timer) {
-        timer = window.setTimeout(connect, backoff);
-        backoff = Math.min(BACKOFF_MAX, backoff * 2);
-      }
+      retry();
     };
     ws.onerror = () => {};
   };
