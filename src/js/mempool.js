@@ -1,7 +1,7 @@
 // Live Bitcoin feed from mempool.space: one socket for the page life, reconnecting with backoff.
 // Subscribers get plain events, { type: "tx", vsize, weight, fee } for each transaction the
 // mempool accepts, { type: "block", height, txCount } for each block mined after connect and
-// { type: "fees", nextFee, blocks } whenever the projected next block's median fee moves.
+// { type: "fees", nextFee, blocks } whenever the projected next block's median sat/vB moves.
 // One of the page's two live feeds (the other polls the oogatron worker in oogatron-live.js).
 (() => {
   "use strict";
@@ -34,7 +34,6 @@
     }
     if (!data || typeof data !== "object" || Array.isArray(data)) return;
     state.lastKeys = Object.keys(data).join(", ");
-    // The tip list arrives once per connection and only seeds the height; a later, taller one is news.
     if (Array.isArray(data.blocks)) {
       let top = 0;
       for (const b of data.blocks) if (b && b.height > top) top = b.height;
@@ -42,7 +41,6 @@
       else if (top > state.height) block({ height: top });
     }
     if (data.block) block(data.block);
-    // The projection is the fee pressure: the next block's median sat/vB, zero for an empty mempool.
     const projected = data["mempool-blocks"];
     if (Array.isArray(projected)) {
       const first = projected[0];
@@ -58,15 +56,27 @@
       }
     }
   };
+  const liveNet = () => location.protocol !== "file:" && navigator.onLine !== false;
+  const hangUp = () => {
+    window.clearTimeout(timer);
+    timer = 0;
+    if (socket) {
+      const ws = socket;
+      socket = null;
+      ws.onclose = null;
+      ws.close();
+    }
+    state.connected = false;
+  };
   const retry = () => {
-    if (state.enabled && !timer) {
+    if (state.enabled && liveNet() && !timer) {
       timer = window.setTimeout(connect, backoff);
       backoff = Math.min(BACKOFF_MAX, backoff * 2);
     }
   };
   const connect = () => {
     timer = 0;
-    if (!state.enabled || socket) return;
+    if (!state.enabled || socket || !liveNet()) return;
     state.attempts++;
     let ws;
     try {
@@ -93,24 +103,21 @@
   const start = () => {
     if (state.enabled || typeof WebSocket === "undefined") return;
     state.enabled = true;
-    connect();
+    if (liveNet()) connect();
   };
   const subscribe = (fn) => {
     subscribers.add(fn);
     return () => subscribers.delete(fn);
   };
-  const dispose = () => {
+  const stop = () => {
     state.enabled = false;
-    window.clearTimeout(timer);
-    timer = 0;
-    if (socket) {
-      const ws = socket;
-      socket = null;
-      ws.onclose = null;
-      ws.close();
-    }
-    state.connected = false;
+    hangUp();
+  };
+  const dispose = () => {
+    stop();
     subscribers.clear();
   };
-  BL.mempool = { ENDPOINT, state, start, subscribe, dispose, emit, parse: onMessage };
+  window.addEventListener("online", () => { if (state.enabled) connect(); });
+  window.addEventListener("offline", hangUp);
+  BL.mempool = { ENDPOINT, state, start, stop, subscribe, dispose, emit, parse: onMessage };
 })();

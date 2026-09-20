@@ -7,7 +7,8 @@
 // snapshot: a stale bake must not fire celebration on every page load.
 // Network errors are silent (counted in state); the page always keeps the
 // baked board. Like the mempool feed, this stays off under nosim and can be
-// disabled with oogatron=0.
+// disabled with oogatron=0. file:// pages and a reported-offline browser
+// never open the worker; coming back online resumes an armed poller.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -21,8 +22,9 @@
     for (const fn of subscribers) fn(event);
   };
 
+  const liveNet = () => location.protocol !== "file:" && navigator.onLine !== false;
   const poll = async () => {
-    if (inFlight) return;
+    if (inFlight || !liveNet()) return;
     inFlight = true;
     dueAt = Date.now() + POLL_MS;
     try {
@@ -51,8 +53,6 @@
     }
   };
 
-  // Background tabs skip their polls; coming back polls at once when one was
-  // missed, so a returning visitor sees fresh numbers (and any fireworks due).
   const tick = () => {
     if (document.hidden) return;
     poll();
@@ -64,7 +64,7 @@
   const start = () => {
     if (state.enabled) return;
     state.enabled = true;
-    poll();
+    if (liveNet()) poll();
     timer = window.setInterval(tick, POLL_MS);
     document.addEventListener("visibilitychange", onVisibility);
   };
@@ -74,13 +74,18 @@
     return () => subscribers.delete(fn);
   };
 
-  const dispose = () => {
+  const stop = () => {
     if (timer) window.clearInterval(timer);
     timer = 0;
     document.removeEventListener("visibilitychange", onVisibility);
     state.enabled = false;
+  };
+  const dispose = () => {
+    stop();
     subscribers.clear();
   };
 
-  BL.oogatronLive = { start, subscribe, dispose, state, ENDPOINT };
+  window.addEventListener("online", () => { if (state.enabled) poll(); });
+
+  BL.oogatronLive = { start, stop, subscribe, dispose, state, ENDPOINT };
 })();
