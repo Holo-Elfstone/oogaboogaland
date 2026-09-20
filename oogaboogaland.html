@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-Fkg3TXsZqPhpzVG9cbozmYYwH8jpArbHC5bwA/TLpS0='; style-src 'sha256-bclWwM2tAxbulAie13gw3rEoe/R/HSL3G4MpUtj7asQ='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-RGDDOmkDbAybre1dya5iz27th2Gr94Ql/cgZyShCGDs='; style-src 'sha256-bclWwM2tAxbulAie13gw3rEoe/R/HSL3G4MpUtj7asQ='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -24832,10 +24832,12 @@ void main() {
   const swapWait = () => SWAP_MIN + Math.random() * SWAP_SPREAD;
   const TINT_MIN = 360, TINT_MAX = 900;
   const tintWait = () => TINT_MIN + Math.random() * (TINT_MAX - TINT_MIN);
-  // The free stick folds against the handle, trails as the swing winds up, then
-  // whips a whole turn through the strike and lands folded again.
+  // The free stick folds against the handle when the weapon is stowed and flies
+  // out in line with it in the hand, where the wrist spins it at the hip.
   const TAU = Math.PI * 2;
-  const CHUK_FOLD = 2.4, CHUK_TRAIL = 1.15, CHUK_FLICK = 0.55, CHUK_SPIN = 7.5;
+  const CHUK_FOLD = 2.4, CHUK_SPIN = 7.2;
+  // A weighted flail lands harder than a club; a held charge still scales on top.
+  const NUNCHAKU_POWER = 1.8;
   const GUN_HOLD = 0.24, GUN_KICK = 0.045, GUN_FLASH_TIME = 0.035;
   const MAGAZINE_SWAP_TIME = 0.44;
   const RELOAD_HANDOFF_TIME = 0.32, RELOAD_FULL_HOLD = 0.24;
@@ -26144,25 +26146,19 @@ void main() {
       }
       return true;
     };
+    // Thrusters built into a character sit wherever its own model puts them, so
+    // only the world's pack takes the centre of the back.
+    const backPack = (cave) => !!cave.jet && !cave.parts.jetpack;
     const carryingStoneAxe = (cave) => cave.traits.stoneAxe && cave.root.visible && cave.state !== "sleeping"
       && (cave === player ? !cave.weapon.equipped : cave.state === "chilling")
       && !cave.weapon.aiming && cave.weapon.meleeTime <= 0 && !cave.weapon.reloading && !cave.weapon.reloadHandoff
       && !cave.build && !cave.bedTravel.mode && !cave.camp.seat && !cave.camp.burning && !cave.camp.rolling && !cave.camp.panic.active;
-    // The whip is written straight from the swing's own phase, so it reads the
-    // same at any frame rate; only the settle back to the fold is damped.
+    // Two states only, so nothing can wind up out of step: folded against the
+    // handle while the weapon is stowed, out in line with it while it is in hand.
     const poseNunchaku = (cave, dt) => {
-      const w = cave.weapon, chuk = cave.parts.chuk;
-      const release = w.meleeStrikeTime + MELEE_RECOVER;
-      if (w.primaryEquipped && (w.meleeHeld || w.meleeTime > release)) {
-        cave.chukAngle = CHUK_FOLD + CHUK_TRAIL * ease.inOutQuad(clamp((MELEE_TIME - w.meleeTime) / MELEE_WIND, 0, 1)) + 0.5 * w.meleeCharge;
-      } else if (w.primaryEquipped && w.meleeTime > 0) {
-        const from = CHUK_FOLD + CHUK_TRAIL + 0.5 * w.meleeCharge;
-        cave.chukAngle = from + (CHUK_FOLD + TAU - from) * ease.inOutQuad(1 - w.meleeTime / release);
-      } else {
-        const ready = cave.root.visible && (w.primaryEquipped && w.aiming || meleeDrawn(cave));
-        cave.chukAngle = damp(cave.chukAngle % TAU, CHUK_FOLD + (ready ? CHUK_FLICK * Math.sin(elapsed * CHUK_SPIN) : 0), 14, dt);
-      }
-      chuk.rotation.x = cave.chukAngle;
+      const out = cave.parts.club.parent === cave.parts.armL && (cave.weapon.primaryEquipped || meleeDrawn(cave));
+      cave.chukAngle = damp(cave.chukAngle, out ? 0 : CHUK_FOLD, 12, dt);
+      cave.parts.chuk.rotation.x = cave.chukAngle;
     };
     // An Ooga with its own melee weapon swaps hands now and then: the rifle rides
     // its back while the melee weapon is out, and comes back for the shooting.
@@ -26218,7 +26214,7 @@ void main() {
       // before possession and when moving in the initial navigation view.
       const primaryCarry = !slungClub && carryingStoneAxe(cave);
       // A pack takes the centre of the back, and the nunchaku rides the hip either way.
-      const sideSling = slungClub && (cave.traits.nunchaku || cave.traits.stoneAxe && !!cave.jet);
+      const sideSling = slungClub && (cave.traits.nunchaku || cave.traits.stoneAxe && backPack(cave));
       const clubParent = slungClub ? cave.root : parts.armL;
       if (parts.club.parent !== clubParent) {
         removeChild(parts.club.parent, parts.club);
@@ -26255,8 +26251,10 @@ void main() {
           setVec(parts.club.rotation, -0.035, 0, 0.04);
         }
       } else {
+        // Carried in the hand, a nunchaku spins at the wrist until it is raised.
+        const twirl = cave.traits.nunchaku && !slungClub && !primaryReady;
         setVec(parts.club.position, slungClub ? -0.25 * h : 0, (slungClub ? 0.25 : primaryReady ? -0.625 : -0.62) * h, (slungClub ? -0.3 : primaryReady ? 0.15 : 0.08) * h);
-        setVec(parts.club.rotation, slungClub ? cave.traits.stoneAxe ? 0 : CLUB_SLING_TILT : primaryReady ? 0 : cave.clubCarry.x,
+        setVec(parts.club.rotation, slungClub ? cave.traits.stoneAxe ? 0 : CLUB_SLING_TILT : primaryReady ? 0 : twirl ? (elapsed * CHUK_SPIN + cave.phase) % TAU : cave.clubCarry.x,
           0, slungClub ? CLUB_SLING_ANGLE : primaryReady ? Math.PI / 2 : cave.clubCarry.z);
       }
       parts.club.poseYaw = slungClub ? parts.torso.poseYaw : 0;
@@ -26423,7 +26421,7 @@ void main() {
         }
       } else {
         // Keep the magazine outside the hair, and beside back-mounted gear.
-        const head = parts.head, bounds = cave.gunHeadBounds, sideCarry = cave.jet || cave.traits.skater;
+        const head = parts.head, bounds = cave.gunHeadBounds, sideCarry = backPack(cave) || cave.traits.skater;
         math.quat.fromEuler(GUN_ARM, head.rotation.x, head.rotation.y, head.rotation.z);
         const q = head.quaternion || GUN_ARM, x = q[0], y = q[1], z = q[2], qw = q[3];
         const zx = 2 * (x * z - y * qw) * head.scale.x, zy = 2 * (y * z + x * qw) * head.scale.y, zz = (1 - 2 * (x * x + y * y)) * head.scale.z;
@@ -28940,6 +28938,8 @@ void main() {
       if (cave.parts.chuk) poseNunchaku(cave, dt);
       poseWeapon(cave);
       if (striking && w.meleeTime > 0 && club.visible && club.parent === cave.parts.armL && !cave.camp.burning && !cave.camp.rolling && !cave.bedTravel.mode) {
+        // A weighted flail lands harder than a club; the charge scales on top.
+        const meleePower = w.meleePower * (cave.traits.nunchaku ? NUNCHAKU_POWER : 1);
         BL.scene.updateWorld(cave.root);
         weaponOrigin(weaponStart, cave, true);
         const interactive = input.weaponTargets && input.weaponTargets.strike(weaponHit, meleePreviousWorld, club.world, club.geometry, cave)
@@ -28968,8 +28968,8 @@ void main() {
           w.meleeHit = true;
           if (interactive) {
             for (let j = 0; j < 16; j++) meleeProbeWorld[j] = lerp(meleePreviousWorld[j], meleeCurrentWorld[j], high);
-            if (meleeContact.node.mirror && ctx.onMeleeStrike) ctx.onMeleeStrike(meleePreviousWorld, meleeProbeWorld, club.geometry, dt, w.meleePower);
-            if (ctx.onWeaponHit) ctx.onWeaponHit(cave, meleeContact.type, w.meleePower);
+            if (meleeContact.node.mirror && ctx.onMeleeStrike) ctx.onMeleeStrike(meleePreviousWorld, meleeProbeWorld, club.geometry, dt, meleePower);
+            if (ctx.onWeaponHit) ctx.onWeaponHit(cave, meleeContact.type, meleePower);
             if (ctx.onWeaponImpact) {
               // The contact's own swept motion supplies the impact direction,
               // including wrist rotation rather than only the moving grip.
@@ -28981,11 +28981,11 @@ void main() {
               let dz = (meleeProbeWorld[2] - meleePreviousWorld[2]) * x + (meleeProbeWorld[6] - meleePreviousWorld[6]) * y + (meleeProbeWorld[10] - meleePreviousWorld[10]) * z + meleeProbeWorld[14] - meleePreviousWorld[14];
               let length = Math.hypot(dx, dy, dz);
               if (length < 1e-8) { dx = Math.sin(cave.root.rotation.y); dy = 0; dz = Math.cos(cave.root.rotation.y); length = 1; }
-              ctx.onWeaponImpact(cave, meleeContact, dx / length, dy / length, dz / length, w.meleePower);
+              ctx.onWeaponImpact(cave, meleeContact, dx / length, dy / length, dz / length, meleePower);
             }
           }
         } else if (!input.weaponTargets && ctx.onMeleeStrike) {
-          w.meleeHit = ctx.onMeleeStrike(meleePreviousWorld, club.world, club.geometry, dt, w.meleePower);
+          w.meleeHit = ctx.onMeleeStrike(meleePreviousWorld, club.world, club.geometry, dt, meleePower);
         }
         if (w.meleeHit) {
           const beforeLower = ease.inOutQuad(clamp((meleeRelease - meleeBefore) / w.meleeStrikeTime, 0, 1));
