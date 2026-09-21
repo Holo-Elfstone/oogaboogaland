@@ -15,6 +15,7 @@
   const SHOT_SPREAD = 0.015, ADS_SPREAD = 0.005, SPREAD_MASS = 1 - Math.exp(-4.5);
   const TARGET_INTERVAL = 0.05, HIT_TIME = 0.16, TARGET_MARGIN = 0.035;
   const ORBIT_CLOSE_HIT = 0.9, ORBIT_SPREAD_NEAR = 6, ORBIT_SPREAD_MAX = 2.4;
+  const ORBIT_RETICLE_RADIUS = 14;
   const ORBIT_AUTO_PROPS = new Set(["crate", "barrel", "rock"]);
   const SHOULDER_PITCH = 0.42, SHOULDER_LIFT = 0.16, SHOULDER_DISTANCE = 2.85, SHOULDER_SIDE = 0.6;
   const SHOULDER_SWAP_RATE = 10, PEEK_CAMERA = 0.34, PEEK_RATE = 14;
@@ -458,7 +459,6 @@
       if (aimSurface) aimSurface(out, x, y, z);
     };
     const spreadRadius = () => renderer.size.height * (SHOT_SPREAD + (ADS_SPREAD - SHOT_SPREAD) * adsMix) / (2 * Math.tan(camera.fov / 2));
-    const orbitSpreadRadius = () => spreadRadius() * Math.min(ORBIT_SPREAD_MAX, Math.max(0.35, orbitTargetDistance / ORBIT_SPREAD_NEAR));
     const targetAlongAim = (out, x, y, z, dx, dy, dz) => {
       if (!input || !input.weaponTargets || !input.weaponTargets.ray(targetHit, x, y, z, dx, dy, dz, 60, player())) return false;
       const clear = sightClear || cursorClear, near = Math.max(0, targetHit.distance - 1e-5);
@@ -586,6 +586,7 @@
         reticle.style.removeProperty("top");
       }
       if (reticle.dataset.close !== "false") reticle.dataset.close = "false";
+      if (reticle.dataset.occluded !== "false") reticle.dataset.occluded = "false";
     };
     const orbitAutoTarget = (owner, node) => !!(owner && (owner.kind === "caveman" || owner.kind === "room-sign"
       || owner.kind === "prop" && ORBIT_AUTO_PROPS.has(owner.prop)) || node && node.mirror);
@@ -623,39 +624,48 @@
         if (orbitTargetActive) centerOrbitTarget(orbitTargetHit);
       }
       let pitch = 0;
+      mat4.lookAt(cursorView, camera.position, camera.target, camera.up || cursorUp);
+      const focal = renderer.size.height / (2 * Math.tan(camera.fov / 2));
       if (orbitTargetActive) {
         const tx = orbitTargetHit.x - p.x, ty = orbitTargetHit.y - y, tz = orbitTargetHit.z - p.z;
         orbitTargetDistance = Math.hypot(tx, ty, tz);
         orbitTargetInRange = !cave.weapon.primaryEquipped || orbitMeleeInRange(cave);
         orbitTargetClose = orbitTargetInRange && orbitTargetDistance <= h * ORBIT_CLOSE_HIT;
         pitch = -Math.atan2(ty, Math.hypot(tx, tz));
-        mat4.lookAt(cursorView, camera.position, camera.target, camera.up || cursorUp);
         mat4.transformPoint(orbitProjection, cursorView, orbitTargetHit.x, orbitTargetHit.y, orbitTargetHit.z);
-        if (orbitProjection[2] < -0.01) {
-          const focal = renderer.size.height / (2 * Math.tan(camera.fov / 2));
-          orbitTargetScreen.x = renderer.size.width / 2 + orbitProjection[0] * focal / -orbitProjection[2];
-          orbitTargetScreen.y = renderer.size.height / 2 - orbitProjection[1] * focal / -orbitProjection[2];
-          positionReticle(orbitTargetScreen.x, orbitTargetScreen.y);
-        }
       } else {
         orbitTargetInRange = false;
         orbitTargetClose = false;
         orbitTargetDistance = ORBIT_SPREAD_NEAR;
-        orbitTargetScreen.x = renderer.size.width / 2;
-        orbitTargetScreen.y = renderer.size.height / 2;
+        // The camera centers on the Ooga, but an unassisted shot travels
+        // horizontally ahead. Put its marker along that same firing line.
+        crew.weaponOrigin(targetOrigin, cave, false);
+        mat4.transformPoint(orbitProjection, cursorView, targetOrigin.x + dx * 60, targetOrigin.y, targetOrigin.z + dz * 60);
+      }
+      const depth = -orbitProjection[2];
+      if (depth > 0.01) {
+        orbitTargetScreen.x = renderer.size.width / 2 + orbitProjection[0] * focal / depth;
+        orbitTargetScreen.y = renderer.size.height / 2 - orbitProjection[1] * focal / depth;
+        if (!orbitTargetActive) {
+          const margin = ORBIT_RETICLE_RADIUS + 8;
+          orbitTargetScreen.x = clamp(orbitTargetScreen.x, margin, renderer.size.width - margin);
+          orbitTargetScreen.y = clamp(orbitTargetScreen.y, margin, renderer.size.height - margin);
+        }
         positionReticle(orbitTargetScreen.x, orbitTargetScreen.y);
       }
-      const close = String(orbitTargetActive && orbitTargetClose);
-      if (reticle.dataset.close !== close) reticle.dataset.close = close;
-      const radius = Math.round((orbitTargetActive ? orbitSpreadRadius() : spreadRadius()) * 100) / 100;
-      if (radius !== reticleRadius) {
-        reticleRadius = radius;
-        reticle.style.setProperty("--reticle-radius", `${radius}px`);
+      if (reticle.dataset.close !== "false") reticle.dataset.close = "false";
+      if (reticleRadius !== ORBIT_RETICLE_RADIUS) {
+        reticleRadius = ORBIT_RETICLE_RADIUS;
+        reticle.style.setProperty("--reticle-radius", `${ORBIT_RETICLE_RADIUS}px`);
       }
       crew.look(heading, pitch, 1);
       cave.weapon.aimYaw = 0;
       cave.weapon.aimPitch = pitch;
       crew.poseWeapon(cave);
+      // Draw over the controlled character when it covers the aim point.
+      // Only suppress points behind the camera; the body never hides a target.
+      const covered = String(depth <= 0.01);
+      if (reticle.dataset.occluded !== covered) reticle.dataset.occluded = covered;
       updateFeedback(cave, dt);
     };
     const aimMouseMove = (e) => {
@@ -1207,6 +1217,9 @@
         crew.releaseSwing(cave, true);
         unlockAim();
       } else {
+        // A freshly possessed character can carry its primary without an
+        // equipped slot yet. Match scroll/right-click entry before posing it.
+        if (!cave.weapon.equipped && !cave.weapon.primaryEquipped) crew.selectWeapon(cave.weapon.selectedSlot, cave);
         focusAim();
         lockAim();
       }

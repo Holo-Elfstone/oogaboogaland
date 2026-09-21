@@ -85,7 +85,7 @@
     const stats = { queries: 0, candidates: 0, triangleTests: 0, transforms: 0 };
     let generation = 0, originX = 0, originY = 0, originZ = 0;
     let contactDistance = Infinity, contactTriangle = Infinity, contactX = 0, contactY = 0, contactZ = 0;
-    const transformState = () => ({ stamp: 0, active: false, version: 0, parent: null, parentVersion: -1, values: new Float64Array(14) });
+    const transformState = () => ({ stamp: 0, active: false, version: 0, parent: null, parentVersion: -1, values: new Float64Array(16) });
     const register = node => {
       if (!entries.has(node)) entries.set(node, { geometry: node.geometry, data: null, bounds: node.geometry ? BL.scene.boundsOf(node.geometry) : null, world: mat4.create(), inverse: mat4.create(), box: new Float64Array(6), version: -1, valid: false });
       for (let at = node; at; at = at.parent) if (!transforms.has(at)) transforms.set(at, transformState());
@@ -102,18 +102,15 @@
       const changed = !state.version || state.parent !== node.parent || state.parentVersion !== parentVersion
         || values[0] !== p.x || values[1] !== p.y || values[2] !== p.z || values[3] !== s.x || values[4] !== s.y || values[5] !== s.z
         || values[6] !== r.x || values[7] !== r.y || values[8] !== r.z || values[9] !== (q ? q[0] : 0) || values[10] !== (q ? q[1] : 0)
-        || values[11] !== (q ? q[2] : 0) || values[12] !== (q ? q[3] : 0) || values[13] !== node.poseYaw;
+        || values[11] !== (q ? q[2] : 0) || values[12] !== (q ? q[3] : 0) || values[13] !== node.poseYaw
+        || values[14] !== node.poseLean || values[15] !== node.poseLeanY;
       if (!changed) return true;
       values[0] = p.x; values[1] = p.y; values[2] = p.z; values[3] = s.x; values[4] = s.y; values[5] = s.z;
       values[6] = r.x; values[7] = r.y; values[8] = r.z; values[9] = q ? q[0] : 0; values[10] = q ? q[1] : 0;
       values[11] = q ? q[2] : 0; values[12] = q ? q[3] : 0; values[13] = node.poseYaw;
+      values[14] = node.poseLean; values[15] = node.poseLeanY;
       state.parent = node.parent; state.parentVersion = parentVersion; state.version++;
-      if (node.quaternion) mat4.fromTQS(node.local, node.position, node.quaternion, node.scale);
-      else mat4.fromTRS(node.local, node.position, node.rotation, node.scale);
-      if (node.poseYaw) {
-        const m = node.local, c = Math.cos(node.poseYaw), s = Math.sin(node.poseYaw);
-        for (let i = 0; i < 16; i += 4) { const x = m[i], z = m[i + 2]; m[i] = c * x + s * z; m[i + 2] = c * z - s * x; }
-      }
+      BL.scene.updateLocal(node);
       if (node.parent) mat4.multiply(node.world, node.parent.world, node.local);
       else node.world.set(node.local);
       stats.transforms++;

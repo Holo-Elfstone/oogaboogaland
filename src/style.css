@@ -1514,7 +1514,7 @@ select {
   display: block;
   width: 100%;
   height: 100%;
-  background: var(--accent);
+  background: #ffd84a;
   transform: scaleY(0.25);
   transform-origin: bottom;
 }
@@ -1535,7 +1535,7 @@ select {
   display: block;
   width: 100%;
   height: 100%;
-  background: var(--accent);
+  background: #ffd84a;
   transform-origin: bottom;
 }
 
@@ -4142,6 +4142,9 @@ body.orbit-dragging #tooltip {
 .weapon-reticle[data-close="true"] > svg {
   visibility: hidden;
 }
+.weapon-reticle[data-occluded="true"] {
+  visibility: hidden;
+}
 .weapon-reticle > span {
   position: absolute;
   left: 50%;
@@ -4155,14 +4158,15 @@ body.orbit-dragging #tooltip {
 .weapon-reticle[data-target="friendly"] { --reticle-target: #65e879; }
 .weapon-reticle[data-target="enemy"] { --reticle-target: #ff6464; }
 .weapon-reticle[data-target="object"] { --reticle-target: #ff9d42; }
-.weapon-reticle[data-target="out-of-range"] { --reticle-target: #8f969d; }
 .weapon-reticle[data-target="friendly"] > span,
 .weapon-reticle[data-target="enemy"] > span,
-.weapon-reticle[data-target="object"] > span,
-.weapon-reticle[data-target="out-of-range"] > span {
+.weapon-reticle[data-target="object"] > span {
   width: 4px;
   height: 4px;
   background: var(--reticle-target);
+}
+.weapon-reticle[data-target="out-of-range"] > span {
+  visibility: hidden;
 }
 .weapon-reticle[data-hit="friendly"] { --reticle-hit-color: #65e879; }
 .weapon-reticle[data-hit="enemy"] { --reticle-hit-color: #ff6464; }

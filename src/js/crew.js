@@ -486,11 +486,10 @@
         health,
         stunBirds,
         stunGear: { selectedSlot: 1, drops: [
-          { kind: "primary", slot: 0, active: false, returning: false, node: null, model: null, owner: null, ammo: 0, unlimited: false, equipped: false, fuel: 0, sx: 0, sy: 0, sz: 0, returnTime: 0 },
-          { kind: "secondary", slot: 1, active: false, returning: false, node: null, model: null, owner: null, ammo: 0, unlimited: false, equipped: false, fuel: 0, sx: 0, sy: 0, sz: 0, returnTime: 0 },
-          { kind: "magazine", slot: 2, active: false, returning: false, node: null, model: null, owner: null, ammo: 0, unlimited: false, equipped: false, fuel: 0, sx: 0, sy: 0, sz: 0, returnTime: 0 },
-          { kind: "magazine", slot: 3, active: false, returning: false, node: null, model: null, owner: null, ammo: 0, unlimited: false, equipped: false, fuel: 0, sx: 0, sy: 0, sz: 0, returnTime: 0 },
-          { kind: "jetpack", slot: 4, active: false, returning: false, node: null, model: null, owner: null, ammo: 0, unlimited: false, equipped: false, fuel: 0, sx: 0, sy: 0, sz: 0, returnTime: 0 }
+          { kind: "ammo", slot: 0, active: false, returning: false, node: null, model: null, owner: null, ammo: 0, label: "", unlimited: false, equipped: false, fuel: 0, sx: 0, sy: 0, sz: 0, returnTime: 0 },
+          { kind: "magazine", slot: 1, active: false, returning: false, node: null, model: null, owner: null, ammo: 0, label: "", unlimited: false, equipped: false, fuel: 0, sx: 0, sy: 0, sz: 0, returnTime: 0 },
+          { kind: "magazine", slot: 2, active: false, returning: false, node: null, model: null, owner: null, ammo: 0, label: "", unlimited: false, equipped: false, fuel: 0, sx: 0, sy: 0, sz: 0, returnTime: 0 },
+          { kind: "jetpack", slot: 3, active: false, returning: false, node: null, model: null, owner: null, ammo: 0, label: "", unlimited: false, equipped: false, fuel: 0, sx: 0, sy: 0, sz: 0, returnTime: 0 }
         ] },
         axeRotation: math.quat.create(),
         gunHandRotation: math.quat.create(),
@@ -577,7 +576,18 @@
           cave.breathSmoke.push({ node, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 0, size: 0, cubes: 1, phase: j * 2.399, wrapSide: j & 1 ? -1 : 1 });
         }
       }
-      for (const key of BODY_PARTS) input.add(cave.parts[key], { kind: "caveman", cave, priority: 1 });
+      cave.hitNodes = [];
+      const registerHead = (node, owner) => {
+        if (node.geometry) { cave.hitNodes.push(node); input.add(node, owner); }
+        for (const child of node.children) registerHead(child, owner);
+      };
+      for (const key of BODY_PARTS) {
+        const owner = { kind: "caveman", cave, priority: 1, hitRegion: key === "head" ? "head" : "body" };
+        // The visible helmet/mask can extend well beyond the underlying head.
+        // Register its actual surfaces, sharing the head's damage region.
+        if (key === "head") registerHead(cave.parts.head, owner);
+        else { cave.hitNodes.push(cave.parts[key]); input.add(cave.parts[key], owner); }
+      }
       cavemen.set(contributor.name, cave);
       crewList.push(cave);
     });
@@ -1368,8 +1378,9 @@
         if (ctx.onProjectileMove) ctx.onProjectileMove(x, y, z, p.x, p.y, p.z, step);
         // Emit the crossing while the struck glass still exists.
         if (impacted) {
-          if (ctx.onWeaponHit) ctx.onWeaponHit(bullet.source, weaponHit.type, SHOT_POWER);
-          if (ctx.onWeaponImpact) ctx.onWeaponImpact(bullet.source, weaponHit, dx / distance, dy / distance, dz / distance, SHOT_POWER);
+          const power = SHOT_POWER * (weaponHit.owner.hitRegion === "head" ? 2 : 1);
+          if (ctx.onWeaponHit) ctx.onWeaponHit(bullet.source, weaponHit.type, power);
+          if (ctx.onWeaponImpact) ctx.onWeaponImpact(bullet.source, weaponHit, dx / distance, dy / distance, dz / distance, power);
         }
         bullet.node.rotation.x += dt * 24;
         if (!bullet.life) {
@@ -1716,7 +1727,7 @@
       } else {
         setVec(parts.club.position, slungClub ? -0.25 * h : 0, (slungClub ? 0.25 : raisedPrimary ? -0.625 : -0.62) * h, (slungClub ? -0.3 : raisedPrimary ? 0.15 : 0.08) * h);
         setVec(parts.club.rotation, slungClub ? cave.traits.stoneAxe ? 0 : CLUB_SLING_TILT : raisedPrimary ? 0 : cave.clubCarry.x,
-          raisedPrimary && cave.traits.stoneAxe ? Math.PI / 2 : 0, slungClub ? CLUB_SLING_ANGLE : raisedPrimary ? Math.PI / 2 : cave.clubCarry.z);
+          0, slungClub ? CLUB_SLING_ANGLE : raisedPrimary ? Math.PI / 2 : cave.clubCarry.z);
       }
       if (parts.chukTrail && !twirling) {
         for (let i = 0; i < parts.chukTrail.length; i++) parts.chukTrail[i].visible = false;
@@ -1830,7 +1841,7 @@
         // The pose above preserves the anatomical right arm's walking sway.
       } else if (primaryHeld) parts.armL.rotation.y = 0;
       w.carry = primaryCarry ? "hands" : !ready ? "hidden" : drawn ? "hands" : "back";
-      if (!ready) { poseHands(cave, leftSupportsGun); return; }
+      if (!ready) { if (cave === player) posePeek(cave, 0); poseHands(cave, leftSupportsGun); return; }
       if (drawn) {
         if (!w.reloading) parts.snack.visible = false;
         // Keep the loading hand free while workers carry their rifle for
@@ -1983,6 +1994,7 @@
         }
       }
       if (w.swapTime > 0) { syncMagazine(cave); leftSupportsGun = true; }
+      if (cave === player) { posePeek(cave, 0); aimPeek(cave); }
       poseHands(cave, leftSupportsGun);
     };
     const stopBurst = (cave) => {
@@ -3381,12 +3393,13 @@
       node.poseLean = lean;
       node.poseLeanY = pivot;
     };
-    // The legs and root remain planted. Root-level gear receives the same
-    // waist transform; held children inherit it from their arm automatically.
+    // The root is already at the hips. Lean the body from there: a pivot
+    // above the torso pushes the hips out while barely moving the head.
+    // Held children inherit the lean; root-level gear follows it explicitly.
     const posePeek = (cave, dt) => {
       cave.peek = damp(cave.peek, steer.peek, 14, dt);
       if (Math.abs(cave.peek) < 1e-4 && !steer.peek) cave.peek = 0;
-      const parts = cave.parts, lean = cave.peek * 0.23, pivot = cave.traits.height * 0.46;
+      const parts = cave.parts, lean = cave.peek * 0.5, pivot = 0;
       setPeekPart(parts.torso, lean, pivot);
       setPeekPart(parts.armL, lean, pivot);
       setPeekPart(parts.armR, lean, pivot);
@@ -3397,6 +3410,23 @@
       for (let i = 0; i < cave.magazineModels.length; i++) {
         const model = cave.magazineModels[i];
         if (model) setPeekPart(model.node, model.node.parent === cave.root ? lean : 0, pivot);
+      }
+    };
+    const aimPeek = (cave) => {
+      const w = cave.weapon, arm = cave.parts.armL, gun = cave.parts.gun, lean = arm.poseLean;
+      if (lean && w.equipped && w.aiming && !w.reloading && !w.reloadHandoff && !w.swapTime) {
+        // The shoulder follows the body, but the held rifle keeps pointing
+        // along the aim line even when aiming uphill or downhill while leaning.
+        // Express the inverse body roll in the arm's pre-twist frame.
+        math.quat.fromEuler(GUN_ARM, 0, -arm.poseYaw, 0);
+        math.quat.fromEuler(GUN_GRIP, 0, 0, -lean);
+        math.quat.multiply(GUN_ARM, GUN_ARM, GUN_GRIP);
+        math.quat.fromEuler(GUN_GRIP, 0, arm.poseYaw, 0);
+        math.quat.multiply(GUN_ARM, GUN_ARM, GUN_GRIP);
+        math.quat.multiply(arm.quaternion, GUN_ARM, arm.quaternion);
+        math.quat.multiply(gun.quaternion, GUN_ARM, gun.quaternion);
+        math.quat.rotateVec(MUZZLE, GUN_ARM, gun.position.x - arm.position.x, gun.position.y - arm.position.y, gun.position.z - arm.position.z);
+        setVec(gun.position, arm.position.x + MUZZLE[0], arm.position.y + MUZZLE[1], arm.position.z + MUZZLE[2]);
       }
     };
     // Flying pose, legs trailing and arms out
@@ -3988,15 +4018,13 @@
         drop.model = models.spareMagazine();
         drop.node = drop.model.node;
       } else {
-        const geometry = drop.kind === "primary" ? cave.parts.club.geometry
-          : drop.kind === "secondary" ? cave.parts.gunBody.geometry : null;
+        const geometry = drop.kind === "ammo" ? models.bananaGeometry() : null;
         drop.node = createNode({ geometry, sightHidden: true, matrixLiving: !!ctx.matrixLivingPile });
       }
       drop.node.sightHidden = true;
       drop.node.matrixLiving = !!ctx.matrixLivingPile;
-      setVec(drop.node.scale, drop.kind === "primary" || drop.kind === "secondary" ? 1 : h,
-        drop.kind === "primary" || drop.kind === "secondary" ? 1 : h,
-        drop.kind === "primary" || drop.kind === "secondary" ? 1 : h);
+      const scale = drop.kind === "ammo" ? 0.75 : h;
+      setVec(drop.node.scale, scale, scale, scale);
       addChild(root, drop.node);
       return drop.node;
     };
@@ -4006,39 +4034,34 @@
       const angle = cave.index * 1.71 + drop.slot * 1.2566370614359172;
       const radius = (0.58 + drop.slot * 0.055) * h;
       const x = p.x + Math.sin(angle) * radius, z = p.z + Math.cos(angle) * radius;
-      setVec(node.position, x, groundAt(x, z, p.y - cave.baseY) + (drop.kind === "primary" ? 0.18 : 0.09) * h, z);
-      setVec(node.rotation, drop.kind === "jetpack" ? -0.3 : Math.PI / 2, angle, drop.kind === "primary" ? 0.35 : 0);
+      setVec(node.position, x, groundAt(x, z, p.y - cave.baseY) + 0.09 * h, z);
+      setVec(node.rotation, drop.kind === "jetpack" ? -0.3 : Math.PI / 2, angle, 0);
       node.quaternion = null;
       node.visible = true;
       drop.owner = cave;
       drop.active = true;
       drop.returning = false;
       drop.returnTime = 0;
+      if (drop.kind === "ammo") drop.label = drop.unlimited ? "∞" : "+" + drop.ammo;
       if (drop.model) drop.model.setAmmo(drop.ammo);
       if (ctx.refreshMirrorObject) ctx.refreshMirrorObject(node);
     };
     const collectStunDrop = (drop, cave) => {
       const w = cave.weapon;
-      if (drop.kind === "primary") {
-        if (w.primaryOwned) return false;
-        w.primaryOwned = true;
-      } else if (drop.kind === "secondary") {
-        if (w.secondaryOwned) {
-          if (drop.unlimited) {
-            if (w.unlimited) return false;
-            w.unlimited = true;
-            drop.ammo = 0;
-          } else {
-            if (w.unlimited) return false;
-            const added = collectAmmo(drop.ammo, cave);
-            if (!added) return false;
-            drop.ammo -= added;
-            if (drop.ammo > 0) return true;
-          }
+      if (drop.kind === "ammo") {
+        if (drop.unlimited) {
+          if (w.unlimited) return false;
+          w.unlimited = true;
+          drop.ammo = 0;
         } else {
-          w.secondaryOwned = true;
-          w.ammo = drop.ammo;
-          w.unlimited = drop.unlimited;
+          if (w.unlimited) return false;
+          const added = collectAmmo(drop.ammo, cave);
+          if (!added) return false;
+          drop.ammo -= added;
+          if (drop.ammo > 0) {
+            drop.label = "+" + drop.ammo;
+            return true;
+          }
         }
       } else if (drop.kind === "magazine") {
         const before = drop.ammo, count = w.spareAmmo.length;
@@ -4058,18 +4081,14 @@
       const w = cave.weapon, gear = cave.stunGear, drops = gear.drops;
       gear.selectedSlot = w.selectedSlot;
       if (cave.sleepWeapons.visible) takeBedWeapons(cave);
-      if (w.primaryOwned) {
-        w.primaryOwned = false;
-        placeStunDrop(cave, drops[0]);
-      }
-      if (w.secondaryOwned) {
-        const drop = drops[1];
+      if (w.secondaryOwned && (w.ammo > 0 || w.unlimited)) {
+        const drop = drops[0];
         drop.ammo = w.ammo; drop.unlimited = w.unlimited;
-        w.secondaryOwned = false; w.ammo = 0; w.unlimited = false;
+        w.ammo = 0; w.unlimited = false;
         placeStunDrop(cave, drop);
       }
       for (let i = 0; i < 2; i++) {
-        const drop = drops[i + 2];
+        const drop = drops[i + 1];
         if (i >= w.spareAmmo.length) continue;
         drop.ammo = w.spareAmmo[i];
         placeStunDrop(cave, drop);
@@ -4079,9 +4098,9 @@
       if (ctx.dropStunJetpack) {
         const dropped = ctx.dropStunJetpack(cave);
         if (dropped) {
-          drops[4].fuel = dropped.fuel;
-          drops[4].equipped = dropped.equipped;
-          placeStunDrop(cave, drops[4], dropped.geometry);
+          drops[3].fuel = dropped.fuel;
+          drops[3].equipped = dropped.equipped;
+          placeStunDrop(cave, drops[3], dropped.geometry);
         }
       }
       w.equipped = w.primaryEquipped = w.aiming = false;
@@ -4117,7 +4136,7 @@
             drop.node.rotation.y += dt * 8;
             if (drop.returnTime >= HEALTH_PICKUP_TIME) {
               const collected = collectStunDrop(drop, owner);
-              if (drop.active && (drop.kind === "magazine" || drop.kind === "secondary")) placeStunDrop(owner, drop);
+              if (drop.active && (drop.kind === "magazine" || drop.kind === "ammo")) placeStunDrop(owner, drop);
               else if (!collected) { drop.active = drop.returning = false; drop.node.visible = false; }
               waiting = false;
               for (let i = dropIndex + 1; i < drops.length; i++) if (drops[i].active) { waiting = true; break; }
@@ -4613,6 +4632,24 @@
         const pos = project(cave.root.position.x, cave.root.position.y - cave.baseY + cave.headOffset + cave.viewLift + 0.45, cave.root.position.z);
         drawBubble(ctx2d, b.quote, pos ? pos.x : 0, pos ? pos.y : 0, Math.min(1, (b.age || 0) / 0.25), cave);
       }
+      ctx2d.save();
+      ctx2d.font = "bold 13px ui-monospace, monospace";
+      ctx2d.textAlign = "center";
+      ctx2d.textBaseline = "bottom";
+      ctx2d.fillStyle = "#ffe291";
+      ctx2d.shadowColor = "#17130b";
+      ctx2d.shadowBlur = 4;
+      ctx2d.shadowOffsetY = 1;
+      for (let caveIndex = 0; caveIndex < crewList.length; caveIndex++) {
+        const drops = crewList[caveIndex].stunGear.drops;
+        for (let dropIndex = 0; dropIndex < drops.length; dropIndex++) {
+          const drop = drops[dropIndex];
+          if (!drop.active || drop.kind !== "ammo") continue;
+          const p = drop.node.position, pos = project(p.x, p.y + 0.4, p.z);
+          if (pos) ctx2d.fillText(drop.label, pos.x, pos.y);
+        }
+      }
+      ctx2d.restore();
     };
     const wrapMaskSmoke = (cave, puff, dt, walking) => {
       const node = puff.node, p = node.position, bounds = cave.gunHeadBounds, m = cave.parts.head.world;
@@ -4803,8 +4840,8 @@
       w.axeIdle = carryingStoneAxe(cave) && !axeMoving ? Math.min(AXE_STICK_DELAY + AXE_STICK_BLEND, w.axeIdle + dt) : 0;
       poseShoulder(cave, dt);
       if (cave.parts.chuk) poseNunchaku(cave, dt);
-      poseWeapon(cave);
       if (cave === player) posePeek(cave, dt);
+      poseWeapon(cave);
       if (striking && w.meleeTime > 0 && club.visible && club.parent === cave.parts.armL && !cave.bedTravel.mode) {
         // A weighted flail lands harder than a club; the charge scales on top.
         const meleePower = w.meleePower * (cave.traits.nunchaku ? NUNCHAKU_POWER : 1);
@@ -4949,7 +4986,7 @@
         stopReload(cave);
         releaseBedroll(cave);
         if (cave.camp.seat) cave.camp.seat.sitter = null;
-        for (const key of BODY_PARTS) input.remove(cave.parts[key]);
+        for (const node of cave.hitNodes) input.remove(node);
         removeChild(root, cave.root);
         removeChild(root, cave.sleepWeapons);
         if (cave.breathBatch) removeChild(root, cave.breathBatch);

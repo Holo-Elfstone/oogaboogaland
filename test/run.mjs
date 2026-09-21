@@ -4570,7 +4570,7 @@ const { abyssRespawnProbe, jetpackHudProbe, jetpackInputFuelProbe, jetpackNotchP
         return style.display !== "none" && style.visibility !== "hidden" && Math.min(box.right, r.right) > Math.max(box.left, r.left) && Math.min(box.bottom, r.bottom) > Math.max(box.top, r.top);
       };
       const compact = document.getElementById("jetpack-fuel-compact"), compactFill = document.getElementById("jetpack-fuel-compact-fill");
-      return { hidden: panel.hidden, equipped: panel.dataset.equipped, pressed: panel.getAttribute("aria-pressed"), gauge: getComputedStyle(document.querySelector(".jetpack-readout")).visibility, width: box.width, role: fuel.getAttribute("role"), label: fuel.getAttribute("aria-label"), value: +fuel.getAttribute("aria-valuenow"), min: +fuel.getAttribute("aria-valuemin"), max: +fuel.getAttribute("aria-valuemax"), text: document.getElementById("jetpack-fuel-value").textContent, fill: fill.style.transform, fillColor: getComputedStyle(fill).backgroundColor, compactRole: compact.getAttribute("role"), compactValue: +compact.getAttribute("aria-valuenow"), compactFill: compactFill.style.transform, compactWidth: compact.getBoundingClientRect().width, compactHeight: compact.getBoundingClientRect().height, border: getComputedStyle(panel).borderBottomColor, level: fuel.dataset.level, left: box.left, right: box.right, top: box.top, bottom: box.bottom, fits: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight, leftSide: box.right < innerWidth / 2, pointerEvents: getComputedStyle(panel).pointerEvents, overlap: [document.querySelector(".brand"), document.querySelector('nav[data-scene="hub"]'), document.getElementById("joy-move"), document.getElementById("act")].some(overlap) };
+      return { hidden: panel.hidden, equipped: panel.dataset.equipped, pressed: panel.getAttribute("aria-pressed"), gauge: getComputedStyle(document.querySelector(".jetpack-readout")).visibility, width: box.width, role: fuel.getAttribute("role"), label: fuel.getAttribute("aria-label"), value: +fuel.getAttribute("aria-valuenow"), min: +fuel.getAttribute("aria-valuemin"), max: +fuel.getAttribute("aria-valuemax"), text: document.getElementById("jetpack-fuel-value").textContent, fill: fill.style.transform, fillColor: getComputedStyle(fill).backgroundColor, compactRole: compact.getAttribute("role"), compactValue: +compact.getAttribute("aria-valuenow"), compactFill: compactFill.style.transform, compactColor: getComputedStyle(compactFill).backgroundColor, compactWidth: compact.getBoundingClientRect().width, compactHeight: compact.getBoundingClientRect().height, border: getComputedStyle(panel).borderBottomColor, level: fuel.dataset.level, left: box.left, right: box.right, top: box.top, bottom: box.bottom, fits: box.left >= 0 && box.right <= innerWidth && box.top >= 0 && box.bottom <= innerHeight, leftSide: box.right < innerWidth / 2, pointerEvents: getComputedStyle(panel).pointerEvents, overlap: [document.querySelector(".brand"), document.querySelector('nav[data-scene="hub"]'), document.getElementById("joy-move"), document.getElementById("act")].some(overlap) };
     };
     const hidden = snapshot();
     B.pilot.possess(cave); B.jetpack.grant(cave); const carried = snapshot(); tap(); await settle();
@@ -20101,16 +20101,36 @@ const { weaponPointerLockFixture, weaponAimProbe, weaponAimLifecycleProbe, weapo
       const first = lateral();
       step(0.7);
       const swapped = lateral(), planted = { ...p };
+      const feet = [cave.parts.legL, cave.parts.legR], footWorld = feet.map(node => Array.from(node.world));
+      const head = cave.parts.head, headNeutral = Array.from(head.world), contacts = BL.weaponTargets.create([{ node: head, owner: { kind: "caveman", cave } }]);
+      const rows = [], point = new Float32Array(3), hit = {};
+      const measure = () => {
+        const yaw = cave.root.rotation.y, sy = Math.sin(yaw), cy = Math.cos(yaw), w = cave.weapon, gun = cave.parts.gun.world;
+        const headSide = -(head.world[12] - headNeutral[12]) * cy + (head.world[14] - headNeutral[14]) * sy;
+        const heading = yaw + w.aimYaw, pitch = w.aimPitch;
+        const aimDot = (gun[8] * Math.sin(heading) * Math.cos(pitch) - gun[9] * Math.sin(pitch) + gun[10] * Math.cos(heading) * Math.cos(pitch)) / Math.hypot(gun[8], gun[9], gun[10]);
+        const b = BL.scene.boundsOf(head.geometry), before = Array.from(head.world);
+        BL.math.mat4.transformPoint(point, head.world, (b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2);
+        const hitHead = contacts.ray(hit, point[0] - sy * 3, point[1], point[2] - cy * 3, sy, 0, cy, 6) && hit.node === head;
+        const matchingQuery = before.every((value, i) => Math.abs(value - head.world[i]) < 1e-6);
+        const plantedFeet = feet.every((node, side) => footWorld[side].every((value, i) => Math.abs(value - node.world[i]) < 1e-6));
+        rows.push({ lean: cave.parts.torso.poseLean, headSide, pitch, aimDot, hitHead, matchingQuery, plantedFeet });
+      };
+      pilot.hooks.onOrbit(0, (0.5 - pilot.orbit.tPitch) / 0.0025);
       key("Shift"); key("d"); step(0.45);
       const peekedEye = lateral();
-      const peeked = cave.peek > 0.7 && cave.parts.torso.poseLean > 0.15
+      measure();
+      const peeked = cave.peek > 0.7 && cave.parts.torso.poseLean > 0.45
         && cave.parts.legL.poseLean === 0 && cave.parts.legR.poseLean === 0
         && Math.hypot(p.x - planted.x, p.y - planted.y, p.z - planted.z) < 1e-8
-        && peekedEye > swapped + 0.15 * h;
-      key("d", "keyup"); key("Shift", "keyup"); step(0.45);
+        && peekedEye > swapped + 0.15 * h && rows[0].headSide > 0.2 * h;
+      key("d", "keyup"); pilot.hooks.onOrbit(0, (-0.4 - pilot.orbit.tPitch) / 0.0025); key("a"); step(0.6); measure();
+      const leftLean = rows[1].lean < -0.45 && rows[1].headSide < -0.2 * h;
+      key("a", "keyup"); key("Shift", "keyup"); step(0.6);
       const released = Math.abs(cave.peek) < 0.01 && Math.abs(cave.parts.torso.poseLean) < 0.003
-        && lateral() < peekedEye - 0.1 * h;
-      return { battle: pilot.aiming && pilot.mode === "shoulder", initial, first, swapped, smooth: initial > 0.3 * h && swapped < -0.3 * h && first < initial && first > swapped, peeked, peekedEye, released, final: lateral() };
+        && Math.abs(lateral() - swapped) < 0.01 * h;
+      return { battle: pilot.aiming && pilot.mode === "shoulder", initial, first, swapped, smooth: initial > 0.3 * h && swapped < -0.3 * h && first < initial && first > swapped,
+        peeked: peeked && leftLean && rows.every(row => row.aimDot > 0.99999 && row.hitHead && row.matchingQuery && row.plantedFeet), peekedEye, rows, released, final: lateral() };
     } finally {
       key("d", "keyup"); key("a", "keyup"); key("Shift", "keyup");
       pilot.release(true); scene.update = update;
@@ -24119,7 +24139,7 @@ const jetpackDebugStartup = (backend) => withPage(`jetpack debug startup ${backe
 const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD ${landscape ? "landscape" : mobile ? "mobile" : "desktop"}`, hubPage(src), async (b) => {
   const r = await b.evaluate(`(${jetpackHudProbe.toString()})()`), shown = [r.full, r.low, r.reequipped];
   record(`jetpack HUD ${landscape ? "landscape" : mobile ? "mobile" : "desktop"}: a themed clickable left-side fuel meter fits without covering navigation or controls`, shown.every((s) => !s.hidden && s.fits && s.leftSide && !s.overlap && s.pointerEvents === "auto" && s.equipped === "true" && s.gauge === "visible" && s.width === 164) && r.full.role === "progressbar" && r.full.label === "Jetpack fuel" && r.full.min === 0 && r.full.max === 100 && r.full.value === 100 && r.carried.compactRole === "meter" && r.carried.compactValue === 100 && r.carried.compactFill === "scaleY(1)" && r.carried.compactWidth === 10 && r.carried.compactHeight === 32, JSON.stringify(r));
-  record(`jetpack HUD ${landscape ? "landscape" : mobile ? "mobile" : "desktop"}: equipped fuel is yellow and the active control uses the selected orange underline`, shown.every((s) => s.fillColor === r.full.fillColor && s.border === r.full.border) && r.full.fillColor !== r.carried.fillColor && r.full.border !== r.carried.border, JSON.stringify({ carried: r.carried, shown }));
+  record(`jetpack HUD ${landscape ? "landscape" : mobile ? "mobile" : "desktop"}: compact and equipped fuel are yellow and the active control uses the selected orange underline`, shown.every((s) => s.fillColor === r.full.fillColor && s.border === r.full.border) && r.full.fillColor !== r.carried.fillColor && r.carried.compactColor === r.full.fillColor && r.carried.compactColor === "rgb(255, 216, 74)" && r.full.border !== r.carried.border, JSON.stringify({ carried: r.carried, shown }));
   record(`jetpack HUD ${landscape ? "landscape" : mobile ? "mobile" : "desktop"}: pickup and removal retain a compact icon while free roam hides character equipment`, r.hidden.hidden && [r.carried, r.removed].every((s) => !s.hidden && s.equipped === "false" && s.gauge === "hidden" && s.width === 78) && r.released.hidden && r.low.value === 14 && r.low.text === "14%" && r.low.fill === "scaleX(0.14)" && r.reequipped.value >= r.low.value && r.reequipped.value < 25, JSON.stringify(r));
   await b.evaluate(`{ const B = window.__ooga; B.pilot.possess(B.jetpack.carrier); window.BL.scenes.hub.update(1 / 60, B.renderOpts.matrix.time + 1 / 60); }`);
   const hover = await b.evaluate(`(() => { const panel = document.getElementById("jetpack-hud"), r = panel.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, base: getComputedStyle(panel).backgroundImage }; })()`);
@@ -24166,7 +24186,7 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
       B.pilot.update(0.06);
       const near = B.pilot.assistedTarget;
       const reticle = document.getElementById("weapon-reticle");
-      const close = reticle.dataset.close, circleHidden = getComputedStyle(reticle.querySelector("svg")).visibility === "hidden";
+      const close = reticle.dataset.close, nearRadius = parseFloat(getComputedStyle(reticle).getPropertyValue("--reticle-radius"));
       const hidden = [];
       for (const other of B.cavemen.values()) if (other !== cave && other.root.visible) { hidden.push(other); other.root.visible = false; }
       const geometry = window.BL.models.box({ w: 0.8, h: 1.4, d: 0.8, color: "#fff" });
@@ -24188,12 +24208,14 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
       allowed.position.z = p.z + Math.cos(heading) * (meleeReach + 3);
       window.BL.scene.updateWorld(scene.root); B.pilot.update(0.06);
       const farMelee = { tracked: B.pilot.assistedTarget?.node === allowed, type: aimMark.dataset.target,
-        color: getComputedStyle(aimDot).backgroundColor };
-      allowed.position.x = p.x + Math.sin(heading) * meleeReach * 0.45;
-      allowed.position.z = p.z + Math.cos(heading) * meleeReach * 0.45;
-      window.BL.scene.updateWorld(scene.root); B.pilot.orbit.pitch = B.pilot.orbit.tPitch = 1.1; B.pilot.update(0.06);
+        color: getComputedStyle(aimDot).backgroundColor, visibility: getComputedStyle(aimDot).visibility };
+      allowed.position.x = p.x + Math.sin(heading) * meleeReach * 0.8;
+      allowed.position.z = p.z + Math.cos(heading) * meleeReach * 0.8;
+      window.BL.scene.updateWorld(scene.root); B.pilot.hooks.onOrbit(0, 1);
+      B.pilot.orbit.pitch = B.pilot.orbit.tPitch = 1.1;
+      for (let i = 0; i < 60; i++) B.pilot.update(1 / 60);
       const nearMelee = { tracked: B.pilot.assistedTarget?.node === allowed, type: aimMark.dataset.target,
-        color: getComputedStyle(aimDot).backgroundColor };
+        color: getComputedStyle(aimDot).backgroundColor, visibility: getComputedStyle(aimDot).visibility };
       B.crew.swingWeapon(cave, true); B.advance(0.2, 1 / 120); B.crew.releaseSwing(cave);
       let meleeHit = false;
       for (let i = 0; i < 80; i++) { B.advance(1 / 120, 1 / 120); meleeHit ||= aimMark.dataset.hit === "object"; }
@@ -24213,12 +24235,44 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
       const lowShot = shot(0.2), highShot = shot(1.1);
       const cameraIndependentShot = lowShot.fired && highShot.fired && lowShot.hit && highShot.hit
         && Math.hypot(lowShot.point.x - highShot.point.x, lowShot.point.y - highShot.point.y, lowShot.point.z - highShot.point.z) < 1e-5;
+      // Put the target directly behind the selected head from the camera,
+      // then raise the camera. The overlay and world aim must stay present.
+      B.pilot.orbit.pitch = B.pilot.orbit.tPitch = 0;
+      for (let i = 0; i < 60; i++) B.pilot.update(1 / 60);
+      window.BL.scene.updateWorld(scene.root);
+      const head = cave.parts.head, bounds = window.BL.scene.boundsOf(head.geometry), center = new Float64Array(3);
+      window.BL.math.mat4.transformPoint(center, head.world, bounds.center[0], bounds.center[1], bounds.center[2]);
+      const camera = B.camera.position, extension = 3 / Math.hypot(center[0] - camera.x, center[2] - camera.z);
+      allowed.position.x = center[0] + (center[0] - camera.x) * extension;
+      allowed.position.y = center[1] + (center[1] - camera.y) * extension;
+      allowed.position.z = center[2] + (center[2] - camera.z) * extension;
+      window.BL.scene.updateWorld(scene.root); B.pilot.update(0.06);
+      const coveredTarget = B.pilot.assistedTarget;
+      const covered = { tracked: coveredTarget?.node === allowed, visible: getComputedStyle(aimMark).visibility === "visible",
+        x: coveredTarget?.x, y: coveredTarget?.y, z: coveredTarget?.z, radius: parseFloat(getComputedStyle(aimMark).getPropertyValue("--reticle-radius")) };
+      B.pilot.orbit.pitch = B.pilot.orbit.tPitch = 1.1;
+      for (let i = 0; i < 60; i++) B.pilot.update(1 / 60);
+      const clearTarget = B.pilot.assistedTarget;
+      const revealed = { tracked: clearTarget?.node === allowed, visible: getComputedStyle(aimMark).visibility === "visible",
+        sameAim: !!clearTarget && Math.hypot(clearTarget.x - covered.x, clearTarget.y - covered.y, clearTarget.z - covered.z) < 1e-5,
+        radius: parseFloat(getComputedStyle(aimMark).getPropertyValue("--reticle-radius")), circle: getComputedStyle(aimMark.querySelector("svg")).visibility };
       B.input.remove(blocked); B.input.remove(allowed);
       window.BL.scene.removeChild(scene.root, blocked); window.BL.scene.removeChild(scene.root, allowed);
+      let unassisted = null;
+      for (let i = 0; i < 64 && !unassisted; i++) {
+        B.pilot.orbit.yaw = B.pilot.orbit.tYaw = heading - Math.PI + i * Math.PI / 32;
+        B.pilot.update(0.06);
+        if (!B.pilot.assistedTarget) {
+          const box = aimMark.getBoundingClientRect();
+          unassisted = { visible: getComputedStyle(aimMark).visibility === "visible", radius: parseFloat(getComputedStyle(aimMark).getPropertyValue("--reticle-radius")),
+            offset: Math.hypot((box.left + box.right) / 2 - innerWidth / 2, (box.top + box.bottom) / 2 - innerHeight / 2) };
+        }
+      }
+      B.pilot.orbit.yaw = B.pilot.orbit.tYaw = heading - Math.PI;
       for (const other of hidden) other.root.visible = true;
       window.BL.scene.updateWorld(scene.root);
       return { found: !!before, characterCenter, aimedTooltip, farRadius, kept, returnedKept, shoulderMode: B.pilot.mode === "orbit" && !!returned,
-        near: !!near, close, circleHidden, restricted, centered, farMelee, nearMelee, meleeHit, lowShot, highShot, cameraIndependentShot };
+        near: !!near, close, nearRadius, restricted, centered, farMelee, nearMelee, meleeHit, lowShot, highShot, cameraIndependentShot, covered, revealed, unassisted };
     })()`);
     await b.key("x");
     await b.sleep(80);
@@ -24238,8 +24292,12 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
       B.crew.damage(cave, 25);
       const stunned = cave.health.stunned && cave.stunBirds.visible === false;
       const dropped = cave.stunGear.drops.filter((drop) => drop.active);
+      const ammoBanana = dropped.find((drop) => drop.kind === "ammo"), labels = [];
+      B.crew.drawQuotes({ save() {}, restore() {}, fillText(text) { labels.push(text); } }, () => ({ x: 10, y: 10 }), () => {});
       const gearDropped = { count: dropped.length, visible: dropped.every((drop) => drop.node.visible), spread: new Set(dropped.map((drop) => drop.node.position.x.toFixed(3) + "/" + drop.node.position.z.toFixed(3))).size,
-        primary: !cave.weapon.primaryOwned, secondary: !cave.weapon.secondaryOwned, ammo: cave.weapon.ammo, spares: cave.weapon.spareAmmo.length, jetpack: !cave.jetpackOwned && !cave.jet };
+        weaponsKept: cave.weapon.primaryOwned && cave.weapon.secondaryOwned, ammo: cave.weapon.ammo, spares: cave.weapon.spareAmmo.length, jetpack: !cave.jetpackOwned && !cave.jet,
+        banana: !!ammoBanana && ammoBanana.node.geometry === window.BL.models.bananaGeometry(), label: ammoBanana?.label,
+        labelDrawn: !!ammoBanana && labels.includes(ammoBanana.label) };
       const x = cave.root.position.x, z = cave.root.position.z;
       B.crew.steer(1, 0, 0, 1, 0, 1);
       for (let i = 0; i < 4; i++) B.crew.update(1, clock + 5.3 + i);
@@ -24272,31 +24330,32 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
       B.crew.removeMagazines(thief);
       const thiefX = thief.root.position.x, thiefY = thief.root.position.y, thiefZ = thief.root.position.z;
       B.crew.damage(cave, 25);
-      const looseMagazine = cave.stunGear.drops.find((drop) => drop.active && drop.kind === "magazine"), looseAmmo = looseMagazine?.ammo;
-      const looseAk = cave.stunGear.drops.find((drop) => drop.active && drop.kind === "secondary"), looseAkAmmo = looseAk?.ammo;
-      if (looseMagazine && looseAk) {
-        looseMagazine.node.position.x = looseAk.node.position.x + 6;
-        looseMagazine.node.position.y = looseAk.node.position.y;
-        looseMagazine.node.position.z = looseAk.node.position.z;
+      const looseMagazine = cave.stunGear.drops.find((drop) => drop.active && drop.kind === "magazine"), looseMagazineAmmo = looseMagazine?.ammo;
+      const looseBanana = cave.stunGear.drops.find((drop) => drop.active && drop.kind === "ammo"), looseBananaAmmo = looseBanana?.ammo;
+      if (looseMagazine && looseBanana) {
+        looseMagazine.node.position.x = looseBanana.node.position.x + 6;
+        looseMagazine.node.position.y = looseBanana.node.position.y;
+        looseMagazine.node.position.z = looseBanana.node.position.z;
       }
       thief.weapon.ammo = 27;
-      if (looseAk) {
-        Object.assign(thief.root.position, { x: looseAk.node.position.x, y: looseAk.node.position.y, z: looseAk.node.position.z });
+      if (looseBanana) {
+        Object.assign(thief.root.position, { x: looseBanana.node.position.x, y: looseBanana.node.position.y, z: looseBanana.node.position.z });
         B.crew.update(0, clock + 9.4);
       }
-      const akTransfer = !!looseAk && looseAk.active && looseAk.ammo === looseAkAmmo - 3 && thief.weapon.ammo === 30;
+      const ammoTransfer = !!looseBanana && looseBanana.active && looseBanana.ammo === looseBananaAmmo - 3
+        && looseBanana.label === "+" + (looseBananaAmmo - 3) && thief.weapon.ammo === 30;
       if (looseMagazine) {
         Object.assign(thief.root.position, { x: looseMagazine.node.position.x, y: looseMagazine.node.position.y, z: looseMagazine.node.position.z });
         B.crew.update(0, clock + 9.5);
       }
-      const claimed = !!looseMagazine && !looseMagazine.active && thief.weapon.spareAmmo[0] === looseAmmo && cave.weapon.spareAmmo.length === 0;
+      const claimed = !!looseMagazine && !looseMagazine.active && thief.weapon.spareAmmo[0] === looseMagazineAmmo && cave.weapon.spareAmmo.length === 0;
       if (claimed) cave.weapon.spareAmmo.push(thief.weapon.spareAmmo.pop());
       Object.assign(thief.root.position, { x: thiefX, y: thiefY, z: thiefZ });
       cave.health.value = 25; cave.health.recovering = true;
       B.crew.update(1, clock + 10.4);
       others.forEach((other, index) => { other.root.visible = visibility[index]; });
-      return { delayed, regenerated, stunned, frozen, birds, limp, dizzy, gearBefore, gearAfter, gearDropped, gearRestored, claimed, akTransfer,
-        looseAkAmmo, looseMagazineAmmo: looseAmmo, dropsAfter: cave.stunGear.drops.map((drop) => ({ kind: drop.kind, active: drop.active, ammo: drop.ammo })),
+      return { delayed, regenerated, stunned, frozen, birds, limp, dizzy, gearBefore, gearAfter, gearDropped, gearRestored, claimed, ammoTransfer,
+        looseBananaAmmo, looseMagazineAmmo, dropsAfter: cave.stunGear.drops.map((drop) => ({ kind: drop.kind, active: drop.active, ammo: drop.ammo })),
         bars, recovered: cave.health.value, released: !cave.health.stunned && !cave.stunBirds.visible };
     })()`);
     await b.evaluate(`{ const B = window.__ooga; B.pilot.hooks.onZoom(0.01, 101, innerWidth / 2, innerHeight / 2); for (let i = 0; i < 120; i++) window.BL.scenes.hub.update(1 / 60, B.renderOpts.matrix.time + i / 60); }`);
@@ -24318,7 +24377,9 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
       for (const cave of B.cavemen.values()) {
         B.pilot.possess(cave);
         window.BL.scenes.hub.update(1 / 60, B.renderOpts.matrix.time + frame++ / 60);
-        const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
+        const sample = document.createElement("canvas"); sample.width = canvas.width; sample.height = canvas.height;
+        const context = sample.getContext("2d"); context.drawImage(canvas, 0, 0);
+        const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
         let opaque = 0, minX = canvas.width, minY = canvas.height, maxX = -1, maxY = -1;
         for (let y = 0; y < canvas.height; y++) for (let x = 0; x < canvas.width; x++) if (pixels[(y * canvas.width + x) * 4 + 3]) {
           opaque++; minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
@@ -24327,7 +24388,8 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
         const geometry = cave.portraitHead, bounds = window.BL.scene.boundsOf(geometry);
         const hairOutline = !outlineNames.includes(cave.traits.name) || bounds.max[0] - bounds.min[0] >= cave.traits.height * 0.55;
         const skaterHat = !cave.traits.skater || bounds.max[1] >= cave.traits.height * 0.87 && bounds.min[0] <= -cave.traits.height * 0.4;
-        rows.push({ name: cave.traits.name, portrait: document.getElementById("mode-hud").dataset.portrait, opaque, width: maxX - minX + 1, height: maxY - minY + 1, centerX: (minX + maxX) / 2, hiddenHeadwear: cave.parts.head.children.filter((child) => child.portraitHidden).length, hairOutline, skaterHat });
+        const beeAntennae = !cave.traits.bee || bounds.max[1] >= cave.traits.height * 0.68;
+        rows.push({ name: cave.traits.name, portrait: document.getElementById("mode-hud").dataset.portrait, opaque, width: maxX - minX + 1, height: maxY - minY + 1, centerX: (minX + maxX) / 2, hiddenHeadwear: cave.parts.head.children.filter((child) => child.portraitHidden).length, hairOutline, skaterHat, beeAntennae });
       }
       return rows;
     })()`);
@@ -24346,10 +24408,11 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
     await b.click(point.x, point.y); await b.sleep(120);
     const cycled = await b.evaluate(`(() => ({ current: document.querySelector('.detached-dot[data-current="true"]')?.dataset.detachedPreset, label: document.getElementById('detached-destination-name').textContent }))()`);
     record("mode HUD desktop: X toggles battle and carry independently from orbit, shoulder and first-person views", selected.player && selected.selected === "true" && selected.battle === "false" && selected.mode === "orbit" && selected.face && !selected.free && selected.jetpack && selected.width === 78 && orbitBattle.battle === "true" && orbitBattle.mode === "orbit" && orbitBattle.reticle && orbitBattle.cursorHidden && orbitCarry.battle === "false" && orbitCarry.mode === "orbit" && !orbitCarry.reticle && shoulderCarry.mode === "shoulder" && shoulderCarry.battle === "false" && !shoulderCarry.reticle && shoulderBattle.mode === "shoulder" && shoulderBattle.battle === "true" && shoulderBattle.reticle && shoulderCarryAgain.mode === "shoulder" && !shoulderCarryAgain.reticle && firstCarry.mode === "first-person" && firstCarry.battle === "false" && !firstCarry.reticle && firstBattle.mode === "first-person" && firstBattle.battle === "true" && firstBattle.reticle && firstCarryAgain.mode === "first-person" && !firstCarryAgain.reticle, JSON.stringify({ selected, orbitBattle, orbitCarry, shoulderCarry, shoulderBattle, shoulderCarryAgain, firstCarry, firstBattle, firstCarryAgain }));
-    record("mode HUD desktop: orbit battle targets only eligible centers, shows aimed character health, snaps vertically, tightens adjacent hits and retains its world target through shoulder view", orbitAim.found && orbitAim.characterCenter && !orbitAim.aimedTooltip.hidden && orbitAim.aimedTooltip.name && orbitAim.aimedTooltip.health === "25" && orbitAim.restricted && orbitAim.centered && orbitAim.farRadius > 0 && orbitAim.kept && orbitAim.returnedKept && orbitAim.shoulderMode && orbitAim.near && orbitAim.close === "true" && orbitAim.circleHidden, JSON.stringify(orbitAim));
-    record("mode HUD desktop: orbit melee keeps distant props gray, turns them orange only in range, and both melee and AK assistance hit independently of camera pitch", orbitAim.farMelee.tracked && orbitAim.farMelee.type === "out-of-range" && orbitAim.farMelee.color === "rgb(143, 150, 157)" && orbitAim.nearMelee.tracked && orbitAim.nearMelee.type === "object" && orbitAim.nearMelee.color === "rgb(255, 157, 66)" && orbitAim.meleeHit && orbitAim.cameraIndependentShot, JSON.stringify(orbitAim));
-    record("mode HUD desktop: a depleted Ooga freezes with limp arms and a dizzy head while bounded equipment drops spread around it, nearby Oogas claim loose gear or draw only needed AK rounds, and every unclaimed item returns", health.delayed === 24 && health.regenerated === 25 && health.stunned && health.frozen && health.birds && health.limp && health.dizzy && health.gearDropped.count >= 3 && health.gearDropped.visible && health.gearDropped.spread === health.gearDropped.count && health.gearDropped.primary && health.gearDropped.secondary && health.gearDropped.ammo === 0 && health.gearDropped.spares === 0 && health.gearDropped.jetpack && health.gearRestored && health.claimed && health.akTransfer && health.bars.visible && health.bars.mode === "20" && health.bars.tooltip === "20" && health.bars.modeFill === "scaleY(0.8)" && health.bars.tooltipFill === "scaleX(0.8)" && health.bars.tooltipWidth === 72 && health.bars.gaugeMatch && health.bars.faceCentered && health.recovered === 25 && health.released, JSON.stringify(health));
-    record("mode HUD desktop: every character icon uses a centered face crop, bc1gui keeps his full slouched hat, the outlined faces retain their hair, and separate headwear stays outside the portrait", portraits.length === 10 && portraits.every((row) => row.portrait === "face-crop" && row.opaque > 100 && row.width >= 16 && row.height >= 16 && Math.abs(row.centerX - 23.5) < 7 && row.hairOutline && row.skaterHat) && portraits.find((row) => row.name === "genXbtc")?.hiddenHeadwear >= 1, JSON.stringify(portraits));
+    record("mode HUD desktop: orbit battle targets only eligible centers, shows aimed character health, keeps a constant ring at every target distance and retains its world target through shoulder view", orbitAim.found && orbitAim.characterCenter && !orbitAim.aimedTooltip.hidden && orbitAim.aimedTooltip.name && orbitAim.aimedTooltip.health === "25" && orbitAim.restricted && orbitAim.centered && orbitAim.farRadius === 14 && orbitAim.kept && orbitAim.returnedKept && orbitAim.shoulderMode && orbitAim.near && orbitAim.close === "false" && orbitAim.nearRadius === orbitAim.farRadius && orbitAim.revealed.radius === orbitAim.farRadius && orbitAim.revealed.circle === "visible", JSON.stringify(orbitAim));
+    record("mode HUD desktop: orbit aim stays visible over the selected body at the same target, and an unassisted marker follows its forward shot", orbitAim.covered.tracked && orbitAim.covered.visible && orbitAim.revealed.tracked && orbitAim.revealed.visible && orbitAim.revealed.sameAim && orbitAim.unassisted?.visible && orbitAim.unassisted.radius === orbitAim.farRadius && orbitAim.unassisted.offset > 28, JSON.stringify({ covered: orbitAim.covered, revealed: orbitAim.revealed, unassisted: orbitAim.unassisted }));
+    record("mode HUD desktop: orbit melee hides the distant target dot, shows it orange only in range, and both melee and AK assistance hit independently of camera pitch", orbitAim.farMelee.tracked && orbitAim.farMelee.type === "out-of-range" && orbitAim.farMelee.visibility === "hidden" && orbitAim.nearMelee.tracked && orbitAim.nearMelee.type === "object" && orbitAim.nearMelee.visibility === "visible" && orbitAim.nearMelee.color === "rgb(255, 157, 66)" && orbitAim.meleeHit && orbitAim.cameraIndependentShot, JSON.stringify(orbitAim));
+    record("mode HUD desktop: a depleted Ooga keeps both weapons while its labeled ammo banana and bounded equipment spread around it, nearby Oogas draw only needed rounds or claim loose gear, and every unclaimed item returns", health.delayed === 24 && health.regenerated === 25 && health.stunned && health.frozen && health.birds && health.limp && health.dizzy && health.gearDropped.count >= 3 && health.gearDropped.visible && health.gearDropped.spread === health.gearDropped.count && health.gearDropped.weaponsKept && health.gearDropped.ammo === 0 && health.gearDropped.spares === 0 && health.gearDropped.jetpack && health.gearDropped.banana && health.gearDropped.label === "+" + health.gearBefore.ammo && health.gearDropped.labelDrawn && health.gearRestored && health.claimed && health.ammoTransfer && health.bars.visible && health.bars.mode === "20" && health.bars.tooltip === "20" && health.bars.modeFill === "scaleY(0.8)" && health.bars.tooltipFill === "scaleX(0.8)" && health.bars.tooltipWidth === 72 && health.bars.gaugeMatch && health.bars.faceCentered && health.recovered === 25 && health.released, JSON.stringify(health));
+    record("mode HUD desktop: every character icon uses a centered face crop, bc1gui keeps his full slouched hat, Randy keeps his antennae, the outlined faces retain their hair, and separate headwear stays outside the portrait", portraits.length === 10 && portraits.every((row) => row.portrait === "face-crop" && row.opaque > 100 && row.width >= 16 && row.height >= 16 && Math.abs(row.centerX - 23.5) < 7 && row.hairOutline && row.skaterHat && row.beeAntennae) && portraits.find((row) => row.name === "genXbtc")?.hiddenHeadwear >= 1, JSON.stringify(portraits));
     record("mode HUD desktop: a completed underline hold detaches, the smaller compass is centered above its dots, direct dots navigate, and the compass cycles destinations", holding.holding === "true" && holding.animation === "mode-release-progress" && holding.opacity === "1" && holding.transform !== "none" && free.player === null && free.selected === "false" && free.mode === "detached" && free.free && !free.face && !free.jetpack && dotLayout.iconWidth === 28 && dotLayout.centered && dotLayout.dotsTop >= dotLayout.iconBottom && direct.current === "lab" && direct.label === "Lab" && direct.showing && direct.topHidden && cycled.current === "mirror" && cycled.label === "Mirror", JSON.stringify({ holding, free, dotLayout, direct, cycled }));
     record("jetpack HUD desktop: ownership stays with its finder when control changes", ownership.hiddenForOther && ownership.visibleForOwner && ownership.owner === ownership.selected, JSON.stringify(ownership));
   }
@@ -26555,15 +26618,34 @@ for (const backend of BACKENDS) task(`weapon buttons ${backend}`, () => withPage
   }
   record("weapon buttons: primary, expanded AK and both magazines fit desktop and narrow screens without overlap", layouts.every(row => row.visible && row.separated), JSON.stringify(layouts));
 }));
-task("axe first combat pose", () => withPage("axe first combat pose", hubPage(src, "solo=1&character=w-s-bitcoin&weapon=1"), async b => {
+for (const backend of ["webgl2", "canvas2d"]) for (const explicitWeapon of [false, true]) task(`axe first combat pose ${backend} ${explicitWeapon ? "selected" : "default"}`, () => withPage(`axe first combat pose ${backend} ${explicitWeapon ? "selected" : "default"}`, hubPage(src, `character=w-s-bitcoin&jetpack=1${explicitWeapon ? "&weapon=1" : ""}${backend === "canvas2d" ? "&canvas2d=1" : ""}`), async b => {
   await b.key("x");
   await untilPage(b, "B.pilot.aiming");
-  const r = await b.evaluate(`(() => { const B = window.__ooga, cave = B.pilot.player; return {
+  const pose = `(() => { const B = window.__ooga, cave = B.pilot.player; return {
     mode: B.pilot.mode, aiming: B.pilot.aiming, axe: cave.traits.stoneAxe,
-    faceOn: Math.abs(cave.parts.club.rotation.y - Math.PI / 2) < 1e-6,
-    selected: cave.weapon.primaryEquipped && !cave.weapon.equipped
-  }; })()`);
-  record("axe combat pose: the first X toggle presents the selected axe face-on", r.aiming && r.axe && r.faceOn && r.selected, JSON.stringify(r));
+    selected: cave.weapon.primaryEquipped && !cave.weapon.equipped,
+    quaternion: cave.parts.club.quaternion ? Array.from(cave.parts.club.quaternion) : null,
+    rotation: [cave.parts.club.rotation.x, cave.parts.club.rotation.y, cave.parts.club.rotation.z],
+    arm: cave.parts.armL.quaternion ? Array.from(cave.parts.armL.quaternion) : [cave.parts.armL.rotation.x, cave.parts.armL.rotation.y, cave.parts.armL.rotation.z],
+    x: [cave.parts.club.world[0], cave.parts.club.world[1], cave.parts.club.world[2]],
+    y: [cave.parts.club.world[4], cave.parts.club.world[5], cave.parts.club.world[6]],
+    z: [cave.parts.club.world[8], cave.parts.club.world[9], cave.parts.club.world[10]],
+    right: [cave.root.world[0], cave.root.world[1], cave.root.world[2]],
+    forward: [cave.root.world[8], cave.root.world[9], cave.root.world[10]]
+  }; })()`;
+  const first = await b.evaluate(pose);
+  await b.key("x");
+  await untilPage(b, "!B.pilot.aiming");
+  await b.key("x");
+  await untilPage(b, "B.pilot.aiming");
+  const second = await b.evaluate(pose);
+  const dot = (a, c) => a.reduce((sum, value, i) => sum + value * c[i], 0) / Math.hypot(...a) / Math.hypot(...c);
+  // Judge the blade in the character's frame, not just its local Euler
+  // values. The old forced weapon=1 setup hid the unequipped initial state.
+  const normal = Math.abs(dot(first.z, first.right)) > 0.98 && dot(first.x, first.forward) < -0.5
+    && first.y[1] / Math.hypot(...first.y) > 0.6;
+  const stable = dot(first.x, second.x) > 0.999 && dot(first.y, second.y) > 0.999 && dot(first.z, second.z) > 0.999;
+  record("axe combat pose: fresh X equips the primary with an upright shaft and forward cutting edge, matching later toggles", first.mode === "orbit" && first.aiming && first.axe && first.selected && normal && stable, JSON.stringify({ backend, explicitWeapon, normal, stable, first, second }));
 }));
 for (const backend of BACKENDS) task(`weapon carry targets ${backend}`, () => withPage(`weapon carry targets ${backend}`, hubBackend(backend), async b => {
   const r = await b.evaluate(`(${weaponCarryTargetsProbe.toString()})()`);
@@ -26572,6 +26654,84 @@ for (const backend of BACKENDS) task(`weapon carry targets ${backend}`, () => wi
   record("weapon carry targets: vertical aim reaches higher and lower targets but ignores off-axis and rear targets, falling back to a straight shot", shot(r.higher) && r.higher.point.y > r.originY && shot(r.lower) && r.lower.point.y < r.originY && shot(r.fallback) && r.fallback.straight, JSON.stringify({ higher: r.higher, lower: r.lower, fallback: r.fallback }));
   record("weapon carry targets: solid cover rejects a closer hidden object while exposed upper surfaces remain eligible", r.occluded && r.partial, JSON.stringify({ occluded: r.occluded, partial: r.partial }));
   record("weapon target contacts: saved contacts must still be registered, visible, active, hittable and belong to somebody else", Object.values(r.contacts).every(Boolean), JSON.stringify(r.contacts));
+}));
+for (const scene of ["hub", "lab"]) task(`character headshots ${scene}`, () => withPage(`character headshots ${scene}`, hubPage(src, `status=chillin${scene === "lab" ? "&scene=lab" : ""}`), async (b) => {
+  const r = await b.evaluate(`(() => {
+    const B = window.__ooga, BL = window.BL, S = BL.scene, M = BL.math.mat4, scene = BL.scenes[B.scene], crew = B.crew;
+    const update = scene.update, shooter = crew.cavemen.get("w-s-bitcoin"), helmet = crew.cavemen.get("MrHodlX"), ordinary = crew.cavemen.get("bc1gui");
+    const mask = helmet.parts.head.children.find(node => node.geometry), targets = scene.input.weaponTargets;
+    const hit = {}, point = new Float64Array(3), end = new Float64Array(3), rows = [], rays = [];
+    let elapsed = 100;
+    const world = (node, local, out) => M.transformPoint(out, node.world, ...local);
+    const step = seconds => { for (let time = 0; time < seconds - 1e-8; time += 1 / 120) { crew.update(1 / 120, elapsed += 1 / 120); S.updateWorld(scene.root); } };
+    try {
+      scene.update = () => {}; B.pilot.release(true);
+      for (const actor of crew.cavemen.values()) {
+        actor.state = actor.override = "chilling"; actor.root.visible = false; actor.walk = actor.build = null; actor.bedTravel.mode = "";
+        actor.act.kind = "idle"; actor.act.until = actor.yawnAt = actor.nextBuildAt = actor.breathAt = Infinity;
+        actor.root.quaternion = null; Object.assign(actor.root.rotation, { x: 0, y: 0, z: 0 });
+        crew.stopBurst(actor); crew.stopReload(actor, true);
+      }
+      shooter.root.visible = true; crew.control(shooter); crew.selectWeapon(2, shooter);
+      const targetZ = B.scene === "hub" ? 10 : 0;
+      Object.assign(shooter.root.position, { x: 0, y: shooter.baseY, z: targetZ - 3 });
+      const prepare = actor => {
+        helmet.root.visible = ordinary.root.visible = false; actor.root.visible = true;
+        Object.assign(actor.root.position, { x: 0, y: actor.baseY, z: targetZ });
+        Object.assign(actor.root.rotation, { x: 0, y: Math.PI, z: 0 });
+        Object.assign(actor.parts.head.rotation, { x: 0, y: 0, z: 0 }); actor.parts.head.quaternion = null;
+        actor.health.value = 25; actor.health.stunned = actor.health.recovering = false; actor.health.delay = 0;
+        S.updateWorld(scene.root);
+      };
+      prepare(helmet);
+      for (const tilted of [false, true]) {
+        Object.assign(helmet.parts.head.rotation, { x: tilted ? 0.42 : 0, y: tilted ? -0.6 : 0, z: tilted ? 1.1 : 0 });
+        S.updateWorld(scene.root);
+        for (const [name, origin, destination] of [
+          ["crown", [0, 1, 0], [0, 0.5, 0]], ["upper hood", [0, 0.59, 1], [0, 0.59, 0]],
+          ["left shell", [-1, 0.3, 0], [0, 0.3, 0]], ["right shell", [1, 0.3, 0], [0, 0.3, 0]],
+          ["rear shell", [0, 0.3, -1], [0, 0.3, 0]], ["filter", [0, 0.1, 1], [0, 0.1, 0]]
+        ]) {
+          world(mask, origin, point); world(mask, destination, end);
+          const found = targets.ray(hit, ...point, end[0] - point[0], end[1] - point[1], end[2] - point[2], 3, shooter, owner => owner.cave === helmet);
+          rays.push({ name, tilted, found, shell: hit.node === mask, head: hit.owner?.hitRegion === "head" });
+        }
+      }
+      const shoot = (actor, node, local, name) => {
+        prepare(actor); crew.poseWeapon(shooter); S.updateWorld(scene.root); world(node, local, point);
+        shooter.weapon.ammo = 30; shooter.weapon.cooldown = 0;
+        const fired = crew.fireWeapon(shooter, { x: point[0], y: point[1], z: point[2] }, 1);
+        step(0.3); rows.push({ name, fired, damage: 25 - actor.health.value });
+      };
+      shoot(helmet, mask, [0, 0.59, 0.03], "upper helmet");
+      shoot(helmet, mask, [0, 0.1, 0.463], "mask filter");
+      for (const actor of [helmet, ordinary]) {
+        const torso = S.boundsOf(actor.parts.torso.geometry), head = S.boundsOf(actor.parts.head.geometry);
+        shoot(actor, actor.parts.torso, [0, torso.center[1], torso.max[2]], actor.traits.name + " torso");
+        if (actor === ordinary) shoot(actor, actor.parts.head, [0, head.center[1], head.max[2]], "ordinary head");
+      }
+      prepare(helmet);
+      // Saved contacts must stop matching as soon as a whole helmet is hidden.
+      world(mask, [0, 0.59, 1], point); world(mask, [0, 0.59, 0], end);
+      targets.ray(hit, ...point, end[0] - point[0], end[1] - point[1], end[2] - point[2], 3, shooter);
+      const registered = targets.valid(hit, shooter); mask.visible = false;
+      const hidden = !targets.valid(hit, shooter); mask.visible = true;
+      const restored = targets.valid(hit, shooter), ownExcluded = !targets.valid(hit, helmet);
+      Object.assign(shooter.root.position, { x: 0, y: shooter.baseY, z: targetZ - 0.9 });
+      crew.selectWeapon(1, shooter); shooter.weapon.aiming = true; crew.poseWeapon(shooter); S.updateWorld(scene.root);
+      const swung = crew.swingWeapon(shooter);
+      Object.assign(shooter.weapon.meleeTarget, hit);
+      step(0.5);
+      const melee = { swung, hit: shooter.weapon.meleeHit, damage: 25 - helmet.health.value };
+      const before = scene.input.targetCount, count = [...crew.cavemen.values()].reduce((sum, actor) => sum + actor.hitNodes.length, 0);
+      crew.dispose();
+      const disposed = scene.input.targetCount === before - count && !targets.valid(hit);
+      return { rows, rays, registered, hidden, restored, ownExcluded, melee, disposed };
+    } finally { crew.stopBurst(shooter); scene.update = update; }
+  })()`);
+  record(`character headshots ${scene}: the entire helmet is a precise head target including crown, sides, rear and filter through head rotation`, r.rays.length === 12 && r.rays.every(row => row.found && row.shell && row.head) && r.registered && r.hidden && r.restored && r.ownExcluded, JSON.stringify({ rays: r.rays, registered: r.registered, hidden: r.hidden, restored: r.restored, ownExcluded: r.ownExcluded }));
+  record(`character headshots ${scene}: real banana impacts deal twice body damage on ordinary heads and the exposed helmet`, r.rows.length === 5 && r.rows.every(row => row.fired && row.damage === (row.name.endsWith("torso") ? 0.5 : 1)), JSON.stringify(r.rows));
+  record(`character headshots ${scene}: a melee helmet strike keeps its normal damage and disposing the crew removes every head surface`, r.melee.swung && r.melee.hit && r.melee.damage === 1 && r.disposed, JSON.stringify({ melee: r.melee, disposed: r.disposed }));
 }));
 for (const backend of BACKENDS) for (const scene of SCENES) task(`weapon mouse buttons ${scene} ${backend}`, () => withPage(`weapon mouse buttons ${scene} ${backend}`, hubPage(src, `${scene === "lab" ? "scene=lab&" : ""}${backend === "canvas2d" ? "canvas2d=1" : ""}`), async (b) => {
   const rows = await b.evaluate(`(${weaponButtonsProbe.toString()})(${weaponPointerLockFixture.toString()})`);
@@ -27011,7 +27171,7 @@ for (const backend of BACKENDS) task(`first-person shooter ${backend}`, () => wi
 }));
 for (const backend of ["webgl2", "canvas2d"]) task(`shoulder swap and peek ${backend}`, () => withPage(`shoulder swap and peek ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
   const r = await b.evaluate(`(${shoulderPeekProbe.toString()})()`);
-  record(`shoulder swap and peek ${backend}: Shift swaps smoothly; held Shift plus A/D plants the feet and leans only the upper body`, r.battle && r.smooth && r.peeked && r.released, JSON.stringify(r));
+  record(`shoulder swap and peek ${backend}: Shift swaps smoothly; held Shift plus A/D leans the body from planted hips, preserving feet, rifle aim and hit geometry`, r.battle && r.smooth && r.peeked && r.released, JSON.stringify(r));
 }));
 for (const backend of BACKENDS) for (const scene of SCENES) task(`weapon aiming ${scene} ${backend}`, () => withPage(`weapon aiming ${scene} ${backend}`, hubPage(src, `${scene === "lab" ? "scene=lab&" : ""}${backend === "canvas2d" ? "canvas2d=1" : ""}`), async (b) => {
   const r = await b.evaluate(`(${weaponAimProbe.toString()})(${weaponPointerLockFixture.toString()})`);

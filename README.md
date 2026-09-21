@@ -63,8 +63,9 @@ with the right hand lowered on the grip and the barrel angled up toward the
 left hand, which turns to cradle the wooden grip.
 Scrolling in changes orbit to shoulder view. In orbit battle mode the pointer stays captured,
 the Ooga faces the view, and the reticle snaps vertically to the nearest clear target directly
-ahead. Its spread grows with distance; a target beside the Ooga reduces the reticle to its dot
-and is hit automatically. With no target, shots travel horizontally ahead. Right-click enters
+ahead. The ring stays the same size and draws over the selected Ooga when their body
+covers the target. Shot spread still grows with distance; a target beside the Ooga is hit
+automatically. With no target, shots travel horizontally ahead. Right-click enters
 shoulder view while retaining an acquired target. Third person uses an
 above-head right-shoulder camera that keeps the whole character visible, with the
 crosshair near the top of the head and over the right arm; first person keeps the
@@ -98,14 +99,15 @@ then smoothly lowers back into its carry pose over a quarter second.
 Scroll inward from orbit to the closest view to enter shoulder view with the
 last selected melee weapon or rifle, swooping toward the point under your cursor.
 The pointer glides into the centered aiming dot along with that camera transition.
-Four separated arcs show the rifle's shot spread: bananas cluster around the dot
+In shoulder and first-person views, four separated arcs show the rifle's shot spread: bananas cluster around the dot
 with a normal distribution bounded by the circle. Holding right-click tightens
 both the circle and the spread smoothly while the dot stays centered.
 The center dot turns green over reachable friendly characters and orange over
 reachable interactive objects; red is reserved for enemies. It stays neutral when
 the target is blocked or beyond the equipped weapon's reach. A brief pulse in the
 target's color confirms an actual banana or club hit. The club uses its extended
-reach; a hit on a friendly character does not cause damage.
+reach. Characters take damage from hits; shots to the head or helmet deal twice
+body-shot damage. MrHodlX's entire helmet and mask count as part of his head.
 If a wall between the camera and character blocks that view, the camera moves
 into shoulder position while the character keeps their existing aim.
 Each scroll gesture stops at shoulder aim;

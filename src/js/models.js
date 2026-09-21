@@ -667,15 +667,15 @@
     const headEmissive = k.headEmissive;
     const headOpen = vg(headVox, headOrigin, headEmissive);
     // Portraits use the central face rather than the full silhouette. Long
-    // hair, antennae, stems and crowns still belong to the world model, but
-    // must not pull the small HUD portrait away from the eyes and mouth.
+    // hair, stems and crowns stay outside the crop; Randy's short antennae
+    // remain part of his recognizable face silhouette.
     const portraitVox = makeVox();
     const portraitWide = traits.apple || traits.pumpkin;
     const portraitHairOutline = traits.slim || traits.skater || traits.bee;
     const portraitMinX = traits.skater ? -3 : portraitWide || portraitHairOutline ? -1 : 0;
     const portraitMaxX = portraitWide || portraitHairOutline ? 7 : 6;
     const portraitMinY = traits.slim ? -3 : -2;
-    const portraitTop = traits.skater ? 13 : portraitWide ? 7 : traits.slim ? 8 : 5;
+    const portraitTop = traits.skater ? 13 : traits.bee ? 10 : portraitWide ? 7 : traits.slim ? 8 : 5;
     const portraitMinZ = portraitHairOutline ? -1 : 0;
     for (const [k, c] of headVox.map) {
       voxCoords(k, CELL);
