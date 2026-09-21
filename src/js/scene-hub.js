@@ -144,7 +144,7 @@
   const WANDER_COUNT = 36, WANDER_INNER = 5.5;
   const ALTAR_HEIGHT = 0.34, ALTAR_BLOCK_WIDTH = 0.2, ALTAR_BLOCK_ARC = 0.3, ALTAR_RING_GAP = 0.02, ALTAR_MAX_BLOCKS = 512;
   const RIPEN = 25, TREE_CHANCE = 0.5, BUSH_CHANCE = 0.25;
-  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", magazine: "Spare magazine · walk into it to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", launchpad: "Ooga Orbit · tap to build a rocket", rocket: "Ooga Orbit · tap to fly", tower: "Launch tower · steady", orbitsign: "Ooga Orbit · the pad past the bridge", bridge: "Rope bridge · to the launch pad", windsock: "Windsock · a fair wind", jumbotron: "Jumbotron · OogaBoogaX on the big screen · tap for the next board", gate: null };
+  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", magazine: "Spare magazine · walk into it to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", launchpad: "Ooga Orbit · tap to build a rocket", rocket: "Ooga Orbit · tap to fly", tower: "Launch tower · steady", orbitsign: "Ooga Orbit · the pad past the bridge", bridge: "Rope bridge · to the launch pad", windsock: "Windsock · a fair wind", jumbotron: "Jumbotron · OogaBoogaX on the big screen · arrows and dots to flip boards", gate: null };
   const MATRIX_LIVING_PROPS = new Set(["tree"]);
   const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "jumbotron", "launchpad", "rocket", "tower", "bridge", "orbitsign"]);
   const BUSH_WORDS = ["Something rustles.", "A beetle. Ooga leaves it.", "Just a bush."];
@@ -2822,7 +2822,7 @@
     hud.toast("A banana fell out and rolled to the pile!");
     return true;
   };
-  const reactProp = (o) => {
+  const reactProp = (o, p) => {
     if (o.breakable) {
       hud.toast("Swing your melee weapon or shoot to break it");
       return;
@@ -2847,7 +2847,14 @@
         hud.toast("Solid rock. Ow.");
         break;
       case "jumbotron":
-        if (jumbotron) jumbotron.nextView();
+        // Resolve the tap onto the screen: corner arrows and the dot strip
+        // navigate; the rest of the board advances as before.
+        if (jumbotron) {
+          if (p) {
+            renderer.ray(p.x, p.y, camera, TAP_RAY);
+            jumbotron.tapAt(TAP_RAY);
+          } else jumbotron.nextView();
+        }
         break;
       case "crate":
         if (!wobble(o.node, 0.12)) return;
@@ -2914,11 +2921,12 @@
         break;
     }
   };
-  const useProp = (o) => {
+  const useProp = (o, p) => {
     if (!o.active) return;
-    reactProp(o);
+    reactProp(o, p);
   };
   const WAKE_ACTION = { kind: "wake" }, ROLL_ACTION = { kind: "roll" }, STAND_ACTION = { kind: "stand" };
+  const TAP_RAY = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
   const nearbyAction = (x, y, z, reach) => {
     const player = pilot.player;
     if (player && player.camp.burning) return ROLL_ACTION;
@@ -3032,7 +3040,7 @@
     if (agentPlay.active) agentPlay.stop();
     pilot.hooks.onDoubleTap(hit, p);
   };
-  const onTap = (hit) => {
+  const onTap = (hit, p) => {
     if (agentTripleClick()) return;
     if (!hit) return;
     const o = hit.owner;
@@ -3063,7 +3071,7 @@
         break;
       }
       case "prop":
-        useProp(o);
+        useProp(o, p);
         break;
       default:
         break;
@@ -4737,6 +4745,8 @@
       }
       return {
         repo: slot.repo,
+        // The namesake cave adopts fresh contributors whose repo has no cave.
+        fallback: slot.id === "c1",
         route: [approach],
         approachDistance: 2.5,
         position: (cave, out) => {

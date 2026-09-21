@@ -6,6 +6,7 @@
   const BL = window.BL = window.BL || {};
   const { box, merge, cached } = BL.models;
   const { createNode, addChild } = BL.scene;
+  const { mat4 } = BL.math;
 
   // Palette extracted from this world's own materials (see oogatron Phase 4).
   const PALETTE = {
@@ -18,6 +19,7 @@
     prs: "#3fd1c5",
     reviews: "#6f9fca",
     comments: "#f5c542",
+    issues: "#e5533d",
     plank: "#a9773f",
     woodDark: "#5c4425",
     screenBezel: "#1d2326",
@@ -105,10 +107,11 @@
 
   const normalizeCounts = (counts) => ({
     commits: (counts && counts.commits || 0) | 0, prs: (counts && counts.prs || 0) | 0,
-    reviews: (counts && counts.reviews || 0) | 0, comments: (counts && counts.comments || 0) | 0
+    reviews: (counts && counts.reviews || 0) | 0, issues: (counts && counts.issues || 0) | 0,
+    comments: (counts && counts.comments || 0) | 0
   });
   const normalizeWeekly = (weekly) => Array.isArray(weekly)
-    ? weekly.map((w) => ({ week: String(w.week), commits: w.commits | 0, prs: w.prs | 0, reviews: w.reviews | 0, comments: w.comments | 0 })).sort((a, b) => a.week < b.week ? -1 : 1)
+    ? weekly.map((w) => ({ week: String(w.week), commits: w.commits | 0, prs: w.prs | 0, reviews: w.reviews | 0, issues: w.issues | 0, comments: w.comments | 0 })).sort((a, b) => a.week < b.week ? -1 : 1)
     : [];
   const normalizeBoard = (b) => Array.isArray(b) ? b.map((e) => ({ login: String(e.login), count: e.count | 0 })) : [];
   const normalizeBoards = (lb) => ({
@@ -134,7 +137,7 @@
         totals: { contributors: (r.totals && r.totals.contributors || 0) | 0, ...normalizeCounts(r.totals) },
         lastActivityAt: typeof r.last_activity_at === "string" ? r.last_activity_at : null,
         leaderboards: normalizeBoards(r.leaderboards),
-        weeklyTotals: weekly.map((w) => ({ week: w.week, total: w.commits + w.prs + w.reviews + w.comments }))
+        weeklyTotals: weekly.map((w) => ({ week: w.week, total: w.commits + w.prs + w.reviews + w.issues + w.comments }))
       };
     });
     const recent = (Array.isArray(json.recent) ? json.recent : []).map((e) => ({
@@ -184,27 +187,26 @@
       ["COMMITS", totals.commits, PALETTE.commits],
       ["PRS", totals.prs, PALETTE.prs],
       ["REVIEWS", totals.reviews, PALETTE.reviews],
+      ["ISSUES", totals.issues, PALETTE.issues],
       ["COMMENTS", totals.comments, PALETTE.comments]
     ];
-    // Five rows: y=16 step 16 keeps the last scale-2 numeral inside the board.
-    let y = 16;
+    // Six rows: y=14 step 13 keeps the last scale-2 numeral clear of the nav strip.
+    let y = 14;
     for (const [label, value, color] of rows) {
       drawText(ctx, String(label), 6, y + 3, PALETTE.dim, 1);
       const v = String(value);
       drawText(ctx, v, BOARD_W - 66 - measureText(v, 2), y, color, 2);
-      y += 16;
+      y += 13;
     }
     const spark = weeklyTotals.slice(-14);
     if (spark.length > 0) {
       const maxV = Math.max(...spark.map((w) => w.total), 1);
-      const bw = 4, bx = BOARD_W - 6 - spark.length * bw, baseY = BOARD_H - 12, maxH = 56;
+      const bw = 4, bx = BOARD_W - 6 - spark.length * bw, baseY = BOARD_H - 16, maxH = 52;
       spark.forEach((w, i) => {
         const h = Math.max(1, Math.round(w.total / maxV * maxH));
         ctx.fillStyle = i === spark.length - 1 ? PALETTE.accent : PALETTE.commits;
         ctx.fillRect(bx + i * bw, baseY - h, bw - 1, h);
       });
-      const label = `${spark.length} WEEKS`;
-      drawText(ctx, label, BOARD_W - 6 - measureText(label), baseY + 3, PALETTE.dim, 1);
     }
     return false;
   };
@@ -232,7 +234,7 @@
     header(ctx, `${repo ? repo.name.toUpperCase() + " " : ""}TOP ${type.toUpperCase()}`, model.latestWeek || "");
     const top = board.slice(0, 7);
     const maxV = Math.max(...top.map((e) => e.count), 1);
-    let y = 16;
+    let y = 15;
     top.forEach((e, i) => {
       const c = model.byLogin.get(e.login);
       const label = fitText(displayLabel(c || e).toUpperCase(), 66, 1);
@@ -243,12 +245,12 @@
       ctx.fillRect(barX, y + 1, Math.max(1, Math.round(e.count / maxV * barMax)), 5);
       const v = String(e.count);
       drawText(ctx, v, BOARD_W - 4 - measureText(v, 1), y, color, 1);
-      y += 13;
+      y += 12;
     });
     return false;
   };
 
-  const TYPE_COLOR = { commit: "commits", pr: "prs", review: "reviews", merge: "accent", comment: "comments" };
+  const TYPE_COLOR = { commit: "commits", pr: "prs", review: "reviews", merge: "accent", issue: "issues", comment: "comments" };
   // Short relative age for the recent feed, against wall-clock now.
   const recentAge = (iso, nowMs = Date.now()) => {
     const ms = nowMs - Date.parse(iso);
@@ -269,7 +271,7 @@
       return false;
     }
     let y = 15;
-    for (const e of model.recent.slice(0, 11)) {
+    for (const e of model.recent.slice(0, 10)) {
       const color = PALETTE[TYPE_COLOR[e.type]] || PALETTE.accent;
       drawText(ctx, fitText(e.login.toUpperCase(), 60, 1), 4, y, PALETTE.text, 1);
       drawText(ctx, fitText(e.repo.toUpperCase(), 54, 1), 68, y, PALETTE.dim, 1);
@@ -382,7 +384,12 @@
     let cycleIndex = 0;
     let rotateEvery = 8;
     let lastSwitchAt = 0;
+    let resetRotation = false;
     let dirty = true;
+    // World->local for board taps, cached: the cabinet never moves once placed.
+    const tapInverse = new Float32Array(16);
+    let tapInverseValid = false;
+    const TAP_P = [0, 0, 0], TAP_D = [0, 0, 0];
 
     // Repos idle for a week disappear from the rotation entirely; the clock
     // reference is the payload's own generated_at so the bake is deterministic.
@@ -407,6 +414,26 @@
       return c;
     };
 
+    // Bottom nav strip: prev/next arrows in the corners and one dot per
+    // slide, the current one lit. Pitch shrinks so the row always fits
+    // between the arrows however many slides the rotation holds.
+    const dotLayout = (n) => {
+      const pitch = Math.max(4, Math.min(6, Math.floor((BOARD_W - 48) / Math.max(1, n))));
+      const width = n * pitch - (pitch - 3);
+      return { pitch, x0: Math.round((BOARD_W - width) / 2), width };
+    };
+    const drawChrome = () => {
+      const c = cycle();
+      drawText(ctx, "<", 3, 100, PALETTE.dim, 1);
+      drawText(ctx, ">", BOARD_W - 3 - measureText(">"), 100, PALETTE.dim, 1);
+      const { pitch, x0 } = dotLayout(c.length);
+      const current = cycleIndex % c.length;
+      for (let i = 0; i < c.length; i++) {
+        ctx.fillStyle = i === current ? PALETTE.accent : PALETTE.dim;
+        ctx.fillRect(x0 + i * pitch, 102, 3, 3);
+      }
+    };
+
     const renderBoard = () => {
       if (!model) {
         clearBoard(ctx);
@@ -415,6 +442,7 @@
         return;
       }
       (VIEWS[view.name] || VIEWS.totals)(ctx, model, view.params);
+      drawChrome();
     };
 
     const node = createNode({
@@ -439,19 +467,101 @@
       dirty = false;
     };
 
+    // A world ray -> board pixel, or null off the screen: invert the cabinet's
+    // world matrix (the mirror-ripples pattern), intersect the screen plane in
+    // local space, then map through the screen fit back to raster coordinates.
+    const boardAt = (ray) => {
+      if (!tapInverseValid) {
+        mat4.invert(tapInverse, node.world);
+        tapInverseValid = true;
+      }
+      mat4.transformPoint(TAP_P, tapInverse, ray.ox, ray.oy, ray.oz);
+      TAP_D[0] = tapInverse[0] * ray.dx + tapInverse[4] * ray.dy + tapInverse[8] * ray.dz;
+      TAP_D[1] = tapInverse[1] * ray.dx + tapInverse[5] * ray.dy + tapInverse[9] * ray.dz;
+      TAP_D[2] = tapInverse[2] * ray.dx + tapInverse[6] * ray.dy + tapInverse[10] * ray.dz;
+      if (!TAP_D[2]) return null;
+      const t = (SCREEN_Z - TAP_P[2]) / TAP_D[2];
+      if (t < 0) return null;
+      const bx = ((TAP_P[0] + TAP_D[0] * t) / (SW * FX) + 0.5) * BOARD_W;
+      const by = (0.5 - (TAP_P[1] + TAP_D[1] * t) / (SH * FY)) * BOARD_H;
+      return bx >= 0 && bx < BOARD_W && by >= 0 && by < BOARD_H ? { bx, by } : null;
+    };
+
     const api = {
       node,
       get view() { return view; },
       setView(name, params) {
         if (!VIEWS[name]) return;
         view = { name, params };
-        dirty = true;
+        resetRotation = dirty = true;
       },
       nextView() {
         const c = cycle();
         cycleIndex = (cycleIndex + 1) % c.length;
         view = c[cycleIndex];
-        dirty = true;
+        resetRotation = dirty = true;
+      },
+      prevView() {
+        const c = cycle();
+        cycleIndex = (cycleIndex - 1 + c.length) % c.length;
+        view = c[cycleIndex];
+        resetRotation = dirty = true;
+      },
+      goToView(index) {
+        const c = cycle();
+        if (!Number.isInteger(index) || index < 0 || index >= c.length) return;
+        cycleIndex = index;
+        view = c[cycleIndex];
+        resetRotation = dirty = true;
+      },
+      boardToWorld(bx, by) {
+        const out = [0, 0, 0];
+        mat4.transformPoint(
+          out, node.world,
+          (bx / BOARD_W - 0.5) * SW * FX,
+          (0.5 - by / BOARD_H) * SH * FY,
+          SCREEN_Z
+        );
+        return { x: out[0], y: out[1], z: out[2] };
+      },
+      // A tap resolved onto the board: corner arrows and the dot strip
+      // navigate; anywhere else (or a miss into the cabinet wood) advances,
+      // as tapping the board always has. Returns what it did, for checks.
+      tapAt(ray) {
+        const hit = boardAt(ray);
+        if (!hit) {
+          api.nextView();
+          return "next";
+        }
+        if (hit.by >= 96) {
+          if (hit.bx < 24) {
+            api.prevView();
+            return "prev";
+          }
+          if (hit.bx > BOARD_W - 24) {
+            api.nextView();
+            return "next";
+          }
+          const c = cycle();
+          const { pitch, x0, width } = dotLayout(c.length);
+          if (hit.bx >= x0 - 2 && hit.bx <= x0 + width + 2) {
+            const index = Math.max(0, Math.min(c.length - 1, Math.floor((hit.bx - x0) / pitch)));
+            api.goToView(index);
+            return `dot:${index}`;
+          }
+          api.nextView();
+          return "next";
+        }
+        if (hit.bx < 38) {
+          api.prevView();
+          return "prev";
+        }
+        if (hit.bx > BOARD_W - 38) {
+          api.nextView();
+          return "next";
+        }
+        api.nextView();
+        return "next";
       },
       autoRotate(seconds) {
         rotateEvery = seconds > 0 ? seconds : 0;
@@ -471,9 +581,15 @@
         return true;
       },
       update(elapsed, renderer) {
+        // Any manual slide change restarts the auto-rotate countdown.
+        if (resetRotation) {
+          lastSwitchAt = elapsed;
+          resetRotation = false;
+        }
         if (rotateEvery > 0 && elapsed - lastSwitchAt >= rotateEvery) {
           lastSwitchAt = elapsed;
           api.nextView();
+          resetRotation = false;
         }
         if (dirty) refresh(renderer);
       },

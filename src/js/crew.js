@@ -371,6 +371,20 @@
     const npcDestinationBlocked = ctx.npcDestinationBlocked || inBananas;
     const flyable = ctx.flyable || walkable;
     const workSites = ctx.workSites?.length ? ctx.workSites : ctx.workRoute ? [{ repo: "oogaboogax/entropylab", route: ctx.workRoute, position: ctx.workPosition, target: ctx.workTarget }] : null;
+    // A site is eligible when the worker is fresh in its repo, or when it is
+    // the fallback (namesake) cave and the worker's fresh repo has no cave of
+    // its own. Override and maintainer flow through hasRecentActivity as before.
+    const siteRepos = new Set();
+    if (workSites) for (const site of workSites) siteRepos.add(site.repo);
+    const siteActive = (cave, site) => {
+      if (cave.override === "working" || !contributors.hasRecentActivity) return true;
+      if (contributors.hasRecentActivity(cave.contributor, site.repo)) return true;
+      if (!site.fallback) return false;
+      for (const repo of cave.contributor.activity.keys()) {
+        if (!siteRepos.has(repo) && contributors.hasRecentActivity(cave.contributor, repo)) return true;
+      }
+      return false;
+    };
     const cavemen = new Map();
     // crewList mirrors roster order; the Map is written only in create and cleared in dispose, so it stays valid.
     const crewList = [];
@@ -1862,7 +1876,7 @@
       // Focused aim is semi-automatic: one press owns one round even when
       // the button remains held. Releasing arms the next press.
       if (w.triggerSingle && !w.burstRemaining) return;
-      if (!weaponReady(cave) || w.burstWork && (cave.work.phase !== "shoot" || cave.override !== "working" && contributors.hasRecentActivity && !contributors.hasRecentActivity(cave.contributor, workSites[cave.work.site].repo))) {
+      if (!weaponReady(cave) || w.burstWork && (cave.work.phase !== "shoot" || !siteActive(cave, workSites[cave.work.site]))) {
         stopBurst(cave);
         return;
       }
@@ -3120,7 +3134,7 @@
       const first = resume && previous >= 0 ? 0 : 1;
       for (let offset = first; offset < first + workSites.length; offset++) {
         const index = (previous + offset) % workSites.length, site = workSites[index];
-        if (cave.override !== "working" && contributors.hasRecentActivity && !contributors.hasRecentActivity(cave.contributor, site.repo)) continue;
+        if (!siteActive(cave, site)) continue;
         cave.work.site = cave.weapon.workSite = index;
         cave.work.index = 0;
         if (site.position) site.position(cave, cave.work.position);
@@ -3175,7 +3189,7 @@
         }
       }
       const site = workSites[work.site], route = site.route;
-      if ((work.phase === "outbound" || work.phase === "station" || work.phase === "shoot") && cave.override !== "working" && contributors.hasRecentActivity && !contributors.hasRecentActivity(cave.contributor, site.repo)) {
+      if ((work.phase === "outbound" || work.phase === "station" || work.phase === "shoot") && !siteActive(cave, site)) {
         work.index = work.phase === "outbound" ? Math.min(work.index, route.length - 1) : route.length - 1;
         work.phase = "return"; cave.act.kind = "reload-return"; cave.avoidance.tx = NaN;
       }

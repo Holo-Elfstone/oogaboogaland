@@ -26,8 +26,8 @@ if (stats?.meta?.schema_version !== 3 || typeof stats.meta.org !== "string" || !
 }
 
 // Ship public handles and activity only, never profile names or metadata.
-const counts = ({ commits, prs, reviews, comments }) => ({ commits, prs, reviews, comments });
-const weekly = (rows) => rows.map(({ week, commits, prs, reviews, comments }) => ({ week, commits, prs, reviews, comments }));
+const counts = ({ commits, prs, reviews, issues, comments }) => ({ commits, prs, reviews, issues, comments });
+const weekly = (rows) => rows.map(({ week, commits, prs, reviews, issues, comments }) => ({ week, commits, prs, reviews, issues, comments }));
 const boards = (lb) => Object.fromEntries(["commits", "prs", "reviews", "comments"].map((kind) => [kind,
   lb[kind].map(({ login, count }) => ({ login, count }))
 ]));
@@ -40,7 +40,9 @@ const snapshot = {
     totals: { contributors: r.totals.contributors, ...counts(r.totals) },
     weekly: weekly(r.weekly),
     last_activity_at: r.last_activity_at,
-    leaderboards: boards(r.leaderboards)
+    leaderboards: boards(r.leaderboards),
+    // Per-repo last activity: the island routes each Ooga to their repo's cave.
+    contributors: (r.contributors || []).map(({ login, last_seen_at }) => ({ login, last_seen_at }))
   })),
   recent: stats.recent.map(({ login, repo, type, occurred_at }) => ({ login, repo, type, occurred_at })),
   // The jumbotron needs logins for leaderboard labels; the caveman roster
