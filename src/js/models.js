@@ -663,8 +663,20 @@
       if (dress.mark) dress.mark(k, v);
     }
     const headOrigin = { x: -3.5 * u, y: 0, z: -3 * u };
-    // Lit eyes glow open or closed; the closed variant only recolours the eye cells.
-    const headOpen = vg(headVox, headOrigin, k.headEmissive);
+    // Dress hooks define any glowing face cells for both the head and portrait.
+    const headEmissive = k.headEmissive;
+    const headOpen = vg(headVox, headOrigin, headEmissive);
+    // Each character may widen the central-face crop to retain a hat or hair.
+    // Bounds are in the same voxel coordinates as the character's head hooks.
+    const portraitVox = makeVox();
+    const portraitMin = traits.portrait?.min || [0, -2, 0];
+    const portraitMax = traits.portrait?.max || [6, 5, 8];
+    for (const [k, c] of headVox.map) {
+      voxCoords(k, CELL);
+      const x = CELL[0], y = CELL[1], z = CELL[2];
+      if (x >= portraitMin[0] && x <= portraitMax[0] && y >= portraitMin[1] && y <= portraitMax[1] && z >= portraitMin[2] && z <= portraitMax[2]) portraitVox.map.set(k, c);
+    }
+    const portraitHead = vg(portraitVox, headOrigin, headEmissive);
     const closedVox = makeVox();
     for (const [key, c] of headVox.map) closedVox.map.set(key, c);
     for (const [x, y] of eyeCells) closedVox.set(x, y, 5, k.lid !== null ? k.lid : y === 2 ? P.skinDk : P.skin);
@@ -672,6 +684,7 @@
     parts.head = createNode({ position: { x: 0, y: 0.5 * h, z: 0.02 * h }, geometry: headOpen });
     const hatY = dress.hatY ? dress.hatY(k) : (traits.hatY || (traits.bald ? 6 : 9)) * u;
     parts.hat = createNode({ position: { x: 0, y: hatY, z: 0 }, scale: { x: h, y: h, z: h }, visible: false });
+    parts.hat.portraitHidden = true;
     parts.face = createNode({ position: { x: 0, y: 0, z: 0 }, scale: { x: h, y: h, z: h }, visible: false });
     addChild(parts.head, parts.hat, parts.face);
     if (dress.headgear) dress.headgear(k);
@@ -682,7 +695,7 @@
     // clone's geometry twice returns it to the colour it was built in.
     let tint = null;
     if (dress.tint) {
-      const alt = dress.tint(k, palette), live = new Set([headClosed]);
+      const alt = dress.tint(k, palette), live = new Set([headClosed, portraitHead]);
       const visit = (node) => {
         if (node.geometry) live.add(node.geometry);
         for (const child of node.children) visit(child);
@@ -695,7 +708,7 @@
         tint.set(bake.geo, twin).set(twin, bake.geo);
       }
     }
-    return { root, parts, traits, headOffset: 1.1 * h, headOpen, headClosed, skins, clubRest, clubCarry, tint, gunHeadBounds: BL.scene.boundsOf(headOpen) };
+    return { root, parts, traits, headOffset: 1.1 * h, headOpen, headClosed, portraitHead, skins, clubRest, clubCarry, tint, gunHeadBounds: BL.scene.boundsOf(headOpen) };
   };
   // Traits hash from the handle, so one handle always builds the same voxels.
   // Callers get fresh nodes over shared geometry: one build per contributor, GPU records survive a scene swap.
@@ -716,7 +729,7 @@
       parts[key] = Array.isArray(part) ? part.map((node) => copies.get(node)) : copies.get(part);
     }
     const skins = { club: { ...template.skins.club }, gun: { ...template.skins.gun } };
-    return { root, parts, traits, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed, skins, clubRest: template.clubRest, clubCarry: template.clubCarry, tint: template.tint, gunHeadBounds: template.gunHeadBounds };
+    return { root, parts, traits, headOffset: template.headOffset, headOpen: template.headOpen, headClosed: template.headClosed, portraitHead: template.portraitHead, skins, clubRest: template.clubRest, clubCarry: template.clubCarry, tint: template.tint, gunHeadBounds: template.gunHeadBounds };
   };
   // A real die: opposite faces sum to seven.
   const die = ({ size = 0.3 } = {}) => {
