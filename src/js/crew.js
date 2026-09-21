@@ -2897,9 +2897,19 @@
       traffic.speed = cave.walk ? cave.walk.speed : travel.mode === "walk" ? 2 : RUSH_SPEED;
       if (traffic.moving) { traffic.fx = dx / length; traffic.fz = dz / length; }
     };
+    const waitingFor = (other, cave) => {
+      // Following and crossing share one wait graph. Never close a cycle,
+      // including a worker queue whose leader is yielding back to its tail.
+      for (let depth = 0; other && depth < crewList.length; depth++) {
+        if (other === cave) return true;
+        const traffic = other.traffic;
+        other = traffic.waiting ? traffic.leader || traffic.crossing : null;
+      }
+      return false;
+    };
     const following = (cave, other, gap) => {
       const a = cave.traffic, b = other.traffic;
-      if (!b.moving || !shoulderNeighbor(cave, other)) return false;
+      if (!b.moving || !shoulderNeighbor(cave, other) || waitingFor(other, cave)) return false;
       // A yielding nonworker is stationary traffic, not the leader of a worker
       // queue. Following it can close a cycle with the worker it yielded to.
       if (cave.state === "working" && other.state !== "working" && (b.waiting || b.crossing === cave || a.fx * b.fx + a.fz * b.fz < 0.95)) return false;
@@ -2915,7 +2925,7 @@
     };
     const crossingSoon = (cave, other, holding = false) => {
       const a = cave.traffic, b = other.traffic;
-      if (!b.moving || !shoulderNeighbor(cave, other)) return false;
+      if (!b.moving || !shoulderNeighbor(cave, other) || waitingFor(other, cave)) return false;
       const workerFirst = cave.state !== "working" && other.state === "working";
       if (cave.state === "working" && other.state !== "working" || !workerFirst && other.index >= cave.index) return false;
       const dot = a.fx * b.fx + a.fz * b.fz;
@@ -2958,7 +2968,7 @@
       traffic.waiting = !!traffic.leader;
       if (!traffic.waiting) for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
         const other = crewList[otherIndex];
-        if (crossingSoon(cave, other)) { traffic.waiting = true; break; }
+        if (crossingSoon(cave, other)) { traffic.crossing = other; traffic.waiting = true; break; }
       }
     };
     // One swept gap, used by every walker on the island. Already inside it and

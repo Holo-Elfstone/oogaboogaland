@@ -1078,15 +1078,19 @@
     for (const m of island.mouths) if (Math.hypot(m.x - x, m.z - z) < d) return true;
     return false;
   };
-  // The full roster can gather at a repository. Keep every firing row and
-  // the gap around it clear of scenery, including later breakable respawns.
+  // The full roster can gather at a repository. Reserve the firing rows and
+  // the two-corner pedestrian detour, including later breakable respawns.
   const workSceneryClear = (x, z, radius) => {
     const row = Math.max(0, Math.ceil(contributors.activeRoster.length / 4) - 1);
     const front = 2.8 + row * 1.35 + 3.2 * 0.16, margin = radius + PLAYER_RADIUS;
+    const sideNear = 3.4 + 0.9, sideFar = Math.max(3.4, 3.2 + 0.8) + 0.9;
+    const frontNear = 5.8 + 0.9, frontFar = Math.max(5.8, front + 0.8) + 0.9;
     for (let i = 0; i < workZones.length; i++) {
       const zone = workZones[i], dx = x - zone.x, dz = z - zone.z;
-      const across = dx * zone.cr - dz * zone.sr, along = dx * zone.sr + dz * zone.cr;
-      if (Math.abs(across) < 3.2 + margin && along > 2.8 - margin && along < front + margin) return false;
+      const across = Math.abs(dx * zone.cr - dz * zone.sr), along = dx * zone.sr + dz * zone.cr;
+      if (across < 3.2 + margin && along > 2.8 - margin && along < front + margin) return false;
+      if (across > sideNear - margin && across < sideFar + margin && along > 2.8 - margin && along < frontFar + margin) return false;
+      if (across < sideFar + margin && along > frontNear - margin && along < frontFar + margin) return false;
     }
     return true;
   };
@@ -1641,9 +1645,9 @@
       }
     };
     const cliff = (count, radius, minHeight, kind, geometryAt) => {
-      // Safe root ledges are rarer than decorative bush sites (24000 tree tries vs 1200).
+      // Safe root ledges are rarer than decorative bush sites (48000 tree tries vs 1200).
       // Bounds the seeded search while retaining the full grove on the cliffs.
-      for (let n = 0, tries = 0; n < count && tries < (kind === "tree" ? 24000 : 1200); tries++) {
+      for (let n = 0, tries = 0; n < count && tries < (kind === "tree" ? 48000 : 1200); tries++) {
         const { x, z } = polar(rand() * 360, lerp(CLIFF_INNER, CLIFF_OUTER, rand()));
         const h = island.surfaceAt(x, z);
         if (h < minHeight || !free(x, z, radius)) continue;

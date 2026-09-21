@@ -1052,7 +1052,12 @@ void main() {
       const cap = settings.mirror;
       const w = cap, h = cap;
       if (mirror.fb && mirror.width === w && mirror.height === h) return;
+      // Camera preparation already chose this frame's viewport. Replacing
+      // the backing texture must not erase it before the capture is drawn.
+      const renderWidth = mirror.renderWidth, renderHeight = mirror.renderHeight;
       destroyMirrorTarget();
+      mirror.renderWidth = mirrorDebug.width = renderWidth;
+      mirror.renderHeight = mirrorDebug.height = renderHeight;
       mirror.tex = createTexture(w, h, gl.RGBA8, gl.LINEAR);
       mirror.depth = createRenderbuffer(w, h, gl.DEPTH_COMPONENT24, 0);
       mirror.fb = gl.createFramebuffer();
