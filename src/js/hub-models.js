@@ -47,6 +47,8 @@
     return geo;
   };
   const VOX = 0.5;
+  // The cell a cloud's flat base sits on, and how many cells it rounds up by at the rim.
+  const CLOUD_BASE = -2, CLOUD_ROUND = 2;
   const QUARTER = 0.25;
   const QHALF = { x: -QUARTER / 2, y: 0, z: -QUARTER / 2 };
   const STONE = ["#3a3734", "#2d2b28", "#45413d"];
@@ -96,6 +98,17 @@
     T: ["111", "010", "010", "010", "010"],
     W: ["101", "101", "101", "111", "101"],
     X: ["101", "101", "010", "101", "101"],
+    G: ["011", "100", "101", "101", "011"],
+    I: ["111", "010", "010", "010", "111"],
+    J: ["001", "001", "001", "101", "010"],
+    K: ["101", "101", "110", "101", "101"],
+    N: ["101", "111", "101", "101", "101"],
+    Q: ["111", "101", "101", "111", "011"],
+    U: ["101", "101", "101", "101", "111"],
+    V: ["101", "101", "101", "101", "010"],
+    Y: ["101", "101", "010", "010", "010"],
+    Z: ["111", "001", "010", "100", "111"],
+    "/": ["001", "001", "010", "100", "100"],
     0: ["111", "101", "101", "101", "111"],
     1: ["010", "110", "010", "010", "111"],
     2: ["111", "001", "111", "100", "111"],
@@ -503,6 +516,26 @@
     const puffs = CLOUD_PUFFS[i];
     const mid = (puffs[0][0] + puffs[puffs.length - 1][0]) / 2;
     for (const [cx, rx, rz] of puffs) blob(v, { cx: cx - mid + 0.5, cy: 1, cz: 0.5, rx, ry: 1.6, rz, chip: 0.3, rand, color: (x, y) => y > 0 ? 0 : 1 });
+    // A flat base under the puffs, the way a cumulus sits on the air, grown straight down from the
+    // cells already there: every cell added sits under another, so the cloud gains body without a
+    // single new top face (the render mesh is the surface an Ooga lands on). The base rounds up toward
+    // the rim so the cloud does not end in a slab, and it is set by each puff's ellipse rather than
+    // by the column heights, which the chipping makes ragged.
+    const lows = new Map();
+    for (const [k] of v.map) {
+      voxCoords(k, CELL);
+      const key = CELL[0] * 4096 + CELL[2], low = lows.get(key);
+      if (low === undefined || CELL[1] < low.min) lows.set(key, { x: CELL[0], z: CELL[2], min: CELL[1] });
+    }
+    for (const { x, z, min } of lows.values()) {
+      let inner = 0;
+      for (const [cx, rx, rz] of puffs) {
+        const dx = (x + 0.5 - (cx - mid + 0.5)) / rx, dz = (z + 0.5 - 0.5) / rz;
+        inner = Math.max(inner, 1 - dx * dx - dz * dz);
+      }
+      const bottom = CLOUD_BASE + Math.round(CLOUD_ROUND * (1 - Math.sqrt(Math.max(0, inner))));
+      for (let y = min - 1; y >= bottom; y--) v.set(x, y, z, 1);
+    }
     const geo = voxGeo(v, { unit: VOX, palette: ["#f7f9fb", "#dfe6ee"], origin: { x: -VOX / 2, y: -VOX, z: -VOX / 2 } });
     geo.castShadow = false;
     return geo;
