@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-WM7cEWMlNJhrs7thX00rMKzScGrw2OhDt/MPsL+UGDg='; style-src 'sha256-a/9vFyXqVxoEj3IZDi1nqJ10ut9yCfu5OkZS3DoTI2Q='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-u2HfJTxNSuyG1D9ZIFHleN8vwnqJerJ3V9d3beQSacw='; style-src 'sha256-a/9vFyXqVxoEj3IZDi1nqJ10ut9yCfu5OkZS3DoTI2Q='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -4950,7 +4950,7 @@ body.orbit-dragging #tooltip {
       <p class="help">2140data hands you the prompt. Paste it to your coding agent.</p>
       <pre class="recipe" id="recipe-text">Add an Ooga to Ooga Booga Land. Create one new file, src/characters/&lt;handle&gt;.js, and change nothing else.
 
-It is a plain IIFE (const BL = window.BL;) calling BL.characters.add({ handle, joined, lastCommit, github, look, voice, dress }). joined and lastCommit are Unix seconds; joined orders the roster.
+It is a plain IIFE (const BL = window.BL;) calling BL.characters.add({ handle, joined, lastCommit, github, display, look, voice, dress }). joined and lastCommit are Unix seconds; joined orders the roster.
 
 look overrides the hashed skin, hair, fur and height and carries the flags build:"slim", bald, hairless, cleanShaven, noBrow, wideEyes, noPupils, face:"nose"|"smirk"|"beard"|"none", eyeColor with eyeGlow, and hatY in sixteenths of height. voice is { poke, idle: [...] }.
 
@@ -15078,7 +15078,7 @@ void main() {
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  BL.jumbotronData = {"meta":{"generated_at":"2026-09-21T16:00:11.151Z","org":"OogaBoogaX","schema_version":3},"totals":{"contributors":48,"commits":1115,"prs":421,"reviews":47,"issues":4,"comments":324},"leaderboards":{"commits":[{"login":"portlandhodl","count":389},{"login":"w-s-bitcoin","count":297},{"login":"MrHodlX","count":91},{"login":"timechainb","count":61},{"login":"dplusplus1024","count":44},{"login":"2140data","count":42},{"login":"ottoz0r","count":31},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"rules-without-rulers","count":10},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"knorrium","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"Holo-Elfstone","count":2},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"itsneski","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"YellowBrokeIt","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":86},{"login":"portlandhodl","count":81},{"login":"w-s-bitcoin","count":58},{"login":"timechainb","count":26},{"login":"2140data","count":23},{"login":"ottoz0r","count":19},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"rules-without-rulers","count":8},{"login":"Jdelg718","count":5},{"login":"knorrium","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"Holo-Elfstone","count":2},{"login":"YellowBrokeIt","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"itsneski","count":2},{"login":"pdubl22","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":22},{"login":"J25dunn","count":14},{"login":"w-s-bitcoin","count":6},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":48},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"rules-without-rulers","count":5},{"login":"timechainb","count":5},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Jdelg718","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"repos":[{"name":"entropylab","totals":{"contributors":44,"commits":959,"prs":361,"reviews":41,"issues":2,"comments":319},"weekly":[{"week":"2026-W35","commits":333,"prs":134,"reviews":2,"issues":0,"comments":69},{"week":"2026-W36","commits":399,"prs":136,"reviews":16,"issues":0,"comments":130},{"week":"2026-W37","commits":82,"prs":36,"reviews":18,"issues":1,"comments":76},{"week":"2026-W38","commits":132,"prs":51,"reviews":5,"issues":1,"comments":39},{"week":"2026-W39","commits":13,"prs":4,"reviews":0,"issues":0,"comments":5}],"last_activity_at":"2026-09-21T12:36:40Z","leaderboards":{"commits":[{"login":"portlandhodl","count":389},{"login":"w-s-bitcoin","count":206},{"login":"MrHodlX","count":86},{"login":"timechainb","count":61},{"login":"dplusplus1024","count":44},{"login":"ottoz0r","count":24},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"2140data","count":9},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"rules-without-rulers","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":83},{"login":"portlandhodl","count":81},{"login":"w-s-bitcoin","count":32},{"login":"timechainb","count":26},{"login":"ottoz0r","count":18},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"2140data","count":10},{"login":"Jdelg718","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"pdubl22","count":2},{"login":"rules-without-rulers","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":22},{"login":"J25dunn","count":14},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":46},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"timechainb","count":5},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Jdelg718","count":2},{"login":"rules-without-rulers","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-17T16:19:10Z"},{"login":"timechainb","last_seen_at":"2026-09-19T20:58:17Z"},{"login":"portlandhodl","last_seen_at":"2026-09-19T16:10:42Z"},{"login":"MrHodlX","last_seen_at":"2026-09-21T12:36:40Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T00:52:02Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-02T02:19:20Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"2140data","last_seen_at":"2026-08-31T04:54:04Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-12T17:11:11Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"}]},{"name":"oogaboogaland","totals":{"contributors":9,"commits":137,"prs":54,"reviews":6,"issues":2,"comments":5},"weekly":[{"week":"2026-W37","commits":45,"prs":19,"reviews":0,"issues":0,"comments":1},{"week":"2026-W38","commits":70,"prs":30,"reviews":3,"issues":0,"comments":0},{"week":"2026-W39","commits":22,"prs":5,"reviews":3,"issues":2,"comments":4}],"last_activity_at":"2026-09-21T14:22:27Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":78},{"login":"2140data","count":33},{"login":"rules-without-rulers","count":8},{"login":"knorrium","count":7},{"login":"MrHodlX","count":5},{"login":"Holo-Elfstone","count":2},{"login":"itsneski","count":2},{"login":"YellowBrokeIt","count":1},{"login":"ottoz0r","count":1}],"prs":[{"login":"w-s-bitcoin","count":20},{"login":"2140data","count":13},{"login":"rules-without-rulers","count":6},{"login":"knorrium","count":5},{"login":"MrHodlX","count":3},{"login":"Holo-Elfstone","count":2},{"login":"YellowBrokeIt","count":2},{"login":"itsneski","count":2},{"login":"ottoz0r","count":1}],"reviews":[{"login":"w-s-bitcoin","count":6}],"comments":[{"login":"rules-without-rulers","count":3},{"login":"w-s-bitcoin","count":2}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-21T13:29:13Z"},{"login":"MrHodlX","last_seen_at":"2026-09-20T21:37:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"2140data","last_seen_at":"2026-09-20T23:34:19Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-21T05:02:14Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-21T14:22:27Z"}]},{"name":"bedrock","totals":{"contributors":2,"commits":19,"prs":6,"reviews":0,"issues":0,"comments":0},"weekly":[{"week":"2026-W36","commits":16,"prs":6,"reviews":0,"issues":0,"comments":0},{"week":"2026-W37","commits":3,"prs":0,"reviews":0,"issues":0,"comments":0}],"last_activity_at":"2026-09-07T05:21:02Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":13},{"login":"ottoz0r","count":6}],"prs":[{"login":"w-s-bitcoin","count":6}],"reviews":[],"comments":[]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-07T05:21:02Z"},{"login":"ottoz0r","last_seen_at":"2026-09-04T21:29:31Z"}]}],"recent":[{"login":"Holo-Elfstone","repo":"oogaboogaland","type":"pr","occurred_at":"2026-09-21T14:22:27Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"comment","occurred_at":"2026-09-21T13:29:13Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"pr","occurred_at":"2026-09-21T13:26:22Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"merge","occurred_at":"2026-09-21T13:17:56Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"commit","occurred_at":"2026-09-21T13:14:38Z"},{"login":"MrHodlX","repo":"entropylab","type":"merge","occurred_at":"2026-09-21T12:36:40Z"},{"login":"MrHodlX","repo":"entropylab","type":"pr","occurred_at":"2026-09-21T12:36:37Z"},{"login":"MrHodlX","repo":"entropylab","type":"commit","occurred_at":"2026-09-21T12:35:59Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"commit","occurred_at":"2026-09-21T11:57:42Z"},{"login":"MrHodlX","repo":"entropylab","type":"merge","occurred_at":"2026-09-21T11:30:03Z"},{"login":"MrHodlX","repo":"entropylab","type":"comment","occurred_at":"2026-09-21T11:28:51Z"},{"login":"MrHodlX","repo":"entropylab","type":"pr","occurred_at":"2026-09-21T11:17:23Z"}],"contributors":[{"login":"portlandhodl","last_seen_at":"2026-09-19T16:10:42Z"},{"login":"w-s-bitcoin","last_seen_at":"2026-09-21T13:29:13Z"},{"login":"MrHodlX","last_seen_at":"2026-09-21T12:36:40Z"},{"login":"timechainb","last_seen_at":"2026-09-19T20:58:17Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"2140data","last_seen_at":"2026-09-20T23:34:19Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T12:31:24Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-21T05:02:14Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-21T14:22:27Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"}]};
+  BL.jumbotronData = {"meta":{"generated_at":"2026-09-21T21:11:32.959Z","org":"OogaBoogaX","schema_version":3},"totals":{"contributors":48,"commits":1119,"prs":424,"reviews":47,"issues":4,"comments":326},"leaderboards":{"commits":[{"login":"portlandhodl","count":389},{"login":"w-s-bitcoin","count":297},{"login":"MrHodlX","count":91},{"login":"timechainb","count":63},{"login":"2140data","count":44},{"login":"dplusplus1024","count":44},{"login":"ottoz0r","count":31},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"rules-without-rulers","count":10},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"knorrium","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"Holo-Elfstone","count":2},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"itsneski","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"YellowBrokeIt","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":86},{"login":"portlandhodl","count":81},{"login":"w-s-bitcoin","count":59},{"login":"timechainb","count":26},{"login":"2140data","count":24},{"login":"ottoz0r","count":19},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"rules-without-rulers","count":9},{"login":"Jdelg718","count":5},{"login":"knorrium","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"Holo-Elfstone","count":2},{"login":"YellowBrokeIt","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"itsneski","count":2},{"login":"pdubl22","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":22},{"login":"J25dunn","count":14},{"login":"w-s-bitcoin","count":6},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":48},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"rules-without-rulers","count":5},{"login":"timechainb","count":5},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Holo-Elfstone","count":2},{"login":"Jdelg718","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"repos":[{"name":"entropylab","totals":{"contributors":44,"commits":961,"prs":362,"reviews":41,"issues":2,"comments":319},"weekly":[{"week":"2026-W35","commits":333,"prs":134,"reviews":2,"issues":0,"comments":69},{"week":"2026-W36","commits":399,"prs":136,"reviews":16,"issues":0,"comments":130},{"week":"2026-W37","commits":82,"prs":36,"reviews":18,"issues":1,"comments":76},{"week":"2026-W38","commits":132,"prs":51,"reviews":5,"issues":1,"comments":39},{"week":"2026-W39","commits":15,"prs":5,"reviews":0,"issues":0,"comments":5}],"last_activity_at":"2026-09-21T20:03:16Z","leaderboards":{"commits":[{"login":"portlandhodl","count":389},{"login":"w-s-bitcoin","count":206},{"login":"MrHodlX","count":86},{"login":"timechainb","count":63},{"login":"dplusplus1024","count":44},{"login":"ottoz0r","count":24},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"2140data","count":9},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"rules-without-rulers","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":83},{"login":"portlandhodl","count":81},{"login":"w-s-bitcoin","count":33},{"login":"timechainb","count":26},{"login":"ottoz0r","count":18},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"2140data","count":10},{"login":"Jdelg718","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"pdubl22","count":2},{"login":"rules-without-rulers","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":22},{"login":"J25dunn","count":14},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":46},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"timechainb","count":5},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Jdelg718","count":2},{"login":"rules-without-rulers","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-21T19:38:13Z"},{"login":"timechainb","last_seen_at":"2026-09-21T20:03:16Z"},{"login":"portlandhodl","last_seen_at":"2026-09-19T16:10:42Z"},{"login":"MrHodlX","last_seen_at":"2026-09-21T12:36:40Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T00:52:02Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-02T02:19:20Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"2140data","last_seen_at":"2026-08-31T04:54:04Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-12T17:11:11Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"}]},{"name":"oogaboogaland","totals":{"contributors":9,"commits":139,"prs":56,"reviews":6,"issues":2,"comments":7},"weekly":[{"week":"2026-W37","commits":45,"prs":19,"reviews":0,"issues":0,"comments":1},{"week":"2026-W38","commits":70,"prs":30,"reviews":3,"issues":0,"comments":0},{"week":"2026-W39","commits":24,"prs":7,"reviews":3,"issues":2,"comments":6}],"last_activity_at":"2026-09-21T20:29:14Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":78},{"login":"2140data","count":35},{"login":"rules-without-rulers","count":8},{"login":"knorrium","count":7},{"login":"MrHodlX","count":5},{"login":"Holo-Elfstone","count":2},{"login":"itsneski","count":2},{"login":"YellowBrokeIt","count":1},{"login":"ottoz0r","count":1}],"prs":[{"login":"w-s-bitcoin","count":20},{"login":"2140data","count":14},{"login":"rules-without-rulers","count":7},{"login":"knorrium","count":5},{"login":"MrHodlX","count":3},{"login":"Holo-Elfstone","count":2},{"login":"YellowBrokeIt","count":2},{"login":"itsneski","count":2},{"login":"ottoz0r","count":1}],"reviews":[{"login":"w-s-bitcoin","count":6}],"comments":[{"login":"rules-without-rulers","count":3},{"login":"Holo-Elfstone","count":2},{"login":"w-s-bitcoin","count":2}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-21T13:29:13Z"},{"login":"MrHodlX","last_seen_at":"2026-09-20T21:37:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"2140data","last_seen_at":"2026-09-21T15:59:54Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-21T20:09:11Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-21T20:29:14Z"}]},{"name":"bedrock","totals":{"contributors":2,"commits":19,"prs":6,"reviews":0,"issues":0,"comments":0},"weekly":[{"week":"2026-W36","commits":16,"prs":6,"reviews":0,"issues":0,"comments":0},{"week":"2026-W37","commits":3,"prs":0,"reviews":0,"issues":0,"comments":0}],"last_activity_at":"2026-09-07T05:21:02Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":13},{"login":"ottoz0r","count":6}],"prs":[{"login":"w-s-bitcoin","count":6}],"reviews":[],"comments":[]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-07T05:21:02Z"},{"login":"ottoz0r","last_seen_at":"2026-09-04T21:29:31Z"}]}],"recent":[{"login":"Holo-Elfstone","repo":"oogaboogaland","type":"comment","occurred_at":"2026-09-21T20:29:14Z"},{"login":"rules-without-rulers","repo":"oogaboogaland","type":"pr","occurred_at":"2026-09-21T20:09:11Z"},{"login":"timechainb","repo":"entropylab","type":"merge","occurred_at":"2026-09-21T20:03:16Z"},{"login":"timechainb","repo":"entropylab","type":"commit","occurred_at":"2026-09-21T19:44:17Z"},{"login":"w-s-bitcoin","repo":"entropylab","type":"pr","occurred_at":"2026-09-21T19:38:13Z"},{"login":"Holo-Elfstone","repo":"oogaboogaland","type":"comment","occurred_at":"2026-09-21T17:11:16Z"},{"login":"2140data","repo":"oogaboogaland","type":"merge","occurred_at":"2026-09-21T15:59:54Z"},{"login":"2140data","repo":"oogaboogaland","type":"pr","occurred_at":"2026-09-21T15:59:42Z"},{"login":"2140data","repo":"oogaboogaland","type":"commit","occurred_at":"2026-09-21T15:53:12Z"},{"login":"Holo-Elfstone","repo":"oogaboogaland","type":"pr","occurred_at":"2026-09-21T14:22:27Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"comment","occurred_at":"2026-09-21T13:29:13Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"pr","occurred_at":"2026-09-21T13:26:22Z"}],"contributors":[{"login":"portlandhodl","last_seen_at":"2026-09-19T16:10:42Z"},{"login":"w-s-bitcoin","last_seen_at":"2026-09-21T19:38:13Z"},{"login":"MrHodlX","last_seen_at":"2026-09-21T12:36:40Z"},{"login":"timechainb","last_seen_at":"2026-09-21T20:03:16Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"2140data","last_seen_at":"2026-09-21T15:59:54Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T12:31:24Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-21T20:09:11Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-21T20:29:14Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"}]};
 })();
 
 // ---- js/jumbotron.js ----
@@ -15203,7 +15203,8 @@ void main() {
     commits: normalizeBoard(lb && lb.commits), prs: normalizeBoard(lb && lb.prs),
     reviews: normalizeBoard(lb && lb.reviews), comments: normalizeBoard(lb && lb.comments)
   });
-  const displayLabel = (c) => c.login.startsWith("email:") ? "anonymous" : c.login;
+  // Board rows carry GitHub logins; a character maps its login to the in-game name.
+  const displayLabel = (c) => c.login.startsWith("email:") ? "anonymous" : BL.characters.displayOf(c.login);
 
   // Oogatron schema 3 (/v2/stats): org-wide totals/leaderboards, a per-repo
   // breakdown with its own leaderboards and last activity, plus the recent
@@ -15358,7 +15359,7 @@ void main() {
     let y = 15;
     for (const e of model.recent.slice(0, 11)) {
       const color = PALETTE[TYPE_COLOR[e.type]] || PALETTE.accent;
-      drawText(ctx, fitText(e.login.toUpperCase(), 60, 1), 4, y, PALETTE.text, 1);
+      drawText(ctx, fitText(displayLabel(e).toUpperCase(), 60, 1), 4, y, PALETTE.text, 1);
       drawText(ctx, fitText(e.repo.toUpperCase(), 54, 1), 68, y, PALETTE.dim, 1);
       drawText(ctx, fitText(e.type.toUpperCase(), 42, 1), 126, y, color, 1);
       const age = recentAge(e.occurredAt);
@@ -19294,18 +19295,28 @@ void main() {
   // Adding a character therefore touches no shared file.
   const byHandle = new Map(), list = [];
   const add = (character) => {
-    const { handle, joined, lastCommit } = character;
+    const { handle, joined, lastCommit, github, display } = character;
     if (typeof handle !== "string" || !/^[A-Za-z0-9-]{1,39}$/.test(handle)) throw new Error(`characters: bad handle ${handle}`);
     if (byHandle.has(handle.toLowerCase())) throw new Error(`characters: ${handle} is defined twice`);
     if (!Number.isFinite(joined) || !Number.isFinite(lastCommit)) throw new Error(`characters: ${handle} needs joined and lastCommit (Unix seconds)`);
+    if (github !== undefined && (typeof github !== "string" || !/^[A-Za-z0-9-]{1,39}$/.test(github))) throw new Error(`characters: ${handle} bad github login ${github}`);
+    if (display !== undefined && (typeof display !== "string" || !display.trim() || display.length > 39)) throw new Error(`characters: ${handle} bad display name ${display}`);
     byHandle.set(handle.toLowerCase(), character);
+    // The login behind the handle resolves to the same character, so stats rows
+    // keyed by login find their Ooga (activity join, jumbotron labels).
+    if (github && github.toLowerCase() !== handle.toLowerCase()) {
+      if (byHandle.has(github.toLowerCase())) throw new Error(`characters: ${handle} github login ${github} already taken`);
+      byHandle.set(github.toLowerCase(), character);
+    }
     list.push(character);
     // Join order is the roster order: digit keys, grid slots and the default pick.
     list.sort((a, b) => a.joined - b.joined || (a.handle < b.handle ? -1 : 1));
   };
   const get = (handle) => byHandle.get(String(handle).toLowerCase()) || null;
   const all = () => list;
-  BL.characters = { add, get, all };
+  // The one in-game name for a handle or login; unknown names pass through.
+  const displayOf = (name) => { const c = get(name); return (c && (c.display || c.handle)) || String(name); };
+  BL.characters = { add, get, all, displayOf };
 })();
 
 // ---- js/characters.gen.js ----
@@ -19645,6 +19656,8 @@ void main() {
   };
   BL.characters.add({
     handle: "DrNeski",
+    // GitHub login behind the handle, for activity and the jumbotron
+    github: "itsneski",
     joined: 1789692980,
     lastCommit: 1788219000,
     // Laser eyes: lit orange, open or closed, with no pupils
@@ -19995,6 +20008,8 @@ void main() {
   const PUMPKIN = "#e8862a", PUMPKIN_DK = "#cf6f1c", PUMPKIN_GLOW = "#ffc14d";
   BL.characters.add({
     handle: "rules-without-rulers",
+    // In-game name; activity still joins on the handle (the GitHub login)
+    display: "genXbtc",
     joined: 1789801750,
     lastCommit: 1789954043,
     // pumpkin also flickers the head's glow in crew.js
@@ -20272,7 +20287,7 @@ void main() {
   // the backend reports their commits they are busy in all of them, whatever the
   // clock or the debug fixture says. Delete the flag from the character file once
   // real activity arrives and the dates take over again.
-  const roster = characters.map(({ handle, lastCommit, look }) => ({ name: handle, lastCommitAt: lastCommit * 1e3, activity: new Map([[ENTROPY, lastCommit * 1e3]]), maintainer: !!(look && look.maintainer) }));
+  const roster = characters.map(({ handle, display, lastCommit, look }) => ({ name: handle, display: display || handle, lastCommitAt: lastCommit * 1e3, activity: new Map([[ENTROPY, lastCommit * 1e3]]), maintainer: !!(look && look.maintainer) }));
   // Filter construction, not visibility: solo worlds do no work for absent Oogas.
   // Keep the canonical roster intact for activity, likenesses and stable indices.
   const params = new URLSearchParams(location.search);
@@ -20425,6 +20440,7 @@ void main() {
     const traits = {
       ...look,
       name,
+      display: character?.display || name,
       slim,
       skin: look.skin || skin,
       hair: look.hair || hashedHair,
@@ -22614,7 +22630,7 @@ void main() {
       const cave = hit && hit.owner && hit.owner.kind === "caveman" ? hit.owner.cave : null;
       if (cave === battleTooltipCave) return;
       battleTooltipCave = cave;
-      if (cave) hud.tooltip.show(cave.traits.name, 0, 0, cave);
+      if (cave) hud.tooltip.show(cave.traits.display, 0, 0, cave);
       else hud.tooltip.hide();
     };
     const clearFeedback = () => {
@@ -23808,7 +23824,7 @@ void main() {
       syncJetpackHud();
       syncWeaponHud();
       syncModeHud();
-      if (!quiet) hud.toast(`${cave.traits.name} ${cave.state === "sleeping" ? "keeps sleeping" : "wanders off"}`);
+      if (!quiet) hud.toast(`${cave.traits.display} ${cave.state === "sleeping" ? "keeps sleeping" : "wanders off"}`);
     };
     // Nearby actions consume a press; a ready jetpack leaves Space as throttle.
     const action = () => {
@@ -25305,7 +25321,7 @@ void main() {
       presence.title = "Offline";
       const name = document.createElement("span");
       name.className = "roster-name";
-      name.textContent = contributor.name;
+      name.textContent = contributor.display;
       const age = document.createElement("span");
       age.className = "roster-age";
       age.append("");
@@ -25396,7 +25412,7 @@ void main() {
     const nextDetachedView = () => DETACHED_PRESETS[(DETACHED_PRESETS.indexOf(detachedPreset) + 1) % DETACHED_PRESETS.length];
     let modeName = "", modeGeometry = null, modeSelected = false, modeBattle = false, modeView = "detached", modeHealth = -1;
     const setMode = (cave, battle = false, view = cave ? "orbit" : "detached", visible = true) => {
-      const selected = !!cave, name = selected ? cave.traits.name : "";
+      const selected = !!cave, name = selected ? cave.traits.name : "", shown = selected ? cave.traits.display : "";
       const identityChanged = selected !== modeSelected || selected && name !== modeName;
       const stateChanged = battle !== modeBattle || view !== modeView;
       if (el.mode.hidden === visible) el.mode.hidden = !visible;
@@ -25426,9 +25442,9 @@ void main() {
         el.mode.dataset.view = selected ? view : "detached";
         el.mode.setAttribute("aria-pressed", String(selected && battle));
         el.mode.setAttribute("aria-label", selected
-          ? `${name}; ${view} view; ${battle ? "battle" : "carry"} mode. Press to switch battle or carry mode; hold to detach`
+          ? `${shown}; ${view} view; ${battle ? "battle" : "carry"} mode. Press to switch battle or carry mode; hold to detach`
           : `${DETACHED_NAMES[detachedPreset]} detached view. Press to cycle destinations`);
-        el.mode.title = selected ? `${name} · ${view} · ${battle ? "battle" : "carry"} · hold to detach` : `${DETACHED_NAMES[detachedPreset]} · detached`;
+        el.mode.title = selected ? `${shown} · ${view} · ${battle ? "battle" : "carry"} · hold to detach` : `${DETACHED_NAMES[detachedPreset]} · detached`;
       }
     };
     setDetachedView(detachedPreset);
@@ -26041,8 +26057,8 @@ void main() {
             const chip = document.createElement("button");
             chip.type = "button";
             chip.className = "chip";
-            chip.title = `Take ${item.name} off ${w.name}`;
-            chip.textContent = w.name;
+            chip.title = `Take ${item.name} off ${BL.characters.displayOf(w.name)}`;
+            chip.textContent = BL.characters.displayOf(w.name);
             chip.addEventListener("click", () => unassignHandler && unassignHandler(w.name));
             chips.append(chip);
           }
@@ -26061,7 +26077,7 @@ void main() {
           const opt = document.createElement("option");
           opt.value = contributor.name;
           const wearing = wornBy(contributor.name);
-          opt.textContent = wearing ? `${contributor.name} · ${wearing}` : `${contributor.name} · no swag`;
+          opt.textContent = wearing ? `${contributor.display} · ${wearing}` : `${contributor.display} · no swag`;
           select.append(opt);
         }
         select.addEventListener("change", () => {
@@ -41188,7 +41204,7 @@ void main() {
     const o = hit.owner;
     switch (o.kind) {
       case "caveman":
-        return o.cave.traits.name;
+        return o.cave.traits.display;
       case "crate":
         return `${o.crate.loot.tier} crate · tap to open`;
       case "cave":
@@ -44057,7 +44073,7 @@ void main() {
     const o = hit.owner;
     switch (o.kind) {
       case "caveman":
-        return o.cave.traits.name;
+        return o.cave.traits.display;
       case "agent":
         return o.agent.driven ? "The Agent · you" : "The Agent · double-click to play · triple-click for its code";
       case "rack":
@@ -46741,7 +46757,7 @@ void main() {
       el.racers.replaceChildren(...roster.map((c) => row("racer", c.name, (b) => {
         const name = document.createElement("span");
         name.className = "garage-name";
-        name.textContent = c.name;
+        name.textContent = c.display;
         const state = document.createElement("span");
         state.className = "roster-state";
         state.dataset.state = stateOf(c.name);
@@ -46861,7 +46877,7 @@ void main() {
       const li = document.createElement("li");
       if (r.you) li.className = "you";
       const name = document.createElement("span");
-      name.textContent = r.name + (r.you ? " (you)" : "");
+      name.textContent = BL.characters.displayOf(r.name) + (r.you ? " (you)" : "");
       const value = document.createElement("span");
       value.textContent = right;
       li.append(name, value);
@@ -47755,7 +47771,7 @@ void main() {
       fx.burst(r.x, r.y + 0.8, r.z, 8, [SPARK, DUST], 2);
       fx.say(r.cave, kind === "peel" ? "Slippy!" : kind === "boulder" ? "OOF." : "Ow! Rock!", 1.4);
       if (r === racers.player) cam.shake = Math.max(cam.shake, 0.7);
-      if (by === racers.player && by) hud.toast(`${r.name} spun out`);
+      if (by === racers.player && by) hud.toast(`${BL.characters.displayOf(r.name)} spun out`);
       if (r === racers.player || by === racers.player) audio.cues.hit();
       peelOut(r, 0.12, 0.4, 5);
     };
@@ -47843,7 +47859,7 @@ void main() {
   };
   const tooltipFor = (hit) => {
     const o = hit.owner;
-    if (o.kind === "racer") return o.racer.name;
+    if (o.kind === "racer") return BL.characters.displayOf(o.racer.name);
     return "";
   };
   const simulate = (dt) => {
@@ -48491,7 +48507,7 @@ void main() {
         b.dataset.racer = c.name;
         const name = document.createElement("span");
         name.className = "garage-name";
-        name.textContent = c.name;
+        name.textContent = c.display;
         const state = document.createElement("span");
         state.className = "roster-state";
         state.dataset.state = stateOf(c.name);
@@ -49569,7 +49585,7 @@ void main() {
     }
     if (e.key === "l" || e.key === "L") demoTip(120000);
   };
-  const tooltipFor = (hit) => hit.owner.kind === "diver" ? diver.cave.traits.name : "";
+  const tooltipFor = (hit) => hit.owner.kind === "diver" ? diver.cave.traits.display : "";
   const pickDiver = (name) => {
     selection.racer = name;
     buildDiver();
@@ -49906,7 +49922,7 @@ void main() {
       onPilot();
     });
     const setPilot = (name) => {
-      el.pilotName.firstChild.data = name;
+      el.pilotName.firstChild.data = BL.characters.displayOf(name);
     };
     const button = (text, className, fn) => {
       const b = document.createElement("button");
