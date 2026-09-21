@@ -12253,7 +12253,7 @@ const { jumbotronProbe } = (() => {
           parsed.repos.reduce((sum, r) => sum + r.totals[key], 0) === parsed.totals[key]);
         const recentRows = parsed.recent.length > 0 && parsed.recent.every((e) =>
           typeof e.login === "string" && typeof e.repo === "string"
-          && ["commit", "pr", "review", "merge", "comment"].includes(e.type)
+          && ["commit", "pr", "review", "merge", "issue", "comment"].includes(e.type)
           && Number.isFinite(Date.parse(e.occurredAt)));
         const repoBoards = parsed.repos.every((r) =>
           ["commits", "prs", "reviews", "comments"].every((k) => Array.isArray(r.leaderboards[k]))
