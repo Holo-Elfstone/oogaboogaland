@@ -126,7 +126,7 @@
       const cave = hit && hit.owner && hit.owner.kind === "caveman" ? hit.owner.cave : null;
       if (cave === battleTooltipCave) return;
       battleTooltipCave = cave;
-      if (cave) hud.tooltip.show(cave.traits.name, 0, 0, cave);
+      if (cave) hud.tooltip.show(cave.traits.display, 0, 0, cave);
       else hud.tooltip.hide();
     };
     const clearFeedback = () => {
@@ -1320,7 +1320,7 @@
       syncJetpackHud();
       syncWeaponHud();
       syncModeHud();
-      if (!quiet) hud.toast(`${cave.traits.name} ${cave.state === "sleeping" ? "keeps sleeping" : "wanders off"}`);
+      if (!quiet) hud.toast(`${cave.traits.display} ${cave.state === "sleeping" ? "keeps sleeping" : "wanders off"}`);
     };
     // Nearby actions consume a press; a ready jetpack leaves Space as throttle.
     const action = () => {

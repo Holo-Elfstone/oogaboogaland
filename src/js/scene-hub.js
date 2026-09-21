@@ -3120,7 +3120,7 @@
     const o = hit.owner;
     switch (o.kind) {
       case "caveman":
-        return o.cave.traits.name;
+        return o.cave.traits.display;
       case "crate":
         return `${o.crate.loot.tier} crate · tap to open`;
       case "cave":

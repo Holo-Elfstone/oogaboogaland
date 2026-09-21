@@ -57,7 +57,8 @@ therefore still needs an Oogatron-side event/timestamp update to count as activi
 
 Repository names normalize to lowercase. Any `OogaBoogaX/<repo>` is accepted, with
 `w-s-bitcoin/entropylab` as the historical alias. GitHub handles match without case;
-the existing public alias `ottoz0r` maps to the `bc1gui` character. Unknown handles
+the public aliases `ottoz0r` and `itsneski` map to the `bc1gui` and `DrNeski`
+characters (each declared as `github` in its character file). Unknown handles
 do not create new characters. Each character stores at most 64 repositories.
 Malformed, future, repeated, and older timestamps do not replace newer activity.
 

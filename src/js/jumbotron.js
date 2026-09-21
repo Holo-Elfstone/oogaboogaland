@@ -119,7 +119,8 @@
     commits: normalizeBoard(lb && lb.commits), prs: normalizeBoard(lb && lb.prs),
     reviews: normalizeBoard(lb && lb.reviews), comments: normalizeBoard(lb && lb.comments)
   });
-  const displayLabel = (c) => c.login.startsWith("email:") ? "anonymous" : c.login;
+  // Board rows carry GitHub logins; a character maps its login to the in-game name.
+  const displayLabel = (c) => c.login.startsWith("email:") ? "anonymous" : BL.characters.displayOf(c.login);
 
   // Oogatron schema 3 (/v2/stats): org-wide totals/leaderboards, a per-repo
   // breakdown with its own leaderboards and last activity, plus the recent
@@ -274,7 +275,7 @@
     let y = 15;
     for (const e of model.recent.slice(0, 11)) {
       const color = PALETTE[TYPE_COLOR[e.type]] || PALETTE.accent;
-      drawText(ctx, fitText(e.login.toUpperCase(), 60, 1), 4, y, PALETTE.text, 1);
+      drawText(ctx, fitText(displayLabel(e).toUpperCase(), 60, 1), 4, y, PALETTE.text, 1);
       drawText(ctx, fitText(e.repo.toUpperCase(), 54, 1), 68, y, PALETTE.dim, 1);
       drawText(ctx, fitText(e.type.toUpperCase(), 42, 1), 126, y, color, 1);
       const age = recentAge(e.occurredAt);
