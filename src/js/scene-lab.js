@@ -434,7 +434,10 @@
       else if (action === "clear-loot") clearLoot();
       else if (action === "reset") resetDemo();
       else if (action === "act") pilot.action();
-      else if (action === "mode-preset") pilot.goPreset(value === "pile" ? "pile" : value === "lab" ? "racks" : value === "mirror" ? "bunks" : "bench");
+      else if (action === "mode-preset") {
+        hud.setDetachedView(value, true);
+        pilot.goPreset(value === "pile" ? "pile" : value === "lab" ? "racks" : value === "mirror" ? "bunks" : "bench");
+      }
       else if (action.startsWith("mode-")) pilot.modeAction(action);
       else if (action.startsWith("weapon-") || action === "magazine-swap") pilot.weaponAction(action);
       else if (action === "reset-view") pilot.goPreset("pile");

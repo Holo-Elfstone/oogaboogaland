@@ -1083,9 +1083,9 @@
         const planes = [[-sx, 0, -sz, -start], [sx, 0, sz, end], [tx - horizontal * sx, 0, tz - horizontal * sz, half - horizontal * start], [-tx - horizontal * sx, 0, -tz - horizontal * sz, half - horizontal * start], [-vertical * sx, -1, -vertical * sz, -window.sill - vertical * start], [-vertical * sx, 1, -vertical * sz, window.sill + window.height - vertical * start]];
         window.flare.frusta.push({ angle, start, end, half, horizontal, vertical, planes, inner });
         const lower = window.sill - vertical * (end - start);
-        // A basement reveal may flare through its outer cliff face, but it
-        // must stop at that level's ceiling instead of cutting the HQ slab.
-        const upper = Math.min(window.sill + window.height + vertical * (end - start), window.basement ? basement.ceiling : Infinity);
+        // Keep basement flares below the upper slab without shortening a ramp's
+        // original aperture, whose sill can sit above the basement room floor.
+        const upper = Math.min(window.sill + window.height + vertical * (end - start), window.basement ? Math.max(basement.ceiling, window.sill + window.height) : Infinity);
         // The footprint test below passes only inside this rectangle; one spare column absorbs rounding.
         const reach = half + horizontal * (end - start) + UNIT;
         const spanX = Math.abs(tx) * reach, spanZ = Math.abs(tz) * reach;

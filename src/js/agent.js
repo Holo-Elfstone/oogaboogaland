@@ -498,5 +498,5 @@
     };
     return { start, stop, update, get active() { return !!agent; }, get agent() { return agent; }, get startedAt() { return startedAt; } };
   };
-  BL.agent = { create, createPlay, GAITS, TRIPLE_MS, QUAD, HUNCH };
+  BL.agent = { create, createPlay, GAITS, TRIPLE_MS, QUAD, HUNCH, BODY };
 })();

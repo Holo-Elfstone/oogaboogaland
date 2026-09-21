@@ -189,7 +189,7 @@
   let storm = null, unsubscribeMempool = null;
   let positionDebugNext = 0, positionDebugJSON = "";
   function createPositionPose() {
-    return { version: 1, character: "", mode: "detached", battle: false, position: [0, 0, 0], target: [0, 0, -1], direction: [0, 0, -1], up: [0, 1, 0], fov: 48 * Math.PI / 180,
+    return { version: 1, character: "", mode: "detached", closeWanted: false, battle: false, position: [0, 0, 0], target: [0, 0, -1], direction: [0, 0, -1], up: [0, 1, 0], fov: 48 * Math.PI / 180,
       actor: [0, 0, 0], body: [0, 0, 0], head: [0, 0, 0], bodyQuaternion: [0, 0, 0, 1], headQuaternion: [0, 0, 0, 1], bodyRolled: false, headRolled: false,
       orbit: [0, 0.62, 6, 0, 0, 0], headOffset: [0, 0, 0], headOrbit: false, shoulderSide: 0.6, closeMix: 0, ads: 0,
       selectedSlot: 1, ammo: 30, unlimited: false, magazines: [0, 0], magazineCount: 0, aimYaw: 0, aimPitch: 0, jetpack: false, fuel: 1, hop: 0, hopV: 0, lift: 0 };
@@ -199,6 +199,7 @@
     let data;
     try { data = JSON.parse(value); } catch { return null; }
     if (!data || data.version !== 1 || !["carry", "shoulder", "first-person", "orbit", "detached", "eye-level"].includes(data.mode)) return null;
+    if (data.closeWanted === undefined) data.closeWanted = data.mode === "first-person" || data.mode === "eye-level" || data.mode === "detached" && data.closeMix >= 0.5;
     if (data.battle === undefined) data.battle = data.mode === "shoulder" || data.mode === "first-person";
     const pose = createPositionPose();
     for (const key of Object.keys(pose)) {
@@ -304,10 +305,13 @@
     }
     if (eye) pose.position = eye;
     if (look && Math.hypot(look[0] - pose.position[0], look[1] - pose.position[1], look[2] - pose.position[2]) > 0.001) pose.target = look;
-    if (mode) pose.mode = mode;
+    if (mode) {
+      pose.mode = mode;
+      if (params.has("mode")) pose.closeWanted = mode === "first-person" || mode === "eye-level";
+    }
     if (!cave && (pose.mode === "carry" || pose.mode === "shoulder" || pose.mode === "first-person")) pose.mode = pose.mode === "first-person" ? "eye-level" : "orbit";
     if (!preloadedPose) {
-      pose.closeMix = pose.mode === "first-person" || pose.mode === "eye-level" ? 1 : 0;
+      pose.closeMix = pose.closeWanted ? 1 : 0;
       if (eye || look) {
         const dx = pose.position[0] - pose.target[0], dy = pose.position[1] - pose.target[1], dz = pose.position[2] - pose.target[2];
         pose.orbit[0] = Math.atan2(dx, dz); pose.orbit[1] = Math.atan2(dy, Math.hypot(dx, dz));
@@ -1074,6 +1078,18 @@
     for (const m of island.mouths) if (Math.hypot(m.x - x, m.z - z) < d) return true;
     return false;
   };
+  // The full roster can gather at a repository. Keep every firing row and
+  // the gap around it clear of scenery, including later breakable respawns.
+  const workSceneryClear = (x, z, radius) => {
+    const row = Math.max(0, Math.ceil(contributors.activeRoster.length / 4) - 1);
+    const front = 2.8 + row * 1.35 + 3.2 * 0.16, margin = radius + PLAYER_RADIUS;
+    for (let i = 0; i < workZones.length; i++) {
+      const zone = workZones[i], dx = x - zone.x, dz = z - zone.z;
+      const across = dx * zone.cr - dz * zone.sr, along = dx * zone.sr + dz * zone.cr;
+      if (Math.abs(across) < 3.2 + margin && along > 2.8 - margin && along < front + margin) return false;
+    }
+    return true;
+  };
   const spotAt = (deg, r, margin) => {
     for (const off of NUDGES) {
       const p = polar(deg + off, r);
@@ -1579,8 +1595,8 @@
       // Scan every voxel column touched by the solid crown and a walking body's
       // radius. Four corner samples miss narrow, higher steps on cave roofs.
       const reach = geometry.treeSolidRadius + PLAYER_RADIUS, unit = island.unit, half = unit / 2;
-      // Two units fit the tallest Ooga's full head-look envelope with room to spare.
-      const rootRadius = Math.hypot(0.5, 0.25), ceiling = y + geometry.treeSolidCanopyFloor - 2;
+      // Reserve a full voxel above two units for the tallest helmeted head-look envelope.
+      const rootRadius = Math.hypot(0.5, 0.25), ceiling = y + geometry.treeSolidCanopyFloor - 2.25;
       const grid = island.sightGrid, minX = Math.floor((x - reach - grid[1]) / unit), maxX = Math.floor((x + reach - grid[1]) / unit);
       const minZ = Math.floor((z - reach - grid[3]) / unit), maxZ = Math.floor((z + reach - grid[3]) / unit);
       for (let gx = minX; gx <= maxX; gx++) for (let gz = minZ; gz <= maxZ; gz++) {
@@ -1619,7 +1635,7 @@
     const meadow = (count, radius, kind, geometryAt, square = false) => {
       for (let n = 0, tries = 0; n < count && tries < 1500; tries++) {
         const { x, z } = polar(rand() * 360, Math.sqrt(lerp(MEADOW_INNER * MEADOW_INNER, MEADOW_OUTER * MEADOW_OUTER, rand())));
-        if (island.surfaceAt(x, z) > 0 || nearMouth(x, z, 3.5) || !candidateFree(x, z, radius)) continue;
+        if (island.surfaceAt(x, z) > 0 || nearMouth(x, z, 3.5) || !workSceneryClear(x, z, radius) || !candidateFree(x, z, radius)) continue;
         addScenery(geometryAt(n), x, z, square ? Math.floor(rand() * 4) * Math.PI / 2 + (rand() - 0.5) * 0.4 : rand() * Math.PI * 2, 0, kind, radius);
         n++;
       }
@@ -1664,6 +1680,7 @@
   };
   const sceneryReason = (o) => {
     const clearance = island.path.debug.ringOuterRadius + SCENERY_CLEARANCE;
+    if (o.node.position.y < 2 && !workSceneryClear(o.x, o.z, o.footprint)) return 3;
     if (Math.hypot(o.x, o.z) - o.footprint < clearance - 1e-9) return 1;
     if (island.path.overlaps(o.x, o.z, o.footprint)) return 2;
     for (let i = 0; i < claimed.length; i++) {
@@ -1713,7 +1730,7 @@
       const angle = Math.random() * Math.PI * 2;
       const distance = Math.sqrt(lerp(inner * inner, MEADOW_OUTER * MEADOW_OUTER, Math.random()));
       const x = Math.sin(angle) * distance, z = Math.cos(angle) * distance;
-      if (island.surfaceAt(x, z) !== 0 || island.path.overlaps(x, z, radius) || nearMouth(x, z, radius + 3.5)) continue;
+      if (island.surfaceAt(x, z) !== 0 || island.path.overlaps(x, z, radius) || nearMouth(x, z, radius + 3.5) || !workSceneryClear(x, z, radius)) continue;
       let clear = true;
       for (let i = 0; i < 8 && clear; i++) {
         const a = i * Math.PI / 4;
@@ -1765,6 +1782,7 @@
       hud.toast("Full magazine collected · 30 rounds");
       return true;
     }
+    if (crew.builtInJetpack(cave)) return false;
     syncJetpackFuel();
     if (jetpackState.owned && jetpackState.owner === cave.traits.name) {
       if (jetpackState.fuel >= 1) return false;
@@ -4769,6 +4787,10 @@
       const m = island.mouths.find((mouth) => mouth.id === slot.id);
       addTarget(buildMouth(slot, m), { kind: "cave", slot, priority: 1 }, { radius: 2.6 });
       claim(m.x, m.z, 3.5);
+      if (slot.repo && (slot.status === "open" || slot.status === "mirror")) {
+        workZones.push({ x: m.x, z: m.z, floor: m.floorY, sr: Math.sin(m.ry), cr: Math.cos(m.ry), active: false, half: 3.4, front: 5.8 });
+      }
+
       if (slot.scene) {
         presets[slot.scene] = mouthView(m);
         openMouths.push({ slot, m, actionX: m.x + Math.sin(m.ry) * RALLY_KART_Z, actionZ: m.z + Math.cos(m.ry) * RALLY_KART_Z });
@@ -4863,6 +4885,7 @@
     // its walker gap from all of them. Positions mutate in place; the array only
     // changes when one arrives or leaves.
     shared.outsideActors = () => agentBodies;
+    shared.outsideActorHeight = BL.agent.BODY;
     shared.carryCharacter = carryCharacter;
     shared.npcWalkable = npcWalkable;
     shared.prepareNpcRoutes = refreshWorkZones;
@@ -4945,7 +4968,7 @@
     // and the island's own cave, which is the mirror.
     shared.workSites = caves.slots.filter((slot) => slot.repo && (slot.status === "open" || slot.status === "mirror")).map((slot) => {
       const mouth = island.mouths.find((entry) => entry.id === slot.id), sr = Math.sin(mouth.ry), cr = Math.cos(mouth.ry);
-      workZones.push({ x: mouth.x, z: mouth.z, floor: mouth.floorY, sr, cr, active: false, half: 3.4, front: 5.8 });
+
       const aimX = mouth.x + sr * 5.8, aimZ = mouth.z + cr * 5.8, approach = { x: aimX, z: aimZ };
       let nearest = Infinity;
       // Rejoin the painted trail itself, rather than an off-path mouth-axis
@@ -5031,23 +5054,24 @@
     // geometry, so a crowd is still one draw per part, they are capped, and each
     // one is disposed and off the graph the moment its EXTRA_LIFE is up.
     const agentWalkable = (fromX, fromZ, toX, toZ, y, height) => walkable(fromX, fromZ, toX, toZ, y, height, null)
-      && crew.actorClear(fromX, fromZ, toX, toZ);
+      && crew.actorClear(fromX, fromZ, toX, toZ, y, height);
     const spawnAgent = () => {
       if (extraAgents.length >= EXTRA_AGENTS || !agentSpot(AGENT_SPAWN)) return false;
       const extra = BL.agent.create({
         groundAt: (x, z) => island.surfaceAt(x, z), walkable: agentWalkable,
         x: AGENT_SPAWN.x, z: AGENT_SPAWN.z, heading: Math.random() * Math.PI * 2
       });
-      extra.onIdle = () => {
+      const routeExtra = () => {
         const p = extra.root.position;
         AGENT_FROM.x = p.x; AGENT_FROM.z = p.z;
         if (agentSpot(AGENT_TO)) extra.walk(shared.npcPaths.route(AGENT_FROM, AGENT_TO), false);
       };
+      extra.onIdle = routeExtra;
       addChild(root, extra.root);
       extraAgents.push(extra);
       extraLives.push(EXTRA_LIFE);
       agentBodies.push(extra.root.position);
-      extra.onIdle();
+      routeExtra();
       hud.toast(`Agents: ${extraAgents.length + 1}`);
       return true;
     };
@@ -5058,7 +5082,7 @@
     agent = BL.agent.create({
       groundAt: (x, z) => island.surfaceAt(x, z),
       walkable: (fromX, fromZ, toX, toZ, y, height) => walkable(fromX, fromZ, toX, toZ, y, height, null)
-        && crew.actorClear(fromX, fromZ, toX, toZ),
+        && crew.actorClear(fromX, fromZ, toX, toZ, y, height),
       x: agentFrom.x, z: agentFrom.z, heading: Math.random() * Math.PI * 2
     });
     agentBodies.length = 0;

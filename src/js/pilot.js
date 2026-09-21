@@ -173,7 +173,7 @@
     };
     let lockPending = false, aimLocked = false, softAimFocused = false, unlockedAt = -Infinity, cursorUnlockedAt = -Infinity;
     let savedPitch = 0, savedDist = 0, savedNear = camera.near, sightClear = null, cursorClear = null, aimSurface = null;
-    const weaponViewReady = (cave) => !!cave && !crew.sleeping && (closeWanted || !cave.camp.seat && !cave.bedTravel.mode);
+    const weaponViewReady = (cave) => !!cave && !cave.health.stunned && !crew.sleeping && (closeWanted || !cave.camp.seat && !cave.bedTravel.mode);
     const shoulderBoomPitch = (pitch) => Math.max(pitch, Math.min(0, pitch + 0.22));
     const shoulderDistance = (cave, pitch) => {
       // Keep the feet above the bottom 5% while the head stays near the
@@ -330,14 +330,14 @@
       reticle.hidden = !battle;
       if (!battle) setBattleTooltip(null);
       if (!orbitBattle()) resetOrbitAssist();
-      if (!battle && (carryCursor.active || document.pointerLockElement === canvas)) unlockAim();
+      if (battle && carryCursor.active) { carryCursor.stop(); resetPointer(); }
+      if (!battle && !carryCursor.active && (softAimFocused || document.pointerLockElement === canvas)) unlockAim();
       const cave = aimView() ? controlled : null;
       if (cave === aimCave) return;
       if (carryCursor.active) {
         ads = false;
         if (controlled) crew.stopBurst(controlled);
         crew.releaseSwing(controlled, true);
-        if (cave) { carryCursor.stop(); resetPointer(); }
       } else unlockAim();
       if (aimCave) {
         camera.near = savedNear;
@@ -696,6 +696,7 @@
           const rect = canvas.getBoundingClientRect();
           shooterView(true, e.clientX - rect.left, e.clientY - rect.top, true);
         } else {
+          if (!cave.weapon.equipped && !cave.weapon.primaryEquipped) crew.selectWeapon(cave.weapon.selectedSlot, cave);
           syncAim();
           syncModeHud();
           syncWeaponHud();
@@ -931,7 +932,10 @@
       shoulderView = false;
       closeExitScale = 1;
       const cave = player();
-      if (battle && weaponViewReady(cave)) cave.weapon.aiming = true;
+      if (battle && weaponViewReady(cave)) {
+        if (!cave.weapon.equipped && !cave.weapon.primaryEquipped) crew.selectWeapon(cave.weapon.selectedSlot, cave);
+        cave.weapon.aiming = true;
+      }
       syncAim();
       if (aimView()) {
         releaseCursorAim();
@@ -1215,11 +1219,21 @@
       if (!cave.weapon.aiming) {
         crew.stopBurst(cave);
         crew.releaseSwing(cave, true);
-        unlockAim();
+        if (coarse) unlockAim();
+        else {
+          setSoftAimFocus(false);
+          ads = false;
+          primaryButtonCave = null;
+          aimLeftAccepted = aimLeftFocused = false;
+          resetPointer();
+          carryCursor.start();
+        }
       } else {
         // A freshly possessed character can carry its primary without an
         // equipped slot yet. Match scroll/right-click entry before posing it.
         if (!cave.weapon.equipped && !cave.weapon.primaryEquipped) crew.selectWeapon(cave.weapon.selectedSlot, cave);
+        carryCursor.stop();
+        resetPointer();
         focusAim();
         lockAim();
       }
@@ -2116,6 +2130,7 @@
       const up = camera.up || cursorUp;
       copyVector(out.up, up); out.fov = camera.fov;
       out.mode = viewMode();
+      out.closeWanted = closeWanted;
       out.battle = armed();
       out.character = cave ? cave.traits.name : "";
       out.orbit[0] = orbit.yaw; out.orbit[1] = orbit.pitch; out.orbit[2] = orbit.dist;
@@ -2160,7 +2175,8 @@
     };
     const restorePose = (pose, exactCamera = true) => {
       const cave = player();
-      closeWanted = pose.mode === "first-person" || pose.mode === "eye-level";
+      closeWanted = typeof pose.closeWanted === "boolean" ? pose.closeWanted
+        : pose.mode === "first-person" || pose.mode === "eye-level" || pose.mode === "detached" && pose.closeMix >= 0.5;
       shoulderView = !!cave && pose.mode === "shoulder";
       if (cave) {
         cave.weapon.aiming = pose.battle === undefined ? pose.mode === "shoulder" || closeWanted && !crew.sleeping : !!pose.battle;

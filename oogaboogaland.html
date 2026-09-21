@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-PEbfvV6qxVfZJ2xojL2Ag/WJnmSHkcConaD3IScULB0='; style-src 'sha256-FaEJQMA4qPeh4S2a84jrp0AFMc3KaB1sr4v+Yl4fVqQ='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-qycLeDAVIiCuPEEWjaVqfgdDi9JjxidYsg+j4Hxal8Y='; style-src 'sha256-4DtcUSaMteAjSjlf1JK82piNaUILM4ExOzjLN0+W6eE='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -457,7 +457,8 @@ select {
   right: calc(16px + var(--safe-right));
   height: 520px;
   max-height: calc(100% - 90px - var(--safe-top) - var(--safe-bottom));
-  width: 330px;
+  width: 380px;
+  max-width: calc(100vw - 32px - var(--safe-left) - var(--safe-right));
   display: flex;
   flex-direction: column;
   background: var(--planks);
@@ -11579,21 +11580,15 @@ void main() {
     // Dress hooks define any glowing face cells for both the head and portrait.
     const headEmissive = k.headEmissive;
     const headOpen = vg(headVox, headOrigin, headEmissive);
-    // Portraits use the central face rather than the full silhouette. Long
-    // hair, stems and crowns stay outside the crop; Randy's short antennae
-    // remain part of his recognizable face silhouette.
+    // Each character may widen the central-face crop to retain a hat or hair.
+    // Bounds are in the same voxel coordinates as the character's head hooks.
     const portraitVox = makeVox();
-    const portraitWide = traits.apple || traits.pumpkin;
-    const portraitHairOutline = traits.slim || traits.skater || traits.bee;
-    const portraitMinX = traits.skater ? -3 : portraitWide || portraitHairOutline ? -1 : 0;
-    const portraitMaxX = portraitWide || portraitHairOutline ? 7 : 6;
-    const portraitMinY = traits.slim ? -3 : -2;
-    const portraitTop = traits.skater ? 13 : traits.bee ? 10 : portraitWide ? 7 : traits.slim ? 8 : 5;
-    const portraitMinZ = portraitHairOutline ? -1 : 0;
+    const portraitMin = traits.portrait?.min || [0, -2, 0];
+    const portraitMax = traits.portrait?.max || [6, 5, 8];
     for (const [k, c] of headVox.map) {
       voxCoords(k, CELL);
       const x = CELL[0], y = CELL[1], z = CELL[2];
-      if (x >= portraitMinX && x <= portraitMaxX && y >= portraitMinY && y <= portraitTop && z >= portraitMinZ && z <= 8) portraitVox.map.set(k, c);
+      if (x >= portraitMin[0] && x <= portraitMax[0] && y >= portraitMin[1] && y <= portraitMax[1] && z >= portraitMin[2] && z <= portraitMax[2]) portraitVox.map.set(k, c);
     }
     const portraitHead = vg(portraitVox, headOrigin, headEmissive);
     const closedVox = makeVox();
@@ -11614,7 +11609,7 @@ void main() {
     // clone's geometry twice returns it to the colour it was built in.
     let tint = null;
     if (dress.tint) {
-      const alt = dress.tint(k, palette), live = new Set([headClosed]);
+      const alt = dress.tint(k, palette), live = new Set([headClosed, portraitHead]);
       const visit = (node) => {
         if (node.geometry) live.add(node.geometry);
         for (const child of node.children) visit(child);
@@ -13244,9 +13239,9 @@ void main() {
         const planes = [[-sx, 0, -sz, -start], [sx, 0, sz, end], [tx - horizontal * sx, 0, tz - horizontal * sz, half - horizontal * start], [-tx - horizontal * sx, 0, -tz - horizontal * sz, half - horizontal * start], [-vertical * sx, -1, -vertical * sz, -window.sill - vertical * start], [-vertical * sx, 1, -vertical * sz, window.sill + window.height - vertical * start]];
         window.flare.frusta.push({ angle, start, end, half, horizontal, vertical, planes, inner });
         const lower = window.sill - vertical * (end - start);
-        // A basement reveal may flare through its outer cliff face, but it
-        // must stop at that level's ceiling instead of cutting the HQ slab.
-        const upper = Math.min(window.sill + window.height + vertical * (end - start), window.basement ? basement.ceiling : Infinity);
+        // Keep basement flares below the upper slab without shortening a ramp's
+        // original aperture, whose sill can sit above the basement room floor.
+        const upper = Math.min(window.sill + window.height + vertical * (end - start), window.basement ? Math.max(basement.ceiling, window.sill + window.height) : Infinity);
         // The footprint test below passes only inside this rectangle; one spare column absorbs rounding.
         const reach = half + horizontal * (end - start) + UNIT;
         const spanX = Math.abs(tx) * reach, spanZ = Math.abs(tz) * reach;
@@ -14545,8 +14540,9 @@ void main() {
       canopyFloor = Math.min(canopyFloor, y); canopyTop = Math.max(canopyTop, y + 1);
     }
     // Keep the upper crown standable; lower leaves and branch tips let
-    // walkers through. Roots and the main trunk remain solid throughout.
-    const solid = vox(), middle = Math.ceil((canopyFloor + canopyTop) / 2);
+    // walkers through, including tall helmets on quarter-unit uphill ledges.
+    // Roots and the main trunk remain solid throughout.
+    const solid = vox(), middle = Math.max(11, Math.ceil((canopyFloor + canopyTop) / 2));
     for (const [key, color] of v.map) {
       voxCoords(key, CELL);
       const x = CELL[0], y = CELL[1], z = CELL[2];
@@ -15920,9 +15916,13 @@ void main() {
         simplified.push(p);
         while (simplified.length >= 3) {
           const n = simplified.length, a = simplified[n - 3], b = simplified[n - 2];
-          // Preserve the authored slope centerline: only shorten circulation and room approaches on the same flat
-          // floor, away from ramp bends.
-          if (a.y >= -0.05 || Math.abs(a.y - b.y) > 1e-7 || Math.abs(a.y - p.y) > 1e-7 || !segment(a, p, false, 0.3)) break;
+          const ax = b.x - a.x, az = b.z - a.z, bx = p.x - b.x, bz = p.z - b.z;
+          const almostFlat = Math.max(a.y, b.y, p.y) - Math.min(a.y, b.y, p.y) < 0.04;
+          const straight = ax * bx + az * bz > Math.hypot(ax, az) * Math.hypot(bx, bz) * 0.99;
+          // Keep slope bends, but let their nearly straight, shallow tails merge into the landing. Otherwise the
+          // last tiny height change restricts the next corner's rounding to a few centimetres.
+          const flat = Math.abs(a.y - b.y) <= 1e-7 && Math.abs(a.y - p.y) <= 1e-7;
+          if (a.y >= -0.05 || !(flat || almostFlat && straight) || !segment(a, p, false, 0.3)) break;
           simplified.splice(n - 2, 1);
         }
       }
@@ -19640,7 +19640,7 @@ void main() {
     handle: "RandyMcMillan",
     joined: 1788800919,
     lastCommit: 1788210011,
-    look: { hairless: true, noBrow: true, face: "smirk", hatY: 11, skin: "#f3b52a", hair: "#151515" },
+    look: { portrait: { min: [-1, -2, -1], max: [7, 10, 8] }, hairless: true, noBrow: true, face: "smirk", hatY: 11, skin: "#f3b52a", hair: "#151515" },
     dress: {
       // The Bee: black bands round the fuzz and two pale wings folded off the back
       torso(k, v) {
@@ -19752,7 +19752,7 @@ void main() {
     joined: 1788800918,
     lastCommit: 1788190400,
     // skater also moves the drawn gun to the side in crew.js (the board takes the back)
-    look: { skater: true, hairless: true, noBrow: true, face: "smirk", hatY: 13, skin: "#f2a33c", hair: "#e4561f", fur: "#8f4f17" },
+    look: { portrait: { min: [-3, -2, -1], max: [7, 13, 8] }, skater: true, hairless: true, noBrow: true, face: "smirk", hatY: 13, skin: "#f2a33c", hair: "#e4561f", fur: "#8f4f17" },
     dress: {
       // A slouched green beanie over dreads, shades in front of the eyes
       crown(k, v) {
@@ -19791,7 +19791,7 @@ void main() {
     handle: "dplusplus1024",
     joined: 1788800917,
     lastCommit: 1788153655,
-    look: { build: "slim", hair: "#b9dcaa" }
+    look: { portrait: { min: [-1, -3, -1], max: [7, 8, 8] }, build: "slim", hair: "#b9dcaa" }
   });
 })();
 
@@ -19832,7 +19832,7 @@ void main() {
     joined: 1789801750,
     lastCommit: 1789954043,
     // pumpkin also flickers the head's glow in crew.js
-    look: { pumpkin: true, bald: true, cleanShaven: true, noBrow: true, noPupils: true, face: "none", hatY: 15, skin: "#cfc8b4", hair: "#151515", fur: "#141414", height: 1.16 },
+    look: { portrait: { min: [-1, -2, 0], max: [7, 7, 8] }, pumpkin: true, bald: true, cleanShaven: true, noBrow: true, noPupils: true, face: "none", hatY: 15, skin: "#cfc8b4", hair: "#151515", fur: "#141414", height: 1.16 },
     voice: {
       poke: "POWER OVERWHELMING",
       idle: ["Shut up you larp", "Rules Without Rulers"]
@@ -19885,7 +19885,7 @@ void main() {
       },
       headgear(k) {
         const h = k.h, u = k.u;
-        addChild(k.parts.head, createNode({ position: { x: 0, y: 7.5 * u, z: 0 }, rotation: { x: 0, y: 0, z: 0.06 }, scale: { x: h, y: h, z: h }, geometry: topHatGeometry() }));
+        addChild(k.parts.head, createNode({ position: { x: 0, y: 7.5 * u, z: 0 }, rotation: { x: 0, y: 0, z: 0.06 }, scale: { x: h, y: h, z: h }, geometry: topHatGeometry(), portraitHidden: true }));
       }
     }
   });
@@ -20046,7 +20046,7 @@ void main() {
     joined: 1788800916,
     lastCommit: 1788178261,
     // stoneAxe also drives the axe stance in crew.js
-    look: { stoneAxe: true, hairless: true, hatY: 8 },
+    look: { portrait: { min: [-1, -2, 0], max: [7, 7, 8] }, stoneAxe: true, hairless: true, hatY: 8 },
     dress: {
       // An apple for a head: red with a wooden stalk and a leaf
       skull(k, v) {
@@ -22020,7 +22020,7 @@ void main() {
     };
     let lockPending = false, aimLocked = false, softAimFocused = false, unlockedAt = -Infinity, cursorUnlockedAt = -Infinity;
     let savedPitch = 0, savedDist = 0, savedNear = camera.near, sightClear = null, cursorClear = null, aimSurface = null;
-    const weaponViewReady = (cave) => !!cave && !crew.sleeping && (closeWanted || !cave.camp.seat && !cave.bedTravel.mode);
+    const weaponViewReady = (cave) => !!cave && !cave.health.stunned && !crew.sleeping && (closeWanted || !cave.camp.seat && !cave.bedTravel.mode);
     const shoulderBoomPitch = (pitch) => Math.max(pitch, Math.min(0, pitch + 0.22));
     const shoulderDistance = (cave, pitch) => {
       // Keep the feet above the bottom 5% while the head stays near the
@@ -22177,14 +22177,14 @@ void main() {
       reticle.hidden = !battle;
       if (!battle) setBattleTooltip(null);
       if (!orbitBattle()) resetOrbitAssist();
-      if (!battle && (carryCursor.active || document.pointerLockElement === canvas)) unlockAim();
+      if (battle && carryCursor.active) { carryCursor.stop(); resetPointer(); }
+      if (!battle && !carryCursor.active && (softAimFocused || document.pointerLockElement === canvas)) unlockAim();
       const cave = aimView() ? controlled : null;
       if (cave === aimCave) return;
       if (carryCursor.active) {
         ads = false;
         if (controlled) crew.stopBurst(controlled);
         crew.releaseSwing(controlled, true);
-        if (cave) { carryCursor.stop(); resetPointer(); }
       } else unlockAim();
       if (aimCave) {
         camera.near = savedNear;
@@ -22543,6 +22543,7 @@ void main() {
           const rect = canvas.getBoundingClientRect();
           shooterView(true, e.clientX - rect.left, e.clientY - rect.top, true);
         } else {
+          if (!cave.weapon.equipped && !cave.weapon.primaryEquipped) crew.selectWeapon(cave.weapon.selectedSlot, cave);
           syncAim();
           syncModeHud();
           syncWeaponHud();
@@ -22778,7 +22779,10 @@ void main() {
       shoulderView = false;
       closeExitScale = 1;
       const cave = player();
-      if (battle && weaponViewReady(cave)) cave.weapon.aiming = true;
+      if (battle && weaponViewReady(cave)) {
+        if (!cave.weapon.equipped && !cave.weapon.primaryEquipped) crew.selectWeapon(cave.weapon.selectedSlot, cave);
+        cave.weapon.aiming = true;
+      }
       syncAim();
       if (aimView()) {
         releaseCursorAim();
@@ -23062,11 +23066,21 @@ void main() {
       if (!cave.weapon.aiming) {
         crew.stopBurst(cave);
         crew.releaseSwing(cave, true);
-        unlockAim();
+        if (coarse) unlockAim();
+        else {
+          setSoftAimFocus(false);
+          ads = false;
+          primaryButtonCave = null;
+          aimLeftAccepted = aimLeftFocused = false;
+          resetPointer();
+          carryCursor.start();
+        }
       } else {
         // A freshly possessed character can carry its primary without an
         // equipped slot yet. Match scroll/right-click entry before posing it.
         if (!cave.weapon.equipped && !cave.weapon.primaryEquipped) crew.selectWeapon(cave.weapon.selectedSlot, cave);
+        carryCursor.stop();
+        resetPointer();
         focusAim();
         lockAim();
       }
@@ -23963,6 +23977,7 @@ void main() {
       const up = camera.up || cursorUp;
       copyVector(out.up, up); out.fov = camera.fov;
       out.mode = viewMode();
+      out.closeWanted = closeWanted;
       out.battle = armed();
       out.character = cave ? cave.traits.name : "";
       out.orbit[0] = orbit.yaw; out.orbit[1] = orbit.pitch; out.orbit[2] = orbit.dist;
@@ -24007,7 +24022,8 @@ void main() {
     };
     const restorePose = (pose, exactCamera = true) => {
       const cave = player();
-      closeWanted = pose.mode === "first-person" || pose.mode === "eye-level";
+      closeWanted = typeof pose.closeWanted === "boolean" ? pose.closeWanted
+        : pose.mode === "first-person" || pose.mode === "eye-level" || pose.mode === "detached" && pose.closeMix >= 0.5;
       shoulderView = !!cave && pose.mode === "shoulder";
       if (cave) {
         cave.weapon.aiming = pose.battle === undefined ? pose.mode === "shoulder" || closeWanted && !crew.sleeping : !!pose.battle;
@@ -26630,7 +26646,7 @@ void main() {
   const CLUB_SLING_TILT = -0.3, CLUB_SLING_ANGLE = -0.8, CLUB_SLICES = 8;
   const CLUB_ROTATION = math.quat.create(), CLUB_POINT = new Float64Array(3);
   const CLUB_AXES = new Float64Array(9);
-  const CLUB_FIT = { x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 0, hx: 0, hy: 0, hz: 0, lo: 0, hi: 0, axes: new Float64Array(9) };
+  const CLUB_FIT = { x: 0, y: 0, z: 0, ex: 0, ey: 0, ez: 0, hx: 0, hy: 0, hz: 0, lo: 0, hi: 0, side: false, axes: new Float64Array(9) };
   // Cache the diagonal club's profile once. Separate height strips let its
   // handle lie against the back without its wider head entering the hair.
   const clubSlingProfile = (geometry) => {
@@ -26675,8 +26691,8 @@ void main() {
       CLUB_AXES[i * 3] = CLUB_POINT[0]; CLUB_AXES[i * 3 + 1] = CLUB_POINT[1]; CLUB_AXES[i * 3 + 2] = CLUB_POINT[2];
     }
   };
-  // Intersect the depth interval on each separating axis. The rear endpoint
-  // is contact with the oriented body bounds, even while the head turns.
+  // Intersect the placement interval on each separating axis. The rear (or
+  // left-hip) endpoint touches the oriented body bounds as the body turns.
   const clubFitAxis = (x, y, z) => {
     const f = CLUB_FIT, a = f.axes, c = CLUB_AXES;
     const radius = f.ex * Math.abs(x * c[0] + y * c[1] + z * c[2])
@@ -26686,13 +26702,15 @@ void main() {
       + f.hy * Math.abs(x * a[3] + y * a[4] + z * a[5])
       + f.hz * Math.abs(x * a[6] + y * a[7] + z * a[8]);
     const distance = f.x * x + f.y * y + f.z * z;
-    if (Math.abs(z) < 1e-9) return Math.abs(distance) <= radius;
-    const lo = (-radius - distance) / z, hi = (radius - distance) / z;
+    const direction = f.side ? x : z;
+    if (Math.abs(direction) < 1e-9) return Math.abs(distance) <= radius;
+    const lo = (-radius - distance) / direction, hi = (radius - distance) / direction;
     f.lo = Math.max(f.lo, Math.min(lo, hi)); f.hi = Math.min(f.hi, Math.max(lo, hi));
     return f.lo <= f.hi;
   };
-  const clubRearContact = (cave, node, bounds) => {
+  const clubRearContact = (cave, node, bounds, side = false) => {
     const club = cave.parts.club, profile = cave.clubSlingProfile, scale = node.scale, p = node.position, f = CLUB_FIT;
+    f.side = side;
     math.quat.fromEuler(CLUB_ROTATION, node.rotation.x, node.rotation.y, node.rotation.z);
     const q = node.quaternion || CLUB_ROTATION;
     math.quat.rotateVec(CLUB_POINT, q, bounds.center[0] * scale.x, bounds.center[1] * scale.y, bounds.center[2] * scale.z);
@@ -26710,9 +26728,9 @@ void main() {
     let depth = Infinity;
     for (let k = 0; k < profile.length; k += 6) {
       const x = (profile[k] + profile[k + 1]) / 2, y = (profile[k + 2] + profile[k + 3]) / 2, z = (profile[k + 4] + profile[k + 5]) / 2;
-      f.x = club.position.x + CLUB_AXES[0] * x + CLUB_AXES[3] * y + CLUB_AXES[6] * z - cx;
+      f.x = (side ? 0 : club.position.x) + CLUB_AXES[0] * x + CLUB_AXES[3] * y + CLUB_AXES[6] * z - cx;
       f.y = club.position.y + CLUB_AXES[1] * x + CLUB_AXES[4] * y + CLUB_AXES[7] * z - cy;
-      f.z = CLUB_AXES[2] * x + CLUB_AXES[5] * y + CLUB_AXES[8] * z - cz;
+      f.z = (side ? club.position.z : 0) + CLUB_AXES[2] * x + CLUB_AXES[5] * y + CLUB_AXES[8] * z - cz;
       f.ex = (profile[k + 1] - profile[k]) / 2; f.ey = (profile[k + 3] - profile[k + 2]) / 2; f.ez = (profile[k + 5] - profile[k + 4]) / 2;
       f.lo = -Infinity; f.hi = Infinity;
       let intersects = true;
@@ -27967,7 +27985,7 @@ void main() {
     };
     const toggleWeapon = (cave = player) => selectWeapon(cave && cave.weapon.equipped ? 1 : 2, cave);
     const selectWeapon = (slot, cave = player) => {
-      if (!cave || cave.state === "sleeping" || cave !== player && (cave.camp.burning || cave.camp.rolling) || cave.camp.seat || cave.bedTravel.mode) return false;
+      if (!cave || cave.health.stunned || cave.state === "sleeping" || cave !== player && (cave.camp.burning || cave.camp.rolling) || cave.camp.seat || cave.bedTravel.mode) return false;
       if (slot === 1 && !cave.weapon.primaryOwned || slot === 2 && !cave.weapon.secondaryOwned) return false;
       stopBurst(cave); stopReload(cave, true);
       cave.weapon.primaryEquipped = slot === 1;
@@ -28118,6 +28136,7 @@ void main() {
     };
     const reloadHandoffBlend = (w) => ease.inOutQuad(1 - Math.abs(1 - 2 * Math.min(RELOAD_HANDOFF_TIME, w.reloadHandoffTime) / RELOAD_HANDOFF_TIME));
     const poseWeapon = (cave) => {
+      if (cave.health.stunned) return;
       const w = cave.weapon, parts = cave.parts, gun = parts.gun, h = cave.traits.height;
       clearMeleeThrust(cave);
       if (cave === player || hasMagazine(cave)) syncMagazine(cave);
@@ -28231,6 +28250,11 @@ void main() {
       parts.club.poseYaw = slungClub ? parts.torso.poseYaw : 0;
       if (slungClub) {
         clubSlingAxes(parts.club);
+        if (cave.traits.nunchaku) {
+          // Fit along the hip instead of letting a fixed offset enter a tilted torso.
+          const hip = clubRearContact(cave, parts.torso, cave.clubTorsoBounds, true);
+          if (hip !== Infinity) parts.club.position.x = hip;
+        }
         const contact = Math.min(clubRearContact(cave, parts.head, cave.gunHeadBounds),
           sideSling ? parts.club.position.z : clubRearContact(cave, parts.torso, cave.clubTorsoBounds));
         if (contact !== Infinity) parts.club.position.z = contact;
@@ -29388,7 +29412,9 @@ void main() {
     const following = (cave, other, gap) => {
       const a = cave.traffic, b = other.traffic;
       if (!b.moving || !shoulderNeighbor(cave, other)) return false;
-      if (cave.state === "working" && other.state !== "working" && (b.crossing === cave || a.fx * b.fx + a.fz * b.fz < 0.95)) return false;
+      // A yielding nonworker is stationary traffic, not the leader of a worker
+      // queue. Following it can close a cycle with the worker it yielded to.
+      if (cave.state === "working" && other.state !== "working" && (b.waiting || b.crossing === cave || a.fx * b.fx + a.fz * b.fz < 0.95)) return false;
       const sameGoal = Math.hypot(a.tx - b.tx, a.tz - b.tz) <= 0.8;
       if (a.fx * b.fx + a.fz * b.fz < (sameGoal && a.leader === other ? -0.2 : sameGoal ? 0.7 : 0.85)) return false;
       const dx = other.shoulder.snapX - cave.shoulder.snapX, dz = other.shoulder.snapZ - cave.shoulder.snapZ;
@@ -29451,10 +29477,14 @@ void main() {
     // moving apart is allowed, so a crowd unpicks itself instead of locking.
     // Every body the scene walks that is not on the roster: the Agent and any it
     // has called in. One array, rebuilt only when that crowd changes.
-    const outsideClear = (fromX, fromZ, x, z) => {
+    const outsideClear = (fromX, fromZ, x, z, y, height) => {
       const bodies = ctx.outsideActors && ctx.outsideActors();
       if (!bodies) return true;
-      for (let i = 0; i < bodies.length; i++) if (!gapClear(fromX, fromZ, x, z, bodies[i], OUTSIDE_GAP)) return false;
+      for (let i = 0; i < bodies.length; i++) {
+        const body = bodies[i];
+        if (y >= body.y + ctx.outsideActorHeight || y + height <= body.y) continue;
+        if (!gapClear(fromX, fromZ, x, z, body, OUTSIDE_GAP)) return false;
+      }
       return true;
     };
     const gapClear = (fromX, fromZ, x, z, q, gap = SHOULDER_GAP) => {
@@ -29473,13 +29503,15 @@ void main() {
         if (!gapClear(p.x, p.z, x, z, other.root.position)) return false;
       }
       // Walking bodies the scene owns rather than the roster keep the same gap.
-      return outsideClear(p.x, p.z, x, z);
+      return outsideClear(p.x, p.z, x, z, p.y - cave.baseY, cave.bodyHeight);
     };
     // The same gap from the other side: a scene's own walker against the whole crew.
-    const actorClear = (fromX, fromZ, x, z) => {
+    const actorClear = (fromX, fromZ, x, z, y, height) => {
       for (let otherIndex = 0; otherIndex < crewList.length; otherIndex++) {
         const other = crewList[otherIndex];
         if (!other.root.visible || other.state === "away" || other.root.quaternion || other.camp.seat) continue;
+        const feet = other.root.position.y - other.baseY;
+        if (y >= feet + other.bodyHeight || y + height <= feet) continue;
         if (!gapClear(fromX, fromZ, x, z, other.root.position, OUTSIDE_GAP)) return false;
       }
       return true;
@@ -29596,7 +29628,7 @@ void main() {
       }
       // Bodies the scene owns are obstacles like any other: the walker's own
       // avoidance steers around them rather than through them.
-      if (!outsideClear(p.x, p.z, x, z)) return false;
+      if (!outsideClear(p.x, p.z, x, z, feet, cave.bodyHeight)) return false;
       return npcWalkable(p.x, p.z, x, z, feet, cave.bodyHeight, cave) && groundAt(x, z, feet, feet, cave) >= feet - STEP - 1e-7;
     };
     const recoverWalker = (cave, tx, tz, dt) => {
@@ -30208,7 +30240,7 @@ void main() {
       const y = cave.root.position.y - cave.baseY;
       const height = cave.bodyHeight + Math.max(0, cave.viewLift);
       // On foot, the scene's own walkers are bodies to walk round, not through.
-      if (!flying && cave.hop <= 0 && !outsideClear(fromX, fromZ, toX, toZ)) return false;
+      if (!flying && cave.hop <= 0 && !outsideClear(fromX, fromZ, toX, toZ, y, height)) return false;
       return flying || cave.hop > 0
         ? flyable(fromX, fromZ, toX, toZ, y, height, cave) && groundAt(toX, toZ, y, y, cave) <= y
         : walkable(fromX, fromZ, toX, toZ, y, height, cave);
@@ -30333,6 +30365,7 @@ void main() {
       visit(cave.root);
       cave.headOpen = tint.get(cave.headOpen) || cave.headOpen;
       cave.headClosed = tint.get(cave.headClosed) || cave.headClosed;
+      cave.portraitHead = tint.get(cave.portraitHead) || cave.portraitHead;
       cave.parts.head.geometry = cave.state === "sleeping" ? cave.headClosed : cave.headOpen;
     };
     // A hand toggle restarts the timer too, so it does not flip again seconds later.
@@ -30601,6 +30634,7 @@ void main() {
       }
       w.equipped = w.primaryEquipped = w.aiming = false;
       cave.parts.club.visible = cave.parts.gun.visible = cave.parts.gunFlash.visible = false;
+      if (cave.parts.chukTrail) for (const trail of cave.parts.chukTrail) trail.visible = false;
     };
     const finishStun = (cave) => {
       const w = cave.weapon, health = cave.health;
@@ -30677,6 +30711,7 @@ void main() {
       setVec(cave.parts.armR.rotation, 0.05, 0, 0.04);
       setVec(cave.parts.head.rotation, Math.sin(elapsed * 3.1) * 0.08, Math.sin(elapsed * 4.8) * 0.72, Math.sin(elapsed * 2.4) * 0.1);
       cave.parts.club.visible = cave.parts.gun.visible = cave.parts.gunFlash.visible = cave.parts.snack.visible = false;
+      if (cave.parts.chukTrail) for (const trail of cave.parts.chukTrail) trail.visible = false;
       cave.weapon.carry = "hidden";
       poseHands(cave);
       return true;
@@ -30695,6 +30730,14 @@ void main() {
         stopBurst(cave);
         stopReload(cave, true);
         releaseSwing(cave, true);
+        // A released strike is no longer held, but its pose and contact timer
+        // must stop before the stunned update takes over until recovery.
+        const w = cave.weapon;
+        clearMeleeThrust(cave);
+        w.meleeTime = w.meleeCooldown = w.meleeReadyTime = 0;
+        w.meleeTarget.node = w.meleeTarget.owner = null;
+        w.meleeAimX = w.meleeAimY = w.meleeAimZ = 0;
+        w.meleePoke = false;
         dropStunGear(cave);
       }
       return true;
@@ -36470,7 +36513,7 @@ void main() {
     };
     return { start, stop, update, get active() { return !!agent; }, get agent() { return agent; }, get startedAt() { return startedAt; } };
   };
-  BL.agent = { create, createPlay, GAITS, TRIPLE_MS, QUAD, HUNCH };
+  BL.agent = { create, createPlay, GAITS, TRIPLE_MS, QUAD, HUNCH, BODY };
 })();
 
 // ---- js/scene-hub.js ----
@@ -36665,7 +36708,7 @@ void main() {
   let storm = null, unsubscribeMempool = null;
   let positionDebugNext = 0, positionDebugJSON = "";
   function createPositionPose() {
-    return { version: 1, character: "", mode: "detached", battle: false, position: [0, 0, 0], target: [0, 0, -1], direction: [0, 0, -1], up: [0, 1, 0], fov: 48 * Math.PI / 180,
+    return { version: 1, character: "", mode: "detached", closeWanted: false, battle: false, position: [0, 0, 0], target: [0, 0, -1], direction: [0, 0, -1], up: [0, 1, 0], fov: 48 * Math.PI / 180,
       actor: [0, 0, 0], body: [0, 0, 0], head: [0, 0, 0], bodyQuaternion: [0, 0, 0, 1], headQuaternion: [0, 0, 0, 1], bodyRolled: false, headRolled: false,
       orbit: [0, 0.62, 6, 0, 0, 0], headOffset: [0, 0, 0], headOrbit: false, shoulderSide: 0.6, closeMix: 0, ads: 0,
       selectedSlot: 1, ammo: 30, unlimited: false, magazines: [0, 0], magazineCount: 0, aimYaw: 0, aimPitch: 0, jetpack: false, fuel: 1, hop: 0, hopV: 0, lift: 0 };
@@ -36675,6 +36718,7 @@ void main() {
     let data;
     try { data = JSON.parse(value); } catch { return null; }
     if (!data || data.version !== 1 || !["carry", "shoulder", "first-person", "orbit", "detached", "eye-level"].includes(data.mode)) return null;
+    if (data.closeWanted === undefined) data.closeWanted = data.mode === "first-person" || data.mode === "eye-level" || data.mode === "detached" && data.closeMix >= 0.5;
     if (data.battle === undefined) data.battle = data.mode === "shoulder" || data.mode === "first-person";
     const pose = createPositionPose();
     for (const key of Object.keys(pose)) {
@@ -36780,10 +36824,13 @@ void main() {
     }
     if (eye) pose.position = eye;
     if (look && Math.hypot(look[0] - pose.position[0], look[1] - pose.position[1], look[2] - pose.position[2]) > 0.001) pose.target = look;
-    if (mode) pose.mode = mode;
+    if (mode) {
+      pose.mode = mode;
+      if (params.has("mode")) pose.closeWanted = mode === "first-person" || mode === "eye-level";
+    }
     if (!cave && (pose.mode === "carry" || pose.mode === "shoulder" || pose.mode === "first-person")) pose.mode = pose.mode === "first-person" ? "eye-level" : "orbit";
     if (!preloadedPose) {
-      pose.closeMix = pose.mode === "first-person" || pose.mode === "eye-level" ? 1 : 0;
+      pose.closeMix = pose.closeWanted ? 1 : 0;
       if (eye || look) {
         const dx = pose.position[0] - pose.target[0], dy = pose.position[1] - pose.target[1], dz = pose.position[2] - pose.target[2];
         pose.orbit[0] = Math.atan2(dx, dz); pose.orbit[1] = Math.atan2(dy, Math.hypot(dx, dz));
@@ -37550,6 +37597,18 @@ void main() {
     for (const m of island.mouths) if (Math.hypot(m.x - x, m.z - z) < d) return true;
     return false;
   };
+  // The full roster can gather at a repository. Keep every firing row and
+  // the gap around it clear of scenery, including later breakable respawns.
+  const workSceneryClear = (x, z, radius) => {
+    const row = Math.max(0, Math.ceil(contributors.activeRoster.length / 4) - 1);
+    const front = 2.8 + row * 1.35 + 3.2 * 0.16, margin = radius + PLAYER_RADIUS;
+    for (let i = 0; i < workZones.length; i++) {
+      const zone = workZones[i], dx = x - zone.x, dz = z - zone.z;
+      const across = dx * zone.cr - dz * zone.sr, along = dx * zone.sr + dz * zone.cr;
+      if (Math.abs(across) < 3.2 + margin && along > 2.8 - margin && along < front + margin) return false;
+    }
+    return true;
+  };
   const spotAt = (deg, r, margin) => {
     for (const off of NUDGES) {
       const p = polar(deg + off, r);
@@ -38055,8 +38114,8 @@ void main() {
       // Scan every voxel column touched by the solid crown and a walking body's
       // radius. Four corner samples miss narrow, higher steps on cave roofs.
       const reach = geometry.treeSolidRadius + PLAYER_RADIUS, unit = island.unit, half = unit / 2;
-      // Two units fit the tallest Ooga's full head-look envelope with room to spare.
-      const rootRadius = Math.hypot(0.5, 0.25), ceiling = y + geometry.treeSolidCanopyFloor - 2;
+      // Reserve a full voxel above two units for the tallest helmeted head-look envelope.
+      const rootRadius = Math.hypot(0.5, 0.25), ceiling = y + geometry.treeSolidCanopyFloor - 2.25;
       const grid = island.sightGrid, minX = Math.floor((x - reach - grid[1]) / unit), maxX = Math.floor((x + reach - grid[1]) / unit);
       const minZ = Math.floor((z - reach - grid[3]) / unit), maxZ = Math.floor((z + reach - grid[3]) / unit);
       for (let gx = minX; gx <= maxX; gx++) for (let gz = minZ; gz <= maxZ; gz++) {
@@ -38095,7 +38154,7 @@ void main() {
     const meadow = (count, radius, kind, geometryAt, square = false) => {
       for (let n = 0, tries = 0; n < count && tries < 1500; tries++) {
         const { x, z } = polar(rand() * 360, Math.sqrt(lerp(MEADOW_INNER * MEADOW_INNER, MEADOW_OUTER * MEADOW_OUTER, rand())));
-        if (island.surfaceAt(x, z) > 0 || nearMouth(x, z, 3.5) || !candidateFree(x, z, radius)) continue;
+        if (island.surfaceAt(x, z) > 0 || nearMouth(x, z, 3.5) || !workSceneryClear(x, z, radius) || !candidateFree(x, z, radius)) continue;
         addScenery(geometryAt(n), x, z, square ? Math.floor(rand() * 4) * Math.PI / 2 + (rand() - 0.5) * 0.4 : rand() * Math.PI * 2, 0, kind, radius);
         n++;
       }
@@ -38140,6 +38199,7 @@ void main() {
   };
   const sceneryReason = (o) => {
     const clearance = island.path.debug.ringOuterRadius + SCENERY_CLEARANCE;
+    if (o.node.position.y < 2 && !workSceneryClear(o.x, o.z, o.footprint)) return 3;
     if (Math.hypot(o.x, o.z) - o.footprint < clearance - 1e-9) return 1;
     if (island.path.overlaps(o.x, o.z, o.footprint)) return 2;
     for (let i = 0; i < claimed.length; i++) {
@@ -38189,7 +38249,7 @@ void main() {
       const angle = Math.random() * Math.PI * 2;
       const distance = Math.sqrt(lerp(inner * inner, MEADOW_OUTER * MEADOW_OUTER, Math.random()));
       const x = Math.sin(angle) * distance, z = Math.cos(angle) * distance;
-      if (island.surfaceAt(x, z) !== 0 || island.path.overlaps(x, z, radius) || nearMouth(x, z, radius + 3.5)) continue;
+      if (island.surfaceAt(x, z) !== 0 || island.path.overlaps(x, z, radius) || nearMouth(x, z, radius + 3.5) || !workSceneryClear(x, z, radius)) continue;
       let clear = true;
       for (let i = 0; i < 8 && clear; i++) {
         const a = i * Math.PI / 4;
@@ -38241,6 +38301,7 @@ void main() {
       hud.toast("Full magazine collected · 30 rounds");
       return true;
     }
+    if (crew.builtInJetpack(cave)) return false;
     syncJetpackFuel();
     if (jetpackState.owned && jetpackState.owner === cave.traits.name) {
       if (jetpackState.fuel >= 1) return false;
@@ -41245,6 +41306,10 @@ void main() {
       const m = island.mouths.find((mouth) => mouth.id === slot.id);
       addTarget(buildMouth(slot, m), { kind: "cave", slot, priority: 1 }, { radius: 2.6 });
       claim(m.x, m.z, 3.5);
+      if (slot.repo && (slot.status === "open" || slot.status === "mirror")) {
+        workZones.push({ x: m.x, z: m.z, floor: m.floorY, sr: Math.sin(m.ry), cr: Math.cos(m.ry), active: false, half: 3.4, front: 5.8 });
+      }
+
       if (slot.scene) {
         presets[slot.scene] = mouthView(m);
         openMouths.push({ slot, m, actionX: m.x + Math.sin(m.ry) * RALLY_KART_Z, actionZ: m.z + Math.cos(m.ry) * RALLY_KART_Z });
@@ -41339,6 +41404,7 @@ void main() {
     // its walker gap from all of them. Positions mutate in place; the array only
     // changes when one arrives or leaves.
     shared.outsideActors = () => agentBodies;
+    shared.outsideActorHeight = BL.agent.BODY;
     shared.carryCharacter = carryCharacter;
     shared.npcWalkable = npcWalkable;
     shared.prepareNpcRoutes = refreshWorkZones;
@@ -41421,7 +41487,7 @@ void main() {
     // and the island's own cave, which is the mirror.
     shared.workSites = caves.slots.filter((slot) => slot.repo && (slot.status === "open" || slot.status === "mirror")).map((slot) => {
       const mouth = island.mouths.find((entry) => entry.id === slot.id), sr = Math.sin(mouth.ry), cr = Math.cos(mouth.ry);
-      workZones.push({ x: mouth.x, z: mouth.z, floor: mouth.floorY, sr, cr, active: false, half: 3.4, front: 5.8 });
+
       const aimX = mouth.x + sr * 5.8, aimZ = mouth.z + cr * 5.8, approach = { x: aimX, z: aimZ };
       let nearest = Infinity;
       // Rejoin the painted trail itself, rather than an off-path mouth-axis
@@ -41507,23 +41573,24 @@ void main() {
     // geometry, so a crowd is still one draw per part, they are capped, and each
     // one is disposed and off the graph the moment its EXTRA_LIFE is up.
     const agentWalkable = (fromX, fromZ, toX, toZ, y, height) => walkable(fromX, fromZ, toX, toZ, y, height, null)
-      && crew.actorClear(fromX, fromZ, toX, toZ);
+      && crew.actorClear(fromX, fromZ, toX, toZ, y, height);
     const spawnAgent = () => {
       if (extraAgents.length >= EXTRA_AGENTS || !agentSpot(AGENT_SPAWN)) return false;
       const extra = BL.agent.create({
         groundAt: (x, z) => island.surfaceAt(x, z), walkable: agentWalkable,
         x: AGENT_SPAWN.x, z: AGENT_SPAWN.z, heading: Math.random() * Math.PI * 2
       });
-      extra.onIdle = () => {
+      const routeExtra = () => {
         const p = extra.root.position;
         AGENT_FROM.x = p.x; AGENT_FROM.z = p.z;
         if (agentSpot(AGENT_TO)) extra.walk(shared.npcPaths.route(AGENT_FROM, AGENT_TO), false);
       };
+      extra.onIdle = routeExtra;
       addChild(root, extra.root);
       extraAgents.push(extra);
       extraLives.push(EXTRA_LIFE);
       agentBodies.push(extra.root.position);
-      extra.onIdle();
+      routeExtra();
       hud.toast(`Agents: ${extraAgents.length + 1}`);
       return true;
     };
@@ -41534,7 +41601,7 @@ void main() {
     agent = BL.agent.create({
       groundAt: (x, z) => island.surfaceAt(x, z),
       walkable: (fromX, fromZ, toX, toZ, y, height) => walkable(fromX, fromZ, toX, toZ, y, height, null)
-        && crew.actorClear(fromX, fromZ, toX, toZ),
+        && crew.actorClear(fromX, fromZ, toX, toZ, y, height),
       x: agentFrom.x, z: agentFrom.z, heading: Math.random() * Math.PI * 2
     });
     agentBodies.length = 0;
@@ -42469,7 +42536,10 @@ void main() {
       else if (action === "clear-loot") clearLoot();
       else if (action === "reset") resetDemo();
       else if (action === "act") pilot.action();
-      else if (action === "mode-preset") pilot.goPreset(value === "pile" ? "pile" : value === "lab" ? "racks" : value === "mirror" ? "bunks" : "bench");
+      else if (action === "mode-preset") {
+        hud.setDetachedView(value, true);
+        pilot.goPreset(value === "pile" ? "pile" : value === "lab" ? "racks" : value === "mirror" ? "bunks" : "bench");
+      }
       else if (action.startsWith("mode-")) pilot.modeAction(action);
       else if (action.startsWith("weapon-") || action === "magazine-swap") pilot.weaponAction(action);
       else if (action === "reset-view") pilot.goPreset("pile");

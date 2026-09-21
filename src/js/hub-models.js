@@ -348,8 +348,9 @@
       canopyFloor = Math.min(canopyFloor, y); canopyTop = Math.max(canopyTop, y + 1);
     }
     // Keep the upper crown standable; lower leaves and branch tips let
-    // walkers through. Roots and the main trunk remain solid throughout.
-    const solid = vox(), middle = Math.ceil((canopyFloor + canopyTop) / 2);
+    // walkers through, including tall helmets on quarter-unit uphill ledges.
+    // Roots and the main trunk remain solid throughout.
+    const solid = vox(), middle = Math.max(11, Math.ceil((canopyFloor + canopyTop) / 2));
     for (const [key, color] of v.map) {
       voxCoords(key, CELL);
       const x = CELL[0], y = CELL[1], z = CELL[2];

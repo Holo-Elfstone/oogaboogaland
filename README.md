@@ -52,8 +52,8 @@ The primary icon matches that character's melee weapon. Click either button to s
 its weapon without changing your view. In zoomed-out carry view, pressing the selected
 primary button charges a swing and releasing strikes; a quick release pokes instead.
 Its compact vertical gauge starts at 50% damage, rises to 100% for a brief press, and
-fills to 200% when fully charged. In battle mode that button selects the primary weapon; use left
-mouse on the island to swing. Clicking the selected AK button targets the closest visible
+fills to 200% when fully charged. The selected primary button also pokes, swings, and charges
+in every battle view. Clicking the selected AK button targets the closest visible
 shootable item along the character's facing direction in carry view, adjusting vertically
 as needed (or firing straight ahead if none is present), and uses the reticle in battle mode. **G** still
 switches between weapons. When the rifle is put away, its compact count
@@ -82,7 +82,8 @@ Hold **right mouse** to aim down the gun's sights
 or focus melee aim, tightening the view and slowing mouse sensitivity. Left-click
 still attacks while right-click is held. **Space** reloads beside the pile and jumps
 elsewhere (hold it to climb with a jetpack); **R** swaps the AK's loaded magazine with your fullest spare
-while in shooting mode, and **Shift** sprints forward. **Escape** or **Tab**
+while in shooting mode. In third-person battle view, tap **Shift** to smoothly switch shoulders,
+or hold **Shift** with **A/D** to plant your feet and lean. **Escape** or **Tab**
 frees the mouse for UI controls and pauses mouse aiming. The next click on the island
 hides the cursor without attacking; subsequent clicks fire or swing while it is hidden.
 **1** selects the club or assigned primary melee skin; **2** selects the rifle and
@@ -90,7 +91,7 @@ carries the primary weapon diagonally across the back. Neither key changes the c
 battle and carry without changing it. In battle mode the club is held outward: a quick left-click
 release pokes forward for half damage; a brief press swings for normal damage.
 Hold longer to raise the weapon and charge up to double damage, then release to strike.
-The same duration-based gestures work with a mouse, trackpad, or the carry-view melee button.
+The same duration-based gestures work with a mouse, trackpad, or the melee button.
 Focused aim boosts an ordinary swing to 150%; a full charge reaches 200%, without multiplying those bonuses.
 The arm and wrist extend toward the aimed spot for the weapon's full reach. An orange
 melee reticle selects the object that receives the hit. Axe pokes preserve the blade's
@@ -101,7 +102,8 @@ last selected melee weapon or rifle, swooping toward the point under your cursor
 The pointer glides into the centered aiming dot along with that camera transition.
 In shoulder and first-person views, four separated arcs show the rifle's shot spread: bananas cluster around the dot
 with a normal distribution bounded by the circle. Holding right-click tightens
-both the circle and the spread smoothly while the dot stays centered.
+both the circle and the spread smoothly while the dot stays centered. Focused rifle fire sends
+one banana per click, including successive quick clicks.
 The center dot turns green over reachable friendly characters and orange over
 reachable interactive objects; red is reserved for enemies. It stays neutral when
 the target is blocked or beyond the equipped weapon's reach. A brief pulse in the
@@ -115,14 +117,16 @@ pause, then scroll inward again for first person.
 Scroll outward once for shoulder aim, then again for centered navigation and
 further zooming out; one large outward scroll from shoulder aim can pull all the
 way back. Zoom follows your chosen angle with a gentle added downward tilt,
-keeping the distant view shallow; beneath a ceiling, zoom stays horizontal.
+keeping the distant view shallow. Leaving shoulder view beneath a ceiling starts horizontally;
+after you adjust the orbit angle, further zooms preserve that angle.
 Zooming out keeps your selected weapon equipped. Mouse clicks on the island attack
 only in battle mode; the weapon buttons also work in carry mode.
 Focus returns to the character at the start of the outward zoom, even if you stop scrolling partway.
 Moving the mouse moves the pointer; drag to rotate the camera as before.
 **Escape** or **Tab** releases the normal browser cursor.
-Burning keeps your current view but blocks swings and shots; press **Space** to
-drop and roll, then attack again once the fire is out.
+Burning keeps your selected weapon and equipment, and you can still shoot, poke, or swing.
+Press **Space** to drop and roll. First-person follows the rolling head, with embers and
+then soot covering the view according to the fire's severity.
 **V** also uses the selected weapon. Each rifle burst has one kick and flash per banana.
 While you control a worker, putting the rifle away carries it on their back. The expanded control shows an
 exact count out of **30** and thirty tiny banana indicators. The rifle's magazine window holds nine banana marks,
@@ -223,7 +227,7 @@ Double-click the Agent to play it, exactly as you take an Ooga; double-click it 
 
 ## Debug
 
-**B** adds 100 test bananas, **L** a legendary tip, **P** fills the pile, **1** to **9** force a contributor to eat, **Shift+R** resets and **Shift+A** plays the Agent anywhere. The Konami code (up, up, down, down, left, right, left, right, B, A) opens a panel showing the live mempool.space socket: its state, message counts, the chain tip and next-block fee, the island's overcast and the last events.
+**B** adds 100 test bananas, **L** a legendary tip, **P** fills the pile, **1** to **9** force a contributor to eat, **Shift+R** resets and **Shift+A** adds a roaming Agent in the hub or plays the Agent in other scenes. The Konami code (up, up, down, down, left, right, left, right, B, A) opens a panel showing the live mempool.space socket: its state, message counts, the chain tip and next-block fee, the island's overcast and the last events.
 
 `?scene=lab`, `race`, `drop` or `orbit` opens that scene, `?nosim=1` silences simulated tips and both live feeds, `?mempool=0` only the weather feed, `?oogatron=0` only the stats poll, `?canvas2d=1` forces the Canvas 2D fallback, and `?debug=1` exposes `window.__ooga`. AGENTS.md lists every debug flag: the clock, the starting view, character, weapon and ammunition fixtures, and the pile level.
 
