@@ -19,7 +19,7 @@ only; `HOST=0.0.0.0` opens it to the network. Reload the tab after a rebuild.
 
 The page lands on the hub. Tap the lit cave for EntropyLab; **Escape** or **Leave cave** brings you back. The 9 o'clock cave is **Ooga Rally**, a kart race — press **Space** nearby. A plane on its roof flies **Ooga Drop**, a skydive back onto the island, and a rope bridge off the south rim leads to the pad for **Ooga Orbit**.
 
-The island keeps your local time and moves through dawn, morning, noon, dusk, night and midnight: torches light at dusk, butterflies give way to fireflies, and the crew gathers at the fire. Roster labels show yellow for clankin (a contribution within four hours), orange for chillin (through 48) and gray for sleepin, with a green dot while a human is in control. See the [activity data contract](docs/activity-contract.md) for the snapshot.
+The island keeps your local time and moves through dawn, morning, noon, dusk, night and midnight: torches light at dusk, butterflies give way to fireflies, and the crew gathers at the fire. Roster labels show yellow for clankin (a contribution within the hour), orange for chillin (through 24 hours) and gray for sleepin, with a green dot while a human is in control. Commits, pull requests, reviews, merges and comments across every OogaBoogaX repository all count, and the live oogatron poll wakes a sleeper into a walk out of the HQ minutes after they contribute. See the [activity data contract](docs/activity-contract.md) for the snapshot.
 
 ## The island
 

@@ -1,7 +1,9 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const MINUTE = 60 * 1e3, HOUR = 60 * MINUTE, WORK_WINDOW = 4 * HOUR, CHILL_WINDOW = 48 * HOUR;
+  // Clanking (working) within the hour, chillin until a day has passed,
+  // asleep after that. The 60s hub interval re-samples these thresholds.
+  const MINUTE = 60 * 1e3, HOUR = 60 * MINUTE, WORK_WINDOW = 1 * HOUR, CHILL_WINDOW = 24 * HOUR;
   const ENTROPY = "oogaboogax/entropylab", MAX_REPOS = 64;
   const ISO_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
   // Historical EntropyLab activity; a backend can refresh it with applyActivity.
@@ -46,7 +48,7 @@
     const minutes = Math.max(0, Math.floor((at - contributor.lastCommitAt) / MINUTE));
     if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
-    if (hours < 48) return `${hours}h ago`;
+    if (hours < 24) return `${hours}h ago`;
     return `${Math.floor(hours / 24)}d ago`;
   };
   // Rows: { name: GitHub handle, lastCommitAt: Unix milliseconds, repo? }.
@@ -67,19 +69,20 @@
     if (changed.size) for (const notify of listeners) notify();
     return changed.size;
   };
-  // Oogatron snapshots, one or an array: schema 2 (org-wide, what the baked
-  // jumbotron payload is) or legacy schema 1 project snapshots keyed by
-  // meta.repo. generated_at describes the snapshot, never the contributor's
-  // most recent activity. Contributor identity is org-wide in schema 2, so
-  // last_seen_at lands on the lab's repo key: the wake/sleep state is
-  // org-wide by construction (stateFor takes the max across repos) and the
-  // lab work sites keep animating for whoever the org last saw active.
+  // Oogatron snapshots, one or an array: schema 2 or 3 (org-wide — the baked
+  // jumbotron payload and the live /v2/stats poll) or legacy schema 1 project
+  // snapshots keyed by meta.repo. generated_at describes the snapshot, never
+  // the contributor's most recent activity. Contributor identity is org-wide
+  // in schemas 2+, so last_seen_at (which now moves for comments and merges
+  // too) lands on the lab's repo key: the wake/sleep state is org-wide by
+  // construction (stateFor takes the max across repos) and the lab work
+  // sites keep animating for whoever the org last saw active.
   const applySnapshot = (snapshots, at = Date.now()) => {
     const rows = [];
     for (const snapshot of Array.isArray(snapshots) ? snapshots : [snapshots]) {
       if (!snapshot || !snapshot.meta || !Array.isArray(snapshot.contributors)) continue;
       const version = snapshot.meta.schema_version;
-      const repo = version === 2
+      const repo = version === 2 || version === 3
         ? (typeof snapshot.meta.org === "string" && snapshot.meta.org.toLowerCase() === "oogaboogax" ? ENTROPY : null)
         : version === 1 ? repositoryOf(snapshot.meta.repo) : null;
       if (!repo) continue;
