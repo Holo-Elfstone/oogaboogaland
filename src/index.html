@@ -154,6 +154,7 @@
         <h1><span data-sign>Ooga Booga Land</span></h1>
         <p data-scene="hub" id="subtitle">an island of caves</p>
         <p data-scene="lab" hidden>EntropyLab cave</p>
+        <p data-scene="pool" hidden>Mempool cave</p>
       </div>
       <time class="world-clock" id="world-clock" aria-label="Local time"></time>
       <button type="button" class="world-bananas" id="world-bananas">
@@ -177,6 +178,13 @@
         <button type="button" data-preset="bunks">Bunks</button>
         <button type="button" data-preset="bench">Bench</button>
         <button type="button" class="leave" data-action="leave" data-scene="lab" hidden>Leave<span> cave</span></button>
+      </nav>
+      <nav class="presets" aria-label="Mempool cave" data-scene="pool" hidden>
+        <button type="button" data-preset="ladder">Ladder</button>
+        <button type="button" data-preset="tiers">Tiers</button>
+        <button type="button" data-preset="chain">Chain</button>
+        <button type="button" data-preset="epoch">Epoch</button>
+        <button type="button" class="leave" data-action="leave">Leave<span> cave</span></button>
       </nav>
       <nav class="presets" aria-label="Race" data-scene="race" hidden>
         <button type="button" data-action="garage" id="race-garage-btn">Garage</button>
@@ -642,7 +650,7 @@
     <dialog class="modal" id="feed" aria-label="Feed the Ooga Boogas">
       <div class="panel-head">
         <h2><span data-sign>Feed the Ooga Boogas</span></h2>
-        <button type="button" class="link" data-action="feed-close">Close</button>
+        <button type="button" class="modal-close" data-action="feed-close" aria-label="Close the feed">&times;</button>
       </div>
       <canvas id="qr" width="0" height="0" aria-label="Donation QR code"></canvas>
       <p class="qr-url" id="qr-url"></p>
@@ -660,7 +668,7 @@
     <dialog class="modal" id="recipe" aria-label="Add an Ooga">
       <div class="panel-head">
         <h2><span data-sign>Add an Ooga</span></h2>
-        <button type="button" class="link" data-action="recipe-close">Close</button>
+        <button type="button" class="modal-close" data-action="recipe-close" aria-label="Close">&times;</button>
       </div>
       <p class="help">2140data hands you the prompt. Paste it to your coding agent.</p>
       <pre class="recipe" id="recipe-text">Add an Ooga to Ooga Booga Land. Create one new file, src/characters/&lt;handle&gt;.js, and change nothing else.
@@ -680,7 +688,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
       <div class="panel-head">
         <h2><span data-sign>Controls</span></h2>
         <form method="dialog">
-          <button type="submit" class="link">Close</button>
+          <button type="submit" class="modal-close" aria-label="Close controls">&times;</button>
         </form>
       </div>
       <div class="controls-list">
@@ -700,6 +708,31 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
         <div><b>J</b><span>Jetpack</span></div>
         <div><b>Escape</b><span>Let go</span></div>
       </div>
+    </dialog>
+    <dialog class="modal" id="weather-key" aria-label="Reading the weather">
+      <div class="panel-head">
+        <h2><span data-sign>Reading the weather</span></h2>
+        <button type="button" class="modal-close" data-action="weather-close" aria-label="Close">&times;</button>
+      </div>
+      <p class="help">The weather runs on live Bitcoin data. Here's what each part means.</p>
+      <dl class="weather-key">
+        <div>
+          <dt>Rain</dt>
+          <dd>The backlog. The more that is waiting to be mined, the harder it falls, and it keeps falling until the pool drains. Empty mempool, clear sky. Expensive fees make it heavier.</dd>
+        </div>
+        <div>
+          <dt>Snow</dt>
+          <dd>Cold means slow blocks. Once they start landing well past the ten minute mark the rain turns to snow. If the whole epoch has been running late, that pushes it colder too.</dd>
+        </div>
+        <div>
+          <dt>Wind</dt>
+          <dd>Transactions turning up. The busier it gets, the further the rain leans over and the more the snow drifts about. Rain always slants the way the wind is going, never into it.</dd>
+        </div>
+        <div>
+          <dt>Lightning</dt>
+          <dd>Somebody found a block. Every one of them throws a bolt over the island, whatever the weather is doing. Storms throw extra on their own.</dd>
+        </div>
+      </dl>
     </dialog>
     <div class="bottom-hud">
       <button type="button" class="act" id="act" data-action="act" hidden>JUMP!</button>
@@ -760,6 +793,7 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/donations.js"></script>
   <script src="js/mempool.js"></script>
   <script src="js/oogatron-live.js"></script>
+    <script src="js/chain.js"></script>
   <script src="js/weapon-targets.js"></script>
   <script src="js/interact.js"></script>
   <script src="js/controls.js"></script>
@@ -778,16 +812,18 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
   <script src="js/mirror-guides.js"></script>
   <script src="js/crates.js"></script>
   <script src="js/critters.js"></script>
-  <script src="js/storm.js"></script>
+  <script src="js/weather.js"></script>
   <script src="js/race-models.js"></script>
   <script src="js/drop-models.js"></script>
   <script src="js/rocket.js"></script>
   <script src="js/rocket-models.js"></script>
+    <script src="js/pool-models.js"></script>
   <script src="js/solid-props.js"></script>
   <script src="js/breakables.js"></script>
   <script src="js/agent.js"></script>
   <script src="js/scene-hub.js"></script>
   <script src="js/scene-lab.js"></script>
+    <script src="js/scene-pool.js"></script>
   <script src="js/race-track.js"></script>
   <script src="js/racers.js"></script>
   <script src="js/race-items.js"></script>

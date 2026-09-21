@@ -137,6 +137,7 @@
       worldLootHint: $("world-loot-hint"),
       subtitle: $("subtitle"),
       actions: [...document.querySelectorAll("[data-action]")],
+      weatherKey: document.getElementById("weather-key"),
       act: $("act"),
       mode: $("mode-hud"),
       modeFree: $("freeroam-icon"),
@@ -577,6 +578,13 @@
       e.preventDefault();
       closeFeed();
     });
+    // The weather key: what the rain, the snow, the wind and the strikes are reading off the chain.
+    const openWeatherKey = () => {
+      if (el.weatherKey && !el.weatherKey.open) el.weatherKey.showModal();
+    };
+    const closeWeatherKey = () => {
+      if (el.weatherKey && el.weatherKey.open) el.weatherKey.close();
+    };
     const openRecipe = () => {
       if (!el.recipe.open) el.recipe.showModal();
     };
@@ -587,6 +595,11 @@
       if (e.key !== "Escape") return;
       e.preventDefault();
       closeRecipe();
+    });
+    if (el.weatherKey) on(el.weatherKey, "keydown", (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      closeWeatherKey();
     });
     // The prompt is written to be pasted, so it leaves in one click.
     const copyRecipe = (button) => {
@@ -695,6 +708,7 @@
       if (b.dataset.action === "feed") openFeed();
       else if (b.dataset.action === "feed-close") closeFeed();
       else if (b.dataset.action === "recipe-close") closeRecipe();
+      else if (b.dataset.action === "weather-close") closeWeatherKey();
       else if (b.dataset.action === "recipe-copy") copyRecipe(b);
       else if (b === el.mode && !modeSelected) actionHandler && actionHandler("mode-preset", nextDetachedView());
       else actionHandler && actionHandler(b.dataset.action);
@@ -1006,8 +1020,9 @@
       setJetpack(false, false, 0);
       closeFeed();
       closeRecipe();
+      closeWeatherKey();
     };
-    return { el, openFeed, closeFeed, openRecipe, closeRecipe, setRosterRow, setMeter, setStats, setAct, setMode, setDetachedView, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
+    return { el, openFeed, closeFeed, openRecipe, closeRecipe, setRosterRow, setMeter, setStats, setAct, setMode, setDetachedView, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose, openWeatherKey, closeWeatherKey };
   };
   BL.hud = { create, renderIcon, signLettering, STATE_LABELS, statusFor };
 })();

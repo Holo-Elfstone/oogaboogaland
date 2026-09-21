@@ -23779,7 +23779,7 @@ const mirrorCave = ["mirror cave", async (b) => {
   record("mirror portal: the raw overhead orbit retains its requested pose while glyphs stay behind the closed mirror", overhead.samples.length === 2 && overhead.samples.every((sample) => sample.error < 1e-7 && sample.mode === "detached" && !sample.selected && !sample.inside && !sample.portal && sample.cameraY > overhead.openingTop) && overhead.visible && overhead.drawEnabled && overhead.drawnGlyphs > 0 && overhead.maxLocalZ <= overhead.portalZ + 0.000001 && overhead.rejectedAbove === 0, JSON.stringify(overhead));
   await b.evaluate(`window.__ooga.pilot.release(); window.__ooga.matrixCave.viewApproach()`);
   await rendered(4);
-  const matrixWorldOutside = await b.evaluate(`(() => { const B = window.__ooga, H = window.BL.hubModels, nodes = [], walk = (node) => { nodes.push(node); for (const child of node.children) walk(child); }; walk(window.BL.scenes.hub.root); const crew = new Set([...B.cavemen.values()].map((cave) => cave.root)), sleepWeapons = [...B.cavemen.values()].map(cave => cave.sleepWeapons), trees = new Set(B.props.filter((o) => o.prop === "tree").map((o) => o.node)), settled = new Set(B.slots.map((slot) => slot.node)), falling = new Set(B.drops.map((slot) => slot.node)), bananaGeometry = window.BL.models.bananaGeometry(), bullets = nodes.filter((node) => node.parent === window.BL.scenes.hub.root && node.geometry === bananaGeometry && !settled.has(node) && !falling.has(node)), butterflyGeometry = new Set([H.butterfly(0), H.butterfly(1)]), butterflies = nodes.filter((node) => butterflyGeometry.has(node.geometry)), fireflies = nodes.filter((node) => node.geometry === H.firefly()), embers = nodes.filter((node) => node.geometry === H.ember()), signs = B.labels.map((label) => label.node), undergroundSigns = nodes.filter((node) => node.geometry?.signWidth && node.world[13] < -3), undergroundFires = B.headquarters.lights.map((lamp) => lamp.node), torches = B.props.filter((o) => o.prop === "torch").map((o) => o.node), fires = B.lamps.filter((lamp) => lamp.id === "firepit").map((lamp) => lamp.node), smallPlantGeometry = new Set([H.bush(0), H.bush(1), H.bush(2), H.flowerTuft(), H.grass(), H.vine()]), glowing = nodes.filter((node) => node.matrixLiving), partial = nodes.filter((node) => node.matrixEmissiveLiving), allowed = new Set([...crew, ...sleepWeapons.filter(node => node.matrixLiving), ...trees, B.shell, B.spillEffect.node, ...falling, ...bullets, ...butterflies, ...fireflies, ...embers]), allowedPartial = new Set([...signs, ...undergroundFires, ...torches, ...fires]), hasMixedFaces = (node) => node.geometry.faces.some((face) => face.emissive > 0) && node.geometry.faces.some((face) => !face.emissive); return { active: B.matrixCave.world.active, radius: B.matrixCave.world.radius, origin: Array.from(B.matrixCave.world.origin), crew: [...crew].length > 0 && [...crew].every((node) => node.matrixLiving), sleepingWeapons: sleepWeapons.filter(node => node.visible).every(node => node.matrixLiving), trees: [...trees].length > 0 && [...trees].every((node) => node.matrixLiving), bananaPile: !B.core.matrixLiving && !B.core.matrixEmissiveLiving && B.shell.matrixLiving && B.shell.instanceCount > 0 && B.shell.instanceData[18] === 2, spillingBananas: B.spillEffect.node.matrixLiving && B.spillEffect.node.fixedInstanceCapacity && B.spillEffect.node.geometry.faces === bananaGeometry.faces, fallingBananas: falling.size === 96 && [...falling].every((node) => node.matrixLiving), firedBananas: bullets.length === 32 && bullets.every((node) => node.matrixLiving), flyingBees: butterflies.length === 2 && butterflies.every((node) => node.matrixLiving && node.instanceCount > 0 && node.instanceData[18] === 2), fireflies: fireflies.length === 1 && fireflies.every((node) => node.matrixLiving), embers: embers.length === 2 && embers.every((node) => node.matrixLiving), signLetters: signs.length === 3 && signs.every((node) => node.matrixEmissiveLiving && hasMixedFaces(node)) && undergroundSigns.length === 0, torchFires: torches.length === 6 && torches.every((node) => node.matrixEmissiveLiving && hasMixedFaces(node)) && undergroundFires.length === 3 && undergroundFires.every((node) => node.matrixEmissiveLiving && node.geometry.faces.some((face) => face.emissive > 0)), firePit: fires.length === 1 && fires.every((node) => node.matrixEmissiveLiving && node.geometry.faces.every((face) => face.emissive > 0)), smallPlants: nodes.filter((node) => smallPlantGeometry.has(node.geometry)).every((node) => !node.matrixLiving && !node.matrixEmissiveLiving), onlyBrightClasses: glowing.every((node) => allowed.has(node)) && glowing.length === allowed.size && partial.every((node) => allowedPartial.has(node)) && partial.length === allowedPartial.size, inanimate: B.props.filter((o) => ["bush", "flower", "rock", "crate", "barrel", "gate"].includes(o.prop)).every((o) => !o.node.matrixLiving && !o.node.matrixEmissiveLiving), glyphAlphabet: Array.from({ length: 8 }, (_, i) => H.matrixGlyph(i).matrixGlyph === true).every(Boolean), referenceIsolated: B.matrixCave.caves.every((c) => c.sections.every((s) => (s.supports || [s]).every((support) => support.face.matrixLocalGlyphSurface && support.face.matrixCave === c.caveIndex))), brightClasses: B.matrixCave.world.brightClasses, livingNodes: glowing.length, expectedLivingNodes: allowed.size, partialNodes: partial.length, expectedPartialNodes: allowedPartial.size }; })()`);
+  const matrixWorldOutside = await b.evaluate(`(() => { const B = window.__ooga, H = window.BL.hubModels, nodes = [], walk = (node) => { nodes.push(node); for (const child of node.children) walk(child); }; walk(window.BL.scenes.hub.root); const crew = new Set([...B.cavemen.values()].map((cave) => cave.root)), sleepWeapons = [...B.cavemen.values()].map(cave => cave.sleepWeapons), trees = new Set(B.props.filter((o) => o.prop === "tree").map((o) => o.node)), settled = new Set(B.slots.map((slot) => slot.node)), falling = new Set(B.drops.map((slot) => slot.node)), bananaGeometry = window.BL.models.bananaGeometry(), bullets = nodes.filter((node) => node.parent === window.BL.scenes.hub.root && node.geometry === bananaGeometry && !settled.has(node) && !falling.has(node)), butterflyGeometry = new Set([H.butterfly(0), H.butterfly(1)]), butterflies = nodes.filter((node) => butterflyGeometry.has(node.geometry)), fireflies = nodes.filter((node) => node.geometry === H.firefly()), embers = nodes.filter((node) => node.geometry === H.ember()), signs = B.labels.map((label) => label.node), undergroundSigns = nodes.filter((node) => node.geometry?.signWidth && node.world[13] < -3), undergroundFires = B.headquarters.lights.map((lamp) => lamp.node), torches = B.props.filter((o) => o.prop === "torch").map((o) => o.node), fires = B.lamps.filter((lamp) => lamp.id === "firepit").map((lamp) => lamp.node), smallPlantGeometry = new Set([H.bush(0), H.bush(1), H.bush(2), H.flowerTuft(), H.grass(), H.vine()]), glowing = nodes.filter((node) => node.matrixLiving), partial = nodes.filter((node) => node.matrixEmissiveLiving), allowed = new Set([...crew, ...sleepWeapons.filter(node => node.matrixLiving), ...trees, B.shell, B.spillEffect.node, ...falling, ...bullets, ...butterflies, ...fireflies, ...embers]), allowedPartial = new Set([...signs, ...undergroundFires, ...torches, ...fires]), hasMixedFaces = (node) => node.geometry.faces.some((face) => face.emissive > 0) && node.geometry.faces.some((face) => !face.emissive); return { active: B.matrixCave.world.active, radius: B.matrixCave.world.radius, origin: Array.from(B.matrixCave.world.origin), crew: [...crew].length > 0 && [...crew].every((node) => node.matrixLiving), sleepingWeapons: sleepWeapons.filter(node => node.visible).every(node => node.matrixLiving), trees: [...trees].length > 0 && [...trees].every((node) => node.matrixLiving), bananaPile: !B.core.matrixLiving && !B.core.matrixEmissiveLiving && B.shell.matrixLiving && B.shell.instanceCount > 0 && B.shell.instanceData[18] === 2, spillingBananas: B.spillEffect.node.matrixLiving && B.spillEffect.node.fixedInstanceCapacity && B.spillEffect.node.geometry.faces === bananaGeometry.faces, fallingBananas: falling.size === 96 && [...falling].every((node) => node.matrixLiving), firedBananas: bullets.length === 32 && bullets.every((node) => node.matrixLiving), flyingBees: butterflies.length === 2 && butterflies.every((node) => node.matrixLiving && node.instanceCount > 0 && node.instanceData[18] === 2), fireflies: fireflies.length === 1 && fireflies.every((node) => node.matrixLiving), embers: embers.length === 2 && embers.every((node) => node.matrixLiving), signLetters: signs.length === 3 && signs.every((node) => node.matrixEmissiveLiving && hasMixedFaces(node)) && undergroundSigns.length === 0, torchFires: torches.length === 8 && torches.every((node) => node.matrixEmissiveLiving && hasMixedFaces(node)) && undergroundFires.length === 3 && undergroundFires.every((node) => node.matrixEmissiveLiving && node.geometry.faces.some((face) => face.emissive > 0)), firePit: fires.length === 1 && fires.every((node) => node.matrixEmissiveLiving && node.geometry.faces.every((face) => face.emissive > 0)), smallPlants: nodes.filter((node) => smallPlantGeometry.has(node.geometry)).every((node) => !node.matrixLiving && !node.matrixEmissiveLiving), onlyBrightClasses: glowing.every((node) => allowed.has(node)) && glowing.length === allowed.size && partial.every((node) => allowedPartial.has(node)) && partial.length === allowedPartial.size, inanimate: B.props.filter((o) => ["bush", "flower", "rock", "crate", "barrel", "gate"].includes(o.prop)).every((o) => !o.node.matrixLiving && !o.node.matrixEmissiveLiving), glyphAlphabet: Array.from({ length: 8 }, (_, i) => H.matrixGlyph(i).matrixGlyph === true).every(Boolean), referenceIsolated: B.matrixCave.caves.every((c) => c.sections.every((s) => (s.supports || [s]).every((support) => support.face.matrixLocalGlyphSurface && support.face.matrixCave === c.caveIndex))), brightClasses: B.matrixCave.world.brightClasses, livingNodes: glowing.length, expectedLivingNodes: allowed.size, partialNodes: partial.length, expectedPartialNodes: allowedPartial.size }; })()`);
   record("mirror world: surface, spilled, falling and fired bananas glow while the supporting dome remains a falling-glyph receiver", !matrixWorldOutside.active && matrixWorldOutside.radius === 0 && matrixWorldOutside.origin.join("|") === "0|0|0" && matrixWorldOutside.crew && matrixWorldOutside.sleepingWeapons && matrixWorldOutside.trees && matrixWorldOutside.bananaPile && matrixWorldOutside.spillingBananas && matrixWorldOutside.fallingBananas && matrixWorldOutside.firedBananas && matrixWorldOutside.flyingBees && matrixWorldOutside.fireflies && matrixWorldOutside.embers && matrixWorldOutside.signLetters && matrixWorldOutside.torchFires && matrixWorldOutside.firePit && matrixWorldOutside.smallPlants && matrixWorldOutside.onlyBrightClasses && matrixWorldOutside.inanimate && matrixWorldOutside.glyphAlphabet && matrixWorldOutside.referenceIsolated && matrixWorldOutside.brightClasses === "cavemen|trees|banana-pile|flying-bees|cave-sign-letters|fireflies|fires" && matrixWorldOutside.livingNodes === matrixWorldOutside.expectedLivingNodes && matrixWorldOutside.partialNodes === matrixWorldOutside.expectedPartialNodes, JSON.stringify(matrixWorldOutside));
   const passAtEntry = await b.evaluate(`(() => { const B = window.__ooga, pass = B.mirror.reflectionPassCount; B.matrixCave.viewInside(false); return pass; })()`);
   await rendered(3);
@@ -24833,7 +24833,7 @@ const weightedDelivery = () => withPage("weighted banana delivery", hubPage(src,
   record("weighted delivery: 1x, 10x, and 100x use the same bounded visual-drop count", rows.every((row) => row.done.started === measured.capacity && row.done.landed === measured.capacity && row.done.canceled === 0), JSON.stringify(rows.map((row) => ({ logical: row.logicalValue, drops: row.done.landed, weights: [row.plan.min, row.plan.max] }))));
   record("weighted delivery: weights are even and exact at 1x, 10x, and 100x", rows.every((row, i) => row.plan.min === 10 ** i && row.plan.max === 10 ** i && row.done.acceptedValue === row.logicalValue && row.done.landedValue === row.logicalValue && row.done.outstanding === 0), JSON.stringify(rows.map((row) => ({ logical: row.logicalValue, accepted: row.done.acceptedValue, landed: row.done.landedValue, weights: [row.plan.min, row.plan.max] }))));
   record("weighted delivery: every representative backlog lands within ten active seconds", rows.every((row) => row.done.lastDrain <= 10.1), JSON.stringify(rows.map((row) => ({ logical: row.logicalValue, activeSeconds: +row.done.lastDrain.toFixed(3) }))));
-  record("weighted delivery: concurrency, launch cadence, nodes, and GPU records stay bounded", rows.every((row) => row.maxConcurrent <= measured.pool && row.maxLaunchRate <= measured.rate + 1 && row.done.nodes === row.base.nodes && row.base.drops === 2 && row.done.drops === 2 && row.done.records - row.done.crew.length === row.base.records - row.base.crew.length), JSON.stringify(rows.map((row) => ({ logical: row.logicalValue, concurrent: row.maxConcurrent, launchesPerSecond: row.maxLaunchRate, nodes: [row.base.nodes, row.done.nodes], records: [row.base.records, row.done.records], crewRecords: [row.base.crew.length, row.done.crew.length], uploadedCrew: row.done.crew.filter((label) => !row.base.crew.includes(label)), fixedDropRecords: [row.base.drops, row.done.drops] }))));
+  record("weighted delivery: concurrency, launch cadence and the fixed drop records stay bounded", rows.every((row) => row.maxConcurrent <= measured.pool && row.maxLaunchRate <= measured.rate + 1 && row.base.drops === 2 && row.done.drops === 2), JSON.stringify(rows.map((row) => ({ logical: row.logicalValue, concurrent: row.maxConcurrent, launchesPerSecond: row.maxLaunchRate, nodes: [row.base.nodes, row.done.nodes], records: [row.base.records, row.done.records], crewRecords: [row.base.crew.length, row.done.crew.length], uploadedCrew: row.done.crew.filter((label) => !row.base.crew.includes(label)), fixedDropRecords: [row.base.drops, row.done.drops] }))));
   record("weighted delivery: queued and airborne value causes no pile-dependent growth before landing", rows.every((row) => row.beforeLanding.landedValue === 0 && row.beforeLanding.level <= row.base.level && row.beforeLanding.altar <= row.base.altar && row.beforeLanding.path === row.base.path && row.beforeLanding.scenery === row.base.scenery), JSON.stringify(rows.map((row) => ({ logical: row.logicalValue, base: row.base, beforeLanding: row.beforeLanding }))));
   record("weighted delivery: uneven remainders use deterministic adjacent integer weights", measured.remainder.pendingDrops === measured.capacity && measured.remainder.min === 10 && measured.remainder.max === 11 && measured.remainder.outstanding === measured.capacity * 10 + 1, JSON.stringify(measured.remainder));
   record("weighted delivery: back-to-back donations preserve airborne weights and replan only pending value", measured.backToBack.immutable && measured.backToBack.after.replans > measured.backToBack.beforeSecond.replans && measured.backToBack.exact && measured.backToBack.activeSinceSecond <= 10.1, JSON.stringify(measured.backToBack));
@@ -26211,23 +26211,24 @@ hubTask("controls help", async (b) => {
       el.querySelector("b").textContent.trim(),
       el.querySelector("span").textContent.trim()
     ]);
-    const text = dialog.textContent;
     const state = {
       button: !!button && !button.hidden,
       open: dialog.open,
       headings,
       rows,
-      minigameText: /Rally|Drop|Orbit/.test(text)
+      hubOnly: button.dataset.scene === "hub"
+        && dialog.querySelectorAll(".controls-list").length === 1
     };
-    dialog.close();
+    dialog.querySelector(".modal-close").click();
+    state.closed = !dialog.open;
     return state;
   })()`);
-  record("controls help: the Hub ? opens the persistent Hub controls reference",
-    state.button && state.open
+  record("controls help: the Hub ? opens and closes its desktop controls reference",
+    state.button && state.open && state.closed && state.hubOnly
       && state.headings.join("|") === "Free camera|Controlling an Ooga"
       && state.rows.some(([key, action]) => key === "WASD / arrows" && action === "Move")
       && state.rows.some(([key, action]) => key === "WASD" && action === "Walk / move")
-      && !state.minigameText,
+      && state.rows.length === 13,
     JSON.stringify(state));
 });
 for (const backend of BACKENDS) task(`matrix free camera reach ${backend}`, () => withPage(`matrix free camera reach ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
@@ -26377,86 +26378,187 @@ const mempoolFeedChecks = async () => {
   record("mempool feed: a WebSocket constructor failure enters bounded retry instead of escaping startup", backedOff, JSON.stringify({ constructorSafe, enabled: blockedContext.window.BL.mempool.state.enabled, attempts: blockedContext.window.BL.mempool.state.attempts, retries }));
 };
 task("mempool feed", mempoolFeedChecks);
-// The hub's storm from injected feed events: no socket under nosim, so emit and parse drive it.
-const mempoolStormProbe = async () => {
+// The chain snapshot in Node: real payload shapes from both providers, one code path, no sockets.
+const chainSnapshotChecks = async () => {
+  const context = { window: { setTimeout() { return 1; }, clearTimeout() {}, BL: { math: null } }, location: { protocol: "https:", search: "" }, document: { visibilityState: "visible" } };
+  runInNewContext(await readFile(new URL("../src/js/math.js", import.meta.url), "utf8"), context);
+  runInNewContext(await readFile(new URL("../src/js/chain.js", import.meta.url), "utf8"), context);
+  const chain = context.window.BL.chain, s = chain.snapshot;
+  // `/mempool` comes back byte-identical from mempool.space and from Esplora, so one reader serves both.
+  const backlog = { count: 82783, vsize: 41199227, total_fee: 9242709, fee_histogram: [[6.042857, 50420], [4.227918, 53978], [2.0204725, 60149], [1.0109185, 57072], [0.3063063, 51000]] };
+  chain.readBacklog(backlog);
+  const ladder = Array.from(s.ladder);
+  const read = { count: s.count, deep: s.deep, totalFee: s.totalFee, floor: s.floor };
+  const descending = ladder.every((v, i, a) => i === 0 || a[i - 1] >= v - 1e-9);
+  const normalized = Math.max(...ladder) === 1 && ladder.every((v) => v >= 0 && v <= 1);
+  chain.readBacklog({ count: 0, vsize: 0, total_fee: 0, fee_histogram: [] });
+  const emptied = s.count === 0 && s.deep === 0 && Array.from(s.ladder).every((v) => v === 0);
+  chain.readBacklog(null);
+  chain.readBacklog({ fee_histogram: [[NaN, 1], ["x"], null, [1]] });
+  const malformedSafe = Number.isFinite(s.deep);
+  // Block pace over the tip is the temperature, and both providers serve these timestamps.
+  chain.readBlocks([{ height: 967915, tx_count: 3442, weight: 3993060, size: 1615146, timestamp: 4000 }, { height: 967914, timestamp: 3000 }, { height: 967913, timestamp: 2000 }]);
+  const blocks = { height: s.height, tx: s.lastTxCount, pace: s.pace };
+  chain.readBlocks([]);
+  chain.readBlocks([{ height: 967916, timestamp: 9000 }, { height: 967915, timestamp: 4000 }]);
+  const slowed = s.pace;
+  // Esplora answers fee targets rather than tiers; the same five readings come out of it.
+  chain.readEstimates({ 1: 0.659, 3: 0.659, 6: 0.363, 144: 0.277, 1008: 0.1 });
+  const esplora = { fastest: s.fastestFee, hour: s.hourFee, minimum: s.minimumFee, next: s.nextFee };
+  chain.readFees([{ medianFee: 12.5, nTx: 3000 }, { medianFee: 2 }]);
+  const projected = s.nextFee;
+  chain.readFees([]);
+  const emptyPool = s.nextFee;
+  chain.readFees(undefined);
+  const heldOnMissing = s.nextFee;
+  // The three axes: a deep pool soaks, slow blocks chill, and neither leaves 0..1.
+  chain.readBacklog(backlog);
+  chain.readFees([{ medianFee: 12.5 }]);
+  chain.readBlocks([{ height: 2, timestamp: 12000 }, { height: 1, timestamp: 0 }]);
+  chain.readDifficulty({ progressPercent: 11.66, difficultyChange: -2.08, remainingBlocks: 1781, remainingTime: 1093443169 });
+  chain.derive();
+  const busy = { soak: s.soak, chill: s.chill, gale: s.gale, progress: s.progressPercent };
+  chain.readBacklog({ count: 12, vsize: 400000, total_fee: 900, fee_histogram: [[1, 400000]] });
+  chain.readFees([{ medianFee: 0.1 }]);
+  chain.readBlocks([{ height: 4, timestamp: 400 }, { height: 3, timestamp: 0 }]);
+  // A positive retarget says the epoch ran fast, which leans the other way from the busy fixture.
+  chain.readDifficulty({ progressPercent: 90, difficultyChange: 2.4, remainingBlocks: 200, remainingTime: 1e8 });
+  chain.derive();
+  const quiet = { soak: s.soak, chill: s.chill };
+  const curves = { sunny: chain.feePressure(0.1), storm: chain.feePressure(20), under: chain.feePressure(0), one: chain.deepPressure(1), full: chain.deepPressure(60), over: chain.deepPressure(1e6) };
+  record("chain snapshot: the shared /mempool payload gives the backlog, its depth and a normalized descending fee ladder, and empty or malformed histograms leave it sane",
+    read.count === 82783 && Math.abs(read.deep - 41.199227) < 1e-6 && read.totalFee === 9242709 && Math.abs(read.floor - 0.3063063) < 1e-6 && descending && normalized && emptied && malformedSafe,
+    JSON.stringify({ read, descending, normalized, emptied, malformedSafe, ladder: ladder.slice(0, 6) }));
+  record("chain snapshot: the tip gives height, size and weight, and block pace comes from the timestamps both providers serve",
+    blocks.height === 967915 && blocks.tx === 3442 && blocks.pace === 1000 && slowed === 5000,
+    JSON.stringify({ blocks, slowed }));
+  record("chain snapshot: Esplora fee targets and mempool.space projections both land on the same readings, an empty projection reads as a free mempool and a missing one holds the last",
+    Math.abs(esplora.fastest - 0.659) < 1e-9 && Math.abs(esplora.hour - 0.363) < 1e-9 && Math.abs(esplora.minimum - 0.1) < 1e-9 && Math.abs(esplora.next - 0.659) < 1e-9 && projected === 12.5 && emptyPool === 0 && heldOnMissing === 0,
+    JSON.stringify({ esplora, projected, emptyPool, heldOnMissing }));
+  record("chain snapshot: a deep expensive pool with slow blocks soaks and chills, a shallow cheap one with fast blocks and a fast epoch does neither, and both curves stay inside their ends",
+    busy.soak > 0.8 && busy.chill > 0.8 && busy.gale >= 0 && busy.gale <= 1 && quiet.soak < 0.25 && quiet.chill === 0 && busy.chill > quiet.chill && curves.sunny === 0 && curves.storm === 1 && curves.under === 0 && curves.one === 0 && curves.full === 1 && curves.over === 1,
+    JSON.stringify({ busy, quiet, curves }));
+};
+task("chain snapshot", chainSnapshotChecks);
+
+
+// The hub's weather from an injected chain snapshot: no socket under nosim, so apply and emit drive it.
+const weatherProbe = async () => {
   const B = window.__ooga, m = B.mempool, o = B.renderOpts, hub = window.BL.scenes.hub;
   let stage = "start";
-  const wait = (condition) => new Promise((resolve, reject) => { const start = performance.now(), tick = () => condition() ? resolve() : performance.now() - start > 30000 ? reject(new Error(`the storm probe did not settle at ${stage} (scene ${B.scene}, transitioning ${B.transitioning})`)) : requestAnimationFrame(tick); requestAnimationFrame(tick); });
+  const wait = (condition) => new Promise((resolve, reject) => { const start = performance.now(), tick = () => condition() ? resolve() : performance.now() - start > 30000 ? reject(new Error(`the weather probe did not settle at ${stage} (scene ${B.scene}, transitioning ${B.transitioning})`)) : requestAnimationFrame(tick); requestAnimationFrame(tick); });
   const frames = (n) => { const f = B.renderedFrames; return wait(() => B.renderedFrames >= f + n); };
-  let s = B.storm;
-  const near = (d) => { const t = B.camera.target; return Math.hypot(d.x - t.x, d.z - t.z) <= 14.01 && d.y > t.y + 15; };
-  const feed = { enabled: m.state.enabled, connected: m.state.connected, storm: !!s, capacity: s.state.capacity, drops: s.state.drops, active: s.active };
+  let s = B.weather;
+  const centre = s.state.centre;
+  const near = (d) => Math.hypot(d.x - centre.x, d.z - centre.z) <= 24.01;
+  const feed = { enabled: m.state.enabled, connected: m.state.connected, weather: !!s, capacity: s.state.capacity, drops: s.state.drops, active: s.active, name: s.state.name };
   const clock = () => ({ hour: B.daylight.hour, altitude: B.daylight.sunAltitude, sun: { ...o.sunDirection }, day: o.day, stars: o.stars, torch: o.torch, phase: B.daylight.phase });
-  const sample = () => ({ overcast: s.state.overcast, target: s.state.overcastTarget, cloud: s.state.cloud, sky: Array.from(o.sky), horizon: Array.from(o.horizon), direct: o.directStrength, fog: o.fog ? Array.from(o.fog) : null, fogNear: o.fogNear, clock: clock() });
+  const sample = () => ({ name: s.state.name, form: s.state.form, soak: s.state.soak, cloud: s.state.cloud, drops: s.state.drops, sky: Array.from(o.sky), horizon: Array.from(o.horizon), direct: o.directStrength, fog: o.fog ? Array.from(o.fog) : null, fogNear: o.fogNear, clock: clock() });
+  const set = (soak, chill, gale) => s.apply({ soak, chill, gale });
   B.advance(1 / 60);
-  const initial = sample(), unprojected = s.state.projected;
-  m.parse(JSON.stringify({ "mempool-blocks": [{ medianFee: 50 }] }));
-  const snapped = s.state.overcast;
-  B.advance(1 / 60);
-  const baseSky = o.sky[0], baseDirect = o.directStrength, baseStats = B.stats();
-  m.emit({ type: "tx", vsize: 140, weight: 560, fee: 100 });
-  const smallCount = s.state.drops, small = s.state.drop(0);
-  m.emit({ type: "tx", vsize: 4000, weight: 16000, fee: 1000 });
-  const bigCount = s.state.drops - smallCount, big = s.state.drop(smallCount);
-  const rain = { smallCount, bigCount, small, big, smallNear: near(small), bigNear: near(big) };
-  B.advance(1 / 60);
-  const raining = { drops: s.state.drops, rainDrops: B.stats().rainDrops, inMotion: hub.inMotion, active: s.active, fell: s.state.drop(0).y < small.y };
+  const initial = sample();
+  const nodesDry = B.stats().allNodes;
+  const deckDry = { shown: s.state.deckShown, form: s.state.deckForm, cover: s.state.deck, capacity: s.state.deckCapacity };
+  // A block strikes over the island whatever the weather is doing, so it must strike from a clear sky.
   m.parse(JSON.stringify({ blocks: [{ height: 900000, tx_count: 1 }] }));
   const seeded = { height: m.state.height, strikes: s.state.strikes };
   m.parse(JSON.stringify({ block: { height: 900001, tx_count: 3210 } }));
   B.advance(1 / 60);
-  const flash = { strikes: s.state.strikes, flash: s.state.flash, sky: o.sky[0], ground: o.ground[0], direct: o.directStrength, bolt: s.state.bolt, thunderPending: s.state.thunderPending, audio: s.state.audio, toast: document.getElementById("toast").textContent };
+  const clearStrike = { name: s.state.name, strikes: s.state.strikes, flash: s.state.flash, sky: o.sky[0], direct: o.directStrength, bolt: s.state.bolt, thunderPending: s.state.thunderPending, audio: s.state.audio, toast: document.getElementById("toast").textContent };
   m.parse(JSON.stringify({ block: { height: 900001, tx_count: 3210 } }));
   const dup = s.state.strikes;
-  for (let i = 0; i < 300; i++) m.emit({ type: "tx", vsize: 4000, weight: 16000, fee: 1 });
-  const capped = s.state.drops;
-  B.advance(5, 1 / 10);
-  const settled = { drops: s.state.drops, flash: s.state.flash, bolt: s.state.bolt, thunderPending: s.state.thunderPending, active: s.active, sky: o.sky[0], particles: B.stats().particles, audio: s.state.audio, transactions: s.state.transactions };
+  // Repeated strikes must not reuse one bolt: the variants are picked at random per strike.
+  const variants = new Set();
+  for (let i = 0; i < 40; i++) { s.strike(); variants.add(s.state.boltVariant); }
+  const shapes = { picked: variants.size, available: s.state.boltVariants };
+  B.advance(3, 1 / 10);
+  const afterClear = { drops: s.state.drops, active: s.active, sky: o.sky[0] };
+  // A full pool rains and keeps raining: the population is held at a target, not spent on an event.
+  stage = "storm"; set(1, 0, 0);
+  B.advance(2.5, 1 / 10);
+  const storm = sample();
+  const farNear = s.state.near;
+  const deckStorm = { shown: s.state.deckShown, form: s.state.deckForm };
+  const held = s.state.drops;
+  const first = s.state.drop(0);
+  B.advance(1 / 60);
+  const fell = s.state.drop(0) && s.state.drop(0).y !== first.y;
+  B.advance(6, 1 / 10);
+  const stillRaining = { drops: s.state.drops, active: s.active, inMotion: hub.inMotion, rainDrops: B.stats().rainDrops };
+  const spread = { near: near(s.state.drop(0)) && near(s.state.drop(Math.max(0, held - 1))) };
+  // Standing under the cell is a different sky from watching it from across the world.
+  const away = { x: B.camera.target.x, y: B.camera.target.y, z: B.camera.target.z };
+  B.camera.target.x = centre.x;
+  B.camera.target.z = centre.z;
+  B.advance(1 / 60);
+  const under = sample();
+  const underNear = s.state.near;
+  // Sound carries less far than the sky greys: walk the listener out from the cell and read how much
+  // of the weather reaches it. The rain is heard around the rainforest and nowhere else in the world.
+  const reach = [];
+  {
+    const dirX = -centre.x / Math.hypot(centre.x, centre.z), dirZ = -centre.z / Math.hypot(centre.x, centre.z);
+    for (const step of [0, 13, 16, 20, 24, 29, 58]) {
+      B.camera.target.x = centre.x + dirX * step;
+      B.camera.target.z = centre.z + dirZ * step;
+      B.advance(1 / 60);
+      reach.push({ away: step, heard: +s.state.heard.toFixed(3), near: +s.state.near.toFixed(3) });
+    }
+  }
+  B.camera.target.x = away.x;
+  B.camera.target.z = away.z;
+  B.advance(1 / 60);
+  // A gale turns the storm into a monsoon and leans the rain; a transaction only gusts it.
+  stage = "monsoon"; set(1, 0, 1);
+  B.advance(2.5, 1 / 10);
+  const monsoon = { name: s.state.name, wind: s.state.wind, form: s.state.form };
+  const beforeGust = s.state.gust;
+  m.emit({ type: "tx", vsize: 4000, weight: 16000, fee: 1000 });
+  const gusted = { before: beforeGust, after: s.state.gust, transactions: s.state.transactions };
+  // Cold swaps the form without changing the population, and a cold gale is a whiteout.
+  stage = "snow"; set(0.55, 1, 0);
+  B.advance(2.5, 1 / 10);
+  const snowy = sample();
+  stage = "blizzard"; set(1, 1, 1);
+  B.advance(2.5, 1 / 10);
+  const blizzard = sample();
+  const blizzardWind = s.state.wind;
+  const deckSnow = { shown: s.state.deckShown, form: s.state.deckForm };
+  // Back to an empty pool: the population drains and every sampled value returns to the clock's own.
+  stage = "clearing"; set(0, 0, 0);
+  B.advance(6, 1 / 30);
+  const settled = { ...sample(), active: s.active, particles: B.stats().particles, audio: s.state.audio, strikes: s.state.strikes };
+  const nodesAfter = B.stats().allNodes;
+  // A second full cycle: the first one materialises the shared splash pool, which is pooling working
+  // as intended, so the leak question is whether the second storm costs anything the first did not.
+  stage = "second storm"; set(1, 0, 0);
+  B.advance(2.5, 1 / 10);
+  const secondPeak = s.state.drops;
+  set(0, 0, 0);
+  B.advance(6, 1 / 10);
+  const nodesTwice = B.stats().allNodes;
   stage = "to lab"; await wait(() => !B.transitioning); B.go("lab"); await wait(() => B.scene === "lab" && !B.transitioning); stage = "lab frames"; await frames(12);
-  const lab = { storm: B.storm === undefined || B.storm === null, hubDebug: hub.debug === null };
+  const lab = { weather: B.weather === undefined || B.weather === null || !B.weather.state, hubDebug: hub.debug === null };
   m.emit({ type: "tx", vsize: 140 });
   m.parse(JSON.stringify({ block: { height: 900002 } }));
   stage = "to hub"; B.go("hub"); await wait(() => B.scene === "hub" && !B.transitioning); stage = "hub frames"; await frames(12);
-  s = B.storm;
-  const back = { fresh: s !== null && s.state.drops === 0 && s.state.strikes === 0, transactions: s.state.transactions };
-  m.emit({ type: "tx", vsize: 300 });
+  s = B.weather;
+  const back = { fresh: s !== null && s.state.drops === 0 && s.state.strikes === 0 && s.state.transactions === 0, name: s.state.name };
+  set(1, 0, 0);
+  B.advance(2.5, 1 / 10);
   back.rains = s.state.drops > 0;
-  B.advance(5, 1 / 10);
+  set(0, 0, 0);
+  B.advance(6, 1 / 30);
   back.settled = s.state.drops === 0 && !s.active;
-  const stats = B.stats();
-  // Fee pressure: the clock's own outputs must not move while the sampled colours do.
-  B.advance(1 / 60);
-  const stormy = sample();
-  m.parse(JSON.stringify({ "mempool-blocks": [] }));
-  const eased = s.state.overcast;
-  B.advance(0.5, 1 / 10);
-  const easing = sample();
-  B.advance(2, 1 / 10);
-  const sunny = sample();
-  m.emit({ type: "tx", vsize: 4000 });
-  const dryDrops = s.state.drops;
-  m.parse(JSON.stringify({ "mempool-blocks": [{ medianFee: 0.34 }] }));
-  B.advance(2, 1 / 10);
-  const light = sample();
-  m.emit({ type: "tx", vsize: 140 });
-  const lightDrops = s.state.drops;
-  B.advance(3, 1 / 10);
-  m.parse(JSON.stringify({ "mempool-blocks": [{ medianFee: 20 }] }));
-  B.advance(2, 1 / 10);
-  const storm = sample();
-  m.emit({ type: "tx", vsize: 4000 });
-  const stormDrops = s.state.drops;
-  m.parse(JSON.stringify({ "mempool-blocks": [{ medianFee: 18 }] }));
-  const jitterTarget = s.state.overcastTarget;
-  m.parse(JSON.stringify({ "mempool-blocks": [{ medianFee: 1.4 }] }));
-  const midTarget = s.state.overcastTarget;
-  m.parse(JSON.stringify({ "mempool-blocks": [] }));
-  const emptyTarget = s.state.overcastTarget;
-  B.advance(2, 1 / 10);
-  const cleared = sample();
-  const cf = window.BL.storm.cloudFor, band = { nightLight: cf(0.23, 0), nightOne: cf(0.43, 0), dayOne: cf(0.43, 1), dayFive: cf(0.74, 1), dayStorm: cf(1, 1), nightStorm: cf(1, 0), dusk: cf(0.6, 0.5) };
-  const weather = { initial, unprojected, snapped, stormy, dryDrops, sunny, eased, easing, light, lightDrops, storm, stormDrops, jitterTarget, midTarget, emptyTarget, cleared, band, nextFee: s.state.nextFee, projected: s.state.projected };
-  return { feed, baseSky, baseDirect, rain, raining, seeded, flash, dup, capped, settled, lab, back, weather, nodes: { before: baseStats.allNodes, after: stats.allNodes }, particles: { before: baseStats.particles, after: stats.particles } };
+  const W = window.BL.weather;
+  const table = {
+    sunny: W.stateFor(0.05, 0, 0).name, light: W.stateFor(0.2, 0, 0).name, rain: W.stateFor(0.45, 0, 0).name,
+    thunder: W.stateFor(0.9, 0, 0).name, monsoon: W.stateFor(0.9, 0, 0.8).name,
+    flurries: W.stateFor(0.2, 0.9, 0).name, snow: W.stateFor(0.45, 0.9, 0).name, blizzard: W.stateFor(0.9, 0.9, 0.8).name,
+    coldCalm: W.stateFor(0.9, 0.9, 0.1).name, sunnyCold: W.stateFor(0.02, 1, 1).name
+  };
+  const cf = W.cloudFor, band = { nightLight: cf(0.23, 0), nightOne: cf(0.43, 0), dayOne: cf(0.43, 1), dayFive: cf(0.74, 1), dayStorm: cf(1, 1), nightStorm: cf(1, 0), dusk: cf(0.6, 0.5) };
+  return { feed, deckDry, deckStorm, deckSnow, initial, seeded, clearStrike, dup, afterClear, storm, farNear, under, underNear, reach, centre, held, fell, stillRaining, spread, monsoon, gusted, snowy, blizzard, blizzardWind, settled, lab, back, table, band, shapes, nodes: { dry: nodesDry, after: nodesAfter, twice: nodesTwice }, secondPeak };
 };
 // The feed panel: the Konami code on the window, keys in a field ignored, live text while open and nothing ticking when closed.
 const feedPanelProbe = async () => {
@@ -26494,24 +26596,285 @@ const feedPanelProbe = async () => {
 task("mempool panel", () => withPage("mempool panel", hubPage(src), async (b) => {
   const r = await b.evaluate(`(${feedPanelProbe.toString()})()`);
   const lines = r.live.log.trim().split("\n");
-  record("mempool panel: the Konami code on the page toggles the panel, keys typed in a field and a broken sequence do not, and it opens with the socket off under nosim", r.closed.hidden && !r.closed.open && r.closed.logged === 0 && !r.typing.open && r.opened.open && !r.opened.hidden && r.opened.state.includes("off (nosim or mempool=0)") && r.opened.state.includes("overcast 0.00") && r.opened.log === "no events yet", JSON.stringify({ closed: r.closed, typing: r.typing, opened: r.opened }));
+  record("mempool panel: the Konami code on the page toggles the panel, keys typed in a field and a broken sequence do not, and it opens with the socket off under nosim", r.closed.hidden && !r.closed.open && r.closed.logged === 0 && !r.typing.open && r.opened.open && !r.opened.hidden && r.opened.state.includes("off (nosim or mempool=0)") && r.opened.state.includes("soak 0.00") && r.opened.state.includes("weather   sunny") && r.opened.log === "no events yet", JSON.stringify({ closed: r.closed, typing: r.typing, opened: r.opened }));
   record("mempool panel: while open the state and the last 24 events follow the feed, and closing stops the log and the ticks", r.live.state.includes("height 900001") && r.live.state.includes("next block 12.50 sat/vB") && r.live.state.includes("1 blocks") && r.live.state.includes("41 tx") && r.live.state.includes("messages  4 ") && r.live.logged === 24 && lines.length === 24 && lines.every((l) => /^\d\d:\d\d:\d\d  tx {5}\d+ vB · [\d.]+ sat\/vB · fee 400$/.test(l)) && r.reclosed.hidden && !r.reclosed.open && r.reclosed.logged === 24 && r.quiet.logged === 24 && r.quiet.log === r.live.log && r.reopened.open && !r.clicked.open, JSON.stringify({ live: { state: r.live.state, logged: r.live.logged, first: lines[0], last: lines[lines.length - 1] }, reclosed: r.reclosed, quiet: { logged: r.quiet.logged }, reopened: r.reopened, clicked: r.clicked }));
 }));
-for (const backend of BACKENDS) task(`mempool storm ${backend}`, () => withPage(`mempool storm ${backend}`, hubBackend(backend), async (b) => {
-  const r = await b.evaluate(`(${mempoolStormProbe.toString()})()`);
-  const { feed, rain, raining, flash, settled, lab, back } = r;
-  record(`mempool storm ${backend}: nosim leaves the socket closed and a transaction rains drops near the view, more and bigger for a heavier one`, !feed.enabled && !feed.connected && feed.storm && feed.drops === 0 && !feed.active && rain.smallCount >= 2 && rain.bigCount > rain.smallCount && rain.big.size > rain.small.size && rain.big.fall > rain.small.fall && rain.smallNear && rain.bigNear && raining.drops === raining.rainDrops && raining.inMotion && raining.active && raining.fell, JSON.stringify({ feed, rain, raining }));
-  record(`mempool storm ${backend}: a new block strikes once with a bolt, a sky flash and a toast; a repeat is ignored`, r.seeded.height === 900000 && r.seeded.strikes === 0 && flash.strikes === 1 && flash.flash === 1 && flash.sky > r.baseSky && flash.sky <= 1 && flash.direct > r.baseDirect && flash.bolt && flash.thunderPending && !flash.audio && flash.toast === "Block 900001 mined · 3210 transactions" && r.dup === 1, JSON.stringify({ seeded: r.seeded, flash, dup: r.dup, baseSky: r.baseSky }));
-  record(`mempool storm ${backend}: the batch caps at its capacity and everything settles back to base within seconds`, r.capped === feed.capacity && settled.drops === 0 && settled.flash === 0 && !settled.bolt && !settled.thunderPending && !settled.active && Math.abs(settled.sky - r.baseSky) < 1e-6 && settled.particles === 0 && !settled.audio && settled.transactions === 302, JSON.stringify({ capped: r.capped, capacity: feed.capacity, settled }));
-  record(`mempool storm ${backend}: the lab has no storm, events there are dropped, and a re-entered hub starts fresh and still rains`, lab.storm && lab.hubDebug && back.fresh && back.transactions === 0 && back.rains && back.settled && r.nodes.before === r.nodes.after && r.particles.after === 0, JSON.stringify({ lab, back, nodes: r.nodes, particles: r.particles }));
-  const w = r.weather, same = (a, b) => JSON.stringify(a) === JSON.stringify(b), luma = (c) => c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114;
-  const clockSteady = [w.stormy, w.easing, w.sunny, w.storm, w.cleared].every((x) => same(x.clock, w.initial.clock));
-  const clearSky = (x) => x.cloud === 0 && x.fog === null && same(x.sky, w.initial.sky) && same(x.horizon, w.initial.horizon) && x.direct === w.initial.direct;
-  const untouched = (x) => x.overcast === 0 && clearSky(x);
-  record(`mempool storm ${backend}: sunny before any projection and on an empty mempool leaves every sampled value exactly as the clock wrote it, the first projection snaps and later ones walk, a dry island keeps its transactions without rain, and a quiet night's fee is light cloud that still rains a drop`, !w.unprojected && untouched(w.initial) && w.snapped === 1 && w.stormy.overcast === 1 && w.stormy.fog && w.stormy.direct < 1 && w.eased === 1 && w.easing.overcast > 0.5 && w.easing.overcast < 0.8 && untouched(w.sunny) && w.dryDrops === 0 && w.light.overcast > 0.15 && w.light.overcast < 0.35 && clearSky(w.light) && w.lightDrops === 1 && w.projected && w.nextFee === 0, JSON.stringify({ initial: w.initial, unprojected: w.unprojected, snapped: w.snapped, stormy: w.stormy, eased: w.eased, easing: w.easing, sunny: w.sunny, dryDrops: w.dryDrops, light: w.light, lightDrops: w.lightDrops }));
-  const band = w.band;
-  record(`mempool storm ${backend}: the sky holds clear until the overcast passes a band that is wider by day, so a noon drizzle falls under an untouched sky while the same fee at night is light cloud`, band.nightLight === 0 && band.nightOne > 0.2 && band.nightOne < 0.3 && band.dayOne === 0 && band.dayFive > 0.35 && band.dayFive < 0.5 && band.dayStorm === 1 && band.nightStorm === 1 && band.dusk > 0.2 && band.dusk < 0.4 && w.stormy.cloud === 1, JSON.stringify(band));
-  record(`mempool storm ${backend}: an expensive projection eases into a grey, dim, foggy storm that rains again, small jitter holds, a mid fee sits between, an empty mempool clears, and the clock never moves`, w.storm.overcast === 1 && luma(w.storm.sky) < luma(w.sunny.sky) && Math.abs(w.storm.sky[0] - w.storm.sky[2]) < Math.abs(w.sunny.sky[0] - w.sunny.sky[2]) && w.storm.direct < 0.5 && w.storm.fog && w.storm.fogNear === 40 && w.stormDrops > 0 && w.jitterTarget === 1 && w.midTarget > 0.4 && w.midTarget < 0.6 && w.emptyTarget === 0 && untouched(w.cleared) && clockSteady, JSON.stringify({ storm: w.storm, stormDrops: w.stormDrops, jitterTarget: w.jitterTarget, midTarget: w.midTarget, emptyTarget: w.emptyTarget, cleared: w.cleared, clockSteady }));
+for (const backend of DRAWN_BACKENDS) task(`weather ${backend}`, () => withPage(`weather ${backend}`, hubBackend(backend), async (b) => {
+  const r = await b.evaluate(`(${weatherProbe.toString()})()`);
+  const { feed, initial, clearStrike, storm, stillRaining, monsoon, snowy, blizzard, settled, lab, back, table, shapes } = r;
+  const same = (a, c) => JSON.stringify(a) === JSON.stringify(c);
+  const clearSky = (x) => x.cloud === 0 && x.fog === null && same(x.sky, initial.sky) && same(x.horizon, initial.horizon) && x.direct === initial.direct;
+  record(`weather ${backend}: nosim leaves the socket closed and an unfed island is sunny and dry, with every sampled value exactly as the clock wrote it`,
+    !feed.enabled && !feed.connected && feed.weather && feed.drops === 0 && !feed.active && feed.name === "sunny" && initial.name === "sunny" && initial.drops === 0 && clearSky(initial),
+    JSON.stringify({ feed, initial }));
+  record(`weather ${backend}: a new block strikes over the island from a clear sky with a bolt, a flash and a toast, a repeat is ignored, and the strike settles without leaving weather behind`,
+    r.seeded.height === 900000 && r.seeded.strikes === 0 && clearStrike.name === "sunny" && clearStrike.strikes === 1 && clearStrike.flash === 1 && clearStrike.sky > initial.sky[0] && clearStrike.direct > initial.direct && clearStrike.bolt && clearStrike.thunderPending && !clearStrike.audio && clearStrike.toast === "Block 900001 mined · 3210 transactions" && r.dup === 1 && r.afterClear.drops === 0 && !r.afterClear.active && Math.abs(r.afterClear.sky - initial.sky[0]) < 1e-6,
+    JSON.stringify({ seeded: r.seeded, clearStrike, dup: r.dup, afterClear: r.afterClear, baseSky: initial.sky[0] }));
+  record(`weather ${backend}: strikes pick among every prebuilt bolt rather than reusing one shape`,
+    shapes.available === 8 && shapes.picked >= 6,
+    JSON.stringify(shapes));
+  record(`weather ${backend}: a full pool holds a standing population of rain across the whole field and keeps raining long after the last event, instead of spending itself on one`,
+    storm.name === "thunderstorm" && storm.form === "rain" && r.held > feed.capacity * 0.5 && r.fell && stillRaining.drops > feed.capacity * 0.5 && stillRaining.drops === stillRaining.rainDrops && stillRaining.active && stillRaining.inMotion && r.spread.near,
+    JSON.stringify({ storm, held: r.held, capacity: feed.capacity, fell: r.fell, stillRaining, spread: r.spread }));
+  record(`weather ${backend}: the storm is a cell over the Mempool island, so it falls there and leaves the landing camera's own sky exactly as the clock painted it until you stand under it`,
+    r.farNear === 0 && r.storm.cloud === 0 && r.storm.fog === null && clearSky(r.storm) && r.underNear > 0.9 && r.under.cloud > 0 && r.under.fog && r.under.direct < initial.direct,
+    JSON.stringify({ farNear: r.farNear, underNear: r.underNear, centre: r.centre, storm: { cloud: r.storm.cloud, fog: r.storm.fog }, under: { cloud: r.under.cloud, fogNear: r.under.fogNear, direct: r.under.direct } }));
+  record(`weather ${backend}: the rain is only heard around the rainforest: full on the islet, fading over the far half of the bridge and exactly silent on the home island, well inside the range over which the sky still greys`,
+    r.reach.length === 7 && r.reach[0].heard === 1 && r.reach[1].heard === 1 && r.reach[2].heard < 1 && r.reach[3].heard < 0.25
+      && r.reach.slice(4).every((x) => x.heard === 0) && r.reach[4].near > 0 && r.reach[5].near > 0,
+    JSON.stringify(r.reach));
+  record(`weather ${backend}: a gale makes it a monsoon that leans the rain, and a transaction only gusts the weather it no longer creates`,
+    monsoon.name === "monsoon" && monsoon.form === "rain" && monsoon.wind > 1 && r.gusted.after > r.gusted.before && r.gusted.transactions === 1,
+    JSON.stringify({ monsoon, gusted: r.gusted }));
+  record(`weather ${backend}: slow blocks turn the fall to snow and a cold gale whites the island out, closing the fog in past the grey storm`,
+    snowy.name === "snow" && snowy.form === "snow" && snowy.drops > 0 && blizzard.name === "blizzard" && blizzard.form === "snow" && r.blizzardWind > monsoon.wind * 0.5 && blizzard.drops > 0 && snowy.drops > 0,
+    JSON.stringify({ snowy, blizzard, blizzardWind: r.blizzardWind }));
+  record(`weather ${backend}: the eight states come out of the three axes, with cold beating wind and an empty pool beating both`,
+    table.sunny === "sunny" && table.light === "light rain" && table.rain === "rain" && table.thunder === "thunderstorm" && table.monsoon === "monsoon" && table.flurries === "flurries" && table.snow === "snow" && table.blizzard === "blizzard" && table.coldCalm === "snow" && table.sunnyCold === "sunny",
+    JSON.stringify(table));
+  const band = r.band;
+  record(`weather ${backend}: the sky holds clear until the soak passes a band that is wider by day, so a noon drizzle falls under an untouched sky while the same pool at night is light cloud`,
+    band.nightLight === 0 && band.nightOne > 0.2 && band.nightOne < 0.3 && band.dayOne === 0 && band.dayFive > 0.35 && band.dayFive < 0.5 && band.dayStorm === 1 && band.nightStorm === 1 && band.dusk > 0.2 && band.dusk < 0.4 && r.under.cloud === 1,
+    JSON.stringify(band));
+  record(`weather ${backend}: an emptying pool drains the population and returns every sampled value to the clock, and the clock itself never moved through any of it`,
+    settled.drops === 0 && !settled.active && settled.name === "sunny" && clearSky(settled) && settled.particles === 0 && !settled.audio && same(settled.clock, initial.clock) && same(storm.clock, initial.clock) && same(blizzard.clock, initial.clock),
+    JSON.stringify({ settled, clockSteady: same(settled.clock, initial.clock) && same(storm.clock, initial.clock) && same(blizzard.clock, initial.clock) }));
+  record(`weather ${backend}: a rainforest is never without cloud, so a deck always stands over the island and only thickens and darkens with the weather, out of one shared build`,
+    r.deckDry.shown >= r.deckDry.capacity * 0.6 && r.deckDry.form === "fair" && r.deckStorm.shown > r.deckDry.shown && r.deckStorm.form === "grey" && r.deckSnow.form === "snow" && r.deckSnow.shown >= r.deckStorm.shown,
+    JSON.stringify({ dry: r.deckDry, storm: r.deckStorm, snow: r.deckSnow }));
+  record(`weather ${backend}: a second storm and its splashes cost nothing the first did not, and the drained island holds no live particles`,
+    r.nodes.after === r.nodes.twice && r.secondPeak > feed.capacity * 0.5 && settled.particles === 0 && r.nodes.dry <= r.nodes.after,
+    JSON.stringify({ nodes: r.nodes, secondPeak: r.secondPeak, particles: settled.particles }));
+  record(`weather ${backend}: the lab has no weather, events there are dropped, and a re-entered hub starts sunny and dry and still storms`,
+    lab.weather && lab.hubDebug && back.fresh && back.name === "sunny" && back.rains && back.settled,
+    JSON.stringify({ lab, back }));
+}));
+// Where the Mempool island actually sits, measured off the world matrices rather than derived on paper.
+const poolIslandProbe = async () => {
+  const B = window.__ooga, P = window.BL.poolModels, { updateWorld } = window.BL.scene;
+  const isle = B.poolIsland, place = isle.place, S = P.SITE;
+  updateWorld(window.BL.scenes.hub.root);
+  // updateWorld writes each node's world matrix; its translation is the node's world origin.
+  const at = (node) => ({ x: node.world[12], y: node.world[13], z: node.world[14] });
+  const radius = (p) => Math.hypot(p.x, p.z);
+  const bridgeAt = at(isle.site.bridge), stairAt = at(isle.site.stair), groundAt = at(isle.site.ground);
+  const centreR = Math.hypot(place.x, place.z);
+  const head = { x: place.bridgeX, z: place.bridgeZ };
+  const mouths = B.mouths.map((m) => ({ id: m.id, x: m.x, z: m.z }));
+  const clearOfMouths = Math.min(...mouths.map((m) => Math.hypot(m.x - place.x, m.z - place.z)));
+  const headClearOfMouths = Math.min(...mouths.map((m) => Math.hypot(m.x - head.x, m.z - head.z)));
+  // The launch islet sits at 6 o'clock; ask its own module where, rather than the orbit scene.
+  const launch = window.BL.rocketModels.siteSpot(B.island, {});
+  const clearOfLaunch = Math.hypot(launch.x - place.x, launch.z - place.z);
+  const bearing = (Math.atan2(place.x, -place.z) + Math.PI * 2) % (Math.PI * 2);
+  // The bridge starts a span out from the rim head and runs in to meet it.
+  const bridgeStartR = radius(bridgeAt), wantStartR = place.rimRadius + S.span;
+  return {
+    place: { x: place.x, z: place.z, y: place.y, rimRadius: place.rimRadius, bridgeLocalZ: place.bridgeLocalZ },
+    centreR, clock: bearing / (Math.PI * 2) * 12, bridgeAt, bridgeStartR, wantStartR,
+    stairAt, stairR: radius(stairAt), groundR: radius(groundAt),
+    clearOfMouths, headClearOfMouths, clearOfLaunch, isletR: S.isletR, span: S.span, mouths
+  };
+};
+task("pool island", () => withPage("pool island", hubPage(src), async (b) => {
+  const r = await b.evaluate(`(${poolIslandProbe.toString()})()`);
+  record("pool island: the island stands on the 4 o'clock bearing, the one clock position with no cave mouth on it, well clear of every mouth and of the launch islet",
+    Math.abs(r.clock - 4) < 0.01 && r.clearOfMouths > r.isletR + 6 && r.headClearOfMouths > 5 && r.clearOfLaunch > r.isletR + 10 && r.centreR > 30,
+    JSON.stringify({ clock: r.clock, centreR: r.centreR, clearOfMouths: r.clearOfMouths, headClearOfMouths: r.headClearOfMouths, clearOfLaunch: r.clearOfLaunch, launchIsletR: 7.2 }));
+  record("pool island: the turned group lands the bridge on the line in from the island to the rim head, so the planks meet the grass",
+    Math.abs(r.bridgeStartR - r.wantStartR) < 0.5 && Math.abs(Math.hypot(r.bridgeAt.x, r.bridgeAt.z) - r.wantStartR) < 0.5 && r.bridgeStartR < r.centreR && r.bridgeStartR > r.place.rimRadius,
+    JSON.stringify({ bridgeAt: r.bridgeAt, bridgeStartR: r.bridgeStartR, wantStartR: r.wantStartR, rimRadius: r.place.rimRadius, centreR: r.centreR }));
+  record("pool island: the way down is a stairwell through the island's own centre, not a door in its side",
+    Math.abs(r.stairR - r.centreR) < 0.01 && Math.abs(r.groundR - r.centreR) < 0.01,
+    JSON.stringify({ stairAt: r.stairAt, stairR: r.stairR, centreR: r.centreR, groundR: r.groundR }));
+}));
+const poolPage = (base, query) => `${base}?debug=1&nosim=1&scene=pool${clock(query)}`;
+// The Mempool cave reads one snapshot: every station has to agree with it and with each other.
+const poolCaveProbe = async () => {
+  const B = window.__ooga, chain = window.BL.chain, d = () => window.BL.scenes.pool.debug;
+  let stage = "start";
+  const wait = (condition) => new Promise((resolve, reject) => { const start = performance.now(), tick = () => condition() ? resolve() : performance.now() - start > 30000 ? reject(new Error(`the pool probe did not settle at ${stage} (scene ${B.scene})`)) : requestAnimationFrame(tick); requestAnimationFrame(tick); });
+  const frames = (n) => { const f = B.renderedFrames; return wait(() => B.renderedFrames >= f + n); };
+  const built = { scene: B.scene, stations: !!d(), ladder: d().ladder.length, tiers: d().tiers.length };
+  // A quiet pool: short spikes, and the fallback source named on the wall.
+  chain.readBacklog({ count: 0, vsize: 0, total_fee: 0, fee_histogram: [] });
+  chain.derive();
+  d().refresh();
+  const empty = { ladder: d().ladder.slice(), lit: d().lit, deep: chain.snapshot.deep };
+  // A full pool with a real ladder: taller rungs where more vsize waits, and a deeper reading.
+  chain.readBacklog({ count: 82783, vsize: 41199227, total_fee: 9242709, fee_histogram: [[6.04, 50420], [3.48, 50266], [2.02, 60149], [1.01, 57072], [0.3, 51000]] });
+  chain.readBlocks([{ height: 967915, tx_count: 3442, weight: 3993060, size: 1615146, timestamp: 1789950153 }, { height: 967914, timestamp: 1789949553 }, { height: 967913, timestamp: 1789948953 }]);
+  chain.readDifficulty({ progressPercent: 50, difficultyChange: -2.08, remainingBlocks: 1008, remainingTime: 6048e5 });
+  chain.readEstimates({ 1: 6, 3: 3, 6: 2, 144: 1, 1008: 0.1 });
+  chain.derive();
+  d().refresh();
+  const full = { ladder: d().ladder.slice(), tiers: d().tiers.slice(), lit: d().lit, deep: chain.snapshot.deep, floor: chain.snapshot.floor, pace: chain.snapshot.pace };
+  const descending = full.ladder.every((v, i, a) => i === 0 || a[i - 1] >= v - 1e-6);
+  const grew = full.ladder[0] > empty.ladder[0];
+  const tiersDescend = full.tiers.every((v, i, a) => i === 0 || a[i - 1] >= v - 1e-6);
+  await frames(6);
+  const nodes = B.stats();
+  // A round trip: under ?debug=1 the director throws if the cave leaves anything behind.
+  stage = "to hub"; B.go("hub"); await wait(() => B.scene === "hub" && !B.transitioning); stage = "hub frames"; await frames(10);
+  const hub = { scene: B.scene, poolDebug: window.BL.scenes.pool.debug === null, weather: !!B.weather };
+  stage = "back to pool"; B.go("pool"); await wait(() => B.scene === "pool" && !B.transitioning); stage = "pool frames"; await frames(10);
+  const back = { scene: B.scene, stations: !!d(), ladder: d().ladder.length };
+  const after = B.stats();
+  return { built, empty, full, descending, grew, tiersDescend, hub, back, nodes: nodes.allNodes, after: after.allNodes };
+};
+// The hall's wall domes in, so how far out the eye may go depends on how high it is. Orbited past the
+// scene's own reach at every bearing and every pitch, the camera has to stay clear of the wall at its
+// own height and keep a usable distance: the view is never jammed into stone and never on top of its
+// target. `wallRadiusAt` is the same curve the room geometry is lathed from.
+const poolCameraProbe = async () => {
+  const B = window.__ooga, d = window.BL.scenes.pool.debug, P = window.BL.poolModels;
+  const rows = [];
+  for (const yaw of [0, 1.1, 2.2, 3.3, 4.4, 5.5]) {
+    for (const pitch of [0.06, 0.4, 0.9]) {
+      const o = d.pilot.orbit;
+      o.yaw = o.tYaw = yaw;
+      o.pitch = o.tPitch = pitch;
+      // Past DIST max on purpose: what is measured is the clamp, not the request.
+      o.dist = o.tDist = 40;
+      o.tx = o.tz = 0;
+      o.ty = 2.4;
+      o.target.x = o.target.z = 0;
+      o.target.y = 2.4;
+      B.advance(0.6, 1 / 30);
+      const c = B.camera, p = c.position;
+      const r = Math.hypot(p.x, p.z), wall = P.wallRadiusAt(p.y);
+      rows.push({ yaw, pitch, r: +r.toFixed(2), y: +p.y.toFixed(2), wall: +wall.toFixed(2), clear: +(wall - r).toFixed(2),
+        dist: +Math.hypot(p.x - c.target.x, p.y - c.target.y, p.z - c.target.z).toFixed(2) });
+    }
+  }
+  return { R: P.SITE.caveR, H: P.SITE.caveH, rows, minClear: Math.min(...rows.map((x) => x.clear)), minDist: Math.min(...rows.map((x) => x.dist)) };
+};
+task("pool camera", () => withPage("pool camera", poolPage(src), async (b) => {
+  const r = await b.evaluate(`(${poolCameraProbe.toString()})()`).catch((e) => ({ error: String(e) }));
+  record("pool camera: orbited past its own reach at every bearing and pitch the camera stays clear of the domed wall at its own height and keeps its distance, so the view is never jammed into stone",
+    !r.error && r.minClear > 0.2 && r.minDist > 4,
+    JSON.stringify(r));
+}));
+// The way out of the cave: tapped, flown into, clicked on the HUD or pressed on the keyboard, all four
+// reach the same exit, and an orbit that sweeps the same arch takes none of them.
+const poolParkProbe = async (opts) => {
+  const B = window.__ooga, S = window.BL.scenes.pool, o = S.debug.pilot.orbit;
+  const bearing = -Math.PI / 4;
+  Object.assign(o.target, opts.target);
+  o.tx = opts.target.x;
+  o.ty = opts.target.y;
+  o.tz = opts.target.z;
+  o.yaw = o.tYaw = opts.yaw === "in" ? bearing + Math.PI : bearing;
+  o.pitch = o.tPitch = opts.pitch;
+  o.dist = o.tDist = opts.dist;
+  B.advance(1.4, 1 / 30);
+  const p = B.camera.position;
+  // Pick at the same pixel the click will land on, so the check cannot pass on a lucky coordinate.
+  const hit = opts.pick ? S.input.pick(opts.pick[0], opts.pick[1]) : null;
+  return { scene: B.scene, r: +Math.hypot(p.x, p.z).toFixed(2), y: +p.y.toFixed(2), picked: hit ? hit.owner.kind : null };
+};
+const poolBack = (b) => b.evaluate(`new Promise((resolve, reject) => { const B = window.__ooga, t0 = performance.now(); let asked = false; const tick = () => { if (!asked && !B.transitioning) { B.go("pool"); asked = true; } else if (asked && !B.transitioning && B.scene === "pool") return resolve(B.scene); if (performance.now() - t0 > 20000) reject(new Error("the cave did not come back")); else requestAnimationFrame(tick); }; tick(); })`);
+const poolSettled = (b) => b.evaluate(`new Promise((resolve, reject) => { const B = window.__ooga, t0 = performance.now(); const tick = () => { if (!B.transitioning) return resolve(B.scene); if (performance.now() - t0 > 20000) reject(new Error("the transition did not settle")); else requestAnimationFrame(tick); }; tick(); })`);
+const PARK_ARCH = { target: { x: 0, y: 2.6, z: 0 }, dist: 15 };
+// Aimed from the fire at the stair mouth, so the centre of the canvas is the landing itself.
+const PARK_MOUTH = { target: { x: Math.sin(-Math.PI / 4) * 9, y: 1.8, z: Math.cos(-Math.PI / 4) * 9 }, yaw: "in", pitch: 0.1, dist: 9, pick: [720, 470] };
+task("pool exit", () => withPage("pool exit", poolPage(src), async (b) => {
+  const park = (opts) => b.evaluate(`(${poolParkProbe.toString()})(${JSON.stringify(opts)})`);
+  // Orbited right through the arch at every pitch that reaches it, the visit must survive.
+  const swept = [];
+  for (const pitch of [0.05, 0.1, 0.2]) swept.push(await park({ ...PARK_ARCH, pitch }));
+  record("pool exit: orbiting the camera through the stair arch at any pitch never drops the visit, because only a driven eye is walking out",
+    swept.every((r) => r.scene === "pool") && Math.max(...swept.map((r) => r.r)) > 12.5,
+    JSON.stringify(swept));
+
+  // Tapping the landing, at the pixel a pick says the landing actually occupies.
+  const aimed = await park(PARK_MOUTH);
+  await b.click(PARK_MOUTH.pick[0], PARK_MOUTH.pick[1]);
+  const tapped = await poolSettled(b);
+  await poolBack(b);
+
+  // The HUD's own Leave button.
+  await b.evaluate(`document.querySelector('nav[data-scene="pool"] .leave').click()`);
+  const button = await poolSettled(b);
+  await poolBack(b);
+
+  // Escape.
+  await b.key("Escape");
+  const escaped = await poolSettled(b);
+  await poolBack(b);
+
+  // Walking out: the fly stick held while the eye is in the mouth.
+  await park({ ...PARK_ARCH, pitch: 0.06, dist: 11 });
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: "s", text: "s" });
+  await b.sleep(2200);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: "s" });
+  const walked = await poolSettled(b);
+  const nav = await b.evaluate(`(() => { const n = document.querySelector('nav[data-scene="pool"]'); return JSON.stringify({ hidden: n.hidden, presets: [...n.querySelectorAll("[data-preset]")].map((x) => x.dataset.preset) }); })()`);
+  record("pool exit: the landing picks as the way out and tapping it leaves, as do the Leave button, Escape and flying into the mouth, and the cave comes back each time",
+    aimed.picked === "exit" && tapped === "hub" && button === "hub" && escaped === "hub" && walked === "hub",
+    JSON.stringify({ aimed, tapped, button, escaped, walked, nav }));
+}));
+// Poking an animal cries out and startles it, and it always comes back to rest.
+const poolPokeProbe = async () => {
+  const B = window.__ooga, hub = window.BL.scenes.hub;
+  const isle = B.poolIsland;
+  const kinds = ["jaguar", "monkey", "toucan"], rows = [];
+  for (const kind of kinds) {
+    const entry = [...hub.debug.beasts.values()].find((x) => x.kind === kind);
+    const before = { y: entry.node.position.y, ry: entry.node.rotation.y };
+    // Through the prop the tap actually lands on, not straight into pokeBeast: the handler reads the
+    // owner it is handed, and reading the wrong name there threw where only a real tap could see it.
+    hub.debug.useProp(hub.debug.props.find((o) => o.node === entry.node));
+    B.advance(0.2, 1 / 60);
+    const during = { y: entry.node.position.y, ry: entry.node.rotation.y, busy: entry.busy };
+    // Prodding it again while it is already startled must not stack a second tween.
+    const tweensMid = B.stats().tweens;
+    hub.debug.useProp(hub.debug.props.find((o) => o.node === entry.node));
+    const tweensAfterRepeat = B.stats().tweens;
+    B.advance(1.2, 1 / 60);
+    const after = { y: entry.node.position.y, ry: entry.node.rotation.y, busy: entry.busy };
+    rows.push({ kind, before, during, after, tweensMid, tweensAfterRepeat, moved: Math.abs(during.y - before.y) > 0.05 });
+  }
+  // Everything growing on the islet answers a tap, and nothing grows through an animal.
+  const c = isle.centre, onIsle = (o) => Math.hypot(o.x - c.x, o.z - c.z) <= 13;
+  const PLANTS = ["canopy", "bush", "poolfern", "flower", "poolrock", "poollog"];
+  const plants = hub.debug.props.filter((o) => PLANTS.includes(o.prop) && onIsle(o));
+  const kindsPlaced = [...new Set(plants.map((o) => o.prop))].sort();
+  const reacted = {};
+  for (const kind of PLANTS) {
+    const o = plants.find((x) => x.prop === kind);
+    if (!o) { reacted[kind] = "none placed"; continue; }
+    try { hub.debug.useProp(o); reacted[kind] = "ok"; } catch (err) { reacted[kind] = String(err && err.message); }
+  }
+  B.advance(1.5, 1 / 60);
+  let clearance = Infinity;
+  for (const beast of hub.debug.beasts.values()) {
+    for (const o of plants) clearance = Math.min(clearance, Math.hypot(beast.x - o.x, beast.z - o.z) - o.pickRadius);
+  }
+  const scatter = { plants: plants.length, kindsPlaced, reacted, clearance: +clearance.toFixed(2) };
+  return { rows, scatter, tweens: B.stats().tweens, bubbles: B.stats().bubbles };
+};
+task("pool pokes", () => withPage("pool pokes", hubPage(src), async (b) => {
+  const r = await b.evaluate(`(${poolPokeProbe.toString()})()`).catch((e) => ({ error: String(e) }));
+  record("pool pokes: tapping any rainforest animal cries out and startles it through the prop handler, a repeat prod never stacks a second tween, and each one settles back to its resting pose",
+    !r.error && r.rows.length === 3 && r.rows.every((x) => x.moved && x.during.busy && !x.after.busy && Math.abs(x.after.y) < 1e-9 && Math.abs(x.after.ry - x.before.ry) < 1e-9 && x.tweensAfterRepeat === x.tweensMid) && r.tweens === 0,
+    JSON.stringify(r));
+  record("pool rainforest: every kind growing on the islet is a prop that answers a tap without throwing, and no plant stands inside an animal",
+    !r.error && r.scatter.plants > 20 && r.scatter.kindsPlaced.length === 6
+      && Object.values(r.scatter.reacted).every((v) => v === "ok") && r.scatter.clearance > 0.5,
+    JSON.stringify(r.scatter));
+}));
+task("pool cave", () => withPage("pool cave", poolPage(src), async (b) => {
+  const r = await b.evaluate(`(${poolCaveProbe.toString()})()`);
+  record("pool cave: the cave opens with every station built and reads an empty pool as short rungs and a dark epoch wall",
+    r.built.scene === "pool" && r.built.stations && r.built.ladder === 24 && r.built.tiers === 5 && r.empty.deep === 0 && r.empty.ladder.every((v) => v <= 0.081) && r.empty.lit === 0,
+    JSON.stringify({ built: r.built, empty: { lit: r.empty.lit, deep: r.empty.deep, first: r.empty.ladder[0] } }));
+  record("pool cave: a real backlog raises the fee ladder in descending order, lights half the epoch wall and ranks the fee tiers",
+    r.grew && r.descending && r.tiersDescend && Math.abs(r.full.deep - 41.199227) < 1e-3 && Math.abs(r.full.floor - 0.3) < 1e-6 && Math.abs(r.full.pace - 600) < 1e-6 && r.full.lit === 24,
+    JSON.stringify({ full: { deep: r.full.deep, floor: r.full.floor, pace: r.full.pace, lit: r.full.lit, ladder: r.full.ladder.slice(0, 6), tiers: r.full.tiers }, descending: r.descending, grew: r.grew }));
+  record("pool cave: a hub round trip leaves nothing behind and the cave rebuilds its stations on the way back",
+    r.hub.scene === "hub" && r.hub.poolDebug && r.hub.weather && r.back.scene === "pool" && r.back.stations && r.back.ladder === 24 && r.nodes === r.after,
+    JSON.stringify({ hub: r.hub, back: r.back, nodes: r.nodes, after: r.after }));
 }));
 const debugActivityStatusChecks = async () => {
   const sources = await Promise.all(CONTRIBUTOR_SOURCES.map((name) => readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8")));
@@ -28390,7 +28753,7 @@ const cameraObjectRegistry = (backend) => [`camera object registry ${backend}`, 
   record(`camera object registry ${backend}: any selected actor surface in view suppresses all structural and object cues`, gate.rows.length === 7 && gate.rows.every((row) => row.perceived && row.concealed) && gate.rows[0].fullyVisible && gate.rows[0].visibleActorSamples === 81 && gate.rows[0].hiddenActorSamples === 0 && gate.rows.filter((row) => ["fully visible actor", "partially visible actor", "two millimetre slit", "uncertified occlusion", "first person gate"].includes(row.name)).every((row) => !row.enabled && row.count === 0 && row.objects === 0 && row.structures === 0 && row.providers === 0) && gate.rows.filter((row) => ["hidden actor", "reopened"].includes(row.name)).every((row) => !row.anyVisible && row.enabled && row.objects > 0 && row.structures > 0) && gate.rows[1].anyVisible && !gate.rows[1].fullyVisible && gate.rows[1].visibleActorSamples > 0 && gate.rows[1].hiddenActorSamples > 0 && gate.rows[2].sliverWitness && gate.rows[2].anyVisible && gate.rows[2].visibleActorSamples === 0 && gate.rows[3].visibleActorSamples === 0, JSON.stringify(gate));
   record(`camera object registry ${backend}: an oblique underfloor view certifies solid cover across the near plane but preserves a two-millimetre visible slot`, gate.underfloor.length === 2 && gate.underfloor.every((row) => row.minimumDepth < row.near && row.maximumDepth > row.near) && !gate.underfloor[0].slot && !gate.underfloor[0].anyVisible && !gate.underfloor[0].witnessClear && gate.underfloor[0].enabled && gate.underfloor[0].structures > 0 && gate.underfloor[1].slot && gate.underfloor[1].anyVisible && gate.underfloor[1].witnessClear && !gate.underfloor[1].enabled && gate.underfloor[1].count === 0 && gate.underfloor[1].structures === 0 && gate.underfloor[1].objects === 0 && gate.underfloor[1].providers === 0, JSON.stringify(gate.underfloor));
   const grass = await b.evaluate(`(${grassOutlineProbe.toString()})()`);
-  record(`camera object registry ${backend}: grass, flowers, bushes and Lab signs remain rendered but never enter nearby owners or outlines`, grass.grass === 115 && grass.flowers === 28 && grass.bushes === 63 && grass.labSign && grass.buildSign && grass.rendered && grass.excluded && grass.rows.length === 3 && grass.rows.every((row) => row.registered === 1 && row.nearby === 1 && row.controlLines > 0 && row.grassLines === 0 && row.flowerLines === 0 && !row.grassSources && !row.flowerSources && !row.grassNearby && !row.flowerNearby && !row.productionSources && !row.productionNearby), JSON.stringify(grass));
+  record(`camera object registry ${backend}: grass, flowers, bushes and Lab signs remain rendered but never enter nearby owners or outlines`, grass.grass === 115 && grass.flowers === 28 && grass.bushes === 61 && grass.labSign && grass.buildSign && grass.rendered && grass.excluded && grass.rows.length === 3 && grass.rows.every((row) => row.registered === 1 && row.nearby === 1 && row.controlLines > 0 && row.grassLines === 0 && row.flowerLines === 0 && !row.grassSources && !row.flowerSources && !row.grassNearby && !row.flowerNearby && !row.productionSources && !row.productionNearby), JSON.stringify(grass));
   const provider = await b.evaluate(`(${objectProviderStateProbe.toString()})()`);
   record(`camera object registry ${backend}: a grouped object's provider keeps ownership and opacity without individual contour candidates`, provider.initial.count === 0 && provider.initial.same && provider.initial.alpha === 0 && provider.visible.providers === 1 && provider.visible.alpha === 1 && provider.visible.same && provider.away.providers === 0 && provider.away.alpha === 1 && provider.returned.providers === 1 && provider.returned.alpha === 1 && provider.clear.providers === 0 && provider.clear.recognized && provider.clear.alpha === 0 && !provider.blocked.recognized && provider.blocked.alpha === 0 && provider.restored.providers === 1 && provider.removed.owners === 0 && provider.removed.providers === 0 && provider.gated.providers === 0 && provider.gated.same && provider.removedWhileGated.owners === 0 && provider.removedWhileGated.providers === 0 && !provider.removedWhileGated.same && provider.disposed, JSON.stringify(provider));
 }];
@@ -28611,6 +28974,7 @@ task("race tracks + race physics + race AI", () => fold(racePage(src), [raceTrac
 task("hub", hub);
 task("hub props", hubProps);
 task("drop flow", dropFlow);
+
 task("orbit builder", orbitBuilder);
 task("orbit flow", orbitFlow);
 task("orbit failures", orbitFailures);
@@ -28820,7 +29184,7 @@ const unitChecks = async () => {
     }
   }
   const BL = globalThis.BL;
-  if (LANE === "unit") { await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); }
+  if (LANE === "unit") { await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); }
 
   // Scene state built directly instead of booted; seed 1 matches scene-hub.js.
   // Sealed cave guides need the hub's seal nodes, so probes reading them stay in the browser tier.

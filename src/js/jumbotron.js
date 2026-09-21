@@ -77,7 +77,8 @@
     "+": [0, 0b00100, 0b00100, 0b11111, 0b00100, 0b00100, 0],
     "*": [0, 0b10101, 0b01110, 0b11111, 0b01110, 0b10101, 0],
     "'": [0b00100, 0b00100, 0, 0, 0, 0, 0],
-    "!": [0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0, 0b00100]
+    "!": [0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0, 0b00100],
+    $: [0b00100, 0b01111, 0b10100, 0b01110, 0b00101, 0b11110, 0b00100]
   };
   const FALLBACK_GLYPH = [0b11111, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11111];
   const GLYPH_W = 5, GLYPH_H = 7, TRACKING = 1;
@@ -640,5 +641,7 @@
     return api;
   };
 
-  BL.jumbotron = { create, parseStats, PALETTE, DROP };
+  // The 5x7 bitmap font and its helpers are the island's only readable type; the Mempool cave
+  // carves its wall panels with the same glyphs so both boards read alike.
+  BL.jumbotron = { create, parseStats, PALETTE, DROP, text: { FONT, GLYPH_W, GLYPH_H, TRACKING, glyphOf, measureText, drawText, fitText } };
 })();

@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-zOMyHTP30vXR/W2W+Veh67ab9E4v2ghgOqsH8OtrHc4='; style-src 'sha256-4DtcUSaMteAjSjlf1JK82piNaUILM4ExOzjLN0+W6eE='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-WM7cEWMlNJhrs7thX00rMKzScGrw2OhDt/MPsL+UGDg='; style-src 'sha256-a/9vFyXqVxoEj3IZDi1nqJ10ut9yCfu5OkZS3DoTI2Q='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -581,6 +581,25 @@ select {
   scrollbar-color: rgba(0, 0, 0, 0.35) transparent;
 }
 
+/* The roster scrolls; its call to action does not scroll away with it. A long cast used to push
+   Feed the Ooga Boogas past the bottom of the sheet, where it could only be reached by scrolling. */
+.panel[data-panel="roster"] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel[data-panel="roster"] > .roster {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.panel[data-panel="roster"] > .feed-open {
+  margin-top: auto;
+}
+
 .panel h2 {
   margin: 0 0 10px;
   font-size: 14px;
@@ -646,6 +665,28 @@ select {
   box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35);
   color: var(--paper);
   font: inherit;
+}
+
+/* Every modal closes with the same X, sized as a target rather than a word. */
+.modal-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin: -4px -4px 0 0;
+  padding: 0;
+  color: var(--paper);
+  background: rgba(0, 0, 0, 0.22);
+  border: 2px solid var(--wood-edge);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-close:hover,
+.modal-close:focus-visible {
+  background: rgba(0, 0, 0, 0.38);
 }
 
 .modal::backdrop {
@@ -2184,6 +2225,57 @@ select {
   line-height: 1.55;
   white-space: pre-wrap;
   overscroll-behavior: contain;
+}
+
+/* The weather key: one tablet of terms, matching the recipe's slab rather than a bare browser list. */
+.weather-key {
+  max-height: min(46vh, 420px);
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  background: var(--tablet);
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  box-shadow: var(--tablet-shadow);
+  color: var(--paper);
+  font-size: 11.5px;
+  line-height: 1.55;
+  overscroll-behavior: contain;
+}
+
+.weather-key > div + div {
+  margin-top: 10px;
+}
+
+.weather-key dt {
+  margin: 0 0 2px;
+  color: var(--warn);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.weather-key dd {
+  margin: 0;
+  opacity: 0.88;
+}
+
+/* A phone reads one column down the page; anything with room reads two, so the key is a card rather
+   than a scroll. The dialog widens with it, since 340px would only reflow the same column twice. */
+@media (min-width: 720px) {
+  #weather-key {
+    width: 640px;
+  }
+
+  #weather-key .weather-key {
+    max-height: none;
+    columns: 2;
+    column-gap: 22px;
+  }
+
+  #weather-key .weather-key div {
+    break-inside: avoid;
+  }
 }
 
 .recipe-actions {
@@ -4341,6 +4433,7 @@ body.orbit-dragging #tooltip {
         <h1><span data-sign>Ooga Booga Land</span></h1>
         <p data-scene="hub" id="subtitle">an island of caves</p>
         <p data-scene="lab" hidden>EntropyLab cave</p>
+        <p data-scene="pool" hidden>Mempool cave</p>
       </div>
       <time class="world-clock" id="world-clock" aria-label="Local time"></time>
       <button type="button" class="world-bananas" id="world-bananas">
@@ -4364,6 +4457,13 @@ body.orbit-dragging #tooltip {
         <button type="button" data-preset="bunks">Bunks</button>
         <button type="button" data-preset="bench">Bench</button>
         <button type="button" class="leave" data-action="leave" data-scene="lab" hidden>Leave<span> cave</span></button>
+      </nav>
+      <nav class="presets" aria-label="Mempool cave" data-scene="pool" hidden>
+        <button type="button" data-preset="ladder">Ladder</button>
+        <button type="button" data-preset="tiers">Tiers</button>
+        <button type="button" data-preset="chain">Chain</button>
+        <button type="button" data-preset="epoch">Epoch</button>
+        <button type="button" class="leave" data-action="leave">Leave<span> cave</span></button>
       </nav>
       <nav class="presets" aria-label="Race" data-scene="race" hidden>
         <button type="button" data-action="garage" id="race-garage-btn">Garage</button>
@@ -4827,7 +4927,7 @@ body.orbit-dragging #tooltip {
     <dialog class="modal" id="feed" aria-label="Feed the Ooga Boogas">
       <div class="panel-head">
         <h2><span data-sign>Feed the Ooga Boogas</span></h2>
-        <button type="button" class="link" data-action="feed-close">Close</button>
+        <button type="button" class="modal-close" data-action="feed-close" aria-label="Close the feed">&times;</button>
       </div>
       <canvas id="qr" width="0" height="0" aria-label="Donation QR code"></canvas>
       <p class="qr-url" id="qr-url"></p>
@@ -4845,7 +4945,7 @@ body.orbit-dragging #tooltip {
     <dialog class="modal" id="recipe" aria-label="Add an Ooga">
       <div class="panel-head">
         <h2><span data-sign>Add an Ooga</span></h2>
-        <button type="button" class="link" data-action="recipe-close">Close</button>
+        <button type="button" class="modal-close" data-action="recipe-close" aria-label="Close">&times;</button>
       </div>
       <p class="help">2140data hands you the prompt. Paste it to your coding agent.</p>
       <pre class="recipe" id="recipe-text">Add an Ooga to Ooga Booga Land. Create one new file, src/characters/&lt;handle&gt;.js, and change nothing else.
@@ -4860,6 +4960,31 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
       <div class="actions recipe-actions">
         <button type="button" data-action="recipe-copy">Copy prompt</button>
       </div>
+    </dialog>
+    <dialog class="modal" id="weather-key" aria-label="Reading the weather">
+      <div class="panel-head">
+        <h2><span data-sign>Reading the weather</span></h2>
+        <button type="button" class="modal-close" data-action="weather-close" aria-label="Close">&times;</button>
+      </div>
+      <p class="help">The weather runs on live Bitcoin data. Here's what each part means.</p>
+      <dl class="weather-key">
+        <div>
+          <dt>Rain</dt>
+          <dd>The backlog. The more that is waiting to be mined, the harder it falls, and it keeps falling until the pool drains. Empty mempool, clear sky. Expensive fees make it heavier.</dd>
+        </div>
+        <div>
+          <dt>Snow</dt>
+          <dd>Cold means slow blocks. Once they start landing well past the ten minute mark the rain turns to snow. If the whole epoch has been running late, that pushes it colder too.</dd>
+        </div>
+        <div>
+          <dt>Wind</dt>
+          <dd>Transactions turning up. The busier it gets, the further the rain leans over and the more the snow drifts about. Rain always slants the way the wind is going, never into it.</dd>
+        </div>
+        <div>
+          <dt>Lightning</dt>
+          <dd>Somebody found a block. Every one of them throws a bolt over the island, whatever the weather is doing. Storms throw extra on their own.</dd>
+        </div>
+      </dl>
     </dialog>
     <div class="bottom-hud">
       <button type="button" class="act" id="act" data-action="act" hidden>JUMP!</button>
@@ -14244,6 +14369,8 @@ void main() {
     return geo;
   };
   const VOX = 0.5;
+  // The cell a cloud's flat base sits on, and how many cells it rounds up by at the rim.
+  const CLOUD_BASE = -2, CLOUD_ROUND = 2;
   const QUARTER = 0.25;
   const QHALF = { x: -QUARTER / 2, y: 0, z: -QUARTER / 2 };
   const STONE = ["#3a3734", "#2d2b28", "#45413d"];
@@ -14293,6 +14420,17 @@ void main() {
     T: ["111", "010", "010", "010", "010"],
     W: ["101", "101", "101", "111", "101"],
     X: ["101", "101", "010", "101", "101"],
+    G: ["011", "100", "101", "101", "011"],
+    I: ["111", "010", "010", "010", "111"],
+    J: ["001", "001", "001", "101", "010"],
+    K: ["101", "101", "110", "101", "101"],
+    N: ["101", "111", "101", "101", "101"],
+    Q: ["111", "101", "101", "111", "011"],
+    U: ["101", "101", "101", "101", "111"],
+    V: ["101", "101", "101", "101", "010"],
+    Y: ["101", "101", "010", "010", "010"],
+    Z: ["111", "001", "010", "100", "111"],
+    "/": ["001", "001", "010", "100", "100"],
     0: ["111", "101", "101", "101", "111"],
     1: ["010", "110", "010", "010", "111"],
     2: ["111", "001", "111", "100", "111"],
@@ -14700,6 +14838,26 @@ void main() {
     const puffs = CLOUD_PUFFS[i];
     const mid = (puffs[0][0] + puffs[puffs.length - 1][0]) / 2;
     for (const [cx, rx, rz] of puffs) blob(v, { cx: cx - mid + 0.5, cy: 1, cz: 0.5, rx, ry: 1.6, rz, chip: 0.3, rand, color: (x, y) => y > 0 ? 0 : 1 });
+    // A flat base under the puffs, the way a cumulus sits on the air, grown straight down from the
+    // cells already there: every cell added sits under another, so the cloud gains body without a
+    // single new top face (the render mesh is the surface an Ooga lands on). The base rounds up toward
+    // the rim so the cloud does not end in a slab, and it is set by each puff's ellipse rather than
+    // by the column heights, which the chipping makes ragged.
+    const lows = new Map();
+    for (const [k] of v.map) {
+      voxCoords(k, CELL);
+      const key = CELL[0] * 4096 + CELL[2], low = lows.get(key);
+      if (low === undefined || CELL[1] < low.min) lows.set(key, { x: CELL[0], z: CELL[2], min: CELL[1] });
+    }
+    for (const { x, z, min } of lows.values()) {
+      let inner = 0;
+      for (const [cx, rx, rz] of puffs) {
+        const dx = (x + 0.5 - (cx - mid + 0.5)) / rx, dz = (z + 0.5 - 0.5) / rz;
+        inner = Math.max(inner, 1 - dx * dx - dz * dz);
+      }
+      const bottom = CLOUD_BASE + Math.round(CLOUD_ROUND * (1 - Math.sqrt(Math.max(0, inner))));
+      for (let y = min - 1; y >= bottom; y--) v.set(x, y, z, 1);
+    }
     const geo = voxGeo(v, { unit: VOX, palette: ["#f7f9fb", "#dfe6ee"], origin: { x: -VOX / 2, y: -VOX, z: -VOX / 2 } });
     geo.castShadow = false;
     return geo;
@@ -14920,7 +15078,7 @@ void main() {
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  BL.jumbotronData = {"meta":{"generated_at":"2026-09-21T13:18:15.500Z","org":"OogaBoogaX","schema_version":3},"totals":{"contributors":48,"commits":1102,"prs":419,"reviews":47,"issues":4,"comments":323},"leaderboards":{"commits":[{"login":"portlandhodl","count":389},{"login":"w-s-bitcoin","count":284},{"login":"MrHodlX","count":91},{"login":"timechainb","count":61},{"login":"dplusplus1024","count":44},{"login":"2140data","count":42},{"login":"ottoz0r","count":31},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"rules-without-rulers","count":10},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"knorrium","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"Holo-Elfstone","count":2},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"itsneski","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"YellowBrokeIt","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":86},{"login":"portlandhodl","count":81},{"login":"w-s-bitcoin","count":57},{"login":"timechainb","count":26},{"login":"2140data","count":23},{"login":"ottoz0r","count":19},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"rules-without-rulers","count":8},{"login":"Jdelg718","count":5},{"login":"knorrium","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"YellowBrokeIt","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"itsneski","count":2},{"login":"pdubl22","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Holo-Elfstone","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":22},{"login":"J25dunn","count":14},{"login":"w-s-bitcoin","count":6},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":47},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"rules-without-rulers","count":5},{"login":"timechainb","count":5},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Jdelg718","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"repos":[{"name":"entropylab","totals":{"contributors":44,"commits":959,"prs":361,"reviews":41,"issues":2,"comments":319},"weekly":[{"week":"2026-W35","commits":333,"prs":134,"reviews":2,"issues":0,"comments":69},{"week":"2026-W36","commits":399,"prs":136,"reviews":16,"issues":0,"comments":130},{"week":"2026-W37","commits":82,"prs":36,"reviews":18,"issues":1,"comments":76},{"week":"2026-W38","commits":132,"prs":51,"reviews":5,"issues":1,"comments":39},{"week":"2026-W39","commits":13,"prs":4,"reviews":0,"issues":0,"comments":5}],"last_activity_at":"2026-09-21T12:36:40Z","leaderboards":{"commits":[{"login":"portlandhodl","count":389},{"login":"w-s-bitcoin","count":206},{"login":"MrHodlX","count":86},{"login":"timechainb","count":61},{"login":"dplusplus1024","count":44},{"login":"ottoz0r","count":24},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"2140data","count":9},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"rules-without-rulers","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":83},{"login":"portlandhodl","count":81},{"login":"w-s-bitcoin","count":32},{"login":"timechainb","count":26},{"login":"ottoz0r","count":18},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"2140data","count":10},{"login":"Jdelg718","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"pdubl22","count":2},{"login":"rules-without-rulers","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":22},{"login":"J25dunn","count":14},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":46},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"timechainb","count":5},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Jdelg718","count":2},{"login":"rules-without-rulers","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-17T16:19:10Z"},{"login":"timechainb","last_seen_at":"2026-09-19T20:58:17Z"},{"login":"portlandhodl","last_seen_at":"2026-09-19T16:10:42Z"},{"login":"MrHodlX","last_seen_at":"2026-09-21T12:36:40Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T00:52:02Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-02T02:19:20Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"2140data","last_seen_at":"2026-08-31T04:54:04Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-12T17:11:11Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"}]},{"name":"oogaboogaland","totals":{"contributors":9,"commits":124,"prs":52,"reviews":6,"issues":2,"comments":4},"weekly":[{"week":"2026-W37","commits":45,"prs":19,"reviews":0,"issues":0,"comments":1},{"week":"2026-W38","commits":70,"prs":30,"reviews":3,"issues":0,"comments":0},{"week":"2026-W39","commits":9,"prs":3,"reviews":3,"issues":2,"comments":3}],"last_activity_at":"2026-09-21T05:03:56Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":65},{"login":"2140data","count":33},{"login":"rules-without-rulers","count":8},{"login":"knorrium","count":7},{"login":"MrHodlX","count":5},{"login":"Holo-Elfstone","count":2},{"login":"itsneski","count":2},{"login":"YellowBrokeIt","count":1},{"login":"ottoz0r","count":1}],"prs":[{"login":"w-s-bitcoin","count":19},{"login":"2140data","count":13},{"login":"rules-without-rulers","count":6},{"login":"knorrium","count":5},{"login":"MrHodlX","count":3},{"login":"YellowBrokeIt","count":2},{"login":"itsneski","count":2},{"login":"Holo-Elfstone","count":1},{"login":"ottoz0r","count":1}],"reviews":[{"login":"w-s-bitcoin","count":6}],"comments":[{"login":"rules-without-rulers","count":3},{"login":"w-s-bitcoin","count":1}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-21T05:03:56Z"},{"login":"MrHodlX","last_seen_at":"2026-09-20T21:37:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"2140data","last_seen_at":"2026-09-20T23:34:19Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-21T05:02:14Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-20T23:11:31Z"}]},{"name":"bedrock","totals":{"contributors":2,"commits":19,"prs":6,"reviews":0,"issues":0,"comments":0},"weekly":[{"week":"2026-W36","commits":16,"prs":6,"reviews":0,"issues":0,"comments":0},{"week":"2026-W37","commits":3,"prs":0,"reviews":0,"issues":0,"comments":0}],"last_activity_at":"2026-09-07T05:21:02Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":13},{"login":"ottoz0r","count":6}],"prs":[{"login":"w-s-bitcoin","count":6}],"reviews":[],"comments":[]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-07T05:21:02Z"},{"login":"ottoz0r","last_seen_at":"2026-09-04T21:29:31Z"}]}],"recent":[{"login":"MrHodlX","repo":"entropylab","type":"merge","occurred_at":"2026-09-21T12:36:40Z"},{"login":"MrHodlX","repo":"entropylab","type":"pr","occurred_at":"2026-09-21T12:36:37Z"},{"login":"MrHodlX","repo":"entropylab","type":"commit","occurred_at":"2026-09-21T12:35:59Z"},{"login":"MrHodlX","repo":"entropylab","type":"merge","occurred_at":"2026-09-21T11:30:03Z"},{"login":"MrHodlX","repo":"entropylab","type":"comment","occurred_at":"2026-09-21T11:28:51Z"},{"login":"MrHodlX","repo":"entropylab","type":"pr","occurred_at":"2026-09-21T11:17:23Z"},{"login":"MrHodlX","repo":"entropylab","type":"commit","occurred_at":"2026-09-21T11:08:16Z"},{"login":"MrHodlX","repo":"entropylab","type":"merge","occurred_at":"2026-09-21T10:46:51Z"},{"login":"MrHodlX","repo":"entropylab","type":"pr","occurred_at":"2026-09-21T10:36:53Z"},{"login":"MrHodlX","repo":"entropylab","type":"commit","occurred_at":"2026-09-21T10:34:10Z"},{"login":"MrHodlX","repo":"entropylab","type":"merge","occurred_at":"2026-09-21T10:29:40Z"},{"login":"MrHodlX","repo":"entropylab","type":"comment","occurred_at":"2026-09-21T10:29:30Z"}],"contributors":[{"login":"portlandhodl","last_seen_at":"2026-09-19T16:10:42Z"},{"login":"w-s-bitcoin","last_seen_at":"2026-09-21T05:03:56Z"},{"login":"MrHodlX","last_seen_at":"2026-09-21T12:36:40Z"},{"login":"timechainb","last_seen_at":"2026-09-19T20:58:17Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"2140data","last_seen_at":"2026-09-20T23:34:19Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T12:31:24Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-21T05:02:14Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-20T23:11:31Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"}]};
+  BL.jumbotronData = {"meta":{"generated_at":"2026-09-21T16:00:11.151Z","org":"OogaBoogaX","schema_version":3},"totals":{"contributors":48,"commits":1115,"prs":421,"reviews":47,"issues":4,"comments":324},"leaderboards":{"commits":[{"login":"portlandhodl","count":389},{"login":"w-s-bitcoin","count":297},{"login":"MrHodlX","count":91},{"login":"timechainb","count":61},{"login":"dplusplus1024","count":44},{"login":"2140data","count":42},{"login":"ottoz0r","count":31},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"rules-without-rulers","count":10},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"knorrium","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"Holo-Elfstone","count":2},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"itsneski","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"YellowBrokeIt","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":86},{"login":"portlandhodl","count":81},{"login":"w-s-bitcoin","count":58},{"login":"timechainb","count":26},{"login":"2140data","count":23},{"login":"ottoz0r","count":19},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"rules-without-rulers","count":8},{"login":"Jdelg718","count":5},{"login":"knorrium","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"Holo-Elfstone","count":2},{"login":"YellowBrokeIt","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"itsneski","count":2},{"login":"pdubl22","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":22},{"login":"J25dunn","count":14},{"login":"w-s-bitcoin","count":6},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":48},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"rules-without-rulers","count":5},{"login":"timechainb","count":5},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Jdelg718","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"repos":[{"name":"entropylab","totals":{"contributors":44,"commits":959,"prs":361,"reviews":41,"issues":2,"comments":319},"weekly":[{"week":"2026-W35","commits":333,"prs":134,"reviews":2,"issues":0,"comments":69},{"week":"2026-W36","commits":399,"prs":136,"reviews":16,"issues":0,"comments":130},{"week":"2026-W37","commits":82,"prs":36,"reviews":18,"issues":1,"comments":76},{"week":"2026-W38","commits":132,"prs":51,"reviews":5,"issues":1,"comments":39},{"week":"2026-W39","commits":13,"prs":4,"reviews":0,"issues":0,"comments":5}],"last_activity_at":"2026-09-21T12:36:40Z","leaderboards":{"commits":[{"login":"portlandhodl","count":389},{"login":"w-s-bitcoin","count":206},{"login":"MrHodlX","count":86},{"login":"timechainb","count":61},{"login":"dplusplus1024","count":44},{"login":"ottoz0r","count":24},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"2140data","count":9},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"rules-without-rulers","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":83},{"login":"portlandhodl","count":81},{"login":"w-s-bitcoin","count":32},{"login":"timechainb","count":26},{"login":"ottoz0r","count":18},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"2140data","count":10},{"login":"Jdelg718","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"pdubl22","count":2},{"login":"rules-without-rulers","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":22},{"login":"J25dunn","count":14},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":46},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"timechainb","count":5},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Jdelg718","count":2},{"login":"rules-without-rulers","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-17T16:19:10Z"},{"login":"timechainb","last_seen_at":"2026-09-19T20:58:17Z"},{"login":"portlandhodl","last_seen_at":"2026-09-19T16:10:42Z"},{"login":"MrHodlX","last_seen_at":"2026-09-21T12:36:40Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T00:52:02Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-02T02:19:20Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"2140data","last_seen_at":"2026-08-31T04:54:04Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-12T17:11:11Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"}]},{"name":"oogaboogaland","totals":{"contributors":9,"commits":137,"prs":54,"reviews":6,"issues":2,"comments":5},"weekly":[{"week":"2026-W37","commits":45,"prs":19,"reviews":0,"issues":0,"comments":1},{"week":"2026-W38","commits":70,"prs":30,"reviews":3,"issues":0,"comments":0},{"week":"2026-W39","commits":22,"prs":5,"reviews":3,"issues":2,"comments":4}],"last_activity_at":"2026-09-21T14:22:27Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":78},{"login":"2140data","count":33},{"login":"rules-without-rulers","count":8},{"login":"knorrium","count":7},{"login":"MrHodlX","count":5},{"login":"Holo-Elfstone","count":2},{"login":"itsneski","count":2},{"login":"YellowBrokeIt","count":1},{"login":"ottoz0r","count":1}],"prs":[{"login":"w-s-bitcoin","count":20},{"login":"2140data","count":13},{"login":"rules-without-rulers","count":6},{"login":"knorrium","count":5},{"login":"MrHodlX","count":3},{"login":"Holo-Elfstone","count":2},{"login":"YellowBrokeIt","count":2},{"login":"itsneski","count":2},{"login":"ottoz0r","count":1}],"reviews":[{"login":"w-s-bitcoin","count":6}],"comments":[{"login":"rules-without-rulers","count":3},{"login":"w-s-bitcoin","count":2}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-21T13:29:13Z"},{"login":"MrHodlX","last_seen_at":"2026-09-20T21:37:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"2140data","last_seen_at":"2026-09-20T23:34:19Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-21T05:02:14Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-21T14:22:27Z"}]},{"name":"bedrock","totals":{"contributors":2,"commits":19,"prs":6,"reviews":0,"issues":0,"comments":0},"weekly":[{"week":"2026-W36","commits":16,"prs":6,"reviews":0,"issues":0,"comments":0},{"week":"2026-W37","commits":3,"prs":0,"reviews":0,"issues":0,"comments":0}],"last_activity_at":"2026-09-07T05:21:02Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":13},{"login":"ottoz0r","count":6}],"prs":[{"login":"w-s-bitcoin","count":6}],"reviews":[],"comments":[]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-07T05:21:02Z"},{"login":"ottoz0r","last_seen_at":"2026-09-04T21:29:31Z"}]}],"recent":[{"login":"Holo-Elfstone","repo":"oogaboogaland","type":"pr","occurred_at":"2026-09-21T14:22:27Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"comment","occurred_at":"2026-09-21T13:29:13Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"pr","occurred_at":"2026-09-21T13:26:22Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"merge","occurred_at":"2026-09-21T13:17:56Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"commit","occurred_at":"2026-09-21T13:14:38Z"},{"login":"MrHodlX","repo":"entropylab","type":"merge","occurred_at":"2026-09-21T12:36:40Z"},{"login":"MrHodlX","repo":"entropylab","type":"pr","occurred_at":"2026-09-21T12:36:37Z"},{"login":"MrHodlX","repo":"entropylab","type":"commit","occurred_at":"2026-09-21T12:35:59Z"},{"login":"w-s-bitcoin","repo":"oogaboogaland","type":"commit","occurred_at":"2026-09-21T11:57:42Z"},{"login":"MrHodlX","repo":"entropylab","type":"merge","occurred_at":"2026-09-21T11:30:03Z"},{"login":"MrHodlX","repo":"entropylab","type":"comment","occurred_at":"2026-09-21T11:28:51Z"},{"login":"MrHodlX","repo":"entropylab","type":"pr","occurred_at":"2026-09-21T11:17:23Z"}],"contributors":[{"login":"portlandhodl","last_seen_at":"2026-09-19T16:10:42Z"},{"login":"w-s-bitcoin","last_seen_at":"2026-09-21T13:29:13Z"},{"login":"MrHodlX","last_seen_at":"2026-09-21T12:36:40Z"},{"login":"timechainb","last_seen_at":"2026-09-19T20:58:17Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"2140data","last_seen_at":"2026-09-20T23:34:19Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T12:31:24Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-21T05:02:14Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-21T14:22:27Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"}]};
 })();
 
 // ---- js/jumbotron.js ----
@@ -15003,7 +15161,8 @@ void main() {
     "+": [0, 0b00100, 0b00100, 0b11111, 0b00100, 0b00100, 0],
     "*": [0, 0b10101, 0b01110, 0b11111, 0b01110, 0b10101, 0],
     "'": [0b00100, 0b00100, 0, 0, 0, 0, 0],
-    "!": [0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0, 0b00100]
+    "!": [0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0, 0b00100],
+    $: [0b00100, 0b01111, 0b10100, 0b01110, 0b00101, 0b11110, 0b00100]
   };
   const FALLBACK_GLYPH = [0b11111, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11111];
   const GLYPH_W = 5, GLYPH_H = 7, TRACKING = 1;
@@ -15566,7 +15725,9 @@ void main() {
     return api;
   };
 
-  BL.jumbotron = { create, parseStats, PALETTE, DROP };
+  // The 5x7 bitmap font and its helpers are the island's only readable type; the Mempool cave
+  // carves its wall panels with the same glyphs so both boards read alike.
+  BL.jumbotron = { create, parseStats, PALETTE, DROP, text: { FONT, GLYPH_W, GLYPH_H, TRACKING, glyphOf, measureText, drawText, fitText } };
 })();
 
 // ---- js/headquarters-models.js ----
@@ -20551,6 +20712,481 @@ void main() {
   BL.oogatronLive = { start, subscribe, dispose, state, ENDPOINT };
 })();
 
+// ---- js/chain.js ----
+// The chain snapshot: one bounded view of the Bitcoin mempool, blocks and mining, assembled from
+// whichever provider answers. The mempool.space websocket in mempool.js stays the live transport for
+// transactions and blocks; this module adds the standing numbers the socket never sends (the backlog,
+// the fee ladder, difficulty, hashrate, price) by polling REST while the tab is visible.
+//
+// Two providers, one code path. `/mempool`, `/mempool/recent`, `/blocks` and `/blocks/tip/height`
+// return the same shapes from mempool.space and from any Esplora instance, so the fallback is a base
+// URL swap; the mempool.space-only endpoints are dropped for ten minutes when they fail and tried
+// again after. Every reader tolerates a missing field rather than branching.
+//
+// Polite by construction: one poll of a kind at a time, each cycle rescheduling from its own
+// completion, every failure widening the gap, and Retry-After obeyed when a provider sends one.
+//
+// Nothing here allocates per frame: the snapshot is one object mutated in place and the fee ladder is
+// a fixed typed array. Weather reads the three derived axes at the foot of the snapshot.
+(() => {
+  "use strict";
+  const BL = window.BL = window.BL || {};
+  const { clamp } = BL.math;
+  const MEMPOOL = "https://mempool.space/api", ESPLORA = "https://blockstream.info/api";
+  // The backlog drives the weather, so it is polled hardest; the epoch numbers move once a block at most.
+  const BACKLOG_MS = 30000, BLOCKS_MS = 60000, SLOW_MS = 600000;
+  const TIMEOUT_MS = 12000, FAIL_LIMIT = 3;
+  const BACKOFF_MIN = 15000, BACKOFF_MAX = 300000, EXTENDED_RETRY = 600000, PREFER_RETRY = 900000;
+  const LADDER = 24, LADDER_MAX = 200;
+  const PACE_BLOCKS = 6, PACE_WARM = 540, PACE_COLD = 240, TARGET_BLOCK = 600;
+  const RATE_WINDOW = 20000, RATE_FULL = 12;
+  const SUNNY_FEE = 0.1, STORM_FEE = 20, DEEP_FULL = 60;
+  const BACKLOG_MIX = 0.6;
+  // Price rides its own providers, not the chain's: the Esplora fallback has no prices endpoint, and
+  // tying the two would lose the ticker exactly when the chain source degraded. First one to answer wins.
+  const PRICE_SOURCES = [
+    { name: "coinbase", url: "https://api.coinbase.com/v2/prices/BTC-USD/spot", read: (d) => Number(d && d.data && d.data.amount) },
+    { name: "kraken", url: "https://api.kraken.com/0/public/Ticker?pair=XBTUSD", read: (d) => Number(d && d.result && d.result.XXBTZUSD && d.result.XXBTZUSD.c && d.result.XXBTZUSD.c[0]) },
+    { name: "mempool.space", url: "https://mempool.space/api/v1/prices", read: (d) => Number(d && d.USD) }
+  ];
+
+  // The fee ladder, downsampled from an unbounded histogram into fixed rungs: sat/vB on a log scale
+  // against the vsize waiting at or above that rate, normalized to the fullest rung.
+  const ladder = new Float32Array(LADDER);
+  const ladderRate = new Float32Array(LADDER);
+  for (let i = 0; i < LADDER; i++) ladderRate[i] = Math.pow(LADDER_MAX, i / (LADDER - 1));
+
+  const snapshot = {
+    source: "mempool.space", at: 0, polls: 0, errors: 0, degraded: false, backoff: 0,
+    // Mempool backlog
+    count: 0, vsize: 0, totalFee: 0, deep: 0, floor: 0, ladder, ladderRate,
+    // Fees
+    nextFee: 0, fastestFee: 0, halfHourFee: 0, hourFee: 0, economyFee: 0, minimumFee: 0,
+    // Chain
+    height: 0, lastTxCount: 0, lastWeight: 0, lastSize: 0, lastBlockAt: 0, pace: TARGET_BLOCK,
+    // Mining and market
+    progressPercent: 0, difficultyChange: 0, remainingBlocks: 0, remainingTime: 0,
+    hashrate: 0, difficulty: 0, priceUsd: 0, priceSource: null,
+    // Derived weather axes, 0..1
+    soak: 0, chill: 0, gale: 0
+  };
+  // Read, never stored: `derive` only runs after a poll lands, so a stored flag on a feed that has
+  // stopped entirely would sit there claiming to be live for the rest of the visit.
+  Object.defineProperty(snapshot, "live", {
+    enumerable: true,
+    get: () => snapshot.at > 0 && Date.now() - snapshot.at < BACKLOG_MS * 3
+  });
+
+  const subscribers = new Set();
+  let base = MEMPOOL, fails = 0, pinned = false, backoff = 0;
+  // mempool.space's own endpoints, dropped for a while by a failure rather than for the session: one
+  // transient 500 must not cost the visit its fee tiers, its difficulty and its hashrate. Infinity is
+  // the Esplora fallback, which genuinely does not serve them.
+  let extendedUntil = 0, preferAt = 0;
+  const extended = () => base === MEMPOOL && Date.now() >= extendedUntil;
+  const dropExtended = () => {
+    extendedUntil = Date.now() + EXTENDED_RETRY;
+  };
+  const timers = { backlog: 0, blocks: 0, slow: 0, block: 0 };
+  let started = false;
+  let unsubscribeFeed = null;
+  // Transaction arrivals in a rolling window, as a ring of timestamps: fixed size, never grows.
+  const arrivals = new Float64Array(256);
+  let arrivalHead = 0, arrivalCount = 0;
+
+  // Announces a change. It does not stamp freshness: a failover or a recovery is news, but it is not
+  // data, and `snapshot.at` only ever moves when a poll actually lands (see `succeeded`).
+  const emit = () => {
+    for (const fn of subscribers) fn(snapshot);
+  };
+  const visible = () => typeof document === "undefined" || document.visibilityState !== "hidden";
+
+  const getUrl = async (url) => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(url, { signal: controller.signal, cache: "no-store" });
+      if (!res.ok) {
+        // A provider asking us to wait is obeyed, not argued with: 429 and 503 may carry Retry-After.
+        const error = new Error(String(res.status));
+        error.status = res.status;
+        const after = Number(res.headers.get("retry-after"));
+        if (after > 0) error.retryAfter = Math.min(BACKOFF_MAX, after * 1000);
+        throw error;
+      }
+      return await res.json();
+    } finally {
+      window.clearTimeout(timer);
+    }
+  };
+  const get = (path) => getUrl(`${base}${path}`);
+  // Three consecutive failures on the preferred provider hand the session to Esplora; a pinned
+  // provider never switches, it just keeps failing quietly and the island keeps its last numbers.
+  // Every failure pushes the next poll of every kind further out, so a provider that is down or rate
+  // limiting is asked less often rather than exactly as often. The first success clears it.
+  const failed = (error) => {
+    snapshot.errors++;
+    const wait = error && error.retryAfter;
+    backoff = Math.min(BACKOFF_MAX, wait || (backoff ? backoff * 2 : BACKOFF_MIN));
+    snapshot.backoff = backoff;
+    // A 429 is an explicit request to stop, so it moves the session at once; anything else has to
+    // happen three times running before one bad answer can cost the preferred provider.
+    const limited = error && error.status === 429;
+    if (pinned || base === ESPLORA || (!limited && ++fails < FAIL_LIMIT)) return;
+    base = ESPLORA;
+    extendedUntil = Infinity;
+    fails = 0;
+    preferAt = Date.now() + PREFER_RETRY;
+    snapshot.source = "esplora";
+    snapshot.degraded = true;
+    // The wait was the old provider's request, not the new one's, so the fallback is asked at once.
+    // Deferred a tick: this runs inside a poll that still holds its own guard.
+    backoff = 0;
+    snapshot.backoff = 0;
+    emit();
+    window.setTimeout(() => {
+      pollBacklog();
+      pollBlocks();
+    }, 0);
+  };
+  // The fallback is where a session waits, not where it stays. Every so often the preferred provider
+  // is probed with its cheapest endpoint, and the moment it answers the session goes home and gets its
+  // fee tiers, difficulty and hashrate back. A probe costs one request a quarter hour at most.
+  const recover = async () => {
+    if (pinned || base !== ESPLORA || Date.now() < preferAt) return;
+    preferAt = Date.now() + PREFER_RETRY;
+    try {
+      const height = await getUrl(`${MEMPOOL}/blocks/tip/height`);
+      if (!(Number(height) > 0)) return;
+      base = MEMPOOL;
+      extendedUntil = 0;
+      fails = 0;
+      backoff = 0;
+      snapshot.backoff = 0;
+      snapshot.source = "mempool.space";
+      snapshot.degraded = false;
+      emit();
+      // The fee tiers came back with the provider; fetch them now rather than a cycle from now.
+      window.setTimeout(pollBacklog, 0);
+    } catch {
+      // Still out. The fallback keeps serving and the next window tries again.
+    }
+  };
+  const succeeded = () => {
+    fails = 0;
+    backoff = 0;
+    snapshot.backoff = 0;
+    snapshot.polls++;
+    snapshot.at = Date.now();
+  };
+
+  // vsize at or above each rung, from [feerate, vsize] buckets in descending feerate order.
+  const readHistogram = (histogram) => {
+    ladder.fill(0);
+    if (!Array.isArray(histogram) || !histogram.length) return;
+    let lowest = Infinity, peak = 0;
+    for (const bucket of histogram) {
+      if (!Array.isArray(bucket) || bucket.length < 2) continue;
+      const rate = Number(bucket[0]), size = Number(bucket[1]);
+      if (!(rate >= 0) || !(size > 0)) continue;
+      if (rate < lowest) lowest = rate;
+      for (let i = 0; i < LADDER; i++) if (rate >= ladderRate[i]) ladder[i] += size;
+    }
+    for (let i = 0; i < LADDER; i++) if (ladder[i] > peak) peak = ladder[i];
+    if (peak > 0) for (let i = 0; i < LADDER; i++) ladder[i] /= peak;
+    snapshot.floor = Number.isFinite(lowest) ? lowest : 0;
+  };
+
+  const readBacklog = (data) => {
+    if (!data || typeof data !== "object") return false;
+    // Shape, never value: a drained mempool really does report zero, so only a missing field is bad.
+    if (typeof data.count !== "number" || typeof data.vsize !== "number") return false;
+    snapshot.count = data.count | 0;
+    snapshot.vsize = Number(data.vsize) || 0;
+    snapshot.totalFee = Number(data.total_fee) || 0;
+    snapshot.deep = snapshot.vsize / 1e6;
+    readHistogram(data.fee_histogram);
+    return true;
+  };
+  // Block pace over the recent tip, the one "temperature" both providers can answer. Poisson spacing
+  // swings this around well past the ten-minute target, which is what gives the island its seasons.
+  const readBlocks = (blocks) => {
+    if (!Array.isArray(blocks) || !blocks.length) return false;
+    const tip = blocks[0];
+    if (tip && tip.height > 0) {
+      snapshot.height = tip.height | 0;
+      snapshot.lastTxCount = tip.tx_count | 0;
+      snapshot.lastWeight = tip.weight | 0;
+      snapshot.lastSize = tip.size | 0;
+      snapshot.lastBlockAt = (tip.timestamp | 0) * 1000;
+    }
+    const span = Math.min(PACE_BLOCKS, blocks.length - 1);
+    if (span > 0) {
+      const newest = blocks[0].timestamp | 0, oldest = blocks[span].timestamp | 0;
+      if (newest > oldest) snapshot.pace = (newest - oldest) / span;
+    }
+    return true;
+  };
+  const readFees = (projection) => {
+    if (!Array.isArray(projection)) return;
+    // An empty projection is an empty mempool, which is free; a missing key holds the last reading.
+    const first = projection[0];
+    snapshot.nextFee = first && first.medianFee > 0 ? first.medianFee : 0;
+  };
+  const readRecommended = (fees) => {
+    if (!fees || typeof fees !== "object") return;
+    snapshot.fastestFee = Number(fees.fastestFee) || 0;
+    snapshot.halfHourFee = Number(fees.halfHourFee) || 0;
+    snapshot.hourFee = Number(fees.hourFee) || 0;
+    snapshot.economyFee = Number(fees.economyFee) || 0;
+    snapshot.minimumFee = Number(fees.minimumFee) || 0;
+  };
+  // Esplora's estimates are a confirmation-target map, not tiers; the same five readings come out of it.
+  const readEstimates = (est) => {
+    if (!est || typeof est !== "object") return;
+    const at = (t) => Number(est[t]) || 0;
+    snapshot.fastestFee = at(1);
+    snapshot.halfHourFee = at(3);
+    snapshot.hourFee = at(6);
+    snapshot.economyFee = at(144);
+    snapshot.minimumFee = at(1008);
+    if (!snapshot.nextFee) snapshot.nextFee = at(1);
+  };
+  const readDifficulty = (d) => {
+    if (!d || typeof d !== "object") return;
+    snapshot.progressPercent = Number(d.progressPercent) || 0;
+    snapshot.difficultyChange = Number(d.difficultyChange) || 0;
+    snapshot.remainingBlocks = d.remainingBlocks | 0;
+    snapshot.remainingTime = Number(d.remainingTime) || 0;
+  };
+  const readHashrate = (h) => {
+    if (!h || typeof h !== "object") return;
+    snapshot.hashrate = Number(h.currentHashrate) || 0;
+    snapshot.difficulty = Number(h.currentDifficulty) || 0;
+  };
+  // Walk the price providers in order and keep the first sane answer; a total outage holds the last
+  // price rather than blanking the tablet, and nothing about the visitor is ever sent.
+  const pollPrice = async () => {
+    for (const source of PRICE_SOURCES) {
+      try {
+        const value = source.read(await getUrl(source.url));
+        if (!(value > 0)) continue;
+        snapshot.priceUsd = value;
+        snapshot.priceSource = source.name;
+        return true;
+      } catch {
+        // Try the next one; a dead ticker must never take the chain poll down with it.
+      }
+    }
+    return false;
+  };
+
+  // Fee pressure and backlog depth both on log scales, mixed; the backlog leads because a deep pool
+  // of cheap transactions is still a storm coming.
+  const feePressure = (fee) => clamp(Math.log(Math.max(SUNNY_FEE, fee) / SUNNY_FEE) / Math.log(STORM_FEE / SUNNY_FEE), 0, 1);
+  const deepPressure = (deep) => clamp(Math.log(Math.max(1, deep)) / Math.log(DEEP_FULL), 0, 1);
+  const arrivalRate = (now) => {
+    let n = 0;
+    for (let i = 0; i < arrivalCount; i++) if (now - arrivals[i] <= RATE_WINDOW) n++;
+    return n / (RATE_WINDOW / 1000);
+  };
+  const derive = () => {
+    const now = Date.now();
+    snapshot.soak = clamp(BACKLOG_MIX * deepPressure(snapshot.deep) + (1 - BACKLOG_MIX) * feePressure(snapshot.nextFee), 0, 1);
+    // Slow blocks are a cold snap; a negative retarget says the epoch ran slow overall and leans the same way.
+    const pace = clamp((snapshot.pace - PACE_WARM) / PACE_COLD, 0, 1);
+    const epoch = extended() ? clamp(-snapshot.difficultyChange / 8, -0.2, 0.2) : 0;
+    snapshot.chill = clamp(pace + epoch, 0, 1);
+    snapshot.gale = clamp(arrivalRate(now) / RATE_FULL, 0, 1);
+  };
+
+  // One poll of a kind at a time. Each takes several requests in sequence and the slowest can outrun
+  // its own interval, so without this a slow provider would have requests stacked on it exactly when
+  // it is least able to answer them — the shape that gets a client rate limited.
+  const busy = { backlog: false, blocks: false, slow: false };
+  const guard = (key, body) => async () => {
+    if (busy[key]) return;
+    busy[key] = true;
+    try {
+      await body();
+    } finally {
+      busy[key] = false;
+    }
+  };
+
+  const pollBacklog = guard("backlog", async () => {
+    try {
+      if (!readBacklog(await get("/mempool"))) throw new Error("no backlog in the response");
+      if (extended()) {
+        try {
+          readFees(await get("/v1/fees/mempool-blocks"));
+          readRecommended(await get("/v1/fees/recommended"));
+        } catch {
+          dropExtended();
+        }
+      }
+      if (!extended()) readEstimates(await get("/fee-estimates"));
+      succeeded();
+      derive();
+      emit();
+      save();
+    } catch (error) {
+      failed(error);
+    }
+  });
+  const pollBlocks = guard("blocks", async () => {
+    await recover();
+    try {
+      if (!readBlocks(await get("/blocks"))) throw new Error("no blocks in the response");
+      succeeded();
+      derive();
+      emit();
+      save();
+    } catch (error) {
+      failed(error);
+    }
+  });
+  const pollSlow = guard("slow", async () => {
+    // Price is polled whatever the chain provider is doing, so a fallback session keeps its ticker.
+    const priced = await pollPrice();
+    if (!extended()) {
+      if (priced) {
+        emit();
+        save();
+      }
+      return;
+    }
+    try {
+      readDifficulty(await get("/v1/difficulty-adjustment"));
+      readHashrate(await get("/v1/mining/hashrate/3d"));
+      succeeded();
+      derive();
+      emit();
+      save();
+    } catch {
+      dropExtended();
+      if (priced) emit();
+    }
+  });
+
+  // Each cycle reschedules from its own completion, not from its start, so a poll can never lap the
+  // one before it; `backoff` stretches every gap while a provider is unhappy. The handle is kept so
+  // dispose actually stops the cycle instead of clearing an id the last tick already replaced.
+  const cycle = (key, poll, ms) => {
+    const tick = async () => {
+      timers[key] = 0;
+      if (visible()) await poll();
+      if (started) timers[key] = window.setTimeout(tick, ms + backoff);
+    };
+    timers[key] = window.setTimeout(tick, ms);
+  };
+
+  const onFeedEvent = (event) => {
+    if (event.type === "tx") {
+      arrivals[arrivalHead] = Date.now();
+      arrivalHead = (arrivalHead + 1) % arrivals.length;
+      if (arrivalCount < arrivals.length) arrivalCount++;
+      return;
+    }
+    if (event.type === "block") {
+      snapshot.height = event.height | 0;
+      snapshot.lastTxCount = event.txCount | 0;
+      snapshot.lastBlockAt = Date.now();
+      // A new block empties part of the pool and replaces the tip, so both are refreshed rather than
+      // left to their intervals: the socket gives the height at once, but the size, weight and pace
+      // behind it only come from /blocks, and a sign showing a new height beside the last block's
+      // size is worse than showing neither.
+      // A courtesy, not a right: while we are backing off, the block's news waits for the cycle rather
+      // than jumping the queue past a provider that asked us to wait.
+      if (backoff) return;
+      window.clearTimeout(timers.block);
+      timers.block = window.setTimeout(() => {
+        timers.block = 0;
+        pollBacklog();
+        pollBlocks();
+      }, 1500);
+      return;
+    }
+    if (event.type === "fees") {
+      snapshot.nextFee = Number(event.nextFee) || 0;
+      derive();
+      emit();
+    }
+  };
+
+  // Every provider here answers a null origin, so a page opened straight off disk polls like a served
+  // one; the suite is held off by `nosim` in director.js, not by the scheme.
+  // A reload or a back-navigation repaints from the last snapshot of this session rather than from
+  // zeros, and a live poll always follows immediately, so the cache is a first frame and never the
+  // answer. `at` comes back with it, which is what keeps `snapshot.live` honest about its age.
+  const CACHE_KEY = "oogaboogaland.chain", CACHE_MAX = 600000;
+  const CACHED = [
+    "count", "vsize", "totalFee", "deep", "floor", "nextFee", "fastestFee", "halfHourFee", "hourFee",
+    "economyFee", "minimumFee", "height", "lastTxCount", "lastWeight", "lastSize", "lastBlockAt",
+    "pace", "progressPercent", "difficultyChange", "remainingBlocks", "remainingTime", "hashrate",
+    "difficulty", "priceUsd"
+  ];
+  const save = () => {
+    try {
+      const values = {};
+      for (const key of CACHED) values[key] = snapshot[key];
+      sessionStorage.setItem(CACHE_KEY, JSON.stringify({ at: snapshot.at, ladder: Array.from(ladder), values }));
+    } catch {
+      // A private window or a full quota is not a reason to stop reading the chain.
+    }
+  };
+  const restore = () => {
+    let held;
+    try {
+      held = JSON.parse(sessionStorage.getItem(CACHE_KEY) || "null");
+    } catch {
+      return false;
+    }
+    if (!held || !held.values || !(held.at > 0) || Date.now() - held.at > CACHE_MAX) return false;
+    for (const key of CACHED) if (typeof held.values[key] === "number") snapshot[key] = held.values[key];
+    if (Array.isArray(held.ladder) && held.ladder.length === LADDER) ladder.set(held.ladder);
+    snapshot.at = held.at;
+    derive();
+    return true;
+  };
+
+  const start = (options = {}) => {
+    if (started || typeof fetch === "undefined") return;
+    started = true;
+    if (options.source === "esplora") { base = ESPLORA; extended = false; pinned = true; snapshot.source = "esplora"; }
+    else if (typeof options.source === "string" && options.source.startsWith("https://")) { base = options.source; extended = false; pinned = true; snapshot.source = options.source; }
+    if (BL.mempool) unsubscribeFeed = BL.mempool.subscribe(onFeedEvent);
+    if (restore()) emit();
+    pollBacklog();
+    pollBlocks();
+    pollSlow();
+    cycle("backlog", pollBacklog, BACKLOG_MS);
+    cycle("blocks", pollBlocks, BLOCKS_MS);
+    cycle("slow", pollSlow, SLOW_MS);
+  };
+  const subscribe = (fn) => {
+    subscribers.add(fn);
+    return () => subscribers.delete(fn);
+  };
+  const dispose = () => {
+    started = false;
+    for (const key of Object.keys(timers)) {
+      window.clearTimeout(timers[key]);
+      timers[key] = 0;
+    }
+    if (unsubscribeFeed) unsubscribeFeed();
+    unsubscribeFeed = null;
+    subscribers.clear();
+  };
+
+  BL.chain = {
+    MEMPOOL, ESPLORA, LADDER, TARGET_BLOCK, snapshot, start, subscribe, dispose, derive,
+    feePressure, deepPressure, readBacklog, readBlocks, readFees, readEstimates, readDifficulty,
+    get extended() { return extended(); }, get backoff() { return backoff; }, get base() { return base; }, recover,
+    PRICE_SOURCES, pollPrice, ingest: onFeedEvent
+  };
+})();
+
 // ---- js/weapon-targets.js ----
 // Precise weapon contacts share the interactive targets, without hover padding.
 (() => {
@@ -24582,6 +25218,7 @@ void main() {
       worldLootHint: $("world-loot-hint"),
       subtitle: $("subtitle"),
       actions: [...document.querySelectorAll("[data-action]")],
+      weatherKey: document.getElementById("weather-key"),
       act: $("act"),
       mode: $("mode-hud"),
       modeFree: $("freeroam-icon"),
@@ -25022,6 +25659,13 @@ void main() {
       e.preventDefault();
       closeFeed();
     });
+    // The weather key: what the rain, the snow, the wind and the strikes are reading off the chain.
+    const openWeatherKey = () => {
+      if (el.weatherKey && !el.weatherKey.open) el.weatherKey.showModal();
+    };
+    const closeWeatherKey = () => {
+      if (el.weatherKey && el.weatherKey.open) el.weatherKey.close();
+    };
     const openRecipe = () => {
       if (!el.recipe.open) el.recipe.showModal();
     };
@@ -25032,6 +25676,11 @@ void main() {
       if (e.key !== "Escape") return;
       e.preventDefault();
       closeRecipe();
+    });
+    if (el.weatherKey) on(el.weatherKey, "keydown", (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      closeWeatherKey();
     });
     // The prompt is written to be pasted, so it leaves in one click.
     const copyRecipe = (button) => {
@@ -25140,6 +25789,7 @@ void main() {
       if (b.dataset.action === "feed") openFeed();
       else if (b.dataset.action === "feed-close") closeFeed();
       else if (b.dataset.action === "recipe-close") closeRecipe();
+      else if (b.dataset.action === "weather-close") closeWeatherKey();
       else if (b.dataset.action === "recipe-copy") copyRecipe(b);
       else if (b === el.mode && !modeSelected) actionHandler && actionHandler("mode-preset", nextDetachedView());
       else actionHandler && actionHandler(b.dataset.action);
@@ -25451,8 +26101,9 @@ void main() {
       setJetpack(false, false, 0);
       closeFeed();
       closeRecipe();
+      closeWeatherKey();
     };
-    return { el, openFeed, closeFeed, openRecipe, closeRecipe, setRosterRow, setMeter, setStats, setAct, setMode, setDetachedView, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose };
+    return { el, openFeed, closeFeed, openRecipe, closeRecipe, setRosterRow, setMeter, setStats, setAct, setMode, setDetachedView, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose, openWeatherKey, closeWeatherKey };
   };
   BL.hud = { create, renderIcon, signLettering, STATE_LABELS, statusFor };
 })();
@@ -33797,88 +34448,216 @@ void main() {
   BL.critters = { create };
 })();
 
-// ---- js/storm.js ----
-// Weather driven by the Bitcoin feed: each transaction rains drops sized by its weight,
-// each block strikes lightning and rolls thunder, and the next block's median fee sets the
-// overcast, sunny at a cheap block and a full storm at an expensive one. One fixed-capacity
-// instanced batch for the drops, one polyline bolt, a sky flash and an overcast tint written
-// over the clock's colours after it samples (the clock itself, its sun, moon, phases and
-// factors are never touched, and sunny leaves every sampled value as it was), and a small
-// procedural rumble on the rally's audio pattern.
+// ---- js/weather.js ----
+// The island's weather, derived from the chain snapshot rather than pinged by it. Three axes come
+// out of chain.js — soak (how full the pool is), chill (how slowly blocks are landing) and gale (how
+// fast transactions are arriving) — and they name one of eight standing states, from sunny through
+// monsoon and blizzard. Precipitation is a population held at a target, not a burst per transaction,
+// so it rains for as long as the mempool is full; a transaction gusts the rate and a block strikes.
+//
+// One fixed-capacity instanced batch carries rain or snow, never both, with the drop geometry swapped
+// between two cached builds. Bolts are eight jagged variants built once at boot and picked at random,
+// so a strike allocates nothing. The sky is written over the daylight clock's colours after it
+// samples; the clock, its sun, moon, phases and factors are never touched, and a clear sky leaves
+// every sampled value exactly as it was.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const { models, math } = BL;
   const { createNode, addChild, removeChild } = BL.scene;
-  const { clamp, lerp } = math;
-  const RAIN_CAP = 480, RAIN_CAP_CANVAS = 120, RAIN_RANGE = 14, RAIN_HEIGHT = 16, RAIN_SPREAD = 6;
-  const DROP_MIN = 0.7, DROP_MAX = 4, DROP_BASE_VSIZE = 140, DROPS_MIN = 2, DROPS_MAX = 8;
-  const FALL_BASE = 10, FALL_PER_SIZE = 3, SPLASH_SIZE = 1.4;
-  const FLASH_MAX = 0.85, FLASH_TAU = 0.12, BOLT_SHOW = 0.25, BOLT_RANGE = 18, BOLT_HEIGHT = 26;
-  const THUNDER_DELAY_MIN = 0.5, THUNDER_DELAY_SPREAD = 1, STORAGE_KEY = "oogaboogaland.audio", MASTER = 0.6, NOISE_SECONDS = 2;
-  // Overcast from fee pressure on a log scale: an empty mempool or SUNNY_FEE sat/vB and under is clear, STORM_FEE and
-  // over is the full storm. Relay floors sit near 0.1 sat/vB, so a quiet night at 0.3 already reads as light cloud.
-  const SUNNY_FEE = 0.1, STORM_FEE = 20, OVERCAST_EASE = 1.5, OVERCAST_STEP = 0.05, OVERCAST_MIX = 0.7, OVERCAST_DARKEN = 0.22, OVERCAST_DIM = 0.45;
-  const OVERCAST_TINT = [0.9, 0.93, 1], FOG_NEAR = 40, FOG_FAR = 150, FOG_OFF_NEAR = 400, FOG_OFF_FAR = 600;
-  // The sky stays clear until the overcast passes a band, wider by day, so the island is sunny more often and
-  // the rain can drizzle under a clear sky; the band reads the clock's day factor and never writes it.
+  const { clamp, lerp, mulberry32 } = math;
+
+  // Tier-scaled populations: the batch is one draw call at any size, the cost is the simulation.
+  const CAP = { high: 720, medium: 480, low: 260 }, CAP_CANVAS = 120;
+  // The weather is a cell standing over one place, not a curtain that follows the camera. It falls
+  // inside FIELD_R of its centre and the sky only greys for a camera close enough to be under it.
+  const FIELD_R = 16, FIELD_TOP = 17, FIELD_SPREAD = 7, RECYCLE_BELOW = 8;
+  // Full under the islet, gone by the far end of its bridge, so a storm over there never greys the
+  // sky over here: the home island is ~58 out from the cell and the rim head ~29.
+  // A distant bolt still flickers the sky and still rolls, both faintly; never zero, because an
+  // exponential gain ramp cannot be given one.
+  const NEAR_FULL = 16, NEAR_NONE = 30, DISTANT_FLASH = 0.3, DISTANT_THUNDER = 0.12;
+  // Sound carries less far than the sky greys, and deliberately so: the rain is only heard around the
+  // rainforest itself. The islet is 13 across from its centre and the bridge's near end is 29 out, so
+  // full on the island, fading over the far half of the crossing and silent before the home rim.
+  const HEARD_FULL = 14, HEARD_NONE = 24;
+  // A fixed deck of cloud nodes over the cell, sharing one cached geometry so the whole sky above the
+  // island is a single draw call. They are built once and never allocated again: coverage is scale and
+  // visibility, colour is a geometry swap, and a strike lights them through each node's own glow.
+  // A rainforest is never without cloud, so the deck is always there: CLOUD_FLOOR of it stands even
+  // under a clear sky and the weather only thickens and darkens it. Every node shares one cached
+  // geometry, so the whole deck is a single instanced draw call whatever its size.
+  const CLOUD = { high: 48, medium: 36, low: 22 }, CLOUD_CANVAS = 14;
+  const CLOUD_R = 26, CLOUD_LIFT = 3.2, CLOUD_DRIFT = 0.06, CLOUD_EASE = 0.7;
+  const CLOUD_FLOOR = 0.62, CLOUD_TIERS = 3;
+  const DROP_MIN = 0.7, DROP_MAX = 4, DROP_BASE_VSIZE = 140;
+  const RAIN_FALL = 11, RAIN_FALL_PER_SIZE = 3, SNOW_FALL = 1.6, SNOW_FALL_SPREAD = 1.1;
+  const SPLASH_SIZE = 1.4, GUST_SECONDS = 2.5, GUST_LIFT = 0.35;
+  const WIND_MAX = 9, WIND_TURN = 0.05, SNOW_SWAY = 0.9, SNOW_SWAY_RATE = 1.7;
+  const FLASH_MAX = 0.85, FLASH_TAU = 0.12, BOLT_SHOW = 0.25, BOLT_RANGE = 18, BOLT_HEIGHT = 26, BOLT_VARIANTS = 8;
+  const THUNDER_DELAY_MIN = 0.5, THUNDER_DELAY_SPREAD = 1;
+  const AMBIENT_MIN = 14, AMBIENT_SPREAD = 26;
+  // Weather is background, not an event: the whole bed sits well under the rally and drop engines, and
+  // a strike is only a few times the rain rather than the loudest thing on the page.
+  const STORAGE_KEY = "oogaboogaland.audio", MASTER = 0.3, NOISE_SECONDS = 2;
+  const EASE = 1.5, DEAD_BAND = 0.02;
+  // The sky stays the clock's until the overcast passes a band, wider by day, so a shower can fall
+  // under a clear noon sky and a quiet night stays a clear starry night.
   const CLEAR_NIGHT = 0.25, CLEAR_DAY = 0.55;
-  const overcastFor = (fee) => clamp(Math.log(Math.max(SUNNY_FEE, fee) / SUNNY_FEE) / Math.log(STORM_FEE / SUNNY_FEE), 0, 1);
+  const OVERCAST_MIX = 0.7, OVERCAST_DARKEN = 0.22, OVERCAST_DIM = 0.45;
+  const OVERCAST_TINT = [0.9, 0.93, 1], SNOW_TINT = [0.97, 0.98, 1];
+  const FOG_NEAR = 40, FOG_FAR = 150, FOG_OFF_NEAR = 400, FOG_OFF_FAR = 600;
+  const WHITEOUT_NEAR = 8, WHITEOUT_FAR = 42;
+  const COLD = 0.5, WET = 0.1, FAIR = 0.3, HEAVY = 0.6, WINDY = 0.6;
+
+  // Eight standing states. `wet` is how much falls, `snow` its form, `storm` whether it thunders.
+  const STATES = {
+    sunny: { name: "sunny", wet: 0, snow: false, storm: false },
+    "light rain": { name: "light rain", wet: 0.28, snow: false, storm: false },
+    rain: { name: "rain", wet: 0.6, snow: false, storm: false },
+    thunderstorm: { name: "thunderstorm", wet: 1, snow: false, storm: true },
+    monsoon: { name: "monsoon", wet: 1, snow: false, storm: true },
+    flurries: { name: "flurries", wet: 0.22, snow: true, storm: false },
+    snow: { name: "snow", wet: 0.55, snow: true, storm: false },
+    blizzard: { name: "blizzard", wet: 1, snow: true, storm: false }
+  };
+  const stateFor = (soak, chill, gale) => {
+    const cold = chill >= COLD;
+    if (soak < WET) return STATES.sunny;
+    if (cold) return soak < FAIR ? STATES.flurries : soak < HEAVY ? STATES.snow : gale >= WINDY ? STATES.blizzard : STATES.snow;
+    if (soak < FAIR) return STATES["light rain"];
+    if (soak < HEAVY) return STATES.rain;
+    return gale >= WINDY ? STATES.monsoon : STATES.thunderstorm;
+  };
   const cloudFor = (overcast, day) => {
     const band = lerp(CLEAR_NIGHT, CLEAR_DAY, clamp(day, 0, 1));
     return clamp((overcast - band) / (1 - band), 0, 1);
   };
-  // Desaturate toward a cool grey of the colour's own brightness, so day stays bright and night stays dark.
-  const greyen = (c, k) => {
+  // Desaturate toward a cool grey of the colour's own brightness, so day stays bright and night dark.
+  const greyen = (c, k, tint) => {
     if (!c) return;
     const grey = (c[0] * 0.299 + c[1] * 0.587 + c[2] * 0.114) * (1 - OVERCAST_DARKEN * k);
-    c[0] += (grey * OVERCAST_TINT[0] - c[0]) * k;
-    c[1] += (grey * OVERCAST_TINT[1] - c[1]) * k;
-    c[2] += (grey * OVERCAST_TINT[2] - c[2]) * k;
+    c[0] += (grey * tint[0] - c[0]) * k;
+    c[1] += (grey * tint[1] - c[1]) * k;
+    c[2] += (grey * tint[2] - c[2]) * k;
   };
-  const rainDrop = models.cached(() => models.noShadow(models.box({ w: 0.05, h: 0.6, d: 0.05, color: "#c6dbee", emissive: 0.45 })));
-  const SPLASH = [models.particleGeometry("#d8e8f4", 0.07, 0.6)];
-  // One jagged trunk with two branches, unit height, built once for every strike.
-  const bolt = models.cached(() => {
-    const rand = math.mulberry32(7);
-    const jag = (x0, z0, y0, y1, steps, spread) => {
-      const points = [];
-      for (let i = 0; i <= steps; i++) {
-        const t = i / steps;
-        points.push({ x: x0 + (rand() - 0.5) * spread * (i && i < steps ? 1 : 0.3), y: lerp(y0, y1, t), z: z0 + (rand() - 0.5) * spread * (i && i < steps ? 1 : 0.3) });
-      }
-      return points;
-    };
-    const trunk = jag(0, 0, 1, 0, 9, 0.16);
-    const b1 = trunk[3], b2 = trunk[6];
-    return models.merge(
-      models.polyline({ points: trunk, color: "#eef5ff", emissive: 1 }),
-      models.polyline({ points: [b1, ...jag(b1.x + 0.12, b1.z, b1.y, b1.y - 0.3, 4, 0.12).slice(1)], color: "#dbe9ff", emissive: 1 }),
-      models.polyline({ points: [b2, ...jag(b2.x - 0.1, b2.z + 0.05, b2.y, b2.y - 0.22, 3, 0.1).slice(1)], color: "#dbe9ff", emissive: 1 })
-    );
-  });
   const brighten = (c, k) => {
     if (!c) return;
     c[0] += (1 - c[0]) * k;
     c[1] += (1 - c[1]) * k;
     c[2] += (1 - c[2]) * k;
   };
+  // A whiteout lifts everything toward a flat bright grey instead of darkening it.
+  const whiten = (c, k) => {
+    if (!c) return;
+    c[0] += (0.88 - c[0]) * k;
+    c[1] += (0.9 - c[1]) * k;
+    c[2] += (0.94 - c[2]) * k;
+  };
+
+  // A drop is a streak, not a bar: the per-drop size scales this cross-section, so a fat one at
+  // DROP_MAX is still thin enough to read as rain rather than as a falling block.
+  const rainDrop = models.cached(() => models.noShadow(models.box({ w: 0.024, h: 0.6, d: 0.024, color: "#c6dbee", emissive: 0.45 })));
+  const snowFlake = models.cached(() => models.noShadow(models.merge(
+    models.box({ w: 0.11, h: 0.04, d: 0.04, color: "#f4f9ff", emissive: 0.55 }),
+    models.box({ w: 0.04, h: 0.04, d: 0.11, color: "#f4f9ff", emissive: 0.55 }),
+    models.box({ w: 0.04, h: 0.11, d: 0.04, color: "#eaf3ff", emissive: 0.55 })
+  )));
+  const SPLASH = [models.particleGeometry("#d8e8f4", 0.07, 0.6)];
+  // Two builds of the same puff: fair weather and a bruised storm deck. Swapping the geometry on every
+  // cloud node recolours the whole sky over the island without touching a vertex.
+  const puff = (seed, tone) => models.cached(() => {
+    const rand = mulberry32(seed), geos = [];
+    for (let i = 0; i < 7; i++) {
+      const a = rand() * Math.PI * 2, r = rand() * 3.4;
+      // Depth against width: a puff barely a third as tall as it is wide reads as a cut-out.
+      const w = 2.6 + rand() * 3.2, h = 1.9 + rand() * 1.4;
+      geos.push(models.box({ w, h, d: w * (0.7 + rand() * 0.4), color: i % 2 ? tone[0] : tone[1], emissive: tone[2], offset: { x: Math.cos(a) * r, y: rand() * 0.7, z: Math.sin(a) * r } }));
+    }
+    return models.noShadow(models.merge(...geos));
+  });
+  const CLOUD_FAIR = puff(3301, ["#f2f5f8", "#dfe6ee", 0.12]);
+  const CLOUD_GREY = puff(3301, ["#6d737c", "#565c66", 0.05]);
+  const CLOUD_SNOW = puff(3301, ["#b9c2cc", "#98a3b0", 0.08]);
+
+  // Eight forked bolts, unit height, each from its own seed: a jagged trunk with three branches that
+  // fork again. Built once at boot and picked at random with a random turn, scale and mirror, so a
+  // strike costs no geometry and no two look alike.
+  const bolts = models.cached(() => {
+    const out = [];
+    for (let v = 0; v < BOLT_VARIANTS; v++) {
+      const rand = mulberry32(1013 + v * 977);
+      const jag = (x0, z0, y0, y1, steps, spread) => {
+        const points = [];
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps, ends = i && i < steps ? 1 : 0.25;
+          points.push({
+            x: x0 + (rand() - 0.5) * spread * ends,
+            y: lerp(y0, y1, t),
+            z: z0 + (rand() - 0.5) * spread * ends
+          });
+        }
+        return points;
+      };
+      const trunk = jag(0, 0, 1, 0, 12, 0.22);
+      const geos = [models.polyline({ points: trunk, color: "#eef5ff", emissive: 1 })];
+      for (let b = 0; b < 3; b++) {
+        const at = trunk[3 + b * 3], drop = 0.18 + rand() * 0.22;
+        const arm = jag(at.x + (rand() - 0.5) * 0.3, at.z + (rand() - 0.5) * 0.3, at.y, at.y - drop, 4, 0.16);
+        geos.push(models.polyline({ points: [at, ...arm.slice(1)], color: "#dbe9ff", emissive: 1 }));
+        if (rand() < 0.55) {
+          const fork = arm[2];
+          geos.push(models.polyline({ points: [fork, ...jag(fork.x + (rand() - 0.5) * 0.25, fork.z, fork.y, fork.y - drop * 0.6, 3, 0.12).slice(1)], color: "#cfe0ff", emissive: 1 }));
+        }
+      }
+      out.push(models.merge(...geos));
+    }
+    return out;
+  });
   // The flash strobes twice, then decays: full, dip, second bright, tail.
   const flashAt = (t) => t < 0.08 ? 1 : t < 0.14 ? 0.25 : t < 0.22 ? 0.85 : 0.85 * Math.exp(-(t - 0.22) / FLASH_TAU);
 
-  const create = ({ root, renderer, camera, heightAt, fx = null }) => {
-    const cap = renderer.kind === "canvas2d" ? RAIN_CAP_CANVAS : RAIN_CAP;
+  const create = ({ root, renderer, camera, heightAt, fx = null, centre }) => {
+    const canvas2d = renderer.kind === "canvas2d";
+    const cap = canvas2d ? CAP_CANVAS : (CAP[renderer.quality] || CAP.medium);
     const node = createNode({ geometry: rainDrop(), instanceData: new Float32Array(cap * 20), instanceCount: 0, drawInstanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
-    const x = new Float32Array(cap), y = new Float32Array(cap), z = new Float32Array(cap), w = new Float32Array(cap), h = new Float32Array(cap), vy = new Float32Array(cap);
-    let count = 0, transactions = 0, strikes = 0, flash = 0, flashT = -1, boltT = -1, thunderAt = -1;
-    // Sunny until the feed projects a fee, so an offline page keeps the clock's frame; the first projection snaps, later ones ease.
-    let overcast = 0, overcastTarget = 0, projected = false, nextFee = 0, cloud = 0;
+    const x = new Float32Array(cap), y = new Float32Array(cap), z = new Float32Array(cap);
+    const w = new Float32Array(cap), h = new Float32Array(cap), vy = new Float32Array(cap), phase = new Float32Array(cap);
+    let count = 0, form = "rain";
+    let flash = 0, flashT = -1, boltT = -1, thunderAt = -1, ambientAt = -1, strikes = 0, transactions = 0, boltVariant = -1;
+    // Everything the feed sets is a target; the live value walks there so nothing snaps.
+    let soak = 0, soakTarget = 0, chill = 0, chillTarget = 0, gale = 0, galeTarget = 0;
+    let gust = 0, cloud = 0, near = 0, heard = 0, windAngle = Math.random() * Math.PI * 2, windX = 0, windZ = 0, swayT = 0;
+    let state = STATES.sunny, applied = false;
     const fog = new Float32Array(3);
-    const boltNode = createNode({ geometry: bolt(), visible: false });
+    const variants = bolts();
+    const boltNode = createNode({ geometry: variants[0], visible: false });
     addChild(root, node);
     addChild(root, boltNode);
-    // Sound: the context opens only after a real gesture, so a strike on a fresh page stays silent and warns nothing.
-    let ctx = null, master = null, noise = null, rainGain = null, muted = false;
+    // The cloud deck: fixed nodes, seeded once, drifting with the wind and wrapping inside the cell.
+    const cloudRand = mulberry32(8821);
+    // The fallback rasterizes every face in software, so it carries a thinner deck for the same look.
+    const cloudN = canvas2d ? CLOUD_CANVAS : (CLOUD[renderer.quality] || CLOUD.medium);
+    const clouds = [], cloudX = new Float32Array(cloudN), cloudZ = new Float32Array(cloudN), cloudBase = new Float32Array(cloudN);
+    for (let i = 0; i < cloudN; i++) {
+      const a = cloudRand() * Math.PI * 2, r = Math.sqrt(cloudRand()) * CLOUD_R;
+      cloudX[i] = Math.cos(a) * r;
+      cloudZ[i] = Math.sin(a) * r;
+      cloudBase[i] = 0.7 + cloudRand() * 0.85;
+      // Three loose tiers so the deck has depth instead of reading as one flat lid.
+      const tier = i % CLOUD_TIERS;
+      const cloud = createNode({
+        position: { x: centre.x + cloudX[i], y: centre.y + FIELD_TOP + CLOUD_LIFT + tier * 2.6 + cloudRand() * 1.8, z: centre.z + cloudZ[i] },
+        rotation: { x: 0, y: cloudRand() * Math.PI * 2, z: 0 },
+        geometry: CLOUD_FAIR(), scale: { x: 0.01, y: 0.01, z: 0.01 }, visible: false
+      });
+      clouds.push(cloud);
+      addChild(root, cloud);
+    }
+    let cloudCover = 0, cloudForm = "fair";
+
+    // Sound: the context opens only after a real gesture, so weather on a fresh page stays silent.
+    let ctx = null, master = null, noise = null, rainGain = null, windGain = null, muted = false;
     try {
       muted = localStorage.getItem(STORAGE_KEY) === "off";
     } catch {
@@ -33904,23 +34683,43 @@ void main() {
       noise.connect(hiss);
       hiss.connect(rainGain);
       rainGain.connect(master);
+      // The gale rides the same loop through a low band, so a blizzard howls without a second buffer.
+      const howl = ctx.createBiquadFilter();
+      howl.type = "bandpass";
+      howl.frequency.value = 420;
+      howl.Q.value = 0.8;
+      windGain = ctx.createGain();
+      windGain.gain.value = 0;
+      noise.connect(howl);
+      howl.connect(windGain);
+      windGain.connect(master);
       noise.start();
       if (ctx.state === "suspended") ctx.resume();
       return true;
     };
+    // The listener's own distance, read when a roll arrives rather than when its bolt was lit.
+    const heardNow = () => {
+      const dx = camera.target.x - centre.x, dz = camera.target.z - centre.z;
+      const k = clamp((HEARD_NONE - Math.sqrt(dx * dx + dz * dz)) / (HEARD_NONE - HEARD_FULL), 0, 1);
+      return k * k;
+    };
     const rumble = () => {
       if (!initAudio() && !ctx) return;
       const t = ctx.currentTime;
+      // Distance takes the crack off a strike before it takes the roll: the opening band falls toward
+      // the tail's own frequency as you walk away, so thunder from across the water is a low rumble
+      // while thunder overhead still snaps. `near` is read when the roll arrives, not when it was lit.
+      const level = lerp(DISTANT_THUNDER, 1, heardNow());
       const low = ctx.createBiquadFilter();
       low.type = "lowpass";
-      low.frequency.setValueAtTime(420, t);
+      low.frequency.setValueAtTime(lerp(140, 420, level), t);
       low.frequency.exponentialRampToValueAtTime(90, t + 2.8);
       low.Q.value = 1.2;
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(0.9, t + 0.06);
-      g.gain.exponentialRampToValueAtTime(0.35, t + 0.5);
-      g.gain.exponentialRampToValueAtTime(0.7, t + 0.9);
+      g.gain.exponentialRampToValueAtTime(0.28 * level, t + 0.06);
+      g.gain.exponentialRampToValueAtTime(0.11 * level, t + 0.5);
+      g.gain.exponentialRampToValueAtTime(0.2 * level, t + 0.9);
       g.gain.exponentialRampToValueAtTime(0.0001, t + 3.2);
       noise.connect(low);
       low.connect(g);
@@ -33930,73 +34729,206 @@ void main() {
         g.disconnect();
       }, 3400);
     };
-    const weather = (fee) => {
-      nextFee = fee;
-      const target = overcastFor(fee);
-      if (!projected) {
-        projected = true;
-        overcast = overcastTarget = target;
-      } else if (target === 0 || target === 1 || Math.abs(target - overcastTarget) >= OVERCAST_STEP) overcastTarget = target;
+
+    // One particle placed at the top of the field, in a disk around the camera target.
+    const seed = (i, fromTop) => {
+      const t = centre;
+      const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * FIELD_R;
+      x[i] = t.x + Math.cos(a) * r;
+      z[i] = t.z + Math.sin(a) * r;
+      y[i] = fromTop ? t.y + FIELD_TOP + Math.random() * FIELD_SPREAD : t.y + Math.random() * (FIELD_TOP + FIELD_SPREAD) - RECYCLE_BELOW;
+      phase[i] = Math.random() * Math.PI * 2;
+      if (state.snow) {
+        w[i] = 0.6 + Math.random() * 0.8;
+        h[i] = 1;
+        vy[i] = SNOW_FALL + Math.random() * SNOW_FALL_SPREAD;
+      } else {
+        const size = clamp(DROP_MIN + Math.random() * 1.1 + gust * GUST_LIFT, DROP_MIN, DROP_MAX);
+        w[i] = size;
+        h[i] = 0.8 + size * 0.35;
+        vy[i] = RAIN_FALL + RAIN_FALL_PER_SIZE * size;
+      }
     };
+    const setForm = (snow) => {
+      const next = snow ? "snow" : "rain";
+      if (next === form) return;
+      form = next;
+      node.geometry = snow ? snowFlake() : rainDrop();
+      // Re-seed in place: the population is the same, only its shape and fall rate change.
+      for (let i = 0; i < count; i++) seed(i, false);
+    };
+
+    // The feed's standing view of the chain. Targets only; `update` walks the live values there.
+    const apply = (snapshot) => {
+      if (!snapshot) return;
+      soakTarget = clamp(snapshot.soak, 0, 1);
+      chillTarget = clamp(snapshot.chill, 0, 1);
+      galeTarget = clamp(snapshot.gale, 0, 1);
+      if (!applied) {
+        applied = true;
+        soak = soakTarget;
+        chill = chillTarget;
+        gale = galeTarget;
+      }
+    };
+    // A transaction no longer is the rain; it gusts it. Bigger transactions gust harder.
     const rain = (vsize) => {
       transactions++;
-      const size = clamp(DROP_MIN + Math.log2(Math.max(1, vsize / DROP_BASE_VSIZE)) * 0.5, DROP_MIN, DROP_MAX);
-      // Any overcast rains at least one drop a transaction; the full count comes with the full storm.
-      const drops = overcast > 0 ? Math.max(1, Math.round(Math.min(DROPS_MAX, DROPS_MIN + Math.floor(vsize / 200)) * overcast)) : 0;
-      const t = camera.target;
-      for (let n = 0; n < drops && count < cap; n++, count++) {
-        const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * RAIN_RANGE;
-        x[count] = t.x + Math.cos(a) * r;
-        z[count] = t.z + Math.sin(a) * r;
-        y[count] = t.y + RAIN_HEIGHT + Math.random() * RAIN_SPREAD;
-        w[count] = size;
-        h[count] = 0.8 + size * 0.35;
-        vy[count] = FALL_BASE + FALL_PER_SIZE * size;
-      }
+      gust = Math.min(1, gust + clamp(Math.log2(Math.max(1, vsize / DROP_BASE_VSIZE)) * 0.12 + 0.08, 0.05, 0.4));
     };
     const strike = () => {
       strikes++;
       flashT = 0;
       boltT = 0;
       thunderAt = THUNDER_DELAY_MIN + Math.random() * THUNDER_DELAY_SPREAD;
-      const a = Math.random() * Math.PI * 2, r = 6 + Math.random() * (BOLT_RANGE - 6), t = camera.target;
+      const a = Math.random() * Math.PI * 2, r = 6 + Math.random() * (BOLT_RANGE - 6), t = centre;
       const bx = t.x + Math.cos(a) * r, bz = t.z + Math.sin(a) * r;
       const ground = heightAt(bx, bz);
+      boltVariant = (Math.random() * variants.length) | 0;
+      boltNode.geometry = variants[boltVariant];
       boltNode.position.x = bx;
       boltNode.position.z = bz;
       boltNode.position.y = ground;
       boltNode.rotation.y = Math.random() * Math.PI * 2;
-      boltNode.scale.x = boltNode.scale.z = 4 + Math.random() * 3;
-      boltNode.scale.y = t.y + RAIN_HEIGHT + BOLT_HEIGHT - ground;
+      // A mirrored x flips the fork side, doubling the variants for free.
+      boltNode.scale.x = (4 + Math.random() * 3) * (Math.random() < 0.5 ? -1 : 1);
+      boltNode.scale.z = 4 + Math.random() * 3;
+      boltNode.scale.y = t.y + FIELD_TOP + BOLT_HEIGHT - ground;
       boltNode.visible = true;
     };
+
+    const walk = (value, target, step) => value > target ? Math.max(target, value - step) : Math.min(target, value + step);
+
     const update = (dt, opts) => {
       const previousCount = node.instanceCount;
-      // A steady walk, OVERCAST_EASE seconds across the whole range, so the target is reached exactly.
-      if (overcast !== overcastTarget) {
-        const step = dt / OVERCAST_EASE;
-        overcast = overcast > overcastTarget ? Math.max(overcastTarget, overcast - step) : Math.min(overcastTarget, overcast + step);
+      const step = dt / EASE;
+      // How far under the cell the listener is. `camera.target` is the Ooga you are driving when you
+      // are in one and the look-at point when you are flying free, so one value serves both. The sky,
+      // the fog, the flash and the sound all read it, so they cannot disagree about where you stand.
+      const cx = camera.target.x - centre.x, cz = camera.target.z - centre.z;
+      const away = Math.sqrt(cx * cx + cz * cz);
+      near = clamp((NEAR_NONE - away) / (NEAR_NONE - NEAR_FULL), 0, 1);
+      // Loudness on its own shorter curve, then squared: audible only around the rainforest, already
+      // almost gone halfway back over the bridge, and exactly zero anywhere else in the world.
+      const reach = clamp((HEARD_NONE - away) / (HEARD_NONE - HEARD_FULL), 0, 1);
+      heard = reach * reach;
+      if (Math.abs(soak - soakTarget) > DEAD_BAND) soak = walk(soak, soakTarget, step); else soak = soakTarget;
+      if (Math.abs(chill - chillTarget) > DEAD_BAND) chill = walk(chill, chillTarget, step); else chill = chillTarget;
+      if (Math.abs(gale - galeTarget) > DEAD_BAND) gale = walk(gale, galeTarget, step); else gale = galeTarget;
+      gust = Math.max(0, gust - dt / GUST_SECONDS);
+      state = stateFor(soak, chill, gale);
+      setForm(state.snow);
+
+      // Wind turns slowly and never snaps; the gale sets its strength, a gust leans on it.
+      windAngle += WIND_TURN * dt;
+      const windSpeed = WIND_MAX * gale * (state.snow ? 1 : 0.7) * (0.6 + 0.4 * state.wet);
+      windX = Math.cos(windAngle) * windSpeed;
+      windZ = Math.sin(windAngle) * windSpeed;
+      swayT += dt * SNOW_SWAY_RATE;
+
+      // The deck above: how much of it is there, what colour, and how hard it is lit from below.
+      const wantCover = clamp(state.wet * 0.55 + soak * 0.45, 0, 1);
+      cloudCover += (wantCover - cloudCover) * Math.min(1, dt / CLOUD_EASE);
+      const wantForm = cloudCover < 0.18 ? "fair" : state.snow ? "snow" : "grey";
+      if (wantForm !== cloudForm) {
+        cloudForm = wantForm;
+        const geometry = wantForm === "fair" ? CLOUD_FAIR() : wantForm === "snow" ? CLOUD_SNOW() : CLOUD_GREY();
+        for (let i = 0; i < cloudN; i++) clouds[i].geometry = geometry;
       }
-      const data = node.instanceData;
-      for (let i = 0; i < count; i++) {
-        y[i] -= vy[i] * dt;
-        if (y[i] <= heightAt(x[i], z[i])) {
-          if (fx && w[i] >= SPLASH_SIZE) fx.burst(x[i], y[i] + 0.05, z[i], 2, SPLASH, 0.9);
-          count--;
-          x[i] = x[count]; y[i] = y[count]; z[i] = z[count]; w[i] = w[count]; h[i] = h[count]; vy[i] = vy[count];
-          i--;
+      const shown = Math.round(cloudN * clamp(CLOUD_FLOOR + cloudCover * (1 - CLOUD_FLOOR), 0, 1));
+      for (let i = 0; i < cloudN; i++) {
+        const cloud = clouds[i];
+        if (i >= shown) {
+          cloud.visible = false;
           continue;
         }
-        const o = i * 20, s = w[i] * 0.5 + 0.5;
+        cloud.visible = true;
+        cloudX[i] += windX * CLOUD_DRIFT * dt;
+        cloudZ[i] += windZ * CLOUD_DRIFT * dt;
+        // Wrap across the cell rather than drifting away, so the deck never leaves and never grows.
+        const cr = Math.hypot(cloudX[i], cloudZ[i]);
+        if (cr > CLOUD_R) {
+          cloudX[i] = -cloudX[i] / cr * CLOUD_R;
+          cloudZ[i] = -cloudZ[i] / cr * CLOUD_R;
+        }
+        cloud.position.x = centre.x + cloudX[i];
+        cloud.position.z = centre.z + cloudZ[i];
+        const k = cloudBase[i] * (0.8 + cloudCover * 0.6);
+        cloud.scale.x = cloud.scale.z = k;
+        cloud.scale.y = k * 0.6;
+        // Lightning lights the deck from inside before it lights anything else.
+        cloud.glow = flash > 0 ? flash * 0.85 : 0;
+      }
+
+      // The population is the weather: hold `target` particles alive and the rain lasts as long as
+      // the pool is full, instead of stopping the moment a transaction stops arriving.
+      const target = Math.min(cap, Math.round(cap * clamp(state.wet * (0.65 + 0.35 * soak) + gust * 0.15, 0, 1)));
+      if (count < target) {
+        // Fill over about a second so a state change eases in rather than popping a full field.
+        const room = Math.min(target - count, Math.max(1, Math.ceil(cap * dt)));
+        for (let n = 0; n < room; n++, count++) seed(count, !applied || previousCount > 0);
+      }
+
+      const t = centre, data = node.instanceData;
+      const snow = state.snow, floorY = t.y - RECYCLE_BELOW;
+      for (let i = 0; i < count; i++) {
+        y[i] -= vy[i] * dt;
+        let dx = windX, dz = windZ;
+        if (snow) {
+          // Flakes sway across the wind instead of tracking it exactly.
+          dx += Math.cos(swayT + phase[i]) * SNOW_SWAY;
+          dz += Math.sin(swayT * 0.8 + phase[i]) * SNOW_SWAY;
+        }
+        x[i] += dx * dt;
+        z[i] += dz * dt;
+        const ground = heightAt(x[i], z[i]);
+        if (y[i] <= ground || y[i] < floorY) {
+          if (!snow && fx && w[i] >= SPLASH_SIZE && y[i] <= ground) fx.burst(x[i], y[i] + 0.05, z[i], 2, SPLASH, 0.9);
+          // Over target the population shrinks by retiring on landing; otherwise it recycles to the top.
+          if (count > target) {
+            count--;
+            x[i] = x[count]; y[i] = y[count]; z[i] = z[count];
+            w[i] = w[count]; h[i] = h[count]; vy[i] = vy[count]; phase[i] = phase[count];
+            i--;
+            continue;
+          }
+          seed(i, true);
+        }
+        // Drops outside the field have drifted past the camera; bring them round rather than lose them.
+        const ox = x[i] - t.x, oz = z[i] - t.z;
+        if (ox * ox + oz * oz > FIELD_R * FIELD_R * 2.25) seed(i, true);
+
+        const o = i * 20, s = snow ? w[i] : w[i] * 0.5 + 0.5, hy = h[i];
+        // A streak lies along the drop's own velocity: down at vy, carried sideways at the wind's speed.
+        // Bottom to top is the reverse of that travel, so the head of the streak is upwind of its tail
+        // and the rain leans the way the wind is going. The ratio is wind over fall speed, so a heavy
+        // drop falls straighter through the same gale than a light one, and the lean is capped so a
+        // squall never lays the rain flat.
+        const tiltX = snow ? 0 : clamp(-windX / (vy[i] || 1), -0.8, 0.8);
+        const tiltZ = snow ? 0 : clamp(-windZ / (vy[i] || 1), -0.8, 0.8);
         data[o] = s; data[o + 1] = 0; data[o + 2] = 0; data[o + 3] = 0;
-        data[o + 4] = 0; data[o + 5] = h[i]; data[o + 6] = 0; data[o + 7] = 0;
+        data[o + 4] = tiltX * hy; data[o + 5] = hy; data[o + 6] = tiltZ * hy; data[o + 7] = 0;
         data[o + 8] = 0; data[o + 9] = 0; data[o + 10] = s; data[o + 11] = 0;
         data[o + 12] = x[i]; data[o + 13] = y[i]; data[o + 14] = z[i]; data[o + 15] = 1;
         data[o + 16] = 1; data[o + 17] = 0; data[o + 18] = 0; data[o + 19] = 0;
       }
       node.instanceCount = node.drawInstanceCount = count;
       if (count || previousCount) node.instanceVersion++;
-      if (rainGain) rainGain.gain.setTargetAtTime(Math.min(1, count / 120) * 0.14, ctx.currentTime, 0.2);
+      if (rainGain) {
+        rainGain.gain.setTargetAtTime(Math.min(1, count / (cap * 0.6)) * (snow ? 0.035 : 0.09) * heard, ctx.currentTime, 0.25);
+        windGain.gain.setTargetAtTime(gale * (state.wet > 0 ? 0.07 : 0.02) * heard, ctx.currentTime, 0.4);
+      }
+
+      // A storm strikes on its own as well as on every block; ten minutes between blocks is no storm.
+      if (state.storm) {
+        if (ambientAt < 0) ambientAt = AMBIENT_MIN + Math.random() * AMBIENT_SPREAD;
+        ambientAt -= dt * (0.5 + soak);
+        if (ambientAt < 0) {
+          ambientAt = AMBIENT_MIN + Math.random() * AMBIENT_SPREAD;
+          strike();
+        }
+      } else ambientAt = -1;
+
       if (boltT >= 0) {
         boltT += dt;
         if (boltT > BOLT_SHOW) {
@@ -34020,28 +34952,40 @@ void main() {
           flashT = -1;
         }
       }
+
+      // The storm is a place, so standing on the far side of the world leaves your own sky exactly as
+      // the clock painted it while you watch it rain over there.
       if (opts) {
         // A clear sky leaves the clock's colours, light and fog exactly as sampled.
-        cloud = cloudFor(overcast, opts.day);
+        cloud = cloudFor(soak, opts.day) * near;
+        const white = snow ? cloud * clamp((state.wet - FAIR) / (1 - FAIR), 0, 1) : 0;
         if (cloud > 0.02) {
           const k = cloud * OVERCAST_MIX;
-          greyen(opts.clear, k); greyen(opts.horizon, k); greyen(opts.zenith, k);
-          greyen(opts.sky, k); greyen(opts.ground, k); greyen(opts.direct, k);
+          const tint = snow ? SNOW_TINT : OVERCAST_TINT;
+          greyen(opts.clear, k, tint); greyen(opts.horizon, k, tint); greyen(opts.zenith, k, tint);
+          greyen(opts.sky, k, tint); greyen(opts.ground, k, tint); greyen(opts.direct, k, tint);
           opts.directStrength *= 1 - cloud * (1 - OVERCAST_DIM);
+          if (white > 0.02) {
+            whiten(opts.clear, white); whiten(opts.horizon, white); whiten(opts.zenith, white);
+            whiten(opts.sky, white); whiten(opts.ground, white);
+            opts.ambientFloor = lerp(opts.ambientFloor, 0.6, white);
+          }
           fog[0] = opts.horizon[0]; fog[1] = opts.horizon[1]; fog[2] = opts.horizon[2];
           opts.fog = fog;
-          opts.fogNear = lerp(FOG_OFF_NEAR, FOG_NEAR, cloud);
-          opts.fogFar = lerp(FOG_OFF_FAR, FOG_FAR, cloud);
+          opts.fogNear = lerp(lerp(FOG_OFF_NEAR, FOG_NEAR, cloud), WHITEOUT_NEAR, white);
+          opts.fogFar = lerp(lerp(FOG_OFF_FAR, FOG_FAR, cloud), WHITEOUT_FAR, white);
         } else opts.fog = null;
       }
       if (flash > 0 && opts) {
-        const k = flash * FLASH_MAX;
+        // A distant bolt still flickers the sky, just faintly; underneath it the whole sky goes white.
+        const k = flash * FLASH_MAX * lerp(DISTANT_FLASH, 1, near);
         brighten(opts.clear, k); brighten(opts.horizon, k); brighten(opts.zenith, k);
         brighten(opts.sky, k); brighten(opts.ground, k); brighten(opts.direct, k);
         opts.ambientFloor = lerp(opts.ambientFloor, 0.9, k);
         opts.directStrength *= 1 + k;
       }
     };
+
     const setMuted = (on) => {
       muted = !!on;
       if (master) master.gain.setTargetAtTime(muted ? 0 : MASTER, ctx.currentTime, 0.05);
@@ -34049,34 +34993,63 @@ void main() {
     const dispose = () => {
       removeChild(root, node);
       removeChild(root, boltNode);
+      for (const cloud of clouds) removeChild(root, cloud);
+      clouds.length = 0;
       count = 0;
       if (ctx) ctx.close();
-      ctx = master = noise = rainGain = null;
+      ctx = master = noise = rainGain = windGain = null;
     };
-    const state = {
+    const state_ = {
+      get name() { return state.name; },
       get drops() { return count; },
       get capacity() { return cap; },
+      get form() { return form; },
       get flash() { return flash; },
       get bolt() { return boltT >= 0; },
+      get boltVariant() { return boltVariant; },
+      get boltVariants() { return variants.length; },
       get thunderPending() { return thunderAt >= 0; },
       get strikes() { return strikes; },
-      get overcast() { return overcast; },
-      get overcastTarget() { return overcastTarget; },
+      get soak() { return soak; },
+      get chill() { return chill; },
+      get gale() { return gale; },
+      get gust() { return gust; },
       get cloud() { return cloud; },
-      get nextFee() { return nextFee; },
-      get projected() { return projected; },
+      get deck() { return cloudCover; },
+      get deckForm() { return cloudForm; },
+      get deckShown() { return clouds.reduce((n, c) => n + (c.visible ? 1 : 0), 0); },
+      get deckCapacity() { return cloudN; },
+      get near() { return near; },
+      // How much of the weather's sound reaches the listener, and what the bed is actually playing at.
+      get heard() { return heard; },
+      get rainLevel() { return rainGain ? rainGain.gain.value : 0; },
+      get windLevel() { return windGain ? windGain.gain.value : 0; },
+      get audible() { return !!ctx; },
+      get centre() { return centre; },
+      get wind() { return Math.hypot(windX, windZ); },
+      // The wind's own travel, and the streak basis a drop is drawn along, so the lean can be checked
+      // against the direction rather than eyeballed.
+      get windX() { return windX; },
+      get windZ() { return windZ; },
+      lean: (i) => {
+        if (i >= count) return null;
+        const o = i * 20, d = node.instanceData;
+        return { x: d[o + 4], y: d[o + 5], z: d[o + 6] };
+      },
       get transactions() { return transactions; },
+      get applied() { return applied; },
       get audio() { return !!ctx; },
       get muted() { return muted; },
       drop: (i) => i < count ? { x: x[i], y: y[i], z: z[i], size: w[i], fall: vy[i] } : null
     };
     return {
-      rain, strike, weather, update, setMuted, dispose, state,
+      apply, rain, strike, update, setMuted, dispose, state: state_,
       get active() { return count > 0 || flashT >= 0 || boltT >= 0 || thunderAt >= 0; },
       stats: () => ({ rainDrops: count, strikes })
     };
   };
-  BL.storm = { RAIN_CAP, SUNNY_FEE, STORM_FEE, CLEAR_NIGHT, CLEAR_DAY, overcastFor, cloudFor, create };
+
+  BL.weather = { STATES, CLEAR_NIGHT, CLEAR_DAY, COLD, WET, FAIR, HEAVY, WINDY, stateFor, cloudFor, create };
 })();
 
 // ---- js/race-models.js ----
@@ -35230,7 +36203,7 @@ void main() {
 
   // The bridge leaves the south rim for `span`, sagging to its middle; the islet's middle sits past its end.
   // `from` is where the search for the rim's edge starts.
-  const SITE = { from: 27.4, span: 13.5, sag: 0.45, width: 2.1, isletR: 7.2, isletDepth: 13, padR: 4.2, padH: 0.45, towerX: 5.4 };
+  const SITE = { from: 27.4, span: 13.5, sag: 0.45, width: 2.1, isletR: 7.2, isletDepth: 13, padR: 4.2, padH: 0.45, towerX: 5.1 };
   // The bridge head sits where the ground under it runs out, at that ground's height, so planks meet the grass.
   // That height sets both ends of the site.
   const siteSpot = (island, out = {}) => {
@@ -35293,18 +36266,19 @@ void main() {
       const z = (i + 0.5) * SITE.span / count;
       geos.push(box({ w: w + (i % 3 ? 0 : 0.14), h: 0.1, d: 0.42, color: i % 2 ? "#8f6538" : "#9c7040", offset: { x: 0, y: deckY(z) - 0.05, z } }));
     }
-    const rail = 1.05, posts = [0, SITE.span];
+    const rail = 1.05, posts = [0, SITE.span], lantern = [];
     for (const z of posts) for (const x of [-w / 2 - 0.08, w / 2 + 0.08]) geos.push(box({ w: 0.24, h: 1.9, d: 0.24, color: WOOD_DK, offset: { x, y: 0.45, z } }));
     const steps = 12;
     for (const x of [-w / 2 - 0.05, w / 2 + 0.05]) {
       for (let i = 0; i < steps; i++) {
         const z0 = i / steps * SITE.span, z1 = (i + 1) / steps * SITE.span;
-        geos.push(beam(x, deckY(z0) * 1.3 + rail, z0, deckY(z1) * 1.3 + rail, z1, 0.07, 0.07, ROPE));
-        geos.push(beam(x, deckY(z0) - 0.14, z0, deckY(z1) - 0.14, z1, 0.09, 0.09, ROPE));
+        // The ropes are what hold the crossing up, so they are cord you could grip, not string.
+        geos.push(beam(x, deckY(z0) * 1.3 + rail, z0, deckY(z1) * 1.3 + rail, z1, 0.12, 0.12, ROPE));
+        geos.push(beam(x, deckY(z0) - 0.14, z0, deckY(z1) - 0.14, z1, 0.15, 0.15, ROPE));
       }
       for (let i = 1; i < steps; i++) {
         const z = i / steps * SITE.span;
-        geos.push(box({ w: 0.04, h: rail + deckY(z) * 0.3, d: 0.04, color: ROPE, offset: { x, y: deckY(z) + (rail + deckY(z) * 0.3) / 2, z } }));
+        geos.push(box({ w: 0.075, h: rail + deckY(z) * 0.3, d: 0.075, color: ROPE, offset: { x, y: deckY(z) + (rail + deckY(z) * 0.3) / 2, z } }));
       }
     }
     return merge(...geos);
@@ -35322,16 +36296,6 @@ void main() {
     return merge(board, ...[-half, half].map((x) => box({ w: 0.07, h: PEG_H + 0.2, d: 0.07, color: WOOD_DK, offset: { x, y: (PEG_H + 0.2) * 0.5 - 0.1 } })));
   });
   // Nodes under one group placed at the islet's middle; the bridge head is `spot.bridgeZ`.
-  const site = (spot) => {
-    const node = createNode({ position: { x: spot.x, y: spot.y, z: spot.z } });
-    const isletNode = createNode({ geometry: islet() });
-    const padNode = createNode({ geometry: pad() });
-    const towerNode = createNode({ position: { x: SITE.towerX, y: SITE.padH, z: 0 }, geometry: tower() });
-    const bridgeNode = createNode({ position: { x: 0, y: 0, z: spot.bridgeZ - spot.z }, geometry: bridge() });
-    const signNode = createNode({ position: { x: 1.9, y: 0, z: -SITE.isletR + 2.2 }, rotation: { x: 0, y: Math.PI, z: 0 }, geometry: siteSign() });
-    addChild(node, isletNode, padNode, towerNode, bridgeNode, signNode);
-    return { node, islet: isletNode, pad: padNode, tower: towerNode, bridge: bridgeNode, sign: signNode };
-  };
   // Ground under a site point in world space, or -Infinity: the pad, the islet's top, the bridge deck.
   const siteGroundAt = (spot, x, z) => {
     const dx = x - spot.x, dz = z - spot.z, r = Math.hypot(dx, dz);
@@ -35340,6 +36304,19 @@ void main() {
     const along = z - spot.bridgeZ;
     if (Math.abs(x - spot.x) < SITE.width / 2 && along >= 0 && along <= SITE.span) return spot.y + deckY(along);
     return -Infinity;
+  };
+
+  const site = (spot) => {
+    const node = createNode({ position: { x: spot.x, y: spot.y, z: spot.z } });
+    const isletNode = createNode({ geometry: islet() });
+    const padNode = createNode({ geometry: pad() });
+    // The tower stands past the pad's edge, so it foots on the islet's own top, not the pad's surface;
+    // towerX puts its service arms against the widest part of a stack rather than short of it.
+    const towerNode = createNode({ position: { x: SITE.towerX, y: siteGroundAt(spot, spot.x + SITE.towerX, spot.z) - spot.y, z: 0 }, geometry: tower() });
+    const bridgeNode = createNode({ position: { x: 0, y: 0, z: spot.bridgeZ - spot.z }, geometry: bridge() });
+    const signNode = createNode({ position: { x: 1.9, y: 0, z: -SITE.isletR + 2.2 }, rotation: { x: 0, y: Math.PI, z: 0 }, geometry: siteSign() });
+    addChild(node, isletNode, padNode, towerNode, bridgeNode, signNode);
+    return { node, islet: isletNode, pad: padNode, tower: towerNode, bridge: bridgeNode, sign: signNode };
   };
 
   // Sphere centred at the origin, radius rocket.R; rings close together near the islands and wider away.
@@ -35408,6 +36385,563 @@ void main() {
     return geo;
   });
   BL.rocketModels = { SITE, TOWER_H, ISLET_UNIT, onContinent, partGeometry, flame, puff, fireball, plasma, splash, heatShell, helmet, tether, spaceRock, measureStick, readingLight, assemble, siteSpot, site, siteGroundAt, deckY, planet, islet, pad, tower, bridge, siteSign };
+})();
+
+// ---- js/pool-models.js ----
+// The Mempool island: a second floating chunk off the island's west rim, joined by a vine bridge,
+// grown over with rainforest and hollowed by the Mempool cave. Geometry only — the hub places the
+// island and its scatter, `scene-pool.js` builds the interior.
+//
+// Everything here is cached per shape and shared by every copy, so a hundred ferns are one draw call.
+// The cave's readable surfaces come from two places the island already trusts: `hubModels.SIGN_GLYPHS`
+// for carved headline numbers and the jumbotron's 5x7 font for the dense wall panels, turned into
+// bounded run-length quads the same way the big board does it.
+(() => {
+  "use strict";
+  const BL = window.BL = window.BL || {};
+  const { models, math } = BL;
+  const { createNode, addChild } = BL.scene;
+  const { cached, box, lathe, merge, polyline, makeVox, voxelGeometry, noShadow, pushVert, face } = models;
+  const { mulberry32, lerp, hexToRgb } = math;
+
+  // A lathe whose colour varies by ring and segment, as `rocket-models.js` defines for the launch pad.
+  const latheBy = ({ profile, segments = 8, color, emissive = 0 }) => {
+    const geo = { verts: [], faces: [], lines: [] };
+    const rings = profile.map(([r, y]) => Array.from({ length: segments }, (_, s) => {
+      const a = s / segments * Math.PI * 2;
+      return pushVert(geo, Math.cos(a) * r, y, Math.sin(a) * r);
+    }));
+    const cache = new Map();
+    const rgb = (hex) => cache.get(hex) || (cache.set(hex, hexToRgb(hex)), cache.get(hex));
+    for (let p = 0; p < rings.length - 1; p++) {
+      for (let s = 0; s < segments; s++) {
+        const s2 = (s + 1) % segments;
+        face(geo, [rings[p][s], rings[p + 1][s], rings[p + 1][s2], rings[p][s2]], rgb(color(p / (rings.length - 1), s)), { emissive });
+      }
+    }
+    return geo;
+  };
+
+  const LEAF = "#2f6b33", LEAF_DK = "#245229", LEAF_LT = "#3f8a3c", BARK = "#4a3728", BARK_LT = "#5d4634";
+  // Lines are drawn as screen-space quads, so this is a pixel width: 1.5 is the renderer default
+  // and reads as thread against a canopy this size.
+  const VINE_WIDTH = 3.6;
+  const STONE = "#6f6f6a", STONE_DK = "#54544f", MOSS = "#3c6b40", WET = "#3a4a52", GOLD = "#e8c14a";
+
+  // 4 o'clock is the one bearing with no cave mouth on it: CLOCKS fills 11, 10, 9, 7.5, 5, 3, 2 and 1,
+  // spoke(0) at 12 carries the gate trail and spoke(PI) at 6 carries the launch bridge.
+  const BEARING = 4 / 12 * Math.PI * 2;
+  const DIR = { x: Math.sin(BEARING), z: -Math.cos(BEARING) };
+  const SITE = { from: 27.4, span: 17, sag: 0.5, width: 2.3, isletR: 13, isletDepth: 16, caveR: 14, caveH: 8, stationR: 12, shaftR: 2.9, shaftDepth: 8, bearing: BEARING, dir: DIR };
+  const UNIT = 0.5;
+
+  // Built in a local frame whose +z points back at the home island, which is what `rotation.y = -bearing`
+  // maps inward, exactly as the terrain's own cave mouths are turned. The bridge head sits where the
+  // ground under it runs out, at that ground's height, and that height sets both ends.
+  const spot = (island, out = {}) => {
+    let r = SITE.from;
+    while (island.surfaceAt(DIR.x * (r + 0.1), DIR.z * (r + 0.1)) > 0.5) r += 0.1;
+    out.y = island.surfaceAt(DIR.x * r, DIR.z * r) + 0.02;
+    out.rimRadius = r;
+    out.bridgeX = DIR.x * r;
+    out.bridgeZ = DIR.z * r;
+    // The islet centre sits a bridge span and most of its own radius further out.
+    const radius = r + SITE.span + SITE.isletR - 1;
+    out.radius = radius;
+    out.x = DIR.x * radius;
+    out.z = DIR.z * radius;
+    out.ry = -SITE.bearing;
+    // How far out along local +z the bridge starts, so its far end lands on the rim head.
+    out.bridgeLocalZ = radius - r - SITE.span;
+    return out;
+  };
+
+  // A floating chunk of jungle floor: leaf litter, loam, then rock tapering to a point. Top face at y = 0.
+  const islet = cached(() => {
+    const rand = mulberry32(5551);
+    const v = makeVox(), R = SITE.isletR / UNIT, deep = SITE.isletDepth / UNIT;
+    for (let x = -Math.ceil(R) - 1; x <= Math.ceil(R) + 1; x++) {
+      for (let z = -Math.ceil(R) - 1; z <= Math.ceil(R) + 1; z++) {
+        const a = Math.atan2(z, x), edge = R * (0.9 + 0.1 * Math.sin(a * 4 - 0.7) + 0.05 * Math.sin(a * 9 + 2.1));
+        const r = Math.hypot(x + 0.5, z + 0.5);
+        if (r > edge) continue;
+        const k = r / edge, depth = Math.max(2, Math.round(deep * (1 - Math.pow(k, 1.4)) * (0.82 + rand() * 0.24)));
+        // The stairwell is an actual hole down the middle: no ground inside it at all.
+        const inShaft = r < SITE.shaftR / UNIT, shaftCells = SITE.shaftDepth / UNIT;
+        for (let y = 1; y <= depth; y++) {
+          if (inShaft && y <= shaftCells) continue;
+          v.set(x, -y, z, y === 1 ? (rand() < 0.35 ? 1 : 0) : y <= 3 ? 2 : (rand() < 0.28 ? 4 : 3));
+        }
+      }
+    }
+    return voxelGeometry(v, { unit: UNIT, palette: [LEAF, LEAF_DK, "#5a4530", STONE, STONE_DK], origin: { x: 0, y: 0, z: 0 } });
+  });
+
+  // Planks on two slung vines, sagging to the middle. Built in its own frame: z = 0 to z = SITE.span.
+  const deckY = (t) => -SITE.sag * 4 * t * (1 - t);
+  const bridge = cached(() => {
+    const geos = [], w = SITE.width, count = Math.round(SITE.span / 0.46);
+    for (let i = 0; i < count; i++) {
+      const t = (i + 0.5) / count;
+      geos.push(box({ w, h: 0.08, d: 0.34, color: i % 3 === 0 ? BARK : BARK_LT, offset: { y: deckY(t), z: t * SITE.span } }));
+    }
+    const steps = 24;
+    for (const side of [-1, 1]) {
+      const rail = [], deck = [];
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        rail.push({ x: side * w / 2, y: deckY(t) + 0.95, z: t * SITE.span });
+        deck.push({ x: side * w / 2, y: deckY(t) - 0.04, z: t * SITE.span });
+      }
+      geos.push(polyline({ points: rail, color: MOSS, emissive: 0 }), polyline({ points: deck, color: BARK, emissive: 0 }));
+      for (let i = 2; i < steps - 1; i += 3) {
+        const t = i / steps;
+        geos.push(polyline({ points: [{ x: side * w / 2, y: deckY(t) - 0.04, z: t * SITE.span }, { x: side * w / 2, y: deckY(t) + 0.95, z: t * SITE.span }], color: MOSS, emissive: 0 }));
+      }
+    }
+    // A gateway at each end: two posts, a lashed crossbeam and a lantern, so the crossing reads as a way in.
+    for (const z of [0, SITE.span]) {
+      for (const side of [-1, 1]) {
+        geos.push(box({ w: 0.26, h: 2.6, d: 0.26, color: BARK, offset: { x: side * (w / 2 + 0.12), y: 1.1, z } }));
+        geos.push(box({ w: 0.34, h: 0.18, d: 0.34, color: MOSS, offset: { x: side * (w / 2 + 0.12), y: 2.34, z } }));
+      }
+      geos.push(box({ w: w + 0.7, h: 0.2, d: 0.2, color: BARK_LT, offset: { y: 2.5, z } }));
+      geos.push(box({ w: 0.26, h: 0.34, d: 0.26, color: "#ffb347", emissive: 1, offset: { y: 2.18, z } }));
+    }
+    // Vines slung under the deck, following its own sag.
+    for (const side of [-1, 1]) {
+      const vine = [];
+      for (let i = 0; i <= 16; i++) {
+        const t = i / 16;
+        vine.push({ x: side * w * 0.32, y: deckY(t) - 0.5 - Math.sin(t * Math.PI) * 0.55, z: t * SITE.span });
+      }
+      geos.push(polyline({ points: vine, color: LEAF_DK, emissive: 0 }));
+    }
+    const geo = merge(...geos);
+    // The crossing is made of vine too: its rails and the ropes slung under the deck read as cord.
+    geo.lineWidth = VINE_WIDTH;
+    return geo;
+  });
+
+  // Rainforest: three canopy heights so the scatter reads as layers rather than a field of one tree.
+  const canopy = (seed, height, spread) => cached(() => {
+    const rand = mulberry32(seed), geos = [];
+    const lean = (rand() - 0.5) * 0.25;
+    for (let i = 0; i < 7; i++) {
+      const t = i / 6;
+      geos.push(box({ w: lerp(0.5, 0.26, t), h: height / 6, d: lerp(0.5, 0.26, t), color: i % 2 ? BARK : BARK_LT, offset: { x: lean * t * height, y: height * t + height / 12 } }));
+    }
+    const top = height + 0.1, cx = lean * height;
+    // Layered slabs, not a sphere: the flat look is the point, but a slab a third as deep as it is wide
+    // reads as paper. Thicker slabs, spaced further apart, keep the layers distinct and give the crown
+    // some body.
+    for (let i = 0; i < 5; i++) {
+      const a = i / 5 * Math.PI * 2 + rand(), r = spread * (0.55 + rand() * 0.45);
+      geos.push(box({ w: r * 1.5, h: 0.52, d: r * 1.5, color: i % 2 ? LEAF : LEAF_LT, offset: { x: cx + Math.cos(a) * r * 0.35, y: top - i * 0.4, z: Math.sin(a) * r * 0.35 } }));
+    }
+    geos.push(box({ w: spread * 1.1, h: 0.58, d: spread * 1.1, color: LEAF_DK, offset: { x: cx, y: top + 0.36 } }));
+    // A liana or two off the crown, the jungle's one vertical line.
+    for (let i = 0; i < 2; i++) {
+      const a = rand() * Math.PI * 2, r = spread * 0.5;
+      const x0 = cx + Math.cos(a) * r, z0 = Math.sin(a) * r;
+      const pts = [];
+      for (let j = 0; j <= 5; j++) pts.push({ x: x0 + (rand() - 0.5) * 0.2, y: top - j * (height * 0.11), z: z0 + (rand() - 0.5) * 0.2 });
+      geos.push(polyline({ points: pts, color: MOSS, emissive: 0 }));
+    }
+    const geo = merge(...geos);
+    // The lianas are the only lines in the build, so the whole tree's width is theirs: rope, not thread.
+    geo.lineWidth = VINE_WIDTH;
+    return geo;
+  });
+  const CANOPY = [canopy(71, 7.5, 3.2), canopy(72, 5.4, 2.6), canopy(73, 9.2, 3.8)];
+
+  const fern = cached(() => {
+    const rand = mulberry32(88), geos = [];
+    for (let i = 0; i < 7; i++) {
+      const a = i / 7 * Math.PI * 2, len = 0.55 + rand() * 0.35;
+      geos.push(box({ w: len, h: 0.07, d: 0.2, color: i % 2 ? LEAF : LEAF_LT, offset: { x: Math.cos(a) * len * 0.5, y: 0.22 + rand() * 0.18, z: Math.sin(a) * len * 0.5 } }));
+    }
+    return noShadow(merge(...geos));
+  });
+  const shrub = cached(() => merge(
+    box({ w: 0.9, h: 0.55, d: 0.9, color: LEAF_DK, offset: { y: 0.28 } }),
+    box({ w: 0.6, h: 0.3, d: 0.6, color: LEAF, offset: { y: 0.66 } })
+  ));
+  const mossRock = cached(() => merge(
+    box({ w: 1.1, h: 0.7, d: 0.95, color: STONE, offset: { y: 0.35 } }),
+    box({ w: 0.8, h: 0.12, d: 0.7, color: MOSS, offset: { y: 0.74 } })
+  ));
+  // Rainforest wildlife, in the same voxel idiom as the cavemen and the Agent: one cached build per
+  // species, shared by every copy placed, so the whole menagerie is three draw calls and no per-frame work.
+  const fill = (v, x0, x1, y0, y1, z0, z1, i) => {
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) v.set(x, y, z, i);
+  };
+  // 0 coat, 1 rosette, 2 belly, 3 muzzle/eye
+  const JAGUAR = ["#c8913f", "#2a2017", "#e6d6ae", "#15110c"];
+  const jaguar = cached(() => {
+    const v = makeVox(), rand = mulberry32(6101);
+    fill(v, 0, 9, 2, 4, 0, 3, 0);
+    fill(v, 0, 9, 2, 2, 0, 3, 2);
+    // Rosettes scattered along the flanks, deterministic so every jaguar on the island matches.
+    for (let x = 1; x <= 8; x++) for (let z = 0; z <= 3; z++) if (rand() < 0.22) v.set(x, 4, z, 1);
+    for (let x = 1; x <= 8; x++) for (const z of [0, 3]) if (rand() < 0.3) v.set(x, 3, z, 1);
+    fill(v, 9, 11, 3, 5, 1, 2, 0);
+    fill(v, 11, 11, 3, 3, 1, 2, 3);
+    v.set(10, 5, 0, 0); v.set(10, 5, 3, 0);
+    v.set(11, 4, 1, 3); v.set(11, 4, 2, 3);
+    for (const [lx, lz] of [[1, 0], [1, 3], [8, 0], [8, 3]]) fill(v, lx, lx + 1, 0, 1, lz, lz, 0);
+    for (let i = 0; i < 5; i++) v.set(-1 - i, 4 + ((i / 2) | 0), 1 + (i & 1), i % 2 ? 1 : 0);
+    return voxelGeometry(v, { unit: 0.13, palette: JAGUAR, origin: { x: 0, y: 0, z: 0 } });
+  });
+  // 0 plumage, 1 beak, 2 beak tip, 3 throat, 4 eye
+  const TOUCAN = ["#16161a", "#f0972a", "#e8d24a", "#f4f0e6", "#d8d2c4"];
+  const toucan = cached(() => {
+    const v = makeVox();
+    fill(v, 0, 4, 2, 5, 0, 2, 0);
+    fill(v, 1, 3, 3, 4, 0, 0, 3);
+    fill(v, 4, 6, 4, 6, 0, 2, 0);
+    fill(v, 5, 5, 5, 5, 0, 0, 4);
+    fill(v, 5, 5, 5, 5, 2, 2, 4);
+    // The beak: most of the bird, tapering and brightening to its tip.
+    fill(v, 7, 9, 4, 5, 1, 1, 1);
+    fill(v, 7, 8, 3, 5, 1, 1, 1);
+    fill(v, 10, 11, 4, 4, 1, 1, 2);
+    for (let i = 0; i < 4; i++) v.set(-1 - i, 2 - ((i / 2) | 0), 1, 0);
+    v.set(1, 1, 0, 1); v.set(3, 1, 0, 1);
+    return voxelGeometry(v, { unit: 0.09, palette: TOUCAN, origin: { x: 0, y: 0, z: 0 } });
+  });
+  // 0 fur, 1 face, 2 belly, 3 eye
+  const MONKEY = ["#6b4a2e", "#c69a6d", "#8a6640", "#1a1410"];
+  const monkey = cached(() => {
+    const v = makeVox();
+    fill(v, 0, 3, 2, 5, 0, 3, 0);
+    fill(v, 1, 2, 2, 4, 0, 0, 2);
+    fill(v, 0, 3, 6, 8, 0, 3, 0);
+    fill(v, 1, 2, 6, 7, 0, 0, 1);
+    v.set(1, 7, 0, 3); v.set(2, 7, 0, 3);
+    v.set(0, 8, 0, 0); v.set(3, 8, 0, 0);
+    v.set(0, 8, 3, 0); v.set(3, 8, 3, 0);
+    // Arms down the sides and a long tail curling up behind.
+    for (const z of [0, 3]) fill(v, -1, -1, 3, 5, z, z, 0);
+    for (let i = 0; i < 7; i++) v.set(4 + ((i / 3) | 0), 2 + i, 1 + (i & 1), 0);
+    fill(v, 0, 3, 0, 1, 0, 1, 0);
+    return voxelGeometry(v, { unit: 0.1, palette: MONKEY, origin: { x: 0, y: 0, z: 0 } });
+  });
+
+  const flowers = cached(() => {
+    const rand = mulberry32(404), geos = [];
+    const petals = ["#e86a9a", "#f2c14a", "#d95d7a", "#f0f0e2"];
+    for (let i = 0; i < 9; i++) {
+      const a = rand() * Math.PI * 2, r = rand() * 0.55;
+      const x = Math.cos(a) * r, z = Math.sin(a) * r, h = 0.28 + rand() * 0.22;
+      geos.push(box({ w: 0.05, h, d: 0.05, color: LEAF_LT, offset: { x, y: h / 2, z } }));
+      geos.push(box({ w: 0.17, h: 0.09, d: 0.17, color: petals[(rand() * petals.length) | 0], emissive: 0.2, offset: { x, y: h + 0.04, z } }));
+    }
+    return noShadow(merge(...geos));
+  });
+  const log = cached(() => {
+    const geos = [merge(
+      box({ w: 3.2, h: 0.62, d: 0.62, color: BARK, offset: { y: 0.31 } }),
+      box({ w: 2.6, h: 0.14, d: 0.5, color: MOSS, offset: { y: 0.62 } }),
+      box({ w: 0.12, h: 0.5, d: 0.5, color: "#6b533c", offset: { x: 1.62, y: 0.31 } })
+    )];
+    for (let i = 0; i < 3; i++) geos.push(box({ w: 0.24, h: 0.1, d: 0.24, color: "#d8d2b4", emissive: 0.15, offset: { x: -1 + i * 0.9, y: 0.68, z: 0.2 } }));
+    return merge(...geos);
+  });
+
+  // A still pool of standing water: the island's name, and the only flat thing on it.
+  const pond = cached(() => noShadow(lathe({ profile: [[2.6, 0.06], [0, 0.06]], segments: 20, color: WET, emissive: 0.22 })));
+
+  // The stairwell: a mossy stone kerb round the hole, a lined shaft so you never see sky through it,
+  // and a flight turning down into the dark. Its own origin is the hole's centre at ground level.
+  const STAIR_STEPS = 26, STAIR_TURNS = 1.35, STAIR_INNER = 0.55, LINING_DROP = 0.12;
+  const stairwell = cached(() => {
+    const R = SITE.shaftR, D = SITE.shaftDepth, geos = [];
+    // Kerb: blocks round the lip, a couple of them mossy.
+    const kerb = 20;
+    for (let i = 0; i < kerb; i++) {
+      const a = i / kerb * Math.PI * 2, x = Math.cos(a) * (R + 0.3), z = Math.sin(a) * (R + 0.3);
+      geos.push(box({ w: 0.8, h: 0.55, d: 0.8, color: i % 3 === 0 ? STONE_DK : STONE, offset: { x, y: 0.18, z } }));
+      if (i % 4 === 0) geos.push(box({ w: 0.62, h: 0.1, d: 0.62, color: MOSS, offset: { x, y: 0.48, z } }));
+    }
+    // Shaft lining, dark and windowless, so the hole reads as depth rather than a gap in the island.
+    // It hangs below the rim rather than reaching it: the islet's own top face is at y = 0, and a
+    // lining that ends there puts a whole ring of faces exactly flush with the ground, which sparkles
+    // from every angle as the camera turns. LINING_DROP is the gap that keeps them apart; the kerb and
+    // the islet's own wall cover the band it leaves.
+    const wall = 18;
+    for (let i = 0; i < wall; i++) {
+      const a = i / wall * Math.PI * 2, x = Math.cos(a) * (R + 0.12), z = Math.sin(a) * (R + 0.12);
+      geos.push(box({ w: 1.15, h: D, d: 1.15, color: i % 2 ? "#3a352f" : "#2f2b26", offset: { x, y: -D / 2 - LINING_DROP, z } }));
+    }
+    // The flight itself, turning down the inside of the shaft to a landing at the bottom.
+    for (let i = 0; i < STAIR_STEPS; i++) {
+      const t = i / (STAIR_STEPS - 1), a = t * STAIR_TURNS * Math.PI * 2;
+      const rad = (R - 0.75) * (1 - STAIR_INNER * t * 0.35);
+      const y = -0.35 - t * (D - 1.1);
+      geos.push(box({ w: 1.65, h: 0.26, d: 1.15, color: i % 2 ? "#6a635a" : "#7a736a", offset: { x: Math.cos(a) * rad, y, z: Math.sin(a) * rad } }));
+      // A stub of newel under every few treads, so the flight has something to stand on.
+      if (i % 3 === 0) geos.push(box({ w: 0.3, h: 0.9, d: 0.3, color: "#4b463f", offset: { x: Math.cos(a) * rad, y: y - 0.55, z: Math.sin(a) * rad } }));
+    }
+    geos.push(lathe({ profile: [[R - 0.1, -D + 0.1], [0, -D + 0.1]], segments: 16, color: "#332f2a" }));
+    // Two torches down the wall: the only light in the hole, and the cue that it goes somewhere.
+    for (const [a, y] of [[0.9, -1.6], [3.7, -4.6]]) {
+      geos.push(box({ w: 0.22, h: 0.7, d: 0.22, color: BARK, offset: { x: Math.cos(a) * (R - 0.35), y, z: Math.sin(a) * (R - 0.35) } }));
+      geos.push(box({ w: 0.3, h: 0.3, d: 0.3, color: "#ff9a2a", emissive: 1, offset: { x: Math.cos(a) * (R - 0.35), y: y + 0.5, z: Math.sin(a) * (R - 0.35) } }));
+    }
+    return merge(...geos);
+  });
+  const caveSign = cached(() => merge(
+    box({ w: 3.1, h: 0.75, d: 0.14, color: BARK, offset: { y: 0.38 } }),
+    box({ w: 3.3, h: 0.12, d: 0.18, color: BARK_LT, offset: { y: 0.8 } })
+  ));
+  // A torch in two pieces, so a station can stretch its stem without stretching its flame.
+  const TORCH_STEM_H = 1.6;
+  const torchStem = cached(() => box({ w: 0.2, h: TORCH_STEM_H, d: 0.2, color: BARK, offset: { y: TORCH_STEM_H / 2 } }));
+  const torchFlame = cached(() => box({ w: 0.3, h: 0.3, d: 0.3, color: "#ff9a2a", emissive: 1, offset: { y: 0.15 } }));
+  // A small standing board across the hole from the bridge, carrying the chain's headline numbers so a
+  // visitor reads them without going down. The face looks along +z, which is the way `carve` and
+  // `panelFrom` cut, so placing it with `rotation.y = 0` on the far side turns it back at the crossing.
+  // `y` is the board's bottom edge, so it is also how much post shows under it: a board this size
+  // wants short legs, not stilts.
+  const CHAIN_BOARD = { w: 6.8, h: 3, y: 1, d: 0.2, px: 0.06 };
+  const chainBoard = cached(() => merge(
+    ...[-1, 1].map((side) => box({ w: 0.3, h: CHAIN_BOARD.y + 0.3, d: 0.3, color: BARK, offset: { x: side * (CHAIN_BOARD.w / 2 - 0.3), y: (CHAIN_BOARD.y + 0.3) / 2 } })),
+    box({ w: CHAIN_BOARD.w, h: CHAIN_BOARD.h, d: CHAIN_BOARD.d, color: "#2a2724", offset: { y: CHAIN_BOARD.y + CHAIN_BOARD.h / 2 } }),
+    box({ w: CHAIN_BOARD.w + 0.34, h: 0.26, d: 0.32, color: BARK_LT, offset: { y: CHAIN_BOARD.y + CHAIN_BOARD.h + 0.1 } }),
+    box({ w: CHAIN_BOARD.w + 0.34, h: 0.22, d: 0.32, color: BARK_LT, offset: { y: CHAIN_BOARD.y - 0.08 } }),
+    box({ w: 0.3, h: 0.3, d: 0.3, color: "#ffb347", emissive: 1, offset: { y: CHAIN_BOARD.y + CHAIN_BOARD.h + 0.36 } })
+  ));
+  // A small post beside the big board, carrying a question mark: the weather key is behind it.
+  const INFO_SIGN = { w: 1.1, h: 1.1, y: 1.1, d: 0.16 };
+  const infoSign = cached(() => merge(
+    box({ w: 0.2, h: INFO_SIGN.y + 0.2, d: 0.2, color: BARK, offset: { y: (INFO_SIGN.y + 0.2) / 2 } }),
+    box({ w: INFO_SIGN.w, h: INFO_SIGN.h, d: INFO_SIGN.d, color: "#3a3430", offset: { y: INFO_SIGN.y + INFO_SIGN.h / 2 } }),
+    box({ w: INFO_SIGN.w + 0.16, h: 0.14, d: INFO_SIGN.d + 0.1, color: BARK_LT, offset: { y: INFO_SIGN.y + INFO_SIGN.h + 0.05 } }),
+    box({ w: INFO_SIGN.w + 0.16, h: 0.12, d: INFO_SIGN.d + 0.1, color: BARK_LT, offset: { y: INFO_SIGN.y - 0.04 } }),
+    // A question mark cut proud of the face, in the island's own sign glyphs.
+    ...(() => {
+      const glyph = BL.hubModels.SIGN_GLYPHS["?"], cell = 0.16, out = [];
+      for (let row = 0; row < glyph.length; row++) {
+        for (let col = 0; col < glyph[row].length; col++) {
+          if (glyph[row][col] !== "1") continue;
+          out.push(box({
+            w: cell, h: cell, d: 0.07, color: GOLD, emissive: 0.6,
+            offset: { x: (col - 1) * cell, y: INFO_SIGN.y + INFO_SIGN.h * 0.5 + (2 - row) * cell, z: INFO_SIGN.d / 2 }
+          }));
+        }
+      }
+      return out;
+    })()
+  ));
+  const torchPost = cached(() => merge(
+    box({ w: 0.2, h: TORCH_STEM_H, d: 0.2, color: BARK, offset: { y: TORCH_STEM_H / 2 } }),
+    box({ w: 0.3, h: 0.3, d: 0.3, color: "#ff9a2a", emissive: 1, offset: { y: 1.75 } })
+  ));
+
+  // The hall's section, as fractions of caveR and caveH: straight to head height so the wall reads
+  // as a wall, then three courses doming in. The camera clamp and the geometry share it, so nothing
+  // the visitor can reach is ever inside the stone.
+  const WALL = [[1, 0], [1, 0.7], [0.85, 0.875], [0.45, 1.025], [0, 1.1]];
+  // The wall's radius at a height, and the ceiling's height at a radius: the same curve read both ways.
+  const wallRadiusAt = (y) => {
+    const R = SITE.caveR, k = y / SITE.caveH;
+    if (k <= WALL[1][1]) return R;
+    for (let i = 1; i < WALL.length - 1; i++) {
+      const a = WALL[i], b = WALL[i + 1];
+      if (k > b[1]) continue;
+      return R * lerp(a[0], b[0], (k - a[1]) / (b[1] - a[1]));
+    }
+    return 0;
+  };
+  const ceilingHeightAt = (r) => {
+    const R = SITE.caveR, H = SITE.caveH;
+    if (r >= R) return WALL[1][1] * H;
+    for (let i = 1; i < WALL.length - 1; i++) {
+      const a = WALL[i], b = WALL[i + 1];
+      if (r <= b[0] * R || r > a[0] * R) continue;
+      return lerp(a[1], b[1], (a[0] * R - r) / ((a[0] - b[0]) * R)) * H;
+    }
+    return WALL[WALL.length - 1][1] * H;
+  };
+
+  // The interior: a round stone hall at walking scale. A banded floor, a wall that stands straight to
+  // head height before it domes, a course of fallen boulders round its foot, and stalactites over the
+  // middle, so the room reads as rock in every direction instead of going black past the firelight.
+  const room = cached(() => {
+    const R = SITE.caveR, H = SITE.caveH, geos = [], rand = mulberry32(9301);
+    // Rings run outward-in and the wall top-down: that winding is what turns both their normals into
+    // the room, so the floor takes the firelight and the wall is lit from the inside it faces.
+    // Four concentric courses against forty wedges reads as laid stone; one ring of wedges alone
+    // reads as a starburst from the fire.
+    const FLOOR = ["#524c45", "#494339", "#5a544c", "#4e4941"];
+    geos.push(latheBy({
+      profile: [[R, 0], [R * 0.76, 0], [R * 0.52, 0], [R * 0.28, 0], [0, 0]], segments: 40,
+      color: (t, s) => FLOOR[(Math.round(t * 4) + s) % 4]
+    }));
+    geos.push(latheBy({
+      profile: WALL.map(([r, k]) => [r * R, k * H]).reverse(), segments: 40,
+      color: (t, s) => t < 0.5 ? (s % 2 ? "#3f3a35" : "#464038") : (s % 2 ? "#4d4842" : STONE_DK)
+    }));
+    // The skirting course: rubble that has come off the wall and settled against its foot.
+    for (let i = 0; i < 36; i++) {
+      const a = (i + rand() * 0.7) / 36 * Math.PI * 2, r = R - 0.5 - rand() * 0.5, s = 0.7 + rand() * 0.85;
+      geos.push(box({ w: s, h: s * 0.7, d: s, color: i % 5 === 0 ? MOSS : i % 2 ? STONE : STONE_DK, offset: { x: Math.cos(a) * r, y: s * 0.3, z: Math.sin(a) * r } }));
+    }
+    // Stalactites in the island's own blocky idiom: three courses tapering to a point.
+    for (let i = 0; i < 26; i++) {
+      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * (R - 2.4);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      const top = ceilingHeightAt(r), len = 0.8 + rand() * 1.9, s = 0.75 + rand() * 0.6;
+      const color = i % 3 === 0 ? "#565049" : i % 3 === 1 ? "#4a453f" : "#514b44";
+      geos.push(
+        box({ w: 0.6 * s, h: len * 0.42, d: 0.6 * s, color, offset: { x, y: top - len * 0.21, z } }),
+        box({ w: 0.36 * s, h: len * 0.36, d: 0.36 * s, color, offset: { x, y: top - len * 0.6, z } }),
+        box({ w: 0.16 * s, h: len * 0.22, d: 0.16 * s, color, offset: { x, y: top - len * 0.89, z } })
+      );
+    }
+    return merge(...geos);
+  });
+
+  // Where the stairwell lands: a flight coming down out of the wall under a lintel and a lantern, so
+  // the hall has a visible way in and out. Built facing local +z, which `bearing + PI` turns inward.
+  const stairFoot = cached(() => {
+    const geos = [];
+    for (let i = 0; i < 6; i++) {
+      geos.push(box({ w: 3.4, h: 0.26, d: 0.95, color: i % 2 ? "#6a635a" : "#7a736a", offset: { y: 0.13 + i * 0.26, z: -0.5 - i * 0.95 } }));
+    }
+    // A dark mouth behind the top step, so the way up reads as a way up rather than a dead end.
+    geos.push(box({ w: 3.5, h: 2.6, d: 0.3, color: "#221f1c", offset: { y: 2.75, z: -6.4 } }));
+    for (const side of [-1, 1]) geos.push(box({ w: 0.36, h: 3.1, d: 0.5, color: STONE_DK, offset: { x: side * 2.05, y: 3.05, z: -6.1 } }));
+    geos.push(box({ w: 4.8, h: 0.42, d: 0.6, color: STONE, offset: { y: 4.8, z: -6.1 } }));
+    geos.push(box({ w: 0.34, h: 0.34, d: 0.34, color: "#ff9a2a", emissive: 1, offset: { y: 4.4, z: -5.7 } }));
+    return merge(...geos);
+  });
+  // The fire in the middle of the hall: a ring of stones, three logs across it and a layered flame,
+  // built at the size the room wants so nothing has to be stretched into place.
+  const FIRE_FLAME = [
+    [1.5, 1.1, 0.75, 0, 0, "#ff8a1e"], [1.1, 0.85, 1.55, 0.1, -0.08, "#ffc148"],
+    [0.82, 0.7, 2.1, 0.22, 0.12, "#ffc148"], [0.58, 0.5, 2.6, 0.1, 0.2, "#fff0b0"],
+    [0.4, 0.4, 3, -0.06, 0.08, "#fff0b0"], [0.6, 0.62, 1.3, -0.72, 0.16, "#ffc148"],
+    [0.5, 0.54, 1.75, 0.76, 0.42, "#ff8a1e"]
+  ];
+  const brazier = cached(() => {
+    const rand = mulberry32(2207), geos = [box({ w: 3.4, h: 0.12, d: 3.4, color: "#2a2522", offset: { y: 0.06 } })];
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * Math.PI * 2 + (rand() - 0.5) * 0.3, h = 0.55 + rand() * 0.35, r = 1.85;
+      geos.push(box({ w: 0.8 + rand() * 0.3, h, d: 0.7 + rand() * 0.3, color: i % 3 === 0 ? STONE_DK : i % 3 === 1 ? STONE : "#645e56", offset: { x: Math.cos(a) * r, y: h * 0.5, z: Math.sin(a) * r } }));
+    }
+    geos.push(
+      box({ w: 2.6, h: 0.34, d: 0.34, color: BARK, offset: { y: 0.3, z: -0.32 } }),
+      box({ w: 0.34, h: 0.34, d: 2.6, color: BARK_LT, offset: { x: 0.32, y: 0.5 } }),
+      box({ w: 2.6, h: 0.34, d: 0.34, color: BARK, offset: { y: 0.7, z: 0.32 } })
+    );
+    return merge(...geos, noShadow(merge(...FIRE_FLAME.map(([w, h, y, x, z, color]) => box({ w, h, d: w, color, emissive: 1, offset: { x, y, z } })))));
+  });
+
+  // A hewn face for a station's readables: one border shared by the tall faces that carry a panel and
+  // the plaque that carries only a headline, so all four stations read as the same fitting.
+  const facePlate = (w, h) => merge(
+    box({ w, h, d: 0.28, color: "#332f2b" }),
+    box({ w: w + 0.34, h: 0.28, d: 0.44, color: "#736c62", offset: { y: -h / 2 - 0.12 } }),
+    box({ w: w + 0.34, h: 0.24, d: 0.44, color: "#736c62", offset: { y: h / 2 + 0.1 } }),
+    ...[-1, 1].map((side) => box({ w: 0.26, h: h + 0.5, d: 0.4, color: "#6a645b", offset: { x: side * (w / 2 + 0.05) } }))
+  );
+  const FACE_W = 5.2, FACE_Z = 0.14;
+  const stationFace = cached(() => facePlate(FACE_W, 5));
+  const stationPlaque = cached(() => facePlate(FACE_W, 1));
+
+  // A standing slab that carries carved text. Sizes are in glyph cells so the carver can fill it.
+  // The chain's own tablet: the station face again, wider and standing on a plinth of its own.
+  const tabletSlab = cached(() => merge(
+    box({ w: 6.9, h: 0.36, d: 0.72, color: STONE_DK, offset: { y: 0.18 } }),
+    box({ w: 6, h: 5, d: 0.3, color: "#332f2b", offset: { y: 2.95 } }),
+    box({ w: 6.34, h: 0.26, d: 0.44, color: "#736c62", offset: { y: 0.52 } }),
+    box({ w: 6.34, h: 0.24, d: 0.44, color: "#736c62", offset: { y: 5.55 } }),
+    ...[-1, 1].map((side) => box({ w: 0.26, h: 5.4, d: 0.4, color: "#6a645b", offset: { x: side * 3.05, y: 2.95 } }))
+  ));
+
+  // Carved headline type: the island's own blocky sign glyphs, cut proud of a slab's face.
+  const CARVE_Z = 0.16;
+  const carve = (text, { cell = 0.14, color = GOLD, emissive = 0.55 } = {}) => {
+    const glyphs = BL.hubModels.SIGN_GLYPHS, geos = [];
+    let cursor = 0;
+    for (const ch of String(text).toUpperCase()) {
+      if (ch === " ") { cursor += 2.4; continue; }
+      const glyph = glyphs[ch];
+      if (!glyph) { cursor += 4; continue; }
+      for (let row = 0; row < glyph.length; row++) {
+        for (let col = 0; col < glyph[row].length; col++) {
+          if (glyph[row][col] !== "1") continue;
+          geos.push(box({ w: cell, h: cell, d: 0.08, color, emissive, offset: { x: (cursor + col) * cell, y: -(row * cell), z: CARVE_Z } }));
+        }
+      }
+      cursor += 4;
+    }
+    return { geometry: geos.length ? merge(...geos) : null, width: cursor * cell };
+  };
+  // How wide a carving comes out, in cells, so a caller can pick the cell that fills its slab and no
+  // reading can ever run off the stone however many digits the chain hands it.
+  const carveCells = (text) => {
+    let cursor = 0;
+    for (const ch of String(text)) cursor += ch === " " ? 2.4 : 4;
+    return cursor;
+  };
+
+  // A dense wall panel: the jumbotron's 5x7 font rendered into a canvas, then run-length merged into
+  // quads exactly as the big board does, so a wall of numbers is a few hundred faces and no texture.
+  const panelFrom = (ctx, w, h, px, py, background) => {
+    const geo = { verts: [], faces: [], lines: [] };
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const bg = background;
+    const push = (x0, x1, y0, y1, color) => {
+      const base = geo.verts.length / 3;
+      geo.verts.push(x0, y0, 0, x1, y0, 0, x1, y1, 0, x0, y1, 0);
+      geo.faces.push({ i: [base, base + 1, base + 2, base + 3], color, emissive: 0.85 });
+    };
+    for (let y = 0; y < h; y++) {
+      const wy0 = (h - y - 1) * py, wy1 = (h - y) * py, row = y * w;
+      let x = 0;
+      while (x < w) {
+        const i = (row + x) * 4, r = data[i], g = data[i + 1], b = data[i + 2];
+        if (r === bg[0] && g === bg[1] && b === bg[2]) { x++; continue; }
+        let run = x + 1;
+        while (run < w) {
+          const j = (row + run) * 4;
+          if (data[j] !== r || data[j + 1] !== g || data[j + 2] !== b) break;
+          run++;
+        }
+        push(x * px, run * px, wy0, wy1, [r, g, b]);
+        x = run;
+      }
+    }
+    geo.castShadow = false;
+    return geo;
+  };
+
+  // The island as one group: ground, bridge, cave mouth, sign and two torches. Scatter is the hub's.
+  const build = (place) => {
+    const node = createNode({ position: { x: place.x, y: place.y, z: place.z }, rotation: { x: 0, y: place.ry, z: 0 } });
+    const groundNode = createNode({ geometry: islet() });
+    const bridgeNode = createNode({ position: { x: 0, y: 0, z: place.bridgeLocalZ }, geometry: bridge() });
+    // The way down is a stairwell through the middle of the island, not a door in its side.
+    const stairNode = createNode({ geometry: stairwell() });
+    const signNode = createNode({ position: { x: 0, y: 0, z: SITE.shaftR + 2.1 }, geometry: caveSign() });
+    // Lit like every hub torch, so the Matrix treats their flames as fire rather than as stone.
+    const torches = [-1, 1].map((side) => createNode({ position: { x: side * (SITE.shaftR + 1.5), y: 0, z: SITE.shaftR * 0.7 }, geometry: torchPost(), matrixEmissiveLiving: true }));
+    const pondNode = createNode({ position: { x: 6.4, y: 0, z: -4.6 }, geometry: pond() });
+    addChild(node, groundNode, bridgeNode, stairNode, signNode, pondNode, ...torches);
+    return { node, ground: groundNode, bridge: bridgeNode, stair: stairNode, sign: signNode, pond: pondNode, torches };
+  };
+
+  BL.poolModels = {
+    SITE, UNIT, BEARING, DIR, spot, build, latheBy, stairwell, islet, bridge, caveSign, torchPost, torchStem, torchFlame,
+    TORCH_STEM_H, room, stairFoot, wallRadiusAt, ceilingHeightAt, brazier,
+    stationFace, stationPlaque, FACE_W, FACE_Z,
+    tabletSlab, carve, carveCells, panelFrom, chainBoard, CHAIN_BOARD, infoSign, INFO_SIGN, CANOPY, fern, shrub, mossRock, pond, deckY, STAIR_STEPS,
+    jaguar, toucan, monkey, flowers, log,
+    COLORS: { LEAF, LEAF_DK, LEAF_LT, BARK, BARK_LT, STONE, STONE_DK, MOSS, WET, GOLD }
+  };
 })();
 
 // ---- js/solid-props.js ----
@@ -36535,7 +38069,7 @@ void main() {
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, rocketModels, rocketParts, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod, storm: stormMod, mempool, oogatronLive } = BL;
+  const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, rocketModels, rocketParts, poolModels, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod, weather: weatherMod, chain, mempool, oogatronLive } = BL;
   const { clamp, lerp, ease, fnv1a, mulberry32 } = math;
   const { createNode, addChild, removeChild, createCamera, addTween, stepTweens, tweenCount, traverseVisible } = BL.scene;
   const { JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS } = crewMod;
@@ -36678,9 +38212,9 @@ void main() {
   const WANDER_COUNT = 36, WANDER_INNER = 5.5;
   const ALTAR_HEIGHT = 0.34, ALTAR_BLOCK_WIDTH = 0.2, ALTAR_BLOCK_ARC = 0.3, ALTAR_RING_GAP = 0.02, ALTAR_MAX_BLOCKS = 512;
   const RIPEN = 25, TREE_CHANCE = 0.5, BUSH_CHANCE = 0.25;
-  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", magazine: "Spare magazine · walk into it to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", launchpad: "Ooga Orbit · tap to build a rocket", rocket: "Ooga Orbit · tap to fly", tower: "Launch tower · steady", orbitsign: "Ooga Orbit · the pad past the bridge", bridge: "Rope bridge · to the launch pad", windsock: "Windsock · a fair wind", jumbotron: "Jumbotron · OogaBoogaX on the big screen · frame arrows and dots to flip boards", gate: null };
+  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", magazine: "Spare magazine · walk into it to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", launchpad: "Ooga Orbit · tap to build a rocket", rocket: "Ooga Orbit · tap to fly", tower: "Launch tower · steady", orbitsign: "Ooga Orbit · the pad past the bridge", bridge: "Rope bridge · to the launch pad", poolbridge: "Vine bridge · to the Mempool island", poolstair: "The Mempool · tap to climb down", poolsign: "The Mempool · the cave reads the chain", chainsign: "The chain, at a glance", weathersign: "Reading the weather · tap for the key", poolrock: "Mossy rock", poolfern: "Fern · rustle it", poollog: "Fallen log · something lives in it", jaguar: "Jaguar · do not poke", monkey: "Monkey · it watches you", toucan: "Toucan · big beak", canopy: "Rainforest tree · shake it", windsock: "Windsock · a fair wind", jumbotron: "Jumbotron · OogaBoogaX on the big screen · frame arrows and dots to flip boards", gate: null };
   const MATRIX_LIVING_PROPS = new Set(["tree"]);
-  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "dock", "jumbotron", "launchpad", "rocket", "tower", "bridge", "orbitsign"]);
+  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "dock", "jumbotron", "launchpad", "rocket", "tower", "bridge", "orbitsign", "poolbridge", "poolstair", "poolrock", "canopy"]);
   const BUSH_WORDS = ["Something rustles.", "A beetle. Ooga leaves it.", "Just a bush."];
   const LEAF = models.particleGeometry("#4a8530", 0.12, 0);
   const PETALS = ["#e04a3a", "#f2c94c", "#f3efe4"].map((c) => models.particleGeometry(c, 0.09, 0));
@@ -36720,7 +38254,18 @@ void main() {
   const JETPACK_HUD_STATE = { owned: false, equipped: false, fuel: 1, blocked: false };
   let enteringTween = null;
   let stateTimer = 0, hintTimer = 0, meterTimer = 0, now = 0, hour = 12, unsubscribeActivity = null;
-  let storm = null, unsubscribeMempool = null;
+  let weather = null, unsubscribeMempool = null, unsubscribeChain = null, mempoolIsland = null;
+  // The two boards across the hole from the vine bridge, one reading the chain and one reading the
+  // weather. Each holds its canvas, its panel node and the reading it last drew, so a snapshot saying
+  // nothing new replaces no geometry.
+  let chainSign = null;
+  // The rainforest animals, by node, so a poke finds the one that was tapped.
+  const beasts = new Map();
+  const BEAST_CRIES = {
+    jaguar: ["RRAAWR!", "*low growl*", "GRRR..."],
+    monkey: ["OOK OOK!", "EEE EEE!", "*chatters*"],
+    toucan: ["SQUAWK!", "KRRK-KRRK!", "*clacks beak*"]
+  };
   let positionDebugNext = 0, positionDebugJSON = "";
   function createPositionPose() {
     return { version: 1, character: "", mode: "detached", closeWanted: false, battle: false, position: [0, 0, 0], target: [0, 0, -1], direction: [0, 0, -1], up: [0, 1, 0], fov: 48 * Math.PI / 180,
@@ -38107,6 +39652,149 @@ void main() {
       get active() { return active; }, get lastStep() { return lastStep; }, get contacts() { return contacts; }, get jumpRejects() { return jumpRejects; }
     };
   };
+  // A poked animal cries out and startles: one bubble from the shared pool and one bounded tween that
+  // always returns it to its resting pose, so nothing accumulates however often it is prodded.
+  const pokeBeast = (node, kind) => {
+    const beast = beasts.get(node);
+    if (!beast) return;
+    const cries = BEAST_CRIES[kind];
+    fx.sayAt(beast.x, beast.y + (kind === "toucan" ? 1.5 : 1.1), beast.z, cries[fnv1a(`${kind}/${Math.floor(now * 3)}`) % cries.length], 1.8);
+    if (beast.busy) return;
+    beast.busy = true;
+    const hop = kind === "jaguar" ? 0.35 : 0.6, turn = kind === "toucan" ? 1.4 : 0.9;
+    addTween({
+      dur: 0.55,
+      update: (t) => {
+        const k = Math.sin(t * Math.PI);
+        node.position.y = k * hop;
+        node.rotation.y = beast.rest + Math.sin(t * Math.PI * 2) * turn;
+      },
+      done: () => {
+        node.position.y = 0;
+        node.rotation.y = beast.rest;
+        beast.busy = false;
+      }
+    });
+  };
+  // The Mempool island off the west rim: jungle floor, a vine bridge and the cave that reads the
+  // chain. Everything solid, so an Ooga walks across and in. The scatter is claimed off the crossing.
+  const buildMempoolIsland = () => {
+    const P = poolModels, S = P.SITE, DIR = P.DIR, SITE_SHAFT_REACH = S.shaftR + 1.2;
+    // How much ground an animal keeps to itself, measured against each plant's own footprint.
+    const BEAST_CLEAR = 1.3;
+    const place = P.spot(island, {});
+    const site = P.build(place);
+    // The group is turned by `place.ry`, so a local point reaches world through that same rotation:
+    // local +x runs to (cos ry, -sin ry) and local +z to (sin ry, cos ry).
+    const cos = Math.cos(place.ry), sin = Math.sin(place.ry);
+    const worldX = (lx, lz) => place.x + lx * cos + lz * sin;
+    const worldZ = (lx, lz) => place.z - lx * sin + lz * cos;
+    const atNode = (kind, node, radius) => addProp(kind, node, worldX(node.position.x, node.position.z), worldZ(node.position.x, node.position.z), radius);
+    addChild(root, site.node);
+    placed.push(site.node);
+    solids.add(site.ground);
+    addProp("poolbridge", site.bridge, worldX(0, place.bridgeLocalZ + S.span / 2), worldZ(0, place.bridgeLocalZ + S.span / 2), S.width);
+    atNode("poolstair", site.stair, SITE_SHAFT_REACH);
+    atNode("poolsign", site.sign, 1.4);
+    // The bridge arrives along local +z and the cave sign stands between it and the hole, so both boards
+    // go on the far side at -z: with no turn at all their faces already look back up the crossing. They
+    // stand a little apart and toe in, so from the bridge head the pair reads as one post.
+    const B = P.CHAIN_BOARD;
+    const boardNode = createNode({ position: { x: 0, y: 0, z: -(S.shaftR + 2.6) }, geometry: P.chainBoard() });
+    // The panel is centred on the face from the board's own numbers, so resizing the board moves it.
+    const panelNode = createNode({
+      position: { x: -CHAIN_PANEL_W * B.px / 2, y: B.y + (B.h - CHAIN_PANEL_H * B.px) / 2, z: B.d / 2 + 0.02 }
+    });
+    addChild(boardNode, panelNode);
+    addChild(site.node, boardNode);
+    atNode("chainsign", boardNode, B.w * 0.55);
+    // A small post beside it: the weather is the other half of what the chain is saying here.
+    const infoNode = createNode({
+      position: { x: B.w / 2 + 1, y: 0, z: -(S.shaftR + 2.6) }, rotation: { x: 0, y: -0.3, z: 0 }, geometry: P.infoSign()
+    });
+    addChild(site.node, infoNode);
+    atNode("weathersign", infoNode, 1);
+    {
+      const canvas = document.createElement("canvas");
+      canvas.width = CHAIN_PANEL_W;
+      canvas.height = CHAIN_PANEL_H;
+      // willReadFrequently: every refresh reads the panel back, and without it Chrome warns.
+      chainSign = { node: panelNode, ctx2d: canvas.getContext("2d", { alpha: false, willReadFrequently: true }), printed: "" };
+    }
+    for (const torch of site.torches) atNode("torch", torch, 0.5);
+    // Wildlife first, so the scatter can be kept off it: one cached build per species shared by every
+    // copy, placed once and never animated, so the whole menagerie is three draw calls and nothing in
+    // the frame loop. Each one claims the ground it stands on and no plant is seeded inside that.
+    const wildlife = [
+      ["jaguar", P.jaguar(), -7.4, 5.2, 2.1],
+      ["jaguar", P.jaguar(), 8.1, 6.6, -0.6],
+      ["monkey", P.monkey(), 5.6, -7.8, 1.2],
+      ["monkey", P.monkey(), -8.6, -3.4, -2.3],
+      ["toucan", P.toucan(), -4.2, -8.6, 0.4],
+      ["toucan", P.toucan(), 9.4, 1.8, 2.7]
+    ];
+    const claimed = [];
+    for (const [kind, geometry, lx, lz, ry] of wildlife) {
+      const node = createNode({ position: { x: lx, y: 0, z: lz }, rotation: { x: 0, y: ry, z: 0 }, geometry });
+      addChild(site.node, node);
+      atNode(kind, node, 0.7);
+      beasts.set(node, { kind, node, rest: ry, x: worldX(lx, lz), z: worldZ(lx, lz), y: place.y, busy: false });
+      claimed.push({ x: lx, z: lz, r: BEAST_CLEAR });
+    }
+    // Rainforest: three canopy heights, ferns and shrubs under them, each species one shared geometry
+    // and one prop kind, so every plant answers a tap the way the home island's own scatter does.
+    // `r` is both the footprint it claims and the radius a pointer picks it by.
+    const SCATTER = [
+      { upTo: 0.30, kind: "canopy", r: 0.6 },
+      { upTo: 0.50, kind: "bush", r: 0.55 },
+      { upTo: 0.72, kind: "poolfern", r: 0.5 },
+      { upTo: 0.88, kind: "flower", r: 0.6 },
+      { upTo: 0.95, kind: "poolrock", r: 0.7 },
+      { upTo: 2, kind: "poollog", r: 1.7 }
+    ];
+    const rand = mulberry32(4242);
+    const geometryFor = (kind) => kind === "canopy" ? P.CANOPY[(rand() * P.CANOPY.length) | 0]()
+      : kind === "bush" ? P.shrub() : kind === "poolfern" ? P.fern() : kind === "flower" ? P.flowers()
+      : kind === "poolrock" ? P.mossRock() : P.log();
+    for (let i = 0; i < 74; i++) {
+      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * (S.isletR - 1.6);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      // Keep the stairwell, its approach from the bridge and the pond clear.
+      if (Math.hypot(x, z) < S.shaftR + 4) continue;
+      if (Math.abs(x) < 2.6 && z > 0) continue;
+      if (Math.hypot(x - 6.4, z + 4.6) < 3.2) continue;
+      const roll = rand();
+      const pick = SCATTER.find((e) => roll < e.upTo);
+      // Nothing grows through an animal. Plants still crowd each other, which is what makes it jungle.
+      if (claimed.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + pick.r)) continue;
+      const geometry = geometryFor(pick.kind);
+      // A little scale and turn per copy: free variety, since every copy shares one cached build.
+      const k = 0.82 + rand() * 0.45;
+      const node = createNode({ position: { x, y: 0, z }, rotation: { x: 0, y: rand() * Math.PI * 2, z: 0 }, scale: { x: k, y: 0.9 + rand() * 0.3, z: k }, geometry });
+      addChild(site.node, node);
+      atNode(pick.kind, node, pick.r * k);
+    }
+    // The islet and the rim-to-bridge-head walk are claimed after the home scatter, not before it.
+    // Claiming first made the scatter's seeded retries draw different numbers, reshuffling trees all
+    // over the island; claiming after leaves the scatter exactly as it is without this island, and
+    // reflow then hides only what actually stands on the walk.
+    const claimGround = () => {
+      claim(place.x, place.z, S.isletR + 1);
+      for (let k = 0; k < 7; k += 1.5) claim(DIR.x * (place.rimRadius - k), DIR.z * (place.rimRadius - k), 2.4);
+    };
+    // Look down the stairwell from just above the kerb.
+    presets.pool = { yaw: -2.1, pitch: 0.62, dist: 11, target: { x: place.x, y: place.y - 1.2, z: place.z } };
+    // The weather stands over this island: its centre, its top face, and the ground the rain lands on.
+    const centre = { x: place.x, y: place.y, z: place.z };
+    const groundAt = (gx, gz) => {
+      const dx = gx - place.x, dz = gz - place.z, d2 = dx * dx + dz * dz;
+      // Rain that finds the stairwell falls all the way to the landing at the bottom of it.
+      if (d2 <= S.shaftR * S.shaftR) return place.y - S.shaftDepth + 0.1;
+      if (d2 <= S.isletR * S.isletR) return place.y;
+      return island.surfaceAt(gx, gz);
+    };
+    return { site, place, centre, groundAt, worldX, worldZ, claimGround };
+  };
   // Dock over the drop and ladder on the bluff
   const buildRim = () => {
     const d = polar(DOCK_DEG, CLIFF_OUTER);
@@ -39435,14 +41123,54 @@ void main() {
     fx.burst(0, DROP_HEIGHT - 0.2, 0, 26, CONFETTI, 2.2);
     fx.showTicker(`THANKS ${donation.handle ? "@" + donation.handle.toUpperCase() : "ANON"} · ${bananas} BANANAS`, 4.5);
   };
-  // The Bitcoin feed: a transaction rains drops sized by its weight, a block strikes and thunders.
+  // The Bitcoin feed: a transaction gusts the weather, a block strikes lightning over the island.
   const onMempool = (event) => {
-    if (event.type === "tx") storm.rain(event.vsize);
-    else if (event.type === "fees") storm.weather(event.nextFee);
+    if (event.type === "tx") weather.rain(event.vsize);
     else if (event.type === "block") {
-      storm.strike();
+      // Every block mined while the page is open strikes, whatever the weather is doing.
+      weather.strike();
       hud.toast(`Block ${event.height} mined${event.txCount ? ` · ${event.txCount} transactions` : ""}`);
     }
+  };
+  // The chain board's four readings, set in the jumbotron's 5x7 font and run-length merged into quads,
+  // exactly as the cave sets its wall panels. The rows are rebuilt only when one of them changed, so a
+  // board left standing all day replaces no geometry and holds its size.
+  const CHAIN_PANEL_W = 96, CHAIN_PANEL_H = 36, CHAIN_PANEL_BG = [42, 39, 36];
+  // A board that has stopped being fed says so by going grey. Holding the last reading out in its
+  // usual colours would be the one genuinely misleading thing this island could do.
+  const STALE_INK = "#7d766a";
+  const chainRows = (s) => {
+    const ink = (live) => s.live ? live : STALE_INK;
+    return [
+      ["BLOCK", s.height ? String(s.height) : "-", ink("#e8c14a")],
+      ["PRICE", s.priceUsd ? `$${Math.round(s.priceUsd).toLocaleString("en-US")}` : "-", ink("#8fbf6a")],
+      ["MEMPOOL", s.count ? `${gameMod.formatLarge(s.count)} TX` : "-", ink("#e8c14a")],
+      ["FAST", s.fastestFee ? `${String(+s.fastestFee.toFixed(s.fastestFee >= 10 ? 0 : 2))} SAT/VB` : "-", ink("#ff9a2a")]
+    ];
+  };
+  const refreshChainSign = () => {
+    if (!chainSign) return;
+    const rows = chainRows(chain.snapshot);
+    const printed = rows.map((r) => r[0] + r[1]).join("|");
+    if (printed === chainSign.printed) return;
+    chainSign.printed = printed;
+    const c2 = chainSign.ctx2d, text = BL.jumbotron.text;
+    c2.fillStyle = `rgb(${CHAIN_PANEL_BG[0]},${CHAIN_PANEL_BG[1]},${CHAIN_PANEL_BG[2]})`;
+    c2.fillRect(0, 0, CHAIN_PANEL_W, CHAIN_PANEL_H);
+    let y = 2;
+    for (const [label, value, color] of rows) {
+      text.drawText(c2, label, 1, y, "#9b8f7a", 1);
+      text.drawText(c2, value, CHAIN_PANEL_W - 1 - text.measureText(value, 1), y, color, 1);
+      y += 8;
+    }
+    const node = chainSign.node;
+    if (node.geometry) renderer.releaseGeometry(node.geometry);
+    node.geometry = poolModels.panelFrom(c2, CHAIN_PANEL_W, CHAIN_PANEL_H, poolModels.CHAIN_BOARD.px, poolModels.CHAIN_BOARD.px, CHAIN_PANEL_BG);
+  };
+  // The standing chain snapshot: how full the pool is, how fast blocks land, how hard they arrive.
+  const onChain = (snapshot) => {
+    weather.apply(snapshot);
+    refreshChainSign();
   };
   const onDonation = (donation) => {
     game.recordDonation(donation);
@@ -39593,6 +41321,48 @@ void main() {
         break;
       case "bridge":
         hud.toast("The planks sway. Ooga built it.");
+        break;
+      case "poolstair":
+      case "poolsign":
+        enterScene(presets.pool, "pool");
+        break;
+      case "poolbridge":
+        hud.toast("Vines and planks. The Mempool is across.");
+        break;
+      case "weathersign":
+        hud.openWeatherKey();
+        break;
+      case "chainsign": {
+        const snap = chain.snapshot;
+        const age = snap.at ? Math.round((Date.now() - snap.at) / 1000) : 0;
+        hud.toast(!snap.height ? "Waiting on the chain."
+          : snap.live ? `Block ${snap.height} · ${gameMod.formatLarge(snap.count)} waiting · ${snap.deep.toFixed(1)} blocks deep`
+          : `Last heard ${age > 90 ? `${Math.round(age / 60)} min` : `${age}s`} ago · block ${snap.height} · ${snap.degraded ? "fallback source" : "no answer"}`);
+        break;
+      }
+      case "poolrock":
+        hud.toast("Moss grows thick on the Mempool island.");
+        break;
+      case "canopy":
+        if (!wobble(o.node, 0.08)) return;
+        fx.burst(x, 4.2, z, 10, [LEAF], 1.7);
+        if (RENDER_OPTS.stars > NIGHT) critters.burst(x, z);
+        if (!dropBanana(o, TREE_CHANCE)) hud.toast("Leaves and lianas.");
+        break;
+      case "poolfern":
+        if (!wobble(o.node, 0.3)) return;
+        fx.burst(x, w[13] + 0.5, z, 6, [LEAF], 1.1);
+        if (!dropBanana(o, BUSH_CHANCE)) hud.toast("Fronds. Ooga finds nothing.");
+        break;
+      case "poollog":
+        if (!wobble(o.node, 0.1)) return;
+        fx.burst(x, w[13] + 0.5, z, 6, [DUST], 1.1);
+        hud.toast("Rotten through. Ooga hears something inside.");
+        break;
+      case "jaguar":
+      case "monkey":
+      case "toucan":
+        pokeBeast(o.node, o.prop);
         break;
       case "windsock":
         hud.toast("A fair wind for a drop.");
@@ -40820,7 +42590,7 @@ void main() {
     hour = clock.read();
     daylight.sample(hour, RENDER_OPTS, clock.dayOfYear, islandLatitude, clock.continuousDay);
     RENDER_OPTS.time = elapsed;
-    storm.update(dt, RENDER_OPTS);
+    weather.update(dt, RENDER_OPTS);
     updateLamps(dt, elapsed, phase !== null);
     if (jumbotron) jumbotron.update(elapsed, renderer);
     if (fireworksShells.length) updateFireworks();
@@ -41342,6 +43112,7 @@ void main() {
     });
     buildRim();
     buildLaunchSite();
+    mempoolIsland = buildMempoolIsland();
     const firePos = buildFire();
     fire = lamps[lamps.length - 1];
     // The jumbotron stands on the rim crest just west of the gate, turned to face the meadow center.
@@ -41374,6 +43145,7 @@ void main() {
       });
     }
     scatter();
+    mempoolIsland.claimGround();
     reflowScenery();
     buildSpots();
     buildClouds();
@@ -41415,8 +43187,11 @@ void main() {
     shared.onAbyssRespawn = loseMagazine;
     shared.characterOccluded = characterUiOccluded;
     fx = shared.fx = fxMod.create(shared);
-    storm = stormMod.create({ root, renderer, camera, heightAt: island.surfaceAt, fx });
-    if (mempool.state.projectedBlocks) storm.weather(mempool.state.nextFee);
+    weather = weatherMod.create({ root, renderer, camera, heightAt: mempoolIsland.groundAt, fx, centre: mempoolIsland.centre });
+    // The snapshot outlives the visit, so a re-entered hub opens in the weather it left.
+    weather.apply(chain.snapshot);
+    refreshChainSign();
+    unsubscribeChain = chain.subscribe(onChain);
     unsubscribeMempool = mempool.subscribe(onMempool);
     shared.characterSupportAt = characterSupportAt;
     // Every Agent on the island, the called-in ones included, so the crew keeps
@@ -41770,7 +43545,7 @@ void main() {
         get shown() {
           return pile.shown;
         },
-        island, mouths: island.mouths, labels, launchers, camera, storm, cameraPose: POSITION_POSE, crew, fx, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron, fireworks: launchFireworks, get fireworksPending() { return fireworksShells.length; }, agent: agent.debug,
+        island, mouths: island.mouths, labels, launchers, camera, weather, chain, beasts, pokeBeast, useProp, refreshChainSign, get chainSign() { return chainSign; }, get poolIsland() { return mempoolIsland; }, cameraPose: POSITION_POSE, crew, fx, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron, fireworks: launchFireworks, get fireworksPending() { return fireworksShells.length; }, agent: agent.debug,
         scenery: {
           get candidateCount() { return scenery.length; },
           get visibleCount() { return sceneryVisible; },
@@ -42008,7 +43783,11 @@ void main() {
     unsubscribeActivity = null;
     unsubscribeMempool();
     unsubscribeMempool = null;
-    storm.dispose();
+    unsubscribeChain();
+    unsubscribeChain = null;
+    if (chainSign && chainSign.node.geometry) renderer.releaseGeometry(chainSign.node.geometry);
+    chainSign = null;
+    weather.dispose();
     window.clearTimeout(hintTimer);
     if (positionDebug) {
       positionDebug.removeEventListener("click", copyPositionDebug);
@@ -42086,8 +43865,9 @@ void main() {
     }
     extraAgents.length = extraLives.length = agentBodies.length = 0;
     hubScene.spawnAgent = null;
-    pathNode = altar = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = crates = critters = clock = presets = jetpack = jetpackState = jetpackCarrier = jetpackWearer = lastJetpackCloud = mirrorCave = matrixCave = matrixControl = gateRain = fire = headquarters = dockStairs = overlayCanvas = positionDebug = agent = agentPlay = null;
-    magazine = magazineState = breakables = storm = null;
+    pathNode = altar = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = crates = critters = clock = presets = jetpack = jetpackState = jetpackCarrier = jetpackWearer = lastJetpackCloud = mirrorCave = matrixCave = matrixControl = gateRain = fire = headquarters = positionDebug = agent = agentPlay = dockStairs = overlayCanvas = null;
+    beasts.clear();
+    magazine = magazineState = breakables = weather = mempoolIsland = null;
     hubScene.input = hubScene.debug = hubScene.agent = hubScene.agentView = hubScene.agentControls = hubScene.agentHandoff = null;
     return { targets: count };
   };
@@ -42102,13 +43882,13 @@ void main() {
     let nodes = 0;
     traverseVisible(root, () => nodes++);
     const all = (n) => 1 + n.children.reduce((sum, c) => sum + all(c), 0);
-    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crates.stats(), ...crew.stats(), ...pile.stats(), ...critters.stats(), ...breakables.stats(), ...storm.stats() };
+    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crates.stats(), ...crew.stats(), ...pile.stats(), ...critters.stats(), ...breakables.stats(), ...weather.stats() };
   };
   const hubScene = {
     id: "hub", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null, spawnAgent: null,
     get inMotion() {
-      if (pile.inMotion || fx.inMotion || breakables.inMotion || storm.active || jetpack || magazine && magazine.revealed || MATRIX_WORLD.active || mirrorGuides.state.doorway || mirrorCave.damage.active || mirrorCave.ripples.active || mirrorCave.body.active) return true;
+      if (pile.inMotion || fx.inMotion || breakables.inMotion || weather.active || jetpack || magazine && magazine.revealed || MATRIX_WORLD.active || mirrorGuides.state.doorway || mirrorCave.damage.active || mirrorCave.ripples.active || mirrorCave.body.active) return true;
       for (const sign of headquarters.roomSigns) if (sign.velocity || sign.node.rotation.x) return true;
       for (let i = 0; i < matrixGates.length; i++) if (matrixCave && (matrixGates[i].raising || matrixCave.unlocked && matrixGates[i].node.position.y !== MATRIX_GATE_HIDDEN_Y)) return true;
       return false;
@@ -42654,6 +44434,402 @@ void main() {
   };
   BL.scenes = BL.scenes || {};
   BL.scenes.lab = labScene;
+})();
+
+// ---- js/scene-pool.js ----
+// The Mempool cave: the chain read out in stone. Four stations round one room — the fee ladder as a
+// rank of stalagmites, the five fee tiers as torches burning at their own heights, the chain on a
+// carved tablet under a dripping stalactite, and the difficulty epoch as a wall of notches.
+//
+// Every readable surface is geometry, not texture: headline numbers are carved from the island's own
+// sign glyphs and the dense panels are the jumbotron's 5x7 font run-length merged into quads. The
+// numbers refresh from the chain snapshot at most once a second, and each refresh releases the
+// geometry it replaces, so a cave left open all day holds its size.
+(() => {
+  "use strict";
+  const BL = window.BL = window.BL || {};
+  const { math, models, contributors, chain, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, poolModels } = BL;
+  const { clamp, lerp } = math;
+  const { createNode, addChild, removeChild, createCamera, stepTweens, tweenCount, traverseVisible } = BL.scene;
+  const { SITE, room, stairFoot, wallRadiusAt, brazier, tabletSlab, stationFace, stationPlaque, FACE_W, FACE_Z, carve, carveCells, panelFrom, torchStem, torchFlame, TORCH_STEM_H, latheBy, COLORS } = poolModels;
+  const { drawText, measureText } = BL.jumbotron.text;
+
+  const R = SITE.caveR, H = SITE.caveH, STATION_R = SITE.stationR;
+  const COARSE = window.matchMedia("(pointer: coarse)").matches;
+  const PITCH = [0.05, 1.3], DIST = [3.5, 15];
+  const FOLLOW = { y: 0.9, min: 3, max: 7, pitch: [0.25, 0.8] };
+  const FLY = { speed: 4, perDist: 0.4, climb: 3, yMax: 4.5 };
+  // A station sits on the wall at its bearing and every preset stands between it and the fire, looking
+  // out at it; `entrance` stands on the stair landing and looks across the fire at the chain tablet.
+  const STAIR_BEARING = -Math.PI / 4;
+  // The stair mouth in the wall, and how close the eye has to get to be walking out through it.
+  const STAIR_R = 6.5;
+  const EXIT = { x: Math.sin(STAIR_BEARING) * 12.9, y: 1.9, z: Math.cos(STAIR_BEARING) * 12.9 }, EXIT_R = 2.2;
+  const station = (bearing, y) => ({ yaw: bearing + Math.PI, pitch: 0.15, dist: 9, target: { x: Math.sin(bearing) * STATION_R, y, z: Math.cos(bearing) * STATION_R } });
+  const PRESETS = {
+    // Aimed past the fire at the chain tablet, so the flame lights the room from below the eye line
+    // instead of standing in front of the one thing worth reading on the way in.
+    entrance: { yaw: STAIR_BEARING, pitch: 0.22, dist: 13, target: { x: 1, y: 2.9, z: -3 } },
+    ladder: station(Math.PI / 2, 2.6),
+    tiers: station(-Math.PI / 2, 2.9),
+    chain: station(Math.PI, 2.7),
+    epoch: station(0, 2.7)
+  };
+  // Dim, warm and lit from the braziers: the cave passes no sky.
+  const RENDER_OPTS = {
+    clear: [0.04, 0.05, 0.06], sky: [0.1, 0.09, 0.08], ground: [0.05, 0.05, 0.05],
+    direct: [0.5, 0.42, 0.3], directStrength: 0.4, ambientFloor: 0.26,
+    sun: { x: 0.2, y: 0.9, z: 0.1 }, shadowCenter: { x: 0, y: 1.5, z: 0 }, shadowExtent: 16,
+    lights: new Float32Array(80), lightCount: 0, bloomStrength: 0.5
+  };
+  const LADDER_N = BL.chain.LADDER, NOTCHES = 48, REFRESH = 1;
+  const PANEL_BG = [12, 10, 9];
+  // Carved headline type and the dense panels, both at the scale the lab's fittings are read at.
+  const HEAD_CELL = 0.1;
+
+  const spike = models.cached(() => latheBy({
+    profile: [[0.22, 0], [0.16, 0.55], [0.06, 0.9], [0, 1]], segments: 7,
+    color: (t, s) => s % 2 === 0 ? "#8b8275" : "#736b60"
+  }));
+  const notch = models.cached(() => models.box({ w: 0.1, h: 0.34, d: 0.08, color: COLORS.STONE_DK }));
+  const notchLit = models.cached(() => models.box({ w: 0.1, h: 0.34, d: 0.09, color: COLORS.GOLD, emissive: 0.7 }));
+  const dripPool = models.cached(() => models.noShadow(models.lathe({ profile: [[0.85, 0.03], [0, 0.03]], segments: 14, color: "#2d4a55", emissive: 0.3 })));
+  const stalactite = models.cached(() => latheBy({ profile: [[0.3, 0], [0.18, -0.9], [0, -1.5]], segments: 7, color: () => "#6b747b" }));
+
+  let renderer, game, world, go, root, camera, hud, hooks, input, pilot, fx, agentPlay = null;
+  let stations = null, unsubscribeChain = null, refreshAt = 0, leaving = false;
+  const propTargets = [];
+
+  const fmt = (n) => gameMod.formatLarge(Math.round(n));
+  // Rounded to `d` places with trailing zeros dropped: 10.0 reads 10, 10.1 stays 10.1.
+  const dec = (n, d) => String(+n.toFixed(d));
+  const sat = (n) => n >= 10 ? dec(n, 0) : dec(n, 2);
+  const usd = (n) => `$${Math.round(n).toLocaleString("en-US")}`;
+  const hours = (ms) => ms <= 0 ? "SOON" : ms < 36e5 ? `${Math.round(ms / 6e4)} MIN` : `${dec(ms / 36e5, 1)} HRS`;
+
+  // One wall panel of dense type: lines of label and value, drawn once into a canvas and merged.
+  const PANEL_W = 116, PANEL_H = 52, PANEL_PX = 0.04;
+  const PANEL_X = -PANEL_W * PANEL_PX / 2;
+  const makePanel = (ctx2d, lines) => {
+    ctx2d.fillStyle = `rgb(${PANEL_BG[0]},${PANEL_BG[1]},${PANEL_BG[2]})`;
+    ctx2d.fillRect(0, 0, PANEL_W, PANEL_H);
+    let y = 2;
+    for (const [label, value, color] of lines) {
+      drawText(ctx2d, label, 1, y, "#8b7f6a", 1);
+      const v = String(value);
+      drawText(ctx2d, v, PANEL_W - 1 - measureText(v, 1), y, color || "#e8c14a", 1);
+      y += 8;
+    }
+    return panelFrom(ctx2d, PANEL_W, PANEL_H, PANEL_PX, PANEL_PX, PANEL_BG);
+  };
+
+  // Carved headline text, centred on a slab face and replaced whole on each refresh. The cell shrinks
+  // to fit the slab, so a long reading is set smaller rather than run off the stone.
+  const setCarved = (node, text, maxWidth, color) => {
+    if (node.geometry) renderer.releaseGeometry(node.geometry);
+    const cell = Math.min(HEAD_CELL, maxWidth / carveCells(text));
+    const { geometry, width } = carve(text, { cell, color });
+    node.geometry = geometry;
+    node.position.x = -width / 2;
+  };
+  const setPanel = (node, ctx2d, lines) => {
+    if (node.geometry) renderer.releaseGeometry(node.geometry);
+    node.geometry = makePanel(ctx2d, lines);
+  };
+
+  const buildStations = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = PANEL_W;
+    canvas.height = PANEL_H;
+    // willReadFrequently: every refresh reads the panel back, and without it Chrome warns.
+    const ctx2d = canvas.getContext("2d", { alpha: false, willReadFrequently: true });
+
+    // Each station stands on the wall at its own bearing, turned so its readable face looks in at the
+    // fire; `bearing + PI` is that turn, the same one the island uses for its own mouths.
+    const stationAt = (bearing) => createNode({
+      position: { x: Math.sin(bearing) * STATION_R, y: 0, z: Math.cos(bearing) * STATION_R },
+      rotation: { x: 0, y: bearing + Math.PI, z: 0 }
+    });
+
+    // Every station hangs its readables on the same hewn face at the same heights: the headline along
+    // its top, the dense panel under it. FACE_Y is the face's centre, FACE_Z its front.
+    const FACE_Y = 3.1, FACE_BACK = -0.35, HEAD_Y = 5.3, PANEL_Y = 2.6;
+    // Just proud of the face, so nothing mounted on it fights its surface for depth.
+    const faceZ = FACE_BACK + FACE_Z + 0.02;
+
+    // The fee ladder: one spike per rung, tallest where the most vsize is waiting at that rate,
+    // stood on the floor in front of its face.
+    const ladderNode = stationAt(Math.PI / 2);
+    const spikes = [];
+    for (let i = 0; i < LADDER_N; i++) {
+      const n = createNode({ position: { x: (i - (LADDER_N - 1) / 2) * 0.5, y: 0, z: 0.9 }, geometry: spike(), scale: { x: 1.15, y: 0.08, z: 1.15 } });
+      spikes.push(n);
+      addChild(ladderNode, n);
+    }
+    const ladderFace = createNode({ position: { x: 0, y: FACE_Y, z: FACE_BACK }, geometry: stationFace() });
+    const ladderPanel = createNode({ position: { x: PANEL_X, y: PANEL_Y, z: faceZ } });
+    const ladderHead = createNode({ position: { x: 0, y: HEAD_Y, z: FACE_BACK } });
+    addChild(ladderNode, ladderFace, ladderPanel, ladderHead);
+
+    // The five tiers, each a torch at its own height: the taller the flame, the dearer the block.
+    // Stem and flame are separate nodes, so stretching one never stretches the other.
+    const tiersNode = stationAt(-Math.PI / 2);
+    const tiers = [];
+    for (let i = 0; i < 5; i++) {
+      const x = (i - 2) * 2;
+      const stem = createNode({ position: { x, y: 0, z: 0.7 }, geometry: torchStem(), scale: { x: 1, y: 1, z: 1 } });
+      const flame = createNode({ position: { x, y: TORCH_STEM_H, z: 0.7 }, geometry: torchFlame() });
+      tiers.push({ stem, flame, x });
+      addChild(tiersNode, stem, flame);
+    }
+    const tiersFace = createNode({ position: { x: 0, y: 4.5, z: FACE_BACK }, geometry: stationPlaque() });
+    const tiersHead = createNode({ position: { x: 0, y: 4.85, z: FACE_BACK } });
+    addChild(tiersNode, tiersFace, tiersHead);
+
+    // The chain, carved on a standing tablet under a stalactite that drips between blocks.
+    const chainNode = stationAt(Math.PI);
+    const slab = createNode({ geometry: tabletSlab() });
+    const chainPanel = createNode({ position: { x: PANEL_X, y: 1.3, z: 0.17 } });
+    const chainHead = createNode({ position: { x: 0, y: 4.75, z: 0 } });
+    const drip = createNode({ position: { x: 3.7, y: 7, z: 1 }, geometry: stalactite() });
+    const dripNode = createNode({ position: { x: 3.7, y: 0.02, z: 1 }, geometry: dripPool(), scale: { x: 0.2, y: 1, z: 0.2 } });
+    addChild(chainNode, slab, chainPanel, chainHead, drip, dripNode);
+
+    // The epoch as a wall of notches cut into its face, the elapsed ones lit.
+    const epochNode = stationAt(0);
+    const epochFace = createNode({ position: { x: 0, y: FACE_Y, z: FACE_BACK }, geometry: stationFace() });
+    const notches = [];
+    for (let i = 0; i < NOTCHES; i++) {
+      const col = i % 16, row = (i / 16) | 0;
+      const n = createNode({ position: { x: (col - 7.5) * 0.3 + 0.15, y: 4.2 - row * 0.5, z: faceZ + 0.03 }, geometry: notch() });
+      notches.push(n);
+      addChild(epochNode, n);
+    }
+    const epochPanel = createNode({ position: { x: PANEL_X, y: 0.85, z: faceZ } });
+    const epochHead = createNode({ position: { x: 0, y: HEAD_Y, z: FACE_BACK } });
+    addChild(epochNode, epochFace, epochPanel, epochHead);
+
+    return { canvas, ctx2d, ladderNode, spikes, ladderHead, ladderPanel, tiersNode, tiers, tiersHead, chainNode, chainHead, chainPanel, dripNode, epochNode, notches, epochHead, epochPanel };
+  };
+
+  // Everything readable comes from one snapshot read, so no two stations can disagree.
+  const refresh = () => {
+    const s = chain.snapshot, st = stations, c2 = st.ctx2d;
+    for (let i = 0; i < LADDER_N; i++) st.spikes[i].scale.y = Math.max(0.08, s.ladder[i] * 1.7);
+    setCarved(st.ladderHead, `${dec(s.deep, 1)} BLOCKS DEEP`, FACE_W - 0.4, COLORS.GOLD);
+    setPanel(st.ladderPanel, c2, [
+      ["WAITING", `${fmt(s.count)} TX`],
+      ["VSIZE", `${dec(s.vsize / 1e6, 2)} MVB`],
+      ["BOUNTY", `${fmt(s.totalFee)} SAT`],
+      ["FLOOR", `${sat(s.floor)} SAT/VB`],
+      ["NEXT", `${sat(s.nextFee)} SAT/VB`],
+      ["SOURCE", s.live ? (s.degraded ? "ESPLORA" : "MEMPOOL") : "STALE", s.live ? (s.degraded ? "#e8c14a" : "#8fbf6a") : "#e8695a"]
+    ]);
+
+    const tiers = [s.fastestFee, s.halfHourFee, s.hourFee, s.economyFee, s.minimumFee];
+    const top = Math.max(1, ...tiers);
+    for (let i = 0; i < 5; i++) {
+      const k = clamp(0.5 + tiers[i] / top * 1.5, 0.5, 2);
+      st.tiers[i].stem.scale.y = k;
+      st.tiers[i].flame.position.y = TORCH_STEM_H * k;
+    }
+    setCarved(st.tiersHead, `FAST ${sat(s.fastestFee)} SAT/VB`, FACE_W - 0.4, "#ff9a2a");
+
+    setCarved(st.chainHead, `BLOCK ${s.height}`, 5.4, COLORS.GOLD);
+    setPanel(st.chainPanel, c2, [
+      ["TXS", fmt(s.lastTxCount)],
+      ["WEIGHT", `${dec(s.lastWeight / 1e6, 2)} MWU`],
+      ["SIZE", `${dec(s.lastSize / 1e6, 2)} MB`],
+      ["PACE", `${dec(s.pace / 60, 1)} MIN`],
+      ["PRICE", s.priceUsd ? usd(s.priceUsd) : "-", "#8fbf6a"]
+    ]);
+
+    const lit = Math.round(clamp(s.progressPercent / 100, 0, 1) * NOTCHES);
+    for (let i = 0; i < NOTCHES; i++) {
+      const want = i < lit ? notchLit() : notch();
+      if (st.notches[i].geometry !== want) st.notches[i].geometry = want;
+    }
+    setCarved(st.epochHead, `EPOCH ${dec(s.progressPercent, 0)}PCT`, FACE_W - 0.4, COLORS.GOLD);
+    setPanel(st.epochPanel, c2, [
+      ["RETARGET", `${s.difficultyChange >= 0 ? "+" : ""}${dec(s.difficultyChange, 2)}PCT`, s.difficultyChange >= 0 ? "#e8695a" : "#8fbf6a"],
+      ["BLOCKS", fmt(s.remainingBlocks)],
+      ["IN", hours(s.remainingTime)],
+      ["HASHRATE", s.hashrate ? `${dec(s.hashrate / 1e18, 0)} EH/S` : "-"],
+      ["DIFFICULTY", s.difficulty ? `${dec(s.difficulty / 1e12, 1)} T` : "-"]
+    ]);
+    // The pool under the stalactite fills between blocks and empties when one lands.
+    const since = s.lastBlockAt ? clamp((Date.now() - s.lastBlockAt) / (chain.TARGET_BLOCK * 1000), 0, 1.4) : 0;
+    stations.dripNode.scale.x = stations.dripNode.scale.z = 0.2 + since * 0.8;
+  };
+
+  // One way out, reachable three ways: Escape, the Leave button, and the stair mouth you came in by,
+  // whether it is tapped or walked into. The latch means no two of them can fire the same departure.
+  const leaveCave = () => {
+    if (leaving) return;
+    leaving = true;
+    go("hub");
+  };
+  const onKey = (e) => {
+    if (e.key === "Escape") {
+      leaveCave();
+      return true;
+    }
+    return false;
+  };
+  const onDonation = () => {};
+  const onLootCleared = () => {};
+
+  const enter = (ctx) => {
+    ({ renderer, game, world, go, agentPlay } = ctx);
+    camera = createCamera({ fov: 50, near: 0.2, far: 60 });
+    root = createNode();
+    const shell = createNode({ geometry: room() });
+    const fire = createNode({ position: { x: 0, y: 0, z: 0 }, geometry: brazier(), scale: { x: 0.8, y: 0.8, z: 0.8 } });
+    // The way in, under the stair landing the entrance view stands on.
+    const stairs = createNode({
+      position: { x: Math.sin(STAIR_BEARING) * STAIR_R, y: 0, z: Math.cos(STAIR_BEARING) * STAIR_R },
+      rotation: { x: 0, y: STAIR_BEARING + Math.PI, z: 0 }, geometry: stairFoot()
+    });
+    addChild(root, shell, fire, stairs);
+    stations = buildStations();
+    addChild(root, stations.ladderNode, stations.tiersNode, stations.chainNode, stations.epochNode);
+
+    hud = hudMod.create({ roster: contributors.activeRoster, catalog: models.SWAG, tierColors: models.TIER_COLORS, renderIcon: hudMod.renderIcon, lootEnabled: ctx.lootEnabled });
+    hooks = {};
+    input = interactMod.create({ canvas: ctx.canvas, renderer, camera, hooks });
+    // The wall domes in, so how far out the eye may go depends on how high it is: one curve, read by
+    // `wallRadiusAt`, keeps both the aim point and the camera clear of the stone at every height.
+    const clampTarget = (p) => {
+      p.y = clamp(p.y, 0.3, H - 1.4);
+      const r = Math.hypot(p.x, p.z), max = wallRadiusAt(p.y) - 1.6;
+      if (r > max) { p.x *= max / r; p.z *= max / r; }
+    };
+    const clampCamera = (p) => {
+      p.y = clamp(p.y, 0.4, H - 0.9);
+      const r = Math.hypot(p.x, p.z), max = wallRadiusAt(p.y) - 0.5;
+      if (r > max) { p.x *= max / r; p.z *= max / r; }
+    };
+    pilot = pilotMod.create({
+      renderer, canvas: ctx.canvas, camera, hud, presets: PRESETS, landing: "entrance", pitch: PITCH, dist: DIST,
+      follow: FOLLOW, fly: FLY, clampTarget, clampCamera, ceilingAt: () => H - 0.9, coarse: COARSE,
+      close: { eyeHeight: 1.1, eyeRatio: 0.95, eyeForward: 0.16, pitch: [-1.35, 1.35], trailingDist: 4, orbitDist: 5, maxStep: 0.6, groundAt: () => 0 }
+    });
+    Object.assign(hooks, {
+      onHover: (hit, p) => {
+        if (hit) hud.tooltip.show("The way out · tap to leave", p.x, p.y);
+        else hud.tooltip.hide();
+      },
+      onHoverMove: (hit, p) => hud.tooltip.show("The way out · tap to leave", p.x, p.y),
+      onTap: (hit) => {
+        if (hit && hit.owner.kind === "exit") leaveCave();
+      },
+      ...pilot.hooks
+    });
+    input.add(stairs, { kind: "exit", node: stairs }, { radius: 3.4 });
+    propTargets.push(stairs);
+    hud.onPreset(pilot.goPreset);
+    hud.onAction((action) => {
+      if (action === "leave") leaveCave();
+      else if (action === "reset-view") pilot.goPreset("entrance");
+    });
+    fx = fxMod.create({ root, input, hooks, hud, game, world, renderer, camera, overlay: ctx.overlay, tickerAt: { x: 0, y: 6, z: 0 } });
+
+    // Ten lamps, the cap: the fire, the five tier torches, one over each of the other three stations
+    // and one on the stair lantern. Every station has to carry its own light or it reads as a shadow.
+    const lights = RENDER_OPTS.lights;
+    const lamp = (i, x, y, z, radius, r, g, b) => {
+      const o = i * 8;
+      lights[o] = x; lights[o + 1] = y; lights[o + 2] = z; lights[o + 3] = radius;
+      lights[o + 4] = r; lights[o + 5] = g; lights[o + 6] = b; lights[o + 7] = 0;
+    };
+    const atStation = (bearing, out = 3.6) => ({ x: Math.sin(bearing) * (STATION_R - out), z: Math.cos(bearing) * (STATION_R - out) });
+    lamp(0, 0, 1.8, 0, 22, 1, 0.6, 0.25);
+    // The tiers stand on the -x wall, so their local rank runs along world z.
+    for (let i = 0; i < 5; i++) lamp(1 + i, -STATION_R + 0.7, 2.4, (i - 2) * -2, 6, 1, 0.58, 0.2);
+    const ladderSpot = atStation(Math.PI / 2), chainSpot = atStation(Math.PI), epochSpot = atStation(0);
+    lamp(6, ladderSpot.x, 3.4, ladderSpot.z, 13, 0.85, 0.72, 0.45);
+    lamp(7, chainSpot.x, 3.4, chainSpot.z, 13, 0.9, 0.74, 0.42);
+    lamp(8, epochSpot.x, 3.4, epochSpot.z, 13, 0.85, 0.72, 0.45);
+    lamp(9, Math.sin(STAIR_BEARING) * 11.5, 4.4, Math.cos(STAIR_BEARING) * 11.5, 10, 1, 0.62, 0.26);
+    RENDER_OPTS.lightCount = 10;
+
+    refresh();
+    unsubscribeChain = chain.subscribe(refresh);
+    refreshAt = 0;
+    leaving = false;
+
+    poolScene.root = root;
+    poolScene.camera = camera;
+    poolScene.input = input;
+    poolScene.debug = {
+      hud, camera, controls: pilot.controls, pilot, stations, refresh,
+      get snapshot() { return chain.snapshot; },
+      get ladder() { return Array.from(stations.spikes, (n) => n.scale.y); },
+      get tiers() { return Array.from(stations.tiers, (t) => t.stem.scale.y); },
+      get lit() { return stations.notches.filter((n) => n.geometry === notchLit()).length; }
+    };
+  };
+
+  const update = (dt, elapsed) => {
+    pilot.readInput(dt);
+    pilot.update(dt);
+    if (!leaving) {
+      const a = pilot.controls.read();
+      // Only while the visitor is driving: an orbit sweep crosses the same arch without meaning to.
+      if (Math.hypot(a.x, a.y) > 0.05) {
+        const p = camera.position, dx = p.x - EXIT.x, dy = p.y - EXIT.y, dz = p.z - EXIT.z;
+        if (dx * dx + dy * dy + dz * dz < EXIT_R * EXIT_R) leaveCave();
+      }
+    }
+    stepTweens(dt);
+    fx.update(dt, elapsed);
+    refreshAt -= dt;
+    if (refreshAt <= 0) {
+      refreshAt = REFRESH;
+      refresh();
+    }
+  };
+  // Nothing of the cave's own goes on the overlay; the bubbles and ticker are the whole of it.
+  const drawExtra = () => {};
+  const overlay = (dt) => fx.drawOverlay(dt, drawExtra);
+
+  const leave = () => {
+    unsubscribeChain();
+    unsubscribeChain = null;
+    // Panels and carvings are geometry this scene made; the GPU gets them back before the next one.
+    for (const node of [stations.ladderHead, stations.ladderPanel, stations.tiersHead, stations.chainHead, stations.chainPanel, stations.epochHead, stations.epochPanel]) {
+      if (node.geometry) renderer.releaseGeometry(node.geometry);
+      node.geometry = null;
+    }
+    fx.dispose();
+    pilot.dispose();
+    for (const node of propTargets) input.remove(node);
+    propTargets.length = 0;
+    while (root.children.length) removeChild(root, root.children[root.children.length - 1]);
+    const targets = input.targetCount;
+    input.dispose();
+    hud.dispose();
+    stations = hud = hooks = input = pilot = fx = agentPlay = null;
+    poolScene.input = poolScene.debug = null;
+    return { targets };
+  };
+  const liveGeometry = () => {};
+  const stats = () => {
+    let nodes = 0;
+    traverseVisible(root, () => nodes++);
+    const all = (n) => 1 + n.children.reduce((sum, c) => sum + all(c), 0);
+    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats() };
+  };
+
+  const poolScene = {
+    id: "pool", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
+    root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null,
+    get inMotion() {
+      return fx.inMotion;
+    }
+  };
+  BL.scenes = BL.scenes || {};
+  BL.scenes.pool = poolScene;
 })();
 
 // ---- js/race-track.js ----
@@ -50840,11 +53016,15 @@ void main() {
   window.addEventListener("keydown", onKeyDown);
   document.addEventListener("visibilitychange", onVisibility);
   if (params.has("nosim")) donations.config.simulate = false;
-  // The live feeds stay off under nosim (the suite) and mempool=0 / oogatron=0;
-  // checks drive the hub's storm through emit and the jumbotron through refreshData.
+  // The live feeds stay off under nosim (the suite) and mempool=0 / oogatron=0 / chain=0;
+  // checks drive the hub's weather through emit and apply, and the jumbotron through refreshData.
   const mempool = window.BL.mempool;
+  const chain = window.BL.chain;
   if (!params.has("nosim") && params.get("mempool") !== "0") mempool.start();
   if (!params.has("nosim") && params.get("oogatron") !== "0") window.BL.oogatronLive.start();
+  // `?chain=esplora` or `?chain=https://host/api` pins the provider; otherwise mempool.space leads
+  // and three consecutive failures hand the session to Esplora on its own.
+  if (!params.has("nosim") && params.get("chain") !== "0") chain.start({ source: params.get("chain") });
   const unsubscribeDonations = donations.subscribe((donation) => active.onDonation(donation), { identity: () => game.state });
   // The feed panel: the Konami code toggles a page-wide readout of the socket, its counters and its last events.
   // It subscribes and ticks only while open, and its text nodes change only with their value.
@@ -50867,10 +53047,11 @@ void main() {
       : e.type === "fees" ? `fees   next block ${e.nextFee.toFixed(2)} sat/vB · ${e.blocks} projected`
       : `${e.type}`;
     const render = () => {
-      const s = mempool.state, storm = active && active.debug && active.debug.storm;
+      // The rally exposes a `weather` of its own with no `state`; only the hub's answers this panel.
+      const d = active && active.debug && active.debug.weather, w = d && d.state ? d : null, s = mempool.state, c = chain.snapshot;
       const link = !s.enabled ? "off (nosim or mempool=0)" : s.connected ? `connected · attempt ${s.attempts}` : `reconnecting · attempt ${s.attempts}`;
       const age = s.lastAt ? `${((Date.now() - s.lastAt) / 1000).toFixed(1)} s ago` : "none yet";
-      const text = `socket    ${link}\nlast msg  ${age}${s.lastKeys ? ` · ${s.lastKeys}` : ""}\nmessages  ${s.messages} · ${(s.bytes / 1024).toFixed(0)} KB\nchain     height ${s.height} · next block ${s.nextFee.toFixed(2)} sat/vB · ${s.projectedBlocks} projected\nevents    ${s.transactions} tx · ${s.blocks} blocks\nweather   ${storm ? `overcast ${storm.state.overcast.toFixed(2)} → ${storm.state.overcastTarget.toFixed(2)} · cloud ${storm.state.cloud.toFixed(2)} · ${storm.state.drops} drops · ${storm.state.strikes} strikes` : "no storm in this scene"}`;
+      const text = `socket    ${link}\nlast msg  ${age}${s.lastKeys ? ` · ${s.lastKeys}` : ""}\nmessages  ${s.messages} · ${(s.bytes / 1024).toFixed(0)} KB\nchain     height ${s.height} · next block ${s.nextFee.toFixed(2)} sat/vB · ${s.projectedBlocks} projected\nevents    ${s.transactions} tx · ${s.blocks} blocks\npool      ${c.count} tx · ${c.deep.toFixed(1)} blocks deep · floor ${c.floor.toFixed(2)} sat/vB · via ${c.source}${c.degraded ? " (fallback)" : ""}\naxes      soak ${c.soak.toFixed(2)} · chill ${c.chill.toFixed(2)} · gale ${c.gale.toFixed(2)} · pace ${(c.pace / 60).toFixed(1)} min\nweather   ${w ? `${w.state.name} · ${w.state.drops}/${w.state.capacity} ${w.state.form} · wind ${w.state.wind.toFixed(1)} · cloud ${w.state.cloud.toFixed(2)} · ${w.state.strikes} strikes` : "no weather in this scene"}`;
       if (stateEl.textContent !== text) stateEl.textContent = text;
       if (!dirty) return;
       dirty = false;
@@ -50954,7 +53135,7 @@ void main() {
         return world.level;
       }
     };
-    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "fx", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron", "fireworks", "fireworksPending", "orbit", "flight", "site", "agent"]) {
+    for (const key of ["slots", "drops", "core", "shell", "delivery", "spillEffect", "cavemen", "crates", "lab", "headquarters", "hud", "applyAllSwag", "renderLocker", "demoTip", "setPileLevel", "refreshStates", "trimPool", "shown", "island", "mouths", "labels", "camera", "cameraCave", "crew", "fx", "controls", "props", "altar", "path", "scenery", "jetpack", "magazine", "mirrorCave", "matrixCave", "matrixGate", "pilot", "renderOpts", "lamps", "entranceLights", "lighting", "fireSeats", "critters", "storm", "daylight", "setHour", "track", "racers", "items", "race", "audio", "weather", "launchers", "drop", "diver", "plane", "course", "jumbotron", "fireworks", "fireworksPending", "orbit", "flight", "site", "agent", "poolIsland"]) {
       Object.defineProperty(ooga, key, { get: () => active.debug && active.debug[key], enumerable: true });
     }
     window.__ooga = ooga;
@@ -50965,6 +53146,8 @@ void main() {
     unsubscribeDonations();
     feedPanel.close();
     mempool.dispose();
+    chain.dispose();
+    window.BL.oogatronLive.dispose();
     window.removeEventListener("keydown", onKeyDown);
     document.removeEventListener("visibilitychange", onVisibility);
     active.leave();

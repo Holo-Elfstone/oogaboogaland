@@ -567,6 +567,25 @@ select {
   scrollbar-color: rgba(0, 0, 0, 0.35) transparent;
 }
 
+/* The roster scrolls; its call to action does not scroll away with it. A long cast used to push
+   Feed the Ooga Boogas past the bottom of the sheet, where it could only be reached by scrolling. */
+.panel[data-panel="roster"] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel[data-panel="roster"] > .roster {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.panel[data-panel="roster"] > .feed-open {
+  margin-top: auto;
+}
+
 .panel h2 {
   margin: 0 0 10px;
   font-size: 14px;
@@ -632,6 +651,28 @@ select {
   box-shadow: 0 6px 0 rgba(0, 0, 0, 0.35), 0 10px 30px rgba(0, 0, 0, 0.35);
   color: var(--paper);
   font: inherit;
+}
+
+/* Every modal closes with the same X, sized as a target rather than a word. */
+.modal-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin: -4px -4px 0 0;
+  padding: 0;
+  color: var(--paper);
+  background: rgba(0, 0, 0, 0.22);
+  border: 2px solid var(--wood-edge);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-close:hover,
+.modal-close:focus-visible {
+  background: rgba(0, 0, 0, 0.38);
 }
 
 .modal::backdrop {
@@ -2217,6 +2258,57 @@ select {
   line-height: 1.55;
   white-space: pre-wrap;
   overscroll-behavior: contain;
+}
+
+/* The weather key: one tablet of terms, matching the recipe's slab rather than a bare browser list. */
+.weather-key {
+  max-height: min(46vh, 420px);
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  overflow: auto;
+  background: var(--tablet);
+  border: 2px solid var(--stone-dk);
+  border-radius: 9px 7px 10px 8px;
+  box-shadow: var(--tablet-shadow);
+  color: var(--paper);
+  font-size: 11.5px;
+  line-height: 1.55;
+  overscroll-behavior: contain;
+}
+
+.weather-key > div + div {
+  margin-top: 10px;
+}
+
+.weather-key dt {
+  margin: 0 0 2px;
+  color: var(--warn);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.weather-key dd {
+  margin: 0;
+  opacity: 0.88;
+}
+
+/* A phone reads one column down the page; anything with room reads two, so the key is a card rather
+   than a scroll. The dialog widens with it, since 340px would only reflow the same column twice. */
+@media (min-width: 720px) {
+  #weather-key {
+    width: 640px;
+  }
+
+  #weather-key .weather-key {
+    max-height: none;
+    columns: 2;
+    column-gap: 22px;
+  }
+
+  #weather-key .weather-key div {
+    break-inside: avoid;
+  }
 }
 
 .recipe-actions {
