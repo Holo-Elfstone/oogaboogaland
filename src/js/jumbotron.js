@@ -201,7 +201,7 @@
     const spark = weeklyTotals.slice(-14);
     if (spark.length > 0) {
       const maxV = Math.max(...spark.map((w) => w.total), 1);
-      const bw = 4, bx = BOARD_W - 6 - spark.length * bw, baseY = BOARD_H - 16, maxH = 52;
+      const bw = 4, bx = BOARD_W - 6 - spark.length * bw, baseY = BOARD_H - 12, maxH = 56;
       spark.forEach((w, i) => {
         const h = Math.max(1, Math.round(w.total / maxV * maxH));
         ctx.fillStyle = i === spark.length - 1 ? PALETTE.accent : PALETTE.commits;
@@ -234,7 +234,7 @@
     header(ctx, `${repo ? repo.name.toUpperCase() + " " : ""}TOP ${type.toUpperCase()}`, model.latestWeek || "");
     const top = board.slice(0, 7);
     const maxV = Math.max(...top.map((e) => e.count), 1);
-    let y = 15;
+    let y = 16;
     top.forEach((e, i) => {
       const c = model.byLogin.get(e.login);
       const label = fitText(displayLabel(c || e).toUpperCase(), 66, 1);
@@ -245,7 +245,7 @@
       ctx.fillRect(barX, y + 1, Math.max(1, Math.round(e.count / maxV * barMax)), 5);
       const v = String(e.count);
       drawText(ctx, v, BOARD_W - 4 - measureText(v, 1), y, color, 1);
-      y += 12;
+      y += 13;
     });
     return false;
   };
@@ -271,7 +271,7 @@
       return false;
     }
     let y = 15;
-    for (const e of model.recent.slice(0, 10)) {
+    for (const e of model.recent.slice(0, 11)) {
       const color = PALETTE[TYPE_COLOR[e.type]] || PALETTE.accent;
       drawText(ctx, fitText(e.login.toUpperCase(), 60, 1), 4, y, PALETTE.text, 1);
       drawText(ctx, fitText(e.repo.toUpperCase(), 54, 1), 68, y, PALETTE.dim, 1);
@@ -366,6 +366,52 @@
     return geo;
   };
 
+  // ---- Frame-mounted navigation chrome -------------------------------------
+  // Arrows on the side rails and one indicator block per slide on the bottom
+  // rail, in the cave sign's paper-white blocks (#f3efe4, gentle emissive) so
+  // the cabinet reads like the island's other signage. Blocks sit proud of
+  // the rail faces (0.086/0.09) — coplanar faces sparkle.
+  const CHROME_WHITE = [243, 239, 228];
+  const CHROME_DIM = [166, 166, 162];
+  const OUTER_W = SW + 2 * BORDER, OUTER_H = SH + 2 * BORDER;
+  const CHROME_CELL = 0.036, CHROME_PIXEL = 0.03;
+  const ARROW_Z = 0.096, DOT_Z = 0.1, DOT_SIZE = 0.05;
+  const RAIL_X = OUTER_W / 2 - RAIL / 2, RAIL_Y = OUTER_H / 2 - RAIL / 2;
+  // 4x7 chevrons, rows top-first; mirrored for the right rail.
+  const ARROW_LEFT = ["0001", "0010", "0100", "1000", "0100", "0010", "0001"];
+  const ARROW_RIGHT = ARROW_LEFT.map((row) => [...row].reverse().join(""));
+  const pushBlock = (geo, cx, cy, size, z, color, emissive) => {
+    pushQuad(geo, cx - size / 2, cx + size / 2, cy - size / 2, cy + size / 2, z, color, emissive);
+  };
+  const pushArrow = (geo, rows, cx) => {
+    for (let r = 0; r < rows.length; r++) {
+      for (let c = 0; c < rows[r].length; c++) {
+        if (rows[r][c] !== "1") continue;
+        const x = cx + (c - (rows[r].length - 1) / 2) * CHROME_CELL;
+        const y = ((rows.length - 1) / 2 - r) * CHROME_CELL;
+        pushBlock(geo, x, y, CHROME_PIXEL, ARROW_Z, CHROME_WHITE, 0.25);
+      }
+    }
+  };
+  // The dot row's geometry and hit-test share this layout; pitch shrinks so
+  // the row stays clear of the corner joint plates however long the cycle.
+  const dotLayout = (n) => {
+    const pitch = Math.max(0.07, Math.min(0.11, (OUTER_W - 0.8) / Math.max(1, n)));
+    return { pitch, x0: -((n - 1) * pitch) / 2 };
+  };
+  const chromeGeometryFrom = (count, current) => {
+    const geo = { verts: [], faces: [], lines: [] };
+    pushArrow(geo, ARROW_LEFT, -RAIL_X);
+    pushArrow(geo, ARROW_RIGHT, RAIL_X);
+    const { pitch, x0 } = dotLayout(count);
+    for (let i = 0; i < count; i++) {
+      const lit = i === current;
+      pushBlock(geo, x0 + i * pitch, -RAIL_Y, DOT_SIZE, DOT_Z, lit ? CHROME_WHITE : CHROME_DIM, lit ? 0.9 : 0.12);
+    }
+    geo.castShadow = false;
+    return geo;
+  };
+
   const create = ({ data, position = { x: 0, y: 0, z: 0 }, ry = 0, scale = 1 } = {}) => {
     const canvas = document.createElement("canvas");
     canvas.width = BOARD_W;
@@ -414,26 +460,6 @@
       return c;
     };
 
-    // Bottom nav strip: prev/next arrows in the corners and one dot per
-    // slide, the current one lit. Pitch shrinks so the row always fits
-    // between the arrows however many slides the rotation holds.
-    const dotLayout = (n) => {
-      const pitch = Math.max(4, Math.min(6, Math.floor((BOARD_W - 48) / Math.max(1, n))));
-      const width = n * pitch - (pitch - 3);
-      return { pitch, x0: Math.round((BOARD_W - width) / 2), width };
-    };
-    const drawChrome = () => {
-      const c = cycle();
-      drawText(ctx, "<", 3, 100, PALETTE.dim, 1);
-      drawText(ctx, ">", BOARD_W - 3 - measureText(">"), 100, PALETTE.dim, 1);
-      const { pitch, x0 } = dotLayout(c.length);
-      const current = cycleIndex % c.length;
-      for (let i = 0; i < c.length; i++) {
-        ctx.fillStyle = i === current ? PALETTE.accent : PALETTE.dim;
-        ctx.fillRect(x0 + i * pitch, 102, 3, 3);
-      }
-    };
-
     const renderBoard = () => {
       if (!model) {
         clearBoard(ctx);
@@ -442,7 +468,6 @@
         return;
       }
       (VIEWS[view.name] || VIEWS.totals)(ctx, model, view.params);
-      drawChrome();
     };
 
     const node = createNode({
@@ -454,6 +479,10 @@
     // Drawn at board size then scaled in to clear the rails; z is left alone.
     const screenNode = createNode({ geometry: null, scale: { x: FX, y: FY, z: 1 } });
     addChild(node, screenNode);
+    // The navigation chrome lives on the wood frame, unscaled cabinet space.
+    const chromeNode = createNode({ geometry: null });
+    addChild(node, chromeNode);
+    let chromeKey = "";
 
     const swapGeometry = (target, geometry, renderer) => {
       const old = target.geometry;
@@ -465,6 +494,14 @@
       renderBoard();
       swapGeometry(screenNode, screenGeometryFrom(ctx), renderer);
       dirty = false;
+    };
+    const refreshChrome = (renderer) => {
+      const count = cycle().length;
+      const current = cycleIndex % count;
+      const key = `${count}:${current}`;
+      if (key === chromeKey) return;
+      chromeKey = key;
+      swapGeometry(chromeNode, chromeGeometryFrom(count, current), renderer);
     };
 
     // A world ray -> board pixel, or null off the screen: invert the cabinet's
@@ -482,9 +519,15 @@
       if (!TAP_D[2]) return null;
       const t = (SCREEN_Z - TAP_P[2]) / TAP_D[2];
       if (t < 0) return null;
-      const bx = ((TAP_P[0] + TAP_D[0] * t) / (SW * FX) + 0.5) * BOARD_W;
-      const by = (0.5 - (TAP_P[1] + TAP_D[1] * t) / (SH * FY)) * BOARD_H;
-      return bx >= 0 && bx < BOARD_W && by >= 0 && by < BOARD_H ? { bx, by } : null;
+      const lx = TAP_P[0] + TAP_D[0] * t, ly = TAP_P[1] + TAP_D[1] * t;
+      // Anywhere on the cabinet face counts; the linear mapping lets rail
+      // taps land outside the 0..BOARD range and regionize naturally. The
+      // shared SCREEN_Z plane under-corrects rail parallax by a few board
+      // pixels at steep angles — the rail zones are generous enough.
+      if (Math.abs(lx) > OUTER_W / 2 + 0.05 || Math.abs(ly) > OUTER_H / 2 + 0.05) return null;
+      const bx = (lx / (SW * FX) + 0.5) * BOARD_W;
+      const by = (0.5 - ly / (SH * FY)) * BOARD_H;
+      return { bx, by, lx, ly };
     };
 
     const api = {
@@ -524,41 +567,30 @@
         );
         return { x: out[0], y: out[1], z: out[2] };
       },
-      // A tap resolved onto the board: corner arrows and the dot strip
-      // navigate; anywhere else (or a miss into the cabinet wood) advances,
-      // as tapping the board always has. Returns what it did, for checks.
+      // A tap resolved onto the cabinet: the side-rail arrows page, the
+      // bottom-rail dots jump to their slide, and the screen (or the top
+      // rail, or a miss into thin air) advances, as tapping the board always
+      // has. Returns what it did, for checks.
       tapAt(ray) {
         const hit = boardAt(ray);
         if (!hit) {
           api.nextView();
           return "next";
         }
-        if (hit.by >= 96) {
-          if (hit.bx < 24) {
-            api.prevView();
-            return "prev";
-          }
-          if (hit.bx > BOARD_W - 24) {
-            api.nextView();
-            return "next";
-          }
-          const c = cycle();
-          const { pitch, x0, width } = dotLayout(c.length);
-          if (hit.bx >= x0 - 2 && hit.bx <= x0 + width + 2) {
-            const index = Math.max(0, Math.min(c.length - 1, Math.floor((hit.bx - x0) / pitch)));
-            api.goToView(index);
-            return `dot:${index}`;
-          }
-          api.nextView();
-          return "next";
-        }
-        if (hit.bx < 38) {
+        if (hit.bx < 0) {
           api.prevView();
           return "prev";
         }
-        if (hit.bx > BOARD_W - 38) {
+        if (hit.bx > BOARD_W) {
           api.nextView();
           return "next";
+        }
+        if (hit.by > BOARD_H) {
+          const c = cycle();
+          const { pitch, x0 } = dotLayout(c.length);
+          const index = Math.max(0, Math.min(c.length - 1, Math.round((hit.lx - x0) / pitch)));
+          api.goToView(index);
+          return `dot:${index}`;
         }
         api.nextView();
         return "next";
@@ -592,13 +624,16 @@
           resetRotation = false;
         }
         if (dirty) refresh(renderer);
+        refreshChrome(renderer);
       },
       dispose(renderer) {
         if (renderer && renderer.releaseGeometry) {
           if (screenNode.geometry) renderer.releaseGeometry(screenNode.geometry);
+          if (chromeNode.geometry) renderer.releaseGeometry(chromeNode.geometry);
           if (node.geometry) renderer.releaseGeometry(node.geometry);
         }
         screenNode.geometry = null;
+        chromeNode.geometry = null;
         node.geometry = null;
       }
     };
