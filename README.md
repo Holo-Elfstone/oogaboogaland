@@ -2,7 +2,7 @@
 
 A small WebGL2 floating island whose cliff caves are projects. The open cave is a lab where donated bananas feed voxel cavemen who stand in for the contributors of [EntropyLab](https://github.com/OogaBoogaX/entropylab). Working Oogas load banana ammunition at the pile, run to their project's cave and shoot into it from outside, then return to reload. Visitors can poke the crew, roll the dice and watch donated bananas rain onto the shared pile.
 
-Everything is plain JavaScript with no dependencies, no build requirement and two network connections: a websocket to mempool.space that makes the island's weather, and a once-a-minute poll of the oogatron stats worker that keeps the rim jumbotron's OogaBoogaX numbers live and launches fireworks from the board when a fresh contribution lands. Every transaction the Bitcoin mempool accepts rains on the hub, with bigger drops for heavier transactions, every mined block strikes lightning and rolls thunder, and the fee for the next block sets the weather, from sunny and dry to a full grey storm; the mapping is in [Weather](#weather). The time of day stays the island's real clock. Nothing is sent but the subscription. Payments are a simulator for now, and all visitor state stays in the visitor's own browser.
+Everything is plain JavaScript with no dependencies, no build requirement and a handful of read-only network connections: a websocket to mempool.space that makes the island's weather, and a once-a-minute poll of the oogatron stats worker that keeps the rim jumbotron's OogaBoogaX numbers live and launches fireworks from the board when a fresh contribution lands. Every transaction the Bitcoin mempool accepts rains on the hub, with bigger drops for heavier transactions, every mined block strikes lightning and rolls thunder, and the fee for the next block sets the weather, from sunny and dry to a full grey storm; the mapping is in [Weather](#weather). The time of day stays the island's real clock. Nothing is sent but the subscription. Payments are a simulator for now, and all visitor state stays in the visitor's own browser.
 
 ## Run it
 
@@ -133,6 +133,8 @@ exact count out of **30** and thirty tiny banana indicators. The rifle's magazin
 each representing three shots, with another three shots in the hidden chamber.
 Each character keeps their ammunition between cave visits.
 
+A vine bridge off the south-east rim crosses to the **Mempool island**, a rainforest islet where a cave reads the chain out in stone: the fee ladder as a rank of stalagmites, the five fee tiers as torches burning at their own heights, the tip carved on a tablet under a stalactite that fills between blocks, and the difficulty epoch as a wall of notches. A board across the hole from the bridge gives you the block height, the price, the mempool count and the fastest fee without going down, and the small post beside it opens the weather key. A stairwell winds down the middle of the island; tap it to go down. **LADDER**, **TIERS**, **CHAIN** and **EPOCH** move the camera between the readings, and **Escape**, **Leave cave** or the lit stair mouth (tapped or flown into) brings you back. Poke the jaguar, the monkey and the toucan, and shake the trees, ferns, bushes, flowers and fallen logs the way you would at home.
+
 The banana pile passes at half speed. Rock covers the part of the view crossing a surface, and faint outlines show what your Ooga can see while the camera cannot.
 
 Repository activity is tracked separately for each character and project. After a
@@ -239,38 +241,39 @@ Taking control still works, and releasing the character returns them to the chos
 
 ## Weather
 
-The hub's weather is the Bitcoin mempool, live over one websocket to mempool.space.
+The weather is the Bitcoin mempool, and it stands over the Mempool island as a cell rather than following you around: from the home island you watch it rain or snow over there under your own clear sky, and it closes in once you cross the bridge. Three readings come out of the chain and name one of
+eight standing states, so it rains for as long as the pool is full rather than in bursts.
 
-- **Rain** is transactions. Every transaction the mempool accepts falls as drops around the
-  view, two to eight of them, bigger and faster for a heavier transaction (by virtual size,
-  on a log scale from 140 vB). Big drops splash.
-- **Thunder** is blocks. Every block mined while the page is open strikes a bolt near the
-  view, flashes the sky twice and rolls a rumble half a second to a second and a half later.
-  A toast names the block and its transaction count.
-- **Overcast** is fee pressure: the median fee of the projected next block, on a log scale
-  from 0.1 sat/vB (or an empty mempool), which is clear, to 20 sat/vB, the full storm. It
-  scales how much each transaction rains; any overcast rains at least one drop. The first
-  projection after connecting sets it at once, later ones walk there over 1.5 seconds, and
-  swings under 0.05 are ignored.
-- **The sky** is separate from the rain. It stays exactly as the island's real-time clock
-  paints it until the overcast passes a clear band: a quarter at night, just over half by
-  day, blended through dawn and dusk. Above the band the sky, ground and light grey and dim
-  and fog closes in, in proportion. The clock itself is never touched, so a shower can fall
-  under a clear noon sky and clear weather at 3 AM is a clear starry night.
+- **Soak** is how full the mempool is: its backlog in whole blocks, on a log scale, mixed with the
+  fee pressure of the next projected block. It sets how hard it comes down.
+- **Chill** is how slowly blocks are landing. Block spacing is erratic by nature, so a slow run is a
+  cold snap and the rain turns to snow; a negative difficulty retarget leans the same way.
+- **Gale** is how fast transactions are arriving. It sets the wind, which leans the rain and blows
+  the snow sideways.
 
-| Next-block fee | Overcast | Rain | Daytime sky | Night sky |
-|---|---|---|---|---|
-| empty mempool | 0.00 | dry | clear | clear |
-| 0.34 sat/vB | 0.23 | drizzle, one drop a transaction | clear | clear |
-| 1 sat/vB | 0.43 | light | clear | light cloud |
-| 2 sat/vB | 0.57 | moderate | first cloud | cloudy |
-| 5 sat/vB | 0.74 | steady | partly grey | grey |
-| 10 sat/vB | 0.87 | heavy | grey | dark grey |
-| 20 sat/vB and up | 1.00 | full | full storm | full storm |
+| State | When |
+|---|---|
+| sunny | an empty or nearly empty pool |
+| light rain / rain | a filling pool, blocks landing on time |
+| thunderstorm | a full pool |
+| monsoon | a full pool with transactions pouring in |
+| flurries / snow | a filling pool while blocks run slow |
+| blizzard | a full pool, slow blocks and a hard arrival rate — the island whites out |
 
-The socket is off under `?nosim=1` and `?mempool=0`. The Konami code from the Debug section above
-opens a panel with the live socket state, counters, the chain tip and next-block fee, the
-overcast and cloud values, and the last events.
+**Lightning is blocks.** Every block mined while the page is open strikes a bolt over the island,
+flashes the sky twice and rolls a rumble half a second to a second and a half later, whatever the
+weather is doing — a clear sky included. A thunderstorm also strikes on its own between blocks. No
+two bolts look alike: eight forked shapes are built once and picked at random, turned and mirrored.
+
+**The sky is separate from the rain.** It stays exactly as the island's real-time clock paints it
+until the soak passes a clear band — a quarter at night, just over half by day — so a shower can
+fall under a clear noon sky and a quiet night stays a clear starry night. The clock itself is never
+touched.
+
+The feeds are off under `?nosim=1`; `?mempool=0` stops the socket and `?chain=0` the REST polling.
+`?chain=esplora` pins the fallback provider, and `?chain=https://host/api` points at your own.
+The Konami code from the Debug section opens a panel with the live socket, the pool, the three axes
+and the current state.
 
 ## Test
 
@@ -294,7 +297,14 @@ GitHub Pages deploys through `.github/workflows/pages.yml` on pushes to `rock`, 
 
 ## Privacy
 
-No analytics, no personal data, and two external connections: the mempool.space websocket, which receives public chain data, and the oogatron stats worker, which serves public org activity numbers; neither sends anything about the visitor. The roster lists public contributor handles only. The donation handle and message a visitor types are stored in their own localStorage and nowhere else.
+No analytics and no personal data. The page makes read-only requests to public endpoints and sends nothing about the visitor to any of them:
+
+- the mempool.space websocket, for public chain events;
+- mempool.space's REST API for the mempool backlog, fees, difficulty and hashrate, falling back to a public Esplora instance (blockstream.info) if it stops answering;
+- Coinbase for the bitcoin price, falling back to Kraken and then mempool.space;
+- the oogatron stats worker, for public org activity numbers.
+
+`?nosim=1` silences all of them, and `?chain=0` stops the REST polling alone. The roster lists public contributor handles only. The donation handle and message a visitor types are stored in their own localStorage and nowhere else.
 
 ## License
 

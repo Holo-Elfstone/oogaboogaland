@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, rocketModels, rocketParts, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod, storm: stormMod, mempool, oogatronLive } = BL;
+  const { math, models, contributors, donations, qr, terrain, hubModels, headquartersModels, dropModels, rocketModels, rocketParts, poolModels, caves, daylight, game: gameMod, hud: hudMod, interact: interactMod, pilot: pilotMod, fx: fxMod, crew: crewMod, pile: pileMod, crates: cratesMod, critters: crittersMod, weather: weatherMod, chain, mempool, oogatronLive } = BL;
   const { clamp, lerp, ease, fnv1a, mulberry32 } = math;
   const { createNode, addChild, removeChild, createCamera, addTween, stepTweens, tweenCount, traverseVisible } = BL.scene;
   const { JET_SPEED, JET_RISE, JET_FUEL_SECONDS, JET_MOVE_SECONDS } = crewMod;
@@ -144,9 +144,9 @@
   const WANDER_COUNT = 36, WANDER_INNER = 5.5;
   const ALTAR_HEIGHT = 0.34, ALTAR_BLOCK_WIDTH = 0.2, ALTAR_BLOCK_ARC = 0.3, ALTAR_RING_GAP = 0.02, ALTAR_MAX_BLOCKS = 512;
   const RIPEN = 25, TREE_CHANCE = 0.5, BUSH_CHANCE = 0.25;
-  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", magazine: "Spare magazine · walk into it to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", launchpad: "Ooga Orbit · tap to build a rocket", rocket: "Ooga Orbit · tap to fly", tower: "Launch tower · steady", orbitsign: "Ooga Orbit · the pad past the bridge", bridge: "Rope bridge · to the launch pad", windsock: "Windsock · a fair wind", jumbotron: "Jumbotron · OogaBoogaX on the big screen · frame arrows and dots to flip boards", gate: null };
+  const PROP_TIPS = { tree: "Tree · shake it", bush: "Bush · rustle it", rock: "Rock · hit to break", crate: "Box · hit to break", barrel: "Barrel · hit to break", flower: "Flowers", torch: "Torch · warm", firepit: "Fire pit", bedroll: "Somebody's bed", ladder: "Ladder · wobbly", dock: "Dock · creaky", jetpack: "Jetpack · jump to collect", magazine: "Spare magazine · walk into it to collect", plane: "Ooga Drop · tap to fly", sign: "Ooga Drop · the plane flies from here", launchpad: "Ooga Orbit · tap to build a rocket", rocket: "Ooga Orbit · tap to fly", tower: "Launch tower · steady", orbitsign: "Ooga Orbit · the pad past the bridge", bridge: "Rope bridge · to the launch pad", poolbridge: "Vine bridge · to the Mempool island", poolstair: "The Mempool · tap to climb down", poolsign: "The Mempool · the cave reads the chain", chainsign: "The chain, at a glance", weathersign: "Reading the weather · tap for the key", poolrock: "Mossy rock", poolfern: "Fern · rustle it", poollog: "Fallen log · something lives in it", jaguar: "Jaguar · do not poke", monkey: "Monkey · it watches you", toucan: "Toucan · big beak", canopy: "Rainforest tree · shake it", windsock: "Windsock · a fair wind", jumbotron: "Jumbotron · OogaBoogaX on the big screen · frame arrows and dots to flip boards", gate: null };
   const MATRIX_LIVING_PROPS = new Set(["tree"]);
-  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "dock", "jumbotron", "launchpad", "rocket", "tower", "bridge", "orbitsign"]);
+  const SOLID_PROPS = new Set(["tree", "rock", "crate", "barrel", "firepit", "dock", "jumbotron", "launchpad", "rocket", "tower", "bridge", "orbitsign", "poolbridge", "poolstair", "poolrock", "canopy"]);
   const BUSH_WORDS = ["Something rustles.", "A beetle. Ooga leaves it.", "Just a bush."];
   const LEAF = models.particleGeometry("#4a8530", 0.12, 0);
   const PETALS = ["#e04a3a", "#f2c94c", "#f3efe4"].map((c) => models.particleGeometry(c, 0.09, 0));
@@ -186,7 +186,18 @@
   const JETPACK_HUD_STATE = { owned: false, equipped: false, fuel: 1, blocked: false };
   let enteringTween = null;
   let stateTimer = 0, hintTimer = 0, meterTimer = 0, now = 0, hour = 12, unsubscribeActivity = null;
-  let storm = null, unsubscribeMempool = null;
+  let weather = null, unsubscribeMempool = null, unsubscribeChain = null, mempoolIsland = null;
+  // The two boards across the hole from the vine bridge, one reading the chain and one reading the
+  // weather. Each holds its canvas, its panel node and the reading it last drew, so a snapshot saying
+  // nothing new replaces no geometry.
+  let chainSign = null;
+  // The rainforest animals, by node, so a poke finds the one that was tapped.
+  const beasts = new Map();
+  const BEAST_CRIES = {
+    jaguar: ["RRAAWR!", "*low growl*", "GRRR..."],
+    monkey: ["OOK OOK!", "EEE EEE!", "*chatters*"],
+    toucan: ["SQUAWK!", "KRRK-KRRK!", "*clacks beak*"]
+  };
   let positionDebugNext = 0, positionDebugJSON = "";
   function createPositionPose() {
     return { version: 1, character: "", mode: "detached", closeWanted: false, battle: false, position: [0, 0, 0], target: [0, 0, -1], direction: [0, 0, -1], up: [0, 1, 0], fov: 48 * Math.PI / 180,
@@ -1573,6 +1584,149 @@
       get active() { return active; }, get lastStep() { return lastStep; }, get contacts() { return contacts; }, get jumpRejects() { return jumpRejects; }
     };
   };
+  // A poked animal cries out and startles: one bubble from the shared pool and one bounded tween that
+  // always returns it to its resting pose, so nothing accumulates however often it is prodded.
+  const pokeBeast = (node, kind) => {
+    const beast = beasts.get(node);
+    if (!beast) return;
+    const cries = BEAST_CRIES[kind];
+    fx.sayAt(beast.x, beast.y + (kind === "toucan" ? 1.5 : 1.1), beast.z, cries[fnv1a(`${kind}/${Math.floor(now * 3)}`) % cries.length], 1.8);
+    if (beast.busy) return;
+    beast.busy = true;
+    const hop = kind === "jaguar" ? 0.35 : 0.6, turn = kind === "toucan" ? 1.4 : 0.9;
+    addTween({
+      dur: 0.55,
+      update: (t) => {
+        const k = Math.sin(t * Math.PI);
+        node.position.y = k * hop;
+        node.rotation.y = beast.rest + Math.sin(t * Math.PI * 2) * turn;
+      },
+      done: () => {
+        node.position.y = 0;
+        node.rotation.y = beast.rest;
+        beast.busy = false;
+      }
+    });
+  };
+  // The Mempool island off the west rim: jungle floor, a vine bridge and the cave that reads the
+  // chain. Everything solid, so an Ooga walks across and in. The scatter is claimed off the crossing.
+  const buildMempoolIsland = () => {
+    const P = poolModels, S = P.SITE, DIR = P.DIR, SITE_SHAFT_REACH = S.shaftR + 1.2;
+    // How much ground an animal keeps to itself, measured against each plant's own footprint.
+    const BEAST_CLEAR = 1.3;
+    const place = P.spot(island, {});
+    const site = P.build(place);
+    // The group is turned by `place.ry`, so a local point reaches world through that same rotation:
+    // local +x runs to (cos ry, -sin ry) and local +z to (sin ry, cos ry).
+    const cos = Math.cos(place.ry), sin = Math.sin(place.ry);
+    const worldX = (lx, lz) => place.x + lx * cos + lz * sin;
+    const worldZ = (lx, lz) => place.z - lx * sin + lz * cos;
+    const atNode = (kind, node, radius) => addProp(kind, node, worldX(node.position.x, node.position.z), worldZ(node.position.x, node.position.z), radius);
+    addChild(root, site.node);
+    placed.push(site.node);
+    solids.add(site.ground);
+    addProp("poolbridge", site.bridge, worldX(0, place.bridgeLocalZ + S.span / 2), worldZ(0, place.bridgeLocalZ + S.span / 2), S.width);
+    atNode("poolstair", site.stair, SITE_SHAFT_REACH);
+    atNode("poolsign", site.sign, 1.4);
+    // The bridge arrives along local +z and the cave sign stands between it and the hole, so both boards
+    // go on the far side at -z: with no turn at all their faces already look back up the crossing. They
+    // stand a little apart and toe in, so from the bridge head the pair reads as one post.
+    const B = P.CHAIN_BOARD;
+    const boardNode = createNode({ position: { x: 0, y: 0, z: -(S.shaftR + 2.6) }, geometry: P.chainBoard() });
+    // The panel is centred on the face from the board's own numbers, so resizing the board moves it.
+    const panelNode = createNode({
+      position: { x: -CHAIN_PANEL_W * B.px / 2, y: B.y + (B.h - CHAIN_PANEL_H * B.px) / 2, z: B.d / 2 + 0.02 }
+    });
+    addChild(boardNode, panelNode);
+    addChild(site.node, boardNode);
+    atNode("chainsign", boardNode, B.w * 0.55);
+    // A small post beside it: the weather is the other half of what the chain is saying here.
+    const infoNode = createNode({
+      position: { x: B.w / 2 + 1, y: 0, z: -(S.shaftR + 2.6) }, rotation: { x: 0, y: -0.3, z: 0 }, geometry: P.infoSign()
+    });
+    addChild(site.node, infoNode);
+    atNode("weathersign", infoNode, 1);
+    {
+      const canvas = document.createElement("canvas");
+      canvas.width = CHAIN_PANEL_W;
+      canvas.height = CHAIN_PANEL_H;
+      // willReadFrequently: every refresh reads the panel back, and without it Chrome warns.
+      chainSign = { node: panelNode, ctx2d: canvas.getContext("2d", { alpha: false, willReadFrequently: true }), printed: "" };
+    }
+    for (const torch of site.torches) atNode("torch", torch, 0.5);
+    // Wildlife first, so the scatter can be kept off it: one cached build per species shared by every
+    // copy, placed once and never animated, so the whole menagerie is three draw calls and nothing in
+    // the frame loop. Each one claims the ground it stands on and no plant is seeded inside that.
+    const wildlife = [
+      ["jaguar", P.jaguar(), -7.4, 5.2, 2.1],
+      ["jaguar", P.jaguar(), 8.1, 6.6, -0.6],
+      ["monkey", P.monkey(), 5.6, -7.8, 1.2],
+      ["monkey", P.monkey(), -8.6, -3.4, -2.3],
+      ["toucan", P.toucan(), -4.2, -8.6, 0.4],
+      ["toucan", P.toucan(), 9.4, 1.8, 2.7]
+    ];
+    const claimed = [];
+    for (const [kind, geometry, lx, lz, ry] of wildlife) {
+      const node = createNode({ position: { x: lx, y: 0, z: lz }, rotation: { x: 0, y: ry, z: 0 }, geometry });
+      addChild(site.node, node);
+      atNode(kind, node, 0.7);
+      beasts.set(node, { kind, node, rest: ry, x: worldX(lx, lz), z: worldZ(lx, lz), y: place.y, busy: false });
+      claimed.push({ x: lx, z: lz, r: BEAST_CLEAR });
+    }
+    // Rainforest: three canopy heights, ferns and shrubs under them, each species one shared geometry
+    // and one prop kind, so every plant answers a tap the way the home island's own scatter does.
+    // `r` is both the footprint it claims and the radius a pointer picks it by.
+    const SCATTER = [
+      { upTo: 0.30, kind: "canopy", r: 0.6 },
+      { upTo: 0.50, kind: "bush", r: 0.55 },
+      { upTo: 0.72, kind: "poolfern", r: 0.5 },
+      { upTo: 0.88, kind: "flower", r: 0.6 },
+      { upTo: 0.95, kind: "poolrock", r: 0.7 },
+      { upTo: 2, kind: "poollog", r: 1.7 }
+    ];
+    const rand = mulberry32(4242);
+    const geometryFor = (kind) => kind === "canopy" ? P.CANOPY[(rand() * P.CANOPY.length) | 0]()
+      : kind === "bush" ? P.shrub() : kind === "poolfern" ? P.fern() : kind === "flower" ? P.flowers()
+      : kind === "poolrock" ? P.mossRock() : P.log();
+    for (let i = 0; i < 74; i++) {
+      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * (S.isletR - 1.6);
+      const x = Math.cos(a) * r, z = Math.sin(a) * r;
+      // Keep the stairwell, its approach from the bridge and the pond clear.
+      if (Math.hypot(x, z) < S.shaftR + 4) continue;
+      if (Math.abs(x) < 2.6 && z > 0) continue;
+      if (Math.hypot(x - 6.4, z + 4.6) < 3.2) continue;
+      const roll = rand();
+      const pick = SCATTER.find((e) => roll < e.upTo);
+      // Nothing grows through an animal. Plants still crowd each other, which is what makes it jungle.
+      if (claimed.some((c) => Math.hypot(x - c.x, z - c.z) < c.r + pick.r)) continue;
+      const geometry = geometryFor(pick.kind);
+      // A little scale and turn per copy: free variety, since every copy shares one cached build.
+      const k = 0.82 + rand() * 0.45;
+      const node = createNode({ position: { x, y: 0, z }, rotation: { x: 0, y: rand() * Math.PI * 2, z: 0 }, scale: { x: k, y: 0.9 + rand() * 0.3, z: k }, geometry });
+      addChild(site.node, node);
+      atNode(pick.kind, node, pick.r * k);
+    }
+    // The islet and the rim-to-bridge-head walk are claimed after the home scatter, not before it.
+    // Claiming first made the scatter's seeded retries draw different numbers, reshuffling trees all
+    // over the island; claiming after leaves the scatter exactly as it is without this island, and
+    // reflow then hides only what actually stands on the walk.
+    const claimGround = () => {
+      claim(place.x, place.z, S.isletR + 1);
+      for (let k = 0; k < 7; k += 1.5) claim(DIR.x * (place.rimRadius - k), DIR.z * (place.rimRadius - k), 2.4);
+    };
+    // Look down the stairwell from just above the kerb.
+    presets.pool = { yaw: -2.1, pitch: 0.62, dist: 11, target: { x: place.x, y: place.y - 1.2, z: place.z } };
+    // The weather stands over this island: its centre, its top face, and the ground the rain lands on.
+    const centre = { x: place.x, y: place.y, z: place.z };
+    const groundAt = (gx, gz) => {
+      const dx = gx - place.x, dz = gz - place.z, d2 = dx * dx + dz * dz;
+      // Rain that finds the stairwell falls all the way to the landing at the bottom of it.
+      if (d2 <= S.shaftR * S.shaftR) return place.y - S.shaftDepth + 0.1;
+      if (d2 <= S.isletR * S.isletR) return place.y;
+      return island.surfaceAt(gx, gz);
+    };
+    return { site, place, centre, groundAt, worldX, worldZ, claimGround };
+  };
   // Dock over the drop and ladder on the bluff
   const buildRim = () => {
     const d = polar(DOCK_DEG, CLIFF_OUTER);
@@ -2901,14 +3055,54 @@
     fx.burst(0, DROP_HEIGHT - 0.2, 0, 26, CONFETTI, 2.2);
     fx.showTicker(`THANKS ${donation.handle ? "@" + donation.handle.toUpperCase() : "ANON"} · ${bananas} BANANAS`, 4.5);
   };
-  // The Bitcoin feed: a transaction rains drops sized by its weight, a block strikes and thunders.
+  // The Bitcoin feed: a transaction gusts the weather, a block strikes lightning over the island.
   const onMempool = (event) => {
-    if (event.type === "tx") storm.rain(event.vsize);
-    else if (event.type === "fees") storm.weather(event.nextFee);
+    if (event.type === "tx") weather.rain(event.vsize);
     else if (event.type === "block") {
-      storm.strike();
+      // Every block mined while the page is open strikes, whatever the weather is doing.
+      weather.strike();
       hud.toast(`Block ${event.height} mined${event.txCount ? ` · ${event.txCount} transactions` : ""}`);
     }
+  };
+  // The chain board's four readings, set in the jumbotron's 5x7 font and run-length merged into quads,
+  // exactly as the cave sets its wall panels. The rows are rebuilt only when one of them changed, so a
+  // board left standing all day replaces no geometry and holds its size.
+  const CHAIN_PANEL_W = 96, CHAIN_PANEL_H = 36, CHAIN_PANEL_BG = [42, 39, 36];
+  // A board that has stopped being fed says so by going grey. Holding the last reading out in its
+  // usual colours would be the one genuinely misleading thing this island could do.
+  const STALE_INK = "#7d766a";
+  const chainRows = (s) => {
+    const ink = (live) => s.live ? live : STALE_INK;
+    return [
+      ["BLOCK", s.height ? String(s.height) : "-", ink("#e8c14a")],
+      ["PRICE", s.priceUsd ? `$${Math.round(s.priceUsd).toLocaleString("en-US")}` : "-", ink("#8fbf6a")],
+      ["MEMPOOL", s.count ? `${gameMod.formatLarge(s.count)} TX` : "-", ink("#e8c14a")],
+      ["FAST", s.fastestFee ? `${String(+s.fastestFee.toFixed(s.fastestFee >= 10 ? 0 : 2))} SAT/VB` : "-", ink("#ff9a2a")]
+    ];
+  };
+  const refreshChainSign = () => {
+    if (!chainSign) return;
+    const rows = chainRows(chain.snapshot);
+    const printed = rows.map((r) => r[0] + r[1]).join("|");
+    if (printed === chainSign.printed) return;
+    chainSign.printed = printed;
+    const c2 = chainSign.ctx2d, text = BL.jumbotron.text;
+    c2.fillStyle = `rgb(${CHAIN_PANEL_BG[0]},${CHAIN_PANEL_BG[1]},${CHAIN_PANEL_BG[2]})`;
+    c2.fillRect(0, 0, CHAIN_PANEL_W, CHAIN_PANEL_H);
+    let y = 2;
+    for (const [label, value, color] of rows) {
+      text.drawText(c2, label, 1, y, "#9b8f7a", 1);
+      text.drawText(c2, value, CHAIN_PANEL_W - 1 - text.measureText(value, 1), y, color, 1);
+      y += 8;
+    }
+    const node = chainSign.node;
+    if (node.geometry) renderer.releaseGeometry(node.geometry);
+    node.geometry = poolModels.panelFrom(c2, CHAIN_PANEL_W, CHAIN_PANEL_H, poolModels.CHAIN_BOARD.px, poolModels.CHAIN_BOARD.px, CHAIN_PANEL_BG);
+  };
+  // The standing chain snapshot: how full the pool is, how fast blocks land, how hard they arrive.
+  const onChain = (snapshot) => {
+    weather.apply(snapshot);
+    refreshChainSign();
   };
   const onDonation = (donation) => {
     game.recordDonation(donation);
@@ -3059,6 +3253,48 @@
         break;
       case "bridge":
         hud.toast("The planks sway. Ooga built it.");
+        break;
+      case "poolstair":
+      case "poolsign":
+        enterScene(presets.pool, "pool");
+        break;
+      case "poolbridge":
+        hud.toast("Vines and planks. The Mempool is across.");
+        break;
+      case "weathersign":
+        hud.openWeatherKey();
+        break;
+      case "chainsign": {
+        const snap = chain.snapshot;
+        const age = snap.at ? Math.round((Date.now() - snap.at) / 1000) : 0;
+        hud.toast(!snap.height ? "Waiting on the chain."
+          : snap.live ? `Block ${snap.height} · ${gameMod.formatLarge(snap.count)} waiting · ${snap.deep.toFixed(1)} blocks deep`
+          : `Last heard ${age > 90 ? `${Math.round(age / 60)} min` : `${age}s`} ago · block ${snap.height} · ${snap.degraded ? "fallback source" : "no answer"}`);
+        break;
+      }
+      case "poolrock":
+        hud.toast("Moss grows thick on the Mempool island.");
+        break;
+      case "canopy":
+        if (!wobble(o.node, 0.08)) return;
+        fx.burst(x, 4.2, z, 10, [LEAF], 1.7);
+        if (RENDER_OPTS.stars > NIGHT) critters.burst(x, z);
+        if (!dropBanana(o, TREE_CHANCE)) hud.toast("Leaves and lianas.");
+        break;
+      case "poolfern":
+        if (!wobble(o.node, 0.3)) return;
+        fx.burst(x, w[13] + 0.5, z, 6, [LEAF], 1.1);
+        if (!dropBanana(o, BUSH_CHANCE)) hud.toast("Fronds. Ooga finds nothing.");
+        break;
+      case "poollog":
+        if (!wobble(o.node, 0.1)) return;
+        fx.burst(x, w[13] + 0.5, z, 6, [DUST], 1.1);
+        hud.toast("Rotten through. Ooga hears something inside.");
+        break;
+      case "jaguar":
+      case "monkey":
+      case "toucan":
+        pokeBeast(o.node, o.prop);
         break;
       case "windsock":
         hud.toast("A fair wind for a drop.");
@@ -4286,7 +4522,7 @@
     hour = clock.read();
     daylight.sample(hour, RENDER_OPTS, clock.dayOfYear, islandLatitude, clock.continuousDay);
     RENDER_OPTS.time = elapsed;
-    storm.update(dt, RENDER_OPTS);
+    weather.update(dt, RENDER_OPTS);
     updateLamps(dt, elapsed, phase !== null);
     if (jumbotron) jumbotron.update(elapsed, renderer);
     if (fireworksShells.length) updateFireworks();
@@ -4808,6 +5044,7 @@
     });
     buildRim();
     buildLaunchSite();
+    mempoolIsland = buildMempoolIsland();
     const firePos = buildFire();
     fire = lamps[lamps.length - 1];
     // The jumbotron stands on the rim crest just west of the gate, turned to face the meadow center.
@@ -4840,6 +5077,7 @@
       });
     }
     scatter();
+    mempoolIsland.claimGround();
     reflowScenery();
     buildSpots();
     buildClouds();
@@ -4881,8 +5119,11 @@
     shared.onAbyssRespawn = loseMagazine;
     shared.characterOccluded = characterUiOccluded;
     fx = shared.fx = fxMod.create(shared);
-    storm = stormMod.create({ root, renderer, camera, heightAt: island.surfaceAt, fx });
-    if (mempool.state.projectedBlocks) storm.weather(mempool.state.nextFee);
+    weather = weatherMod.create({ root, renderer, camera, heightAt: mempoolIsland.groundAt, fx, centre: mempoolIsland.centre });
+    // The snapshot outlives the visit, so a re-entered hub opens in the weather it left.
+    weather.apply(chain.snapshot);
+    refreshChainSign();
+    unsubscribeChain = chain.subscribe(onChain);
     unsubscribeMempool = mempool.subscribe(onMempool);
     shared.characterSupportAt = characterSupportAt;
     // Every Agent on the island, the called-in ones included, so the crew keeps
@@ -5236,7 +5477,7 @@
         get shown() {
           return pile.shown;
         },
-        island, mouths: island.mouths, labels, launchers, camera, storm, cameraPose: POSITION_POSE, crew, fx, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron, fireworks: launchFireworks, get fireworksPending() { return fireworksShells.length; }, agent: agent.debug,
+        island, mouths: island.mouths, labels, launchers, camera, weather, chain, beasts, pokeBeast, useProp, refreshChainSign, get chainSign() { return chainSign; }, get poolIsland() { return mempoolIsland; }, cameraPose: POSITION_POSE, crew, fx, controls: pilot.controls, props, altar, path: island.path.debug, headquarters, jumbotron, fireworks: launchFireworks, get fireworksPending() { return fireworksShells.length; }, agent: agent.debug,
         scenery: {
           get candidateCount() { return scenery.length; },
           get visibleCount() { return sceneryVisible; },
@@ -5474,7 +5715,11 @@
     unsubscribeActivity = null;
     unsubscribeMempool();
     unsubscribeMempool = null;
-    storm.dispose();
+    unsubscribeChain();
+    unsubscribeChain = null;
+    if (chainSign && chainSign.node.geometry) renderer.releaseGeometry(chainSign.node.geometry);
+    chainSign = null;
+    weather.dispose();
     window.clearTimeout(hintTimer);
     if (positionDebug) {
       positionDebug.removeEventListener("click", copyPositionDebug);
@@ -5552,8 +5797,9 @@
     }
     extraAgents.length = extraLives.length = agentBodies.length = 0;
     hubScene.spawnAgent = null;
-    pathNode = altar = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = crates = critters = clock = presets = jetpack = jetpackState = jetpackCarrier = jetpackWearer = lastJetpackCloud = mirrorCave = matrixCave = matrixControl = gateRain = fire = headquarters = dockStairs = overlayCanvas = positionDebug = agent = agentPlay = null;
-    magazine = magazineState = breakables = storm = null;
+    pathNode = altar = hud = hooks = input = pilot = fx = cameraCover = bananaCover = solids = rockGuides = objectGuides = sightGuides = bananaGuides = pileGuides = platformGuides = mirrorGuides = pile = crew = crates = critters = clock = presets = jetpack = jetpackState = jetpackCarrier = jetpackWearer = lastJetpackCloud = mirrorCave = matrixCave = matrixControl = gateRain = fire = headquarters = positionDebug = agent = agentPlay = dockStairs = overlayCanvas = null;
+    beasts.clear();
+    magazine = magazineState = breakables = weather = mempoolIsland = null;
     hubScene.input = hubScene.debug = hubScene.agent = hubScene.agentView = hubScene.agentControls = hubScene.agentHandoff = null;
     return { targets: count };
   };
@@ -5568,13 +5814,13 @@
     let nodes = 0;
     traverseVisible(root, () => nodes++);
     const all = (n) => 1 + n.children.reduce((sum, c) => sum + all(c), 0);
-    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crates.stats(), ...crew.stats(), ...pile.stats(), ...critters.stats(), ...breakables.stats(), ...storm.stats() };
+    return { visibleNodes: nodes, allNodes: all(root), tweens: tweenCount(), targets: input.targetCount, ...fx.stats(), ...crates.stats(), ...crew.stats(), ...pile.stats(), ...critters.stats(), ...breakables.stats(), ...weather.stats() };
   };
   const hubScene = {
     id: "hub", enter, update, overlay, onDonation, onKey, onLootCleared, renderOpts: RENDER_OPTS, leave, stats, liveGeometry,
     root: null, camera: null, input: null, debug: null, agent: null, agentView: null, agentControls: null, agentHandoff: null, spawnAgent: null,
     get inMotion() {
-      if (pile.inMotion || fx.inMotion || breakables.inMotion || storm.active || jetpack || magazine && magazine.revealed || MATRIX_WORLD.active || mirrorGuides.state.doorway || mirrorCave.damage.active || mirrorCave.ripples.active || mirrorCave.body.active) return true;
+      if (pile.inMotion || fx.inMotion || breakables.inMotion || weather.active || jetpack || magazine && magazine.revealed || MATRIX_WORLD.active || mirrorGuides.state.doorway || mirrorCave.damage.active || mirrorCave.ripples.active || mirrorCave.body.active) return true;
       for (const sign of headquarters.roomSigns) if (sign.velocity || sign.node.rotation.x) return true;
       for (let i = 0; i < matrixGates.length; i++) if (matrixCave && (matrixGates[i].raising || matrixCave.unlocked && matrixGates[i].node.position.y !== MATRIX_GATE_HIDDEN_Y)) return true;
       return false;
