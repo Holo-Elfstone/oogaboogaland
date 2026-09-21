@@ -466,7 +466,7 @@
       fx.burst(r.x, r.y + 0.8, r.z, 8, [SPARK, DUST], 2);
       fx.say(r.cave, kind === "peel" ? "Slippy!" : kind === "boulder" ? "OOF." : "Ow! Rock!", 1.4);
       if (r === racers.player) cam.shake = Math.max(cam.shake, 0.7);
-      if (by === racers.player && by) hud.toast(`${r.name} spun out`);
+      if (by === racers.player && by) hud.toast(`${BL.characters.displayOf(r.name)} spun out`);
       if (r === racers.player || by === racers.player) audio.cues.hit();
       peelOut(r, 0.12, 0.4, 5);
     };
@@ -554,7 +554,7 @@
   };
   const tooltipFor = (hit) => {
     const o = hit.owner;
-    if (o.kind === "racer") return o.racer.name;
+    if (o.kind === "racer") return BL.characters.displayOf(o.racer.name);
     return "";
   };
   const simulate = (dt) => {

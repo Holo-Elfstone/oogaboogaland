@@ -224,7 +224,7 @@
       presence.title = "Offline";
       const name = document.createElement("span");
       name.className = "roster-name";
-      name.textContent = contributor.name;
+      name.textContent = contributor.display;
       const age = document.createElement("span");
       age.className = "roster-age";
       age.append("");
@@ -315,7 +315,7 @@
     const nextDetachedView = () => DETACHED_PRESETS[(DETACHED_PRESETS.indexOf(detachedPreset) + 1) % DETACHED_PRESETS.length];
     let modeName = "", modeGeometry = null, modeSelected = false, modeBattle = false, modeView = "detached", modeHealth = -1;
     const setMode = (cave, battle = false, view = cave ? "orbit" : "detached", visible = true) => {
-      const selected = !!cave, name = selected ? cave.traits.name : "";
+      const selected = !!cave, name = selected ? cave.traits.name : "", shown = selected ? cave.traits.display : "";
       const identityChanged = selected !== modeSelected || selected && name !== modeName;
       const stateChanged = battle !== modeBattle || view !== modeView;
       if (el.mode.hidden === visible) el.mode.hidden = !visible;
@@ -345,9 +345,9 @@
         el.mode.dataset.view = selected ? view : "detached";
         el.mode.setAttribute("aria-pressed", String(selected && battle));
         el.mode.setAttribute("aria-label", selected
-          ? `${name}; ${view} view; ${battle ? "battle" : "carry"} mode. Press to switch battle or carry mode; hold to detach`
+          ? `${shown}; ${view} view; ${battle ? "battle" : "carry"} mode. Press to switch battle or carry mode; hold to detach`
           : `${DETACHED_NAMES[detachedPreset]} detached view. Press to cycle destinations`);
-        el.mode.title = selected ? `${name} · ${view} · ${battle ? "battle" : "carry"} · hold to detach` : `${DETACHED_NAMES[detachedPreset]} · detached`;
+        el.mode.title = selected ? `${shown} · ${view} · ${battle ? "battle" : "carry"} · hold to detach` : `${DETACHED_NAMES[detachedPreset]} · detached`;
       }
     };
     setDetachedView(detachedPreset);
@@ -960,8 +960,8 @@
             const chip = document.createElement("button");
             chip.type = "button";
             chip.className = "chip";
-            chip.title = `Take ${item.name} off ${w.name}`;
-            chip.textContent = w.name;
+            chip.title = `Take ${item.name} off ${BL.characters.displayOf(w.name)}`;
+            chip.textContent = BL.characters.displayOf(w.name);
             chip.addEventListener("click", () => unassignHandler && unassignHandler(w.name));
             chips.append(chip);
           }
@@ -980,7 +980,7 @@
           const opt = document.createElement("option");
           opt.value = contributor.name;
           const wearing = wornBy(contributor.name);
-          opt.textContent = wearing ? `${contributor.name} · ${wearing}` : `${contributor.name} · no swag`;
+          opt.textContent = wearing ? `${contributor.display} · ${wearing}` : `${contributor.display} · no swag`;
           select.append(opt);
         }
         select.addEventListener("change", () => {

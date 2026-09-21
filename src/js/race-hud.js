@@ -80,7 +80,7 @@
       el.racers.replaceChildren(...roster.map((c) => row("racer", c.name, (b) => {
         const name = document.createElement("span");
         name.className = "garage-name";
-        name.textContent = c.name;
+        name.textContent = c.display;
         const state = document.createElement("span");
         state.className = "roster-state";
         state.dataset.state = stateOf(c.name);
@@ -200,7 +200,7 @@
       const li = document.createElement("li");
       if (r.you) li.className = "you";
       const name = document.createElement("span");
-      name.textContent = r.name + (r.you ? " (you)" : "");
+      name.textContent = BL.characters.displayOf(r.name) + (r.you ? " (you)" : "");
       const value = document.createElement("span");
       value.textContent = right;
       li.append(name, value);

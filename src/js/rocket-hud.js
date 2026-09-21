@@ -50,7 +50,7 @@
       onPilot();
     });
     const setPilot = (name) => {
-      el.pilotName.firstChild.data = name;
+      el.pilotName.firstChild.data = BL.characters.displayOf(name);
     };
     const button = (text, className, fn) => {
       const b = document.createElement("button");

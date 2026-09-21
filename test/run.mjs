@@ -14253,7 +14253,7 @@ const { characterStatusProbe, humanPresenceProbe } = (() => {
     const tooltip = B.hud.tooltip, node = document.getElementById("tooltip"), original = cave.state, originalControlled = cave.humanControlled, rows = [];
     const rosterRows = [...document.querySelectorAll("#roster li")], rosterRow = rosterRows.find((row) => row.dataset.name === cave.traits.name);
     const roster = rosterRow.querySelector(".roster-state"), presence = rosterRow.querySelector(".roster-presence");
-    const originals = rosterRows.map((row) => ({ name: row.dataset.name, state: row.querySelector(".roster-state").dataset.state,
+    const originals = rosterRows.map((row) => ({ name: row.dataset.name, text: row.querySelector(".roster-name").textContent, state: row.querySelector(".roster-state").dataset.state,
       age: row.querySelector(".roster-age").textContent, online: row.querySelector(".roster-presence").dataset.online === "true",
       children: [...row.children], textNodes: [...row.children].map((child) => child.firstChild) }));
     const panel = document.querySelector('[data-panel="roster"]'), panelHidden = panel.hidden;
@@ -14285,7 +14285,7 @@ const { characterStatusProbe, humanPresenceProbe } = (() => {
     try {
       panel.hidden = false;
       const initialLayout = layout();
-      tooltip.show(cave.traits.name, 0, 0, cave);
+      tooltip.show(cave.traits.display, 0, 0, cave);
       for (const online of [false, true]) for (const state of states) {
         const activity = state === "away" ? "chilling" : state, displayedState = online ? "online" : activity;
         cave.state = state; cave.humanControlled = online; tooltip.update(false);
@@ -14296,8 +14296,8 @@ const { characterStatusProbe, humanPresenceProbe } = (() => {
         const dot = getComputedStyle(node, "::before"), presenceStyle = getComputedStyle(presence), positions = layout();
         rows.push({ state, online, displayedState: node.dataset.state, color: dot.backgroundColor,
           circle: dot.width === dot.height && parseFloat(dot.width) >= 6 && dot.borderRadius === "50%",
-          usernameOnly: node.textContent === cave.traits.name, label: node.getAttribute("aria-label"), statusText: roster.textContent,
-          labelMatches: node.dataset.state === displayedState && node.getAttribute("aria-label") === `${cave.traits.name}, ${labels[displayedState]}, ${Math.ceil(cave.health.value)} of 25 health`
+          usernameOnly: node.textContent === cave.traits.display, label: node.getAttribute("aria-label"), statusText: roster.textContent,
+          labelMatches: node.dataset.state === displayedState && node.getAttribute("aria-label") === `${cave.traits.display}, ${labels[displayedState]}, ${Math.ceil(cave.health.value)} of 25 health`
             && roster.dataset.state === activity && roster.textContent === labels[activity],
           rosterColor: getComputedStyle(roster).color, selectedColor: getComputedStyle(selectedState).color,
           colorMatches: dot.backgroundColor === colors[displayedState] && getComputedStyle(roster).color === colors[activity]
@@ -14312,7 +14312,7 @@ const { characterStatusProbe, humanPresenceProbe } = (() => {
           agesAligned: positions.every((p) => Math.abs(p.ageLeft - positions[0].ageLeft) < 0.1
             && Math.abs(p.ageRight - positions[0].ageRight) < 0.1 && Math.abs(p.stateLeft - positions[0].stateLeft) < 0.1
             && Math.abs(p.stateRight - positions[0].stateRight) < 0.1),
-          usernamesStable: rosterRows.every((row, i) => row.querySelector(".roster-name").textContent === originals[i].name),
+          usernamesStable: rosterRows.every((row, i) => row.querySelector(".roster-name").textContent === originals[i].text),
           namesComplete: rosterRows.every((row) => {
             const name = row.querySelector(".roster-name");
             return name.scrollWidth <= name.clientWidth;
@@ -14548,7 +14548,7 @@ const { characterTooltipProbe } = (() => {
       Object.assign(camera.target, centeredTarget); render();
       const expiredWords = draw(2), afterExpiry = tip();
       return { found: true, spoke: true, scene: B.scene, username: cave.traits.name, styled,
-        usernameOnly: !initial.hidden && initial.text === cave.traits.name,
+        usernameOnly: !initial.hidden && initial.text === cave.traits.display,
         aboveHead: initial.bottom <= initialHead.minY - 3,
         speechAboveHead: spoken.bottom <= initialHead.minY - 3,
         followsHead: !moved.hidden && moved.bottom <= movedHead.minY - 3 && Math.hypot(moved.x - initial.x, moved.top - initial.top) > 4,
@@ -26237,7 +26237,7 @@ const contributorActivityChecks = async () => {
   record("banana weapon activity: one-hour clank and 24-hour chill boundaries, per-project updates, org snapshots, invalid data, and debug mix", Object.values(r).every(Boolean), JSON.stringify(r));
   const liveContext = { window: {}, URLSearchParams, location: { search: "" } };
   for (const name of [...CONTRIBUTOR_SOURCES, "jumbotron-data"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), liveContext);
-  const live = liveContext.window.BL, generatedAt = Date.parse(live.jumbotronData.meta.generated_at), aliases = { bc1gui: "ottoz0r" };
+  const live = liveContext.window.BL, generatedAt = Date.parse(live.jumbotronData.meta.generated_at), aliases = Object.fromEntries(live.characters.all().filter((c) => c.github).map((c) => [c.handle, c.github]));
   const byLogin = new Map(live.jumbotronData.contributors.map((entry) => [entry.login.toLowerCase(), entry]));
   const matched = live.contributors.roster.map((entry) => ({ entry, source: byLogin.get((aliases[entry.name] || entry.name).toLowerCase()) })).filter((row) => row.source);
   const accepted = live.contributors.applySnapshot(live.jumbotronData, generatedAt);
@@ -26263,6 +26263,21 @@ const contributorActivityChecks = async () => {
       return other && other.last_seen_at !== c.last_seen_at;
     })));
   record("Oogatron snapshot: matched Oogas take backend last-seen times fanned out per repository, and the baked repo rows are genuinely repo-scoped", matched.length >= 7 && accepted === matched.length && current && perRepo && aligned && repoScoped, JSON.stringify({ matched: matched.map(({ entry, source }) => [entry.name, source.login, source.last_seen_at]), accepted, perRepo, aligned, repoScoped, repoRows: blobRepos.map((repo) => [repo.name, repo.contributors.length, repo.totals.contributors]) }));
+  // Every character must join the stats by login, or their Ooga freezes on the
+  // baked lastCommit and sleeps in the HQ forever (the DrNeski/itsneski bug).
+  // Characters younger than the committed bake are exempt: their login cannot
+  // be in it yet, and CI regenerates the bake after each merge.
+  const bakedLogins = new Set([
+    ...live.jumbotronData.contributors.map((c) => c.login),
+    ...Object.values(live.jumbotronData.leaderboards).flat().map((c) => c.login),
+    ...live.jumbotronData.repos.flatMap((repo) => [...repo.contributors.map((c) => c.login), ...Object.values(repo.leaderboards).flat().map((c) => c.login)]),
+    ...live.jumbotronData.recent.map((c) => c.login)
+  ].map((login) => login.toLowerCase()));
+  const unjoined = live.characters.all()
+    .filter((c) => c.joined * 1e3 <= generatedAt && !bakedLogins.has((c.github || c.handle).toLowerCase()))
+    .map((c) => ({ handle: c.handle, joinKey: (c.github || c.handle).toLowerCase() }));
+  record("characters: every join key (github || handle) matches a login in the baked Oogatron snapshot, so no Ooga sleeps forever on a mismatch", unjoined.length === 0,
+    unjoined.length ? `fix the handle, add github: "<login>" to the character file, or regenerate src/js/jumbotron-data.js: ${JSON.stringify(unjoined)}` : "");
 };
 task("banana weapon activity", contributorActivityChecks);
 // Every file in src/characters/ must register once and build a whole Ooga, so a
@@ -26280,11 +26295,12 @@ const characterChecks = async () => {
       : !!m.tint && parts.every((geo) => m.tint.has(geo) && m.tint.get(m.tint.get(geo)) === geo && m.tint.get(geo).faces.length === geo.faces.length);
     return { handle: c.handle, joined: c.joined > 1.7e9 && c.joined < 4e9, built: m.headOpen.faces.length > 0 && m.headClosed.faces.length > 0 && m.headOpen !== m.headClosed,
       parts: ["legL", "legR", "torso", "armL", "armR", "head", "club", "gun"].every((key) => m.parts[key]), hooks: Object.keys(c.dress || {}).every((key) => hooks.includes(key) && typeof c.dress[key] === "function"),
-      tint, voice: !c.voice || typeof c.voice.poke === "string" && Array.isArray(c.voice.idle) };
+      tint, voice: !c.voice || typeof c.voice.poke === "string" && Array.isArray(c.voice.idle),
+      display: c.display === undefined || typeof c.display === "string" && !!c.display.trim() && c.display.length <= 39 };
   });
   const unique = new Set(all.map((c) => c.handle.toLowerCase())).size === all.length;
   const ordered = all.every((c, i) => !i || all[i - 1].joined <= c.joined);
-  record("characters: every src/characters file registers one handle, builds a whole Ooga and uses only known hooks", rows.length === CAST && CAST === BL.contributors.roster.length && unique && ordered && rows.every((r) => r.joined && r.built && r.parts && r.hooks && r.tint && r.voice), JSON.stringify(rows.filter((r) => !(r.joined && r.built && r.parts && r.hooks && r.tint && r.voice))));
+  record("characters: every src/characters file registers one handle, builds a whole Ooga and uses only known hooks", rows.length === CAST && CAST === BL.contributors.roster.length && unique && ordered && rows.every((r) => r.joined && r.built && r.parts && r.hooks && r.tint && r.voice && r.display), JSON.stringify(rows.filter((r) => !(r.joined && r.built && r.parts && r.hooks && r.tint && r.voice && r.display))));
 };
 task("characters", characterChecks);
 // The mempool.space feed parser in Node: message shapes as the socket sends them, no socket.

@@ -712,7 +712,7 @@
     }
     if (e.key === "l" || e.key === "L") demoTip(120000);
   };
-  const tooltipFor = (hit) => hit.owner.kind === "diver" ? diver.cave.traits.name : "";
+  const tooltipFor = (hit) => hit.owner.kind === "diver" ? diver.cave.traits.display : "";
   const pickDiver = (name) => {
     selection.racer = name;
     buildDiver();
