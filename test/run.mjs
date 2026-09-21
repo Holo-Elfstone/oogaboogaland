@@ -26201,6 +26201,35 @@ const task = (name, run, opts = {}) => tasks.push({ name, run, ...opts });
 const HUB_FOLD = 4;
 const hubSteps = [];
 const hubTask = (name, fn) => hubSteps.push([name, fn]);
+hubTask("controls help", async (b) => {
+  const state = await b.evaluate(`(() => {
+    const button = document.getElementById("controls-help-button");
+    const dialog = document.getElementById("controls-help");
+    button.click();
+    const headings = [...dialog.querySelectorAll("h3")].map((el) => el.textContent.trim());
+    const rows = [...dialog.querySelectorAll(".controls-list > div")].map((el) => [
+      el.querySelector("b").textContent.trim(),
+      el.querySelector("span").textContent.trim()
+    ]);
+    const text = dialog.textContent;
+    const state = {
+      button: !!button && !button.hidden,
+      open: dialog.open,
+      headings,
+      rows,
+      minigameText: /Rally|Drop|Orbit/.test(text)
+    };
+    dialog.close();
+    return state;
+  })()`);
+  record("controls help: the Hub ? opens the persistent Hub controls reference",
+    state.button && state.open
+      && state.headings.join("|") === "Free camera|Controlling an Ooga"
+      && state.rows.some(([key, action]) => key === "WASD / arrows" && action === "Move")
+      && state.rows.some(([key, action]) => key === "WASD" && action === "Walk / move")
+      && !state.minigameText,
+    JSON.stringify(state));
+});
 for (const backend of BACKENDS) task(`matrix free camera reach ${backend}`, () => withPage(`matrix free camera reach ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
   const initial = await b.evaluate(`(() => { const B = window.__ooga, scene = window.BL.scenes.hub; window.__matrixFreeUpdate = scene.update; scene.update = () => {}; B.matrixCave.viewInside(false); return { y: B.camera.position.y, targetY: B.pilot.orbit.target.y, pressed: B.matrixGate.pressed, player: !!B.crew.player }; })()`);
   try {
