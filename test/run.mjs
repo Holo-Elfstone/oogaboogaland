@@ -24596,7 +24596,20 @@ const contributorActivityChecks = async () => {
     const row = repo.contributors.find((c) => c.login.toLowerCase() === loginOf(entry));
     return !row || entry.activity.get(`oogaboogax/${repo.name.toLowerCase()}`) === Date.parse(row.last_seen_at);
   }));
-  record("Oogatron snapshot: matched Oogas take backend last-seen times fanned out per repository, including aliases and pre-fallback timestamps", matched.length >= 7 && accepted === matched.length && current && perRepo, JSON.stringify({ matched: matched.map(({ entry, source }) => [entry.name, source.login, source.last_seen_at]), accepted, perRepo }));
+  // Data integrity of the committed bake itself: each repo's contributor rows
+  // must be that repo's own (aligned with its contributor total), and the
+  // sets must genuinely differ between repos — identical org-wide copies
+  // under every repo would fan bogus activity onto every repository key and
+  // mis-route workers for the whole session.
+  const blobRepos = live.jumbotronData.repos;
+  const aligned = blobRepos.every((repo) => repo.contributors.length === repo.totals.contributors);
+  const repoScoped = blobRepos.length < 2 || blobRepos.some((a, i) => blobRepos.slice(i + 1).some((b) =>
+    a.contributors.length !== b.contributors.length ||
+    a.contributors.some((c) => {
+      const other = b.contributors.find((o) => o.login === c.login);
+      return other && other.last_seen_at !== c.last_seen_at;
+    })));
+  record("Oogatron snapshot: matched Oogas take backend last-seen times fanned out per repository, and the baked repo rows are genuinely repo-scoped", matched.length >= 7 && accepted === matched.length && current && perRepo && aligned && repoScoped, JSON.stringify({ matched: matched.map(({ entry, source }) => [entry.name, source.login, source.last_seen_at]), accepted, perRepo, aligned, repoScoped, repoRows: blobRepos.map((repo) => [repo.name, repo.contributors.length, repo.totals.contributors]) }));
 };
 task("banana weapon activity", contributorActivityChecks);
 // Every file in src/characters/ must register once and build a whole Ooga, so a

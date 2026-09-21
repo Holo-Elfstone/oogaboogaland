@@ -24,6 +24,16 @@ if (stats?.meta?.schema_version !== 3 || typeof stats.meta.org !== "string" || !
   console.warn(`keeping the committed bake: expected an org-wide v3 snapshot, got schema_version ${stats?.meta?.schema_version}`);
   process.exit(0);
 }
+// Repo contributor rows must actually be repo-scoped: identical sets across
+// every repo (the signature of org-copied placeholder data) or rows
+// exceeding a repo's own contributor total would fan bogus activity onto
+// every repository key and mis-route the island's workers.
+const rowsOf = (r) => (Array.isArray(r.contributors) ? r.contributors : []).map((c) => `${c.login}@${c.last_seen_at}`).sort().join("|");
+if (stats.repos.some((r) => (Array.isArray(r.contributors) ? r.contributors : []).length > r.totals.contributors) ||
+    (stats.repos.length > 1 && new Set(stats.repos.map(rowsOf)).size === 1)) {
+  console.warn("keeping the committed bake: repos[].contributors are not repo-scoped");
+  process.exit(0);
+}
 
 // Ship public handles and activity only, never profile names or metadata.
 const counts = ({ commits, prs, reviews, issues, comments }) => ({ commits, prs, reviews, issues, comments });
