@@ -12249,11 +12249,11 @@ const { jumbotronProbe } = (() => {
           && Number.isFinite(Date.parse(c.last_seen_at)));
         // The parsed model carries logins only, so there is nothing personal to leak.
         const loginOnly = parsed.contributors.every((c) => Object.keys(c).length === 1 && typeof c.login === "string");
-        const orgSums = ["commits", "prs", "reviews", "comments"].every((key) =>
+        const orgSums = ["commits", "prs", "reviews", "issues", "comments"].every((key) =>
           parsed.repos.reduce((sum, r) => sum + r.totals[key], 0) === parsed.totals[key]);
         const recentRows = parsed.recent.length > 0 && parsed.recent.every((e) =>
           typeof e.login === "string" && typeof e.repo === "string"
-          && ["commit", "pr", "review", "merge", "comment"].includes(e.type)
+          && ["commit", "pr", "review", "merge", "issue", "comment"].includes(e.type)
           && Number.isFinite(Date.parse(e.occurredAt)));
         const repoBoards = parsed.repos.every((r) =>
           ["commits", "prs", "reviews", "comments"].every((k) => Array.isArray(r.leaderboards[k]))
@@ -12318,7 +12318,50 @@ const { jumbotronProbe } = (() => {
     j.nextView();
     await frames(3);
     const advanced = { view: j.view.name, screenFaces: facesOf(screen), drew: facesOf(screen) > 50 && before > 50 };
-    return { exists: true, placement, data, initial, leaderboard, repoView, fallback, recentView, idleFiltered, refreshed, rejected, restored, advanced };
+    // Navigation chrome: rays aimed at board pixels through the cabinet
+    // transform must land on the corner arrows, the dot strip, and the
+    // half-board default zones; a miss falls back to plain advance.
+    j.setView("recent");
+    await frames(3);
+    const m = j.node.world;
+    const navRay = (bx, by) => {
+      const w = j.boardToWorld(bx, by);
+      return { ox: w.x + m[8] * 2, oy: w.y + m[9] * 2, oz: w.z + m[10] * 2, dx: -m[8], dy: -m[9], dz: -m[10] };
+    };
+    const nav = {
+      prevCorner: j.tapAt(navRay(10, 103)),
+      nextCorner: j.tapAt(navRay(182, 103)),
+      dot: j.tapAt(navRay(96, 103)),
+      dotView: j.view.name,
+      center: j.tapAt(navRay(96, 50)),
+      leftEdge: j.tapAt(navRay(10, 50)),
+      miss: j.tapAt({ ox: j.node.position.x, oy: j.node.position.y + 50, oz: j.node.position.z, dx: 0, dy: 1, dz: 0 })
+    };
+    await frames(2);
+    // The reserved bottom strip holds only chrome; its lit quads prove the
+    // arrows and dots painted (board y>=100 maps to local y < -0.42).
+    let stripQuads = 0;
+    if (screen.geometry) {
+      const g = screen.geometry;
+      for (const f of g.faces) {
+        const top = Math.max(g.verts[f.i[0] * 3 + 1], g.verts[f.i[2] * 3 + 1]);
+        if (top < -0.42 && top > -0.5) stripQuads++;
+      }
+    }
+    // Any manual slide change restarts the auto-rotate countdown.
+    const rot = (() => {
+      j.autoRotate(8);
+      j.setView("totals");
+      j.update(1000, B.renderer);
+      const held = j.view.name;
+      j.update(1007.5, B.renderer);
+      const still = j.view.name === held;
+      j.update(1008.2, B.renderer);
+      const rotated = j.view.name !== held;
+      j.setView("recent"); // re-syncs lastSwitchAt to scene time on the next real frame
+      return { held, still, rotated };
+    })();
+    return { exists: true, placement, data, initial, leaderboard, repoView, fallback, recentView, idleFiltered, refreshed, rejected, restored, advanced, nav, stripQuads, rot };
   };
   return { jumbotronProbe };
 })();
@@ -14802,8 +14845,14 @@ const { contributorActivityProbe } = (() => {
       const orgV3 = { meta: { org: "OogaBoogaX", schema_version: 3, generated_at: new Date(at).toISOString() },
         contributors: [{ login: second.name, last_seen_at: new Date(at - 90000).toISOString() }] };
       const orgWideV3 = applySnapshot(orgV3, at) === 1 && second.lastCommitAt === at - 90000;
+      const fanned = { meta: { org: "OogaBoogaX", schema_version: 3, generated_at: new Date(at).toISOString() },
+        contributors: [{ login: second.name, last_seen_at: new Date(at - 30000).toISOString() }],
+        repos: [{ name: "oogaboogaland", contributors: [{ login: second.name, last_seen_at: new Date(at - 30000).toISOString() }] }] };
+      const fanOut = applySnapshot(fanned, at) === 1 && second.activity.get("oogaboogax/oogaboogaland") === at - 30000 &&
+        hasRecentActivity(second, "oogaboogax/oogaboogaland", at) && second.activity.get("oogaboogax/entropylab") !== at - 30000;
       const orgWide = applySnapshot(orgSnapshot("OogaBoogaX", second.name, 60000), at) === 1 &&
-        second.lastCommitAt === at - 60000 && hasRecentActivity(second, "oogaboogax/entropylab", at) && stateFor(second, at) === "working";
+        second.activity.get("oogaboogax/entropylab") === at - 60000 && second.lastCommitAt === at - 30000 &&
+        hasRecentActivity(second, "oogaboogax/entropylab", at) && stateFor(second, at) === "working";
       const wrongOrg = applySnapshot(orgSnapshot("SomeoneElse", second.name, 0), at) === 0;
       const absentTime = snapshot("OogaBoogaX/entropylab", first.name, 0);
       delete absentTime.contributors[0].last_seen_at;
@@ -14824,7 +14873,7 @@ const { contributorActivityProbe } = (() => {
       applyActivity(Array.from({ length: 70 }, (_, i) => ({ name: first.name, repo: `OogaBoogaX/project-${i}`, lastCommitAt: at })), at);
       const boundedProjects = first.activity.size === 64 && hasRecentActivity(first, "oogaboogax/project-62", at) &&
         !hasRecentActivity(first, "oogaboogax/project-63", at);
-      return { boundaries, invalidStates, labels, update, invalid, expires, projects, otherRepo, orgWideV3, orgWide, wrongOrg, noSyntheticActivity, strictTimestamp,
+      return { boundaries, invalidStates, labels, update, invalid, expires, projects, otherRepo, orgWideV3, fanOut, orgWide, wrongOrg, noSyntheticActivity, strictTimestamp,
         unsubscribed, debugFixture, pinnedWorks, boundedProjects, rosterUnchanged: roster.length === saved.length };
     } finally {
       unsubscribe();
@@ -23037,7 +23086,7 @@ const headquarters = () => withPage("headquarters", hubPage(src), async (b) => {
   record("headquarters: free orbit retains its exact requested pose at every frontage station, including rock above lower rooms", apronCameras.length === 24 && apronCameras.some((p) => p.lowerCeiling !== null && p.lowerCeiling < 0) && apronCameras.some((p) => p.y < p.ground) && apronCameras.every((p) => p.index === 0 && (p.along !== 1.6 || p.ground === 0) && p.orbitError < 1e-6), JSON.stringify(apronCameras));
   record("headquarters: all fifteen rooms keep their mattress and hash sign without extra furnishings, and the basement common area stays empty", bare.mattresses === 15 && bare.furnishedRooms === 15 && bare.noBeds && bare.noWallAPI && bare.noNumberAPI && bare.noDecorModels && bare.numberNodes === 0 && bare.extras.length === 0 && bare.basementExtras === 0 && bare.hits.length === 45 && bare.hits.every((kind) => !kind || !kind.startsWith("headquarters-")), JSON.stringify(bare));
   record("headquarters: the upper floor retains its five rear rooms and two panorama nooks after replacing the four entrance-side rooms", built.floor.radius === 14 && built.rooms.length === 7 && rearRooms.length === 5 && rearRooms.filter((room) => room.radius >= 23).length === 5 && nooks.length === 2 && built.rooms.every((room, i) => room.index === [2, 3, 4, 5, 6, 9, 10][i] && room.floor === -7 && (room.nook ? room.width === 7 && room.depth === 6 : room.width === 5 && room.depth === 5) && room.radius >= 19 && Math.abs(Math.hypot(room.x, room.z) - room.radius) < 1e-6 && room.resident === null) && rearRooms.every((room) => Math.abs(Math.atan2(room.x, -room.z) - (room.angle > Math.PI ? room.angle - 2 * Math.PI : room.angle)) < 1e-6) && nooks[0].x < 0 && nooks[1].x > 0 && nooks.every((room) => room.z < -10 && room.window && Math.abs((room.x * Math.sin(room.angle) - room.z * Math.cos(room.angle)) / room.radius) < 0.25), JSON.stringify(built.rooms));
-  record("headquarters: sleepers reserve separate mattresses and waking releases every reservation without teleporting", sleepers.sleeping.length === CAST && sleepers.unique === CAST && sleepers.sleeping.every((sleeper) => sleeper.state === "sleeping" && sleeper.visible && sleeper.reserved && ["walk", "lie", "rest"].includes(sleeper.mode)) && sleepers.released && sleepers.awake.length === 10 && sleepers.awake.every((cave) => cave.state === "working" && cave.visible && !cave.claimedBed && cave.movement < 1e-7), JSON.stringify(sleepers));
+  record("headquarters: sleepers reserve separate mattresses and waking releases every reservation without teleporting", sleepers.sleeping.length === CAST && sleepers.unique === CAST && sleepers.sleeping.every((sleeper) => sleeper.state === "sleeping" && sleeper.visible && sleeper.reserved && ["walk", "lie", "rest"].includes(sleeper.mode)) && sleepers.released && sleepers.awake.length === CAST && sleepers.awake.every((cave) => cave.state === "working" && cave.visible && !cave.claimedBed && cave.movement < 1e-7), JSON.stringify(sleepers));
   const routes = await b.evaluate(`(() => { const B = window.__ooga, H = B.island.headquarters, samples = B.headquarters.ramps.map((r) => { const heights = [], cavities = [], radii = [], m = B.mouths.find((mouth) => mouth.id === r.id); for (let i = 0; i <= 256; i++) { const t = i / 256 * (r.samples.length - 1), n = Math.min(r.samples.length - 2, Math.floor(t)), k = t - n, a = r.samples[n], q = r.samples[n + 1], x = a.x + (q.x - a.x) * k, z = a.z + (q.z - a.z) * k, c = {}, h = B.island.heightAt(x, z); heights.push(h); cavities.push(B.island.cavityAt(x, z, c, 9) && c.caveIndex === 9 && Math.abs(c.floor - h) < 1e-6); radii.push(Math.hypot(x, z)); } let length = 0, maxDrop = 0, maxDropAt = 0, uphill = 0, plateaus = 0; for (let i = 1; i < heights.length; i++) { const drop = heights[i - 1] - heights[i]; if (drop > maxDrop) { maxDrop = drop; maxDropAt = i / 256; } if (drop < -1e-5) uphill++; if (heights[i] > -6.9 && drop <= 1e-6) plateaus++; } for (let i = 1; i < r.samples.length; i++) length += Math.hypot(r.samples[i].x - r.samples[i - 1].x, r.samples[i].z - r.samples[i - 1].z); return { id: r.id, first: heights[0], next: heights[1], last: heights.at(-1), maxDrop, maxDropAt, uphill, plateaus, fractional: heights.filter((h) => Math.abs(h / B.island.unit - Math.round(h / B.island.unit)) > 0.01).length, cavities: cavities.every(Boolean), entranceGap: Math.hypot(r.from.x - m.x - Math.sin(m.ry) * 0.5, r.from.z - m.z - Math.cos(m.ry) * 0.5), length, direct: Math.hypot(r.to.x - r.from.x, r.to.z - r.from.z), angle: Math.abs(r.endAngle - r.startAngle), outer: Math.max(...radii), inner: radii.at(-1) }; }); const fronts = H.fronts.map((front) => { const along = [-4, -3, -2, -1, 0, 1, 2, 3, 4].map((d) => B.island.isPath(front.center.x + front.tangent.x * d, front.center.z + front.tangent.z * d)); const nx = front.tangent.z, nz = -front.tangent.x; return { id: front.id, along, into: [1.25, 2, 3].map((d) => B.island.isPath(front.center.x + nx * d, front.center.z + nz * d)) }; }); const circle = []; for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2, c = {}; circle.push(B.island.cavityAt(Math.sin(a) * (H.room.radius - 1), -Math.cos(a) * (H.room.radius - 1), c, 9) && c.caveIndex === 9 && c.floor === -7); } const rear = H.rooms.filter((room) => !room.nook), rooms = H.rooms.map((room) => { const sx = Math.sin(room.angle), sz = -Math.cos(room.angle), c = {}, corridorErrors = [], galleryErrors = [], radius = Math.hypot(room.approach.x, room.approach.z), end = { x: room.x + sx * (room.depth / 2 - 0.5), z: room.z + sz * (room.depth / 2 - 0.5) }, length = Math.hypot(end.x - room.approach.x, end.z - room.approach.z), count = Math.ceil(length / 0.25); for (let i = 0; i <= count; i++) { const x = room.approach.x + (end.x - room.approach.x) * i / count, z = room.approach.z + (end.z - room.approach.z) * i / count; const floor = room.floor; if (!B.island.cavityAt(x, z, c, 9, floor + 1.1) || Math.abs(c.floor - floor) > 0.05) corridorErrors.push([x, z, c.floor, floor]); } for (let r = H.room.radius - 0.75; r <= radius; r += 0.25) { const x = room.approach.x * r / radius, z = room.approach.z * r / radius; if (!B.island.cavityAt(x, z, c, 9) || c.floor !== -7) galleryErrors.push([x, z, c.floor]); } const floorErrors = []; let floorSamples = 0; for (let along = -room.depth / 2 + 0.5; along <= room.depth / 2 - 0.5 + 1e-6; along += 0.5) for (let across = -room.width / 2 + 0.5; across <= room.width / 2 - 0.5 + 1e-6; across += 0.5) { const x = room.x + sx * along + Math.cos(room.angle) * across, z = room.z + sz * along + Math.sin(room.angle) * across; floorSamples++; if (!B.island.cavityAt(x, z, c, 9, room.floor + 1.1) || c.floor !== room.floor) floorErrors.push([x, z, c.floor]); } let wall = true, divider = null; const walls = []; if (room.nook) { for (const [across, along] of [[-room.width / 2 - 0.5, 1], [room.width / 2 + 0.5, 1], [0, room.depth / 2 + 0.5]]) { const x = room.x + sx * along + Math.cos(room.angle) * across, z = room.z + sz * along + Math.sin(room.angle) * across; let y = H.floor + (across ? 0.5 : 1.5); for (const w of H.windows) for (const f of w.flare.frusta) { const alongWindow = x * Math.sin(f.angle) - z * Math.cos(f.angle), acrossWindow = Math.abs(x * Math.cos(f.angle) + z * Math.sin(f.angle)); if (alongWindow >= f.start && alongWindow <= f.end && acrossWindow <= f.half + f.horizontal * (alongWindow - f.start) && y >= w.sill - f.vertical * (alongWindow - f.start) && y <= w.sill + w.height + f.vertical * (alongWindow - f.start)) y = w.sill - f.vertical * (alongWindow - f.start) - 0.1; } const outsideFlare = H.windows.every((w) => w.flare.frusta.every((f) => f.planes.some((p) => p[0] * x + p[1] * y + p[2] * z > p[3] + 1e-7))); walls.push({ x, y, z, outsideFlare, solid: B.island.solidAt(x, y, z) }); } } else { const position = rear.indexOf(room), neighbor = rear[position === rear.length - 1 ? position - 1 : position + 1], angle = (room.angle + neighbor.angle) / 2, radius = Math.hypot(room.x, room.z), x = Math.sin(angle) * radius, z = -Math.cos(angle) * radius; divider = {}; B.island.cavityAt(x, z, divider, 9); wall = B.island.solidAt(x, room.floor + 1.5, z); } return { index: room.index, nook: !!room.nook, floorSamples, floorErrors, connected: corridorErrors.length === 0 && galleryErrors.length === 0, corridorErrors, galleryErrors, wall, walls, divider }; }); const upper = B.mouths.filter((m) => ["c9", "c11", "c1"].includes(m.id)).map((m) => { const c = {}; return { id: m.id, open: B.island.cavityAt(m.inside.x, m.inside.z, c), floor: c.floor, caveIndex: c.caveIndex }; }); const g = B.island.geometry, rampFaces = g.faces.filter((f) => f.headquartersRamp), slopedFaces = rampFaces.filter((f) => { const ys = f.i.map((i) => g.verts[i * 3 + 1]); return Math.max(...ys) - Math.min(...ys) > 0.0001; }).length; return { samples, fronts, circle, rooms, upper, rampFaces: rampFaces.length, slopedFaces }; })()`);
   record("headquarters: both smooth ramps begin descending at the cave threshold and curve along the island shell", routes.samples.length === 2 && routes.samples.every((r) => Math.abs(r.first) < 0.001 && r.next < -0.001 && r.last === -7 && r.cavities && r.entranceGap < 0.3 && r.maxDrop < 0.1 && r.uphill === 0 && r.plateaus === 0 && r.fractional > 128 && r.angle > 1 && r.length > r.direct * 1.05 && r.outer > 21 && r.inner < built.floor.radius) && routes.slopedFaces > 100, JSON.stringify({ ramps: routes.samples, faces: routes.rampFaces, slopedFaces: routes.slopedFaces }));
   record("headquarters: the path runs across each entrance face without turning into the cave or down its ramp", routes.fronts.every((front) => front.along.every(Boolean) && front.into.every((cell) => !cell)), JSON.stringify(routes.fronts));
@@ -24539,9 +24588,28 @@ const contributorActivityChecks = async () => {
   const byLogin = new Map(live.jumbotronData.contributors.map((entry) => [entry.login.toLowerCase(), entry]));
   const matched = live.contributors.roster.map((entry) => ({ entry, source: byLogin.get((aliases[entry.name] || entry.name).toLowerCase()) })).filter((row) => row.source);
   const accepted = live.contributors.applySnapshot(live.jumbotronData, generatedAt);
-  const current = matched.every(({ entry, source }) => entry.lastCommitAt === Date.parse(source.last_seen_at)
-    && entry.activity.get("oogaboogax/entropylab") === Date.parse(source.last_seen_at));
-  record("Oogatron snapshot: every matched Ooga uses the backend last-seen time, including aliases and timestamps older than the historical fallback", matched.length >= 7 && accepted === matched.length && current, JSON.stringify({ matched: matched.map(({ entry, source }) => [entry.name, source.login, source.last_seen_at]), accepted }));
+  const current = matched.every(({ entry, source }) => entry.lastCommitAt === Date.parse(source.last_seen_at));
+  // Schema 3 fans activity onto each repository key: the island uses these to
+  // route a worker to the cave of the repo they actually contributed to.
+  const loginOf = (entry) => (aliases[entry.name] || entry.name).toLowerCase();
+  const perRepo = matched.every(({ entry }) => live.jumbotronData.repos.every((repo) => {
+    const row = repo.contributors.find((c) => c.login.toLowerCase() === loginOf(entry));
+    return !row || entry.activity.get(`oogaboogax/${repo.name.toLowerCase()}`) === Date.parse(row.last_seen_at);
+  }));
+  // Data integrity of the committed bake itself: each repo's contributor rows
+  // must be that repo's own (aligned with its contributor total), and the
+  // sets must genuinely differ between repos — identical org-wide copies
+  // under every repo would fan bogus activity onto every repository key and
+  // mis-route workers for the whole session.
+  const blobRepos = live.jumbotronData.repos;
+  const aligned = blobRepos.every((repo) => repo.contributors.length === repo.totals.contributors);
+  const repoScoped = blobRepos.length < 2 || blobRepos.some((a, i) => blobRepos.slice(i + 1).some((b) =>
+    a.contributors.length !== b.contributors.length ||
+    a.contributors.some((c) => {
+      const other = b.contributors.find((o) => o.login === c.login);
+      return other && other.last_seen_at !== c.last_seen_at;
+    })));
+  record("Oogatron snapshot: matched Oogas take backend last-seen times fanned out per repository, and the baked repo rows are genuinely repo-scoped", matched.length >= 7 && accepted === matched.length && current && perRepo && aligned && repoScoped, JSON.stringify({ matched: matched.map(({ entry, source }) => [entry.name, source.login, source.last_seen_at]), accepted, perRepo, aligned, repoScoped, repoRows: blobRepos.map((repo) => [repo.name, repo.contributors.length, repo.totals.contributors]) }));
 };
 task("banana weapon activity", contributorActivityChecks);
 // Every file in src/characters/ must register once and build a whole Ooga, so a
@@ -25749,6 +25817,7 @@ for (const level of [0, 1000, 1000000, 10000000]) task(`solid pile spawn ${level
 for (const backend of BACKENDS) task(`jumbotron ${backend}`, () => withPage(`jumbotron ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
   const r = await b.evaluate(`(${jumbotronProbe.toString()})()`);
   record(`jumbotron ${backend}: the board is solid on the north rim, facing the meadow with public timestamped org stats parsed and guarded`, r.exists && r.placement.onNorthRim && r.placement.aboveGround && r.placement.facesCenter && r.placement.scale > 1 && r.placement.solid && r.data.contributors > 0 && r.data.repos > 0 && r.data.org === "OogaBoogaX" && r.data.orgSums && r.data.recentRows && r.data.repoBoards && r.data.schemaGuard && r.data.noPersonalMetadata && r.data.activityTimes && r.data.loginOnly, JSON.stringify({ placement: r.placement, data: r.data }));
+  record(`jumbotron ${backend}: arrows, dots and tap regions navigate the rotation and reset its timer`, r.nav.prevCorner === "prev" && r.nav.nextCorner === "next" && r.nav.dot.startsWith("dot:") && typeof r.nav.dotView === "string" && r.nav.center === "next" && r.nav.leftEdge === "prev" && r.nav.miss === "next" && r.stripQuads > 10 && r.rot.still && r.rot.rotated, JSON.stringify({ nav: r.nav, stripQuads: r.stripQuads, rot: r.rot }));
   record(`jumbotron ${backend}: view changes rebuild the screen quads, idle repos leave the rotation, and live payloads refresh the board`, r.initial.view === "recent" && r.initial.screenFaces > 200 && r.initial.cabinetFaces === 108 && r.leaderboard.view === "leaderboard" && r.leaderboard.repo && r.leaderboard.changed && r.repoView.view === "repo" && r.repoView.changed && r.fallback.drew && r.recentView.view === "recent" && r.recentView.drew && r.idleFiltered.afterFirst === "totals" && r.idleFiltered.wrapped && r.refreshed.accepted && r.refreshed.changed && r.rejected.refused && r.rejected.unchanged && r.restored && r.advanced.drew, JSON.stringify({ initial: r.initial, leaderboard: r.leaderboard, repoView: r.repoView, recentView: r.recentView, idleFiltered: r.idleFiltered, refreshed: r.refreshed, rejected: r.rejected, advanced: r.advanced }));
   // A live org snapshot wakes a sleeping Ooga: fresh last-seen flows through
   // contributors -> crew.refreshStates -> beginWalk, so the sleeper stands and

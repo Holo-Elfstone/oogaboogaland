@@ -72,22 +72,42 @@
   // Oogatron snapshots, one or an array: schema 2 or 3 (org-wide — the baked
   // jumbotron payload and the live /v2/stats poll) or legacy schema 1 project
   // snapshots keyed by meta.repo. generated_at describes the snapshot, never
-  // the contributor's most recent activity. Contributor identity is org-wide
-  // in schemas 2+, so last_seen_at (which now moves for comments and merges
-  // too) lands on the lab's repo key: the wake/sleep state is org-wide by
-  // construction (stateFor takes the max across repos) and the lab work
-  // sites keep animating for whoever the org last saw active.
+  // the contributor's most recent activity. A schema-3 snapshot whose repos
+  // carry per-contributor last_seen_at fans out onto each repository key —
+  // that is what routes a clanking Ooga to the cave of the repo they actually
+  // contributed to. Without that field, org-wide last_seen_at lands on the
+  // lab's key as before; either way stateFor (max across repos) gives the
+  // same org-wide wake/sleep state.
   const applySnapshot = (snapshots, at = Date.now()) => {
     const rows = [];
+    // One sub-snapshot per repository key, so the per-key first-snapshot
+    // bookkeeping below stays uniform across all three intake shapes.
+    const intakes = [];
     for (const snapshot of Array.isArray(snapshots) ? snapshots : [snapshots]) {
-      if (!snapshot || !snapshot.meta || !Array.isArray(snapshot.contributors)) continue;
+      if (!snapshot || !snapshot.meta) continue;
       const version = snapshot.meta.schema_version;
-      const repo = version === 2 || version === 3
-        ? (typeof snapshot.meta.org === "string" && snapshot.meta.org.toLowerCase() === "oogaboogax" ? ENTROPY : null)
-        : version === 1 ? repositoryOf(snapshot.meta.repo) : null;
-      if (!repo) continue;
+      if (version === 1) {
+        const repo = repositoryOf(snapshot.meta.repo);
+        if (repo && Array.isArray(snapshot.contributors)) intakes.push({ repo, contributors: snapshot.contributors });
+        continue;
+      }
+      if (version !== 2 && version !== 3) continue;
+      if (typeof snapshot.meta.org !== "string" || snapshot.meta.org.toLowerCase() !== "oogaboogax") continue;
+      const perRepo = version === 3 && Array.isArray(snapshot.repos)
+        ? snapshot.repos.filter((r) => r && typeof r.name === "string" && Array.isArray(r.contributors))
+        : [];
+      if (perRepo.length) {
+        for (const r of perRepo) {
+          const repo = repositoryOf(`oogaboogax/${r.name}`);
+          if (repo) intakes.push({ repo, contributors: r.contributors });
+        }
+      } else if (Array.isArray(snapshot.contributors)) {
+        intakes.push({ repo: ENTROPY, contributors: snapshot.contributors });
+      }
+    }
+    for (const { repo, contributors: list } of intakes) {
       const firstSnapshot = !snapshotRepos.has(repo), accepted = [];
-      for (const contributor of snapshot.contributors) {
+      for (const contributor of list) {
         if (!contributor || typeof contributor.login !== "string" || typeof contributor.last_seen_at !== "string" || !ISO_TIME.test(contributor.last_seen_at)) continue;
         const lastCommitAt = Date.parse(contributor.last_seen_at);
         const entry = byName.get(contributor.login.toLowerCase());

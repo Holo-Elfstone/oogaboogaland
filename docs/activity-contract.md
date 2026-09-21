@@ -21,8 +21,12 @@ not replace the character's activity state or contribution timestamps.
 The Oogatron integration exports `BL.jumbotronData`, an Oogatron schema 3
 snapshot (baked from `/v2/stats`), and the live poller pushes the same shape
 through `applySnapshot` once a minute, so a sleeper whose contribution lands
-wakes and walks out within minutes. The adapter accepts org-wide schema 2/3
-snapshots, legacy schema 1 project snapshots, or an array of either:
+wakes and walks out within minutes. A schema-3 snapshot's `repos[].contributors`
+rows fan out onto per-repository keys — that is what routes each working Ooga
+to the cave of the repo they actually contributed to (a fresh repo with no
+cave falls back to the Ooga Booga Land cave). The adapter accepts org-wide
+schema 2/3 snapshots, legacy schema 1 project snapshots, or an array of
+either:
 
 ```js
 BL.contributors.applySnapshot({
