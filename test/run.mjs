@@ -11108,7 +11108,7 @@ const { contextualActionProbe } = (() => {
 })();
 
 // ---- contributor-likeness.mjs ----
-const { yellowLikenessProbe, drNeskiVoiceProbe, genXbtcLikenessProbe } = (() => {
+const { yellowLikenessProbe, drNeskiVoiceProbe, pumpkinLikenessProbe } = (() => {
   // Default hand props must survive the same wardrobe refresh used on scene entry.
   const yellowLikenessProbe = () => {
     const B = window.__ooga, BL = window.BL, cave = B.cavemen.get("YellowBrokeIt");
@@ -11193,12 +11193,14 @@ const { yellowLikenessProbe, drNeskiVoiceProbe, genXbtcLikenessProbe } = (() => 
       Object.assign(camera.position, eye); Object.assign(camera.target, target); camera.up = cameraUp;
     }
   };
-  // genXbtc: a carved pumpkin over a skeleton tailcoat with white X badges on hat
+  // rules-without-rulers (the merged genXbtc persona, keyed by the GitHub login
+  // so live contributions drive him directly): a carved pumpkin over a skeleton
+  // tailcoat with white X badges on hat
   // and back, the tallest stature, his own poke line, and the carved glow breathing
   // between dim and bright while the page runs.
-  const genXbtcLikenessProbe = async () => {
+  const pumpkinLikenessProbe = async () => {
     const B = window.__ooga, BL = window.BL;
-    const cave = B.cavemen.get("genXbtc");
+    const cave = B.cavemen.get("rules-without-rulers");
     const color = (geometry, rgb) => geometry.faces.some((face) => face.color.join(",") === rgb);
     const glowFaces = (geometry) => geometry.faces.filter((face) => face.emissive === 1).length;
     const glows = [];
@@ -11208,7 +11210,7 @@ const { yellowLikenessProbe, drNeskiVoiceProbe, genXbtcLikenessProbe } = (() => 
     }
     const hat = cave.parts.head.children.find((node) => node.geometry && color(node.geometry, "216,137,43"));
     return {
-      roster: BL.contributors.roster.some((entry) => entry.name === "genXbtc"),
+      roster: BL.contributors.roster.some((entry) => entry.name === "rules-without-rulers"),
       state: B.crew.stateOf(cave), height: cave.traits.height,
       traits: cave.traits.pumpkin && !!cave.traits.dress.skull && !!cave.traits.dress.headgear && !!cave.traits.dress.torso,
       pumpkin: color(cave.headOpen, "232,134,42"),
@@ -11216,11 +11218,11 @@ const { yellowLikenessProbe, drNeskiVoiceProbe, genXbtcLikenessProbe } = (() => 
       hatBadge: !!hat && color(hat.geometry, "242,239,228"),
       backX: color(cave.parts.torso.geometry, "242,239,228"),
       rose: color(cave.parts.torso.geometry, "232,148,35"),
-      poke: BL.contributors.voiceFor("genXbtc").poke,
+      poke: BL.contributors.voiceFor("rules-without-rulers").poke,
       glows, breathing: Math.max(...glows) - Math.min(...glows) > 1e-4 && glows.every((g) => g > 0 && g <= 1)
     };
   };
-  return { yellowLikenessProbe, drNeskiVoiceProbe, genXbtcLikenessProbe };
+  return { yellowLikenessProbe, drNeskiVoiceProbe, pumpkinLikenessProbe };
 })();
 
 // ---- debug-url.mjs ----
@@ -12318,9 +12320,10 @@ const { jumbotronProbe } = (() => {
     j.nextView();
     await frames(3);
     const advanced = { view: j.view.name, screenFaces: facesOf(screen), drew: facesOf(screen) > 50 && before > 50 };
-    // Navigation chrome: rays aimed at board pixels through the cabinet
-    // transform must land on the corner arrows, the dot strip, and the
-    // half-board default zones; a miss falls back to plain advance.
+    // Navigation chrome lives on the wood frame now: rays extrapolated past
+    // the screen's pixel range land on the side rails (arrows) and the
+    // bottom rail (dots); taps on the screen itself advance, and a miss
+    // into thin air falls back to plain advance.
     j.setView("recent");
     await frames(3);
     const m = j.node.world;
@@ -12329,25 +12332,28 @@ const { jumbotronProbe } = (() => {
       return { ox: w.x + m[8] * 2, oy: w.y + m[9] * 2, oz: w.z + m[10] * 2, dx: -m[8], dy: -m[9], dz: -m[10] };
     };
     const nav = {
-      prevCorner: j.tapAt(navRay(10, 103)),
-      nextCorner: j.tapAt(navRay(182, 103)),
-      dot: j.tapAt(navRay(96, 103)),
+      leftRail: j.tapAt(navRay(-18, 54)),
+      rightRail: j.tapAt(navRay(210, 54)),
+      dot: j.tapAt(navRay(96, 122)),
       dotView: j.view.name,
       center: j.tapAt(navRay(96, 50)),
-      leftEdge: j.tapAt(navRay(10, 50)),
+      screenLeft: j.tapAt(navRay(10, 50)),
       miss: j.tapAt({ ox: j.node.position.x, oy: j.node.position.y + 50, oz: j.node.position.z, dx: 0, dy: 1, dz: 0 })
     };
     await frames(2);
-    // The reserved bottom strip holds only chrome; its lit quads prove the
-    // arrows and dots painted (board y>=100 maps to local y < -0.42).
-    let stripQuads = 0;
-    if (screen.geometry) {
-      const g = screen.geometry;
-      for (const f of g.faces) {
-        const top = Math.max(g.verts[f.i[0] * 3 + 1], g.verts[f.i[2] * 3 + 1]);
-        if (top < -0.42 && top > -0.5) stripQuads++;
-      }
-    }
+    // Chrome geometry on the frame: 14 paper-white arrow cells + the lit
+    // current dot, and one dim block per remaining slide; jumping slides
+    // rebuilds it so the lit dot moves.
+    const chromeNode = j.node.children[1];
+    const chromeCount = (rgb) => chromeNode.geometry
+      ? chromeNode.geometry.faces.filter((f) => f.color.join(",") === rgb).length
+      : -1;
+    const chrome = { white: chromeCount("243,239,228"), dim: chromeCount("166,166,162") };
+    const beforeJump = chromeNode.geometry;
+    j.goToView(chrome.dim > 0 ? 1 : 0);
+    await frames(2);
+    chrome.rebuilt = chromeNode.geometry !== beforeJump;
+    chrome.whiteAfter = chromeCount("243,239,228");
     // Any manual slide change restarts the auto-rotate countdown.
     const rot = (() => {
       j.autoRotate(8);
@@ -12361,7 +12367,7 @@ const { jumbotronProbe } = (() => {
       j.setView("recent"); // re-syncs lastSwitchAt to scene time on the next real frame
       return { held, still, rotated };
     })();
-    return { exists: true, placement, data, initial, leaderboard, repoView, fallback, recentView, idleFiltered, refreshed, rejected, restored, advanced, nav, stripQuads, rot };
+    return { exists: true, placement, data, initial, leaderboard, repoView, fallback, recentView, idleFiltered, refreshed, rejected, restored, advanced, nav, chrome, rot };
   };
   return { jumbotronProbe };
 })();
@@ -25598,8 +25604,8 @@ for (const backend of BACKENDS) for (const scene of SCENES) {
     const r = await b.evaluate(`(${yellowLikenessProbe.toString()})()`);
     record(`${label}: YellowBrokeIt joins the ${CAST}-member crew with his face, shirt, cigarette and upright can`, r.roster === CAST && r.crew === CAST && r.state === "chilling" && r.traits && r.yellow && r.orange && r.cigarette && r.can && r.upright, JSON.stringify(r));
     record(`${label}: wardrobe refresh and gold reskin preserve the can and restore its default finish`, r.refreshed && r.gold && r.sameShape && r.restored, JSON.stringify(r));
-    const g = await b.evaluate(`(${genXbtcLikenessProbe.toString()})()`);
-    record(`${label}: genXbtc joins as the carved pumpkin gentleman with X badges, top stature and a breathing glow`, g.roster && g.state === "sleeping" && g.traits && g.height === 1.16 && g.pumpkin && g.carvedClosed > 0 && g.carvedClosed < g.carvedOpen && g.hatBadge && g.backX && g.rose && g.poke === "POWER OVERWHELMING" && g.breathing, JSON.stringify(g));
+    const g = await b.evaluate(`(${pumpkinLikenessProbe.toString()})()`);
+    record(`${label}: rules-without-rulers joins as the carved pumpkin gentleman with X badges, top stature and a breathing glow`, g.roster && g.state === "sleeping" && g.traits && g.height === 1.16 && g.pumpkin && g.carvedClosed > 0 && g.carvedClosed < g.carvedOpen && g.hatBadge && g.backX && g.rose && g.poke === "POWER OVERWHELMING" && g.breathing, JSON.stringify(g));
     const v = await b.evaluate(`(${drNeskiVoiceProbe.toString()})()`);
     record(`${label}: DrNeski answers a poke with his own line and no random draw, while everyone else still draws one line from the shared pool`, v.poke.poked.length === 1 && v.poke.poked[0] === v.poke.line && v.poke.draws === 0 && v.poke.otherPoked.length === 1 && !v.poke.his && v.poke.otherDraws === 1, JSON.stringify(v.poke));
     record(`${label}: DrNeski mixes his idle lines with the tribe's and holds his own a beat longer, while everyone else draws and times out exactly as before`, v.idle.voiced.length === 1 && v.idle.voiced[0] === v.idle.first && v.idle.voicedLater.length === 1 && v.idle.voicedLater[0] === v.idle.first && v.idle.draws === 2 && v.idle.tribe.length === 1 && !v.idle.tribeHis && v.idle.tribeDraws === 2 && v.idle.otherIdle.length === 1 && !v.idle.otherHis && v.idle.otherLater.length === 0 && v.idle.otherDraws === 1, JSON.stringify(v.idle));
@@ -25817,7 +25823,7 @@ for (const level of [0, 1000, 1000000, 10000000]) task(`solid pile spawn ${level
 for (const backend of BACKENDS) task(`jumbotron ${backend}`, () => withPage(`jumbotron ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
   const r = await b.evaluate(`(${jumbotronProbe.toString()})()`);
   record(`jumbotron ${backend}: the board is solid on the north rim, facing the meadow with public timestamped org stats parsed and guarded`, r.exists && r.placement.onNorthRim && r.placement.aboveGround && r.placement.facesCenter && r.placement.scale > 1 && r.placement.solid && r.data.contributors > 0 && r.data.repos > 0 && r.data.org === "OogaBoogaX" && r.data.orgSums && r.data.recentRows && r.data.repoBoards && r.data.schemaGuard && r.data.noPersonalMetadata && r.data.activityTimes && r.data.loginOnly, JSON.stringify({ placement: r.placement, data: r.data }));
-  record(`jumbotron ${backend}: arrows, dots and tap regions navigate the rotation and reset its timer`, r.nav.prevCorner === "prev" && r.nav.nextCorner === "next" && r.nav.dot.startsWith("dot:") && typeof r.nav.dotView === "string" && r.nav.center === "next" && r.nav.leftEdge === "prev" && r.nav.miss === "next" && r.stripQuads > 10 && r.rot.still && r.rot.rotated, JSON.stringify({ nav: r.nav, stripQuads: r.stripQuads, rot: r.rot }));
+  record(`jumbotron ${backend}: rail arrows, frame dots and tap regions navigate the rotation and reset its timer`, r.nav.leftRail === "prev" && r.nav.rightRail === "next" && r.nav.dot.startsWith("dot:") && typeof r.nav.dotView === "string" && r.nav.center === "next" && r.nav.screenLeft === "next" && r.nav.miss === "next" && r.chrome.white === 15 && r.chrome.dim >= 5 && r.chrome.rebuilt && r.chrome.whiteAfter === 15 && r.rot.still && r.rot.rotated, JSON.stringify({ nav: r.nav, chrome: r.chrome, rot: r.rot }));
   record(`jumbotron ${backend}: view changes rebuild the screen quads, idle repos leave the rotation, and live payloads refresh the board`, r.initial.view === "recent" && r.initial.screenFaces > 200 && r.initial.cabinetFaces === 108 && r.leaderboard.view === "leaderboard" && r.leaderboard.repo && r.leaderboard.changed && r.repoView.view === "repo" && r.repoView.changed && r.fallback.drew && r.recentView.view === "recent" && r.recentView.drew && r.idleFiltered.afterFirst === "totals" && r.idleFiltered.wrapped && r.refreshed.accepted && r.refreshed.changed && r.rejected.refused && r.rejected.unchanged && r.restored && r.advanced.drew, JSON.stringify({ initial: r.initial, leaderboard: r.leaderboard, repoView: r.repoView, recentView: r.recentView, idleFiltered: r.idleFiltered, refreshed: r.refreshed, rejected: r.rejected, advanced: r.advanced }));
   // A live org snapshot wakes a sleeping Ooga: fresh last-seen flows through
   // contributors -> crew.refreshStates -> beginWalk, so the sleeper stands and
