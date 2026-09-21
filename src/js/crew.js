@@ -1419,8 +1419,12 @@
     };
     const nextReloadMagazine = (cave) => {
       const ammo = cave.weapon.spareAmmo;
-      for (let i = 0; i < ammo.length; i++) if (ammo[i] < AMMO_MAX) return i;
-      return -1;
+      let selected = -1, rounds = -1;
+      for (let i = 0; i < ammo.length; i++) if (ammo[i] < AMMO_MAX && ammo[i] > rounds) {
+        selected = i;
+        rounds = ammo[i];
+      }
+      return selected;
     };
     const reloadMissing = (cave) => AMMO_MAX * (1 + magazineCount(cave)) - totalAmmo(cave);
     const reloadBite = (cave) => {
@@ -1441,7 +1445,16 @@
       if (!cave.weapon.reloading) cave.weapon.reloadTime = cave.weapon.reloadStep = 0;
       cave.weapon.reloading = true;
       cave.weapon.recoil = 0;
-      if (cave.weapon.ammo === AMMO_MAX && !cave.weapon.reloadSpare) handoffToSpare(cave);
+      if (cave.weapon.ammo === AMMO_MAX && !cave.weapon.reloadSpare) {
+        // The rifle needs no loading pose. Put it straight on the back and
+        // raise the fullest incomplete spare, preserving the handoff only
+        // for transitions between two physical spare magazines.
+        const index = nextReloadMagazine(cave);
+        cave.weapon.reloadSpare = true;
+        cave.weapon.reloadMagazine = cave.weapon.reloadNext = index;
+        cave.weapon.reloadHandoffFrame = false;
+        cave.parts.snack.visible = false;
+      }
       return true;
     };
     const toggleWeapon = (cave = player) => selectWeapon(cave && cave.weapon.equipped ? 1 : 2, cave);
@@ -1652,7 +1665,7 @@
       }
       parts.club.quaternion = null;
       if (primaryCarry) {
-        const stick = cave.cheer > 0 || cave.catchT > 0 || cave.yawn > 0 ? 0
+        const stick = cave.catchT > 0 || cave.yawn > 0 ? 0
           : ease.inOutQuad(clamp((w.axeIdle - AXE_STICK_DELAY) / AXE_STICK_BLEND, 0, 1));
         // While walking, local +Y points straight ahead. Once still, raise
         // the arm and rotate that axis upright while the grip slides from the
@@ -4754,7 +4767,7 @@
       if (!runCamp(cave, dt)) updateCaveman(cave, dt);
       else stopReload(cave);
       const axeMoving = Math.hypot(p.x - x, p.z - z) > 1e-5 || cave.hop > 1e-4 || Math.abs(cave.hopV) > 1e-4
-        || cave.cheer > 0 || cave.catchT > 0 || cave.yawn > 0;
+        || cave.catchT > 0 || cave.yawn > 0;
       w.axeIdle = carryingStoneAxe(cave) && !axeMoving ? Math.min(AXE_STICK_DELAY + AXE_STICK_BLEND, w.axeIdle + dt) : 0;
       poseShoulder(cave, dt);
       if (cave.parts.chuk) poseNunchaku(cave, dt);

@@ -7350,8 +7350,8 @@ const { sleepOrientationProbe } = (() => {
   const sleepOrientationProbe = () => {
     const B = window.__ooga, BL = window.BL, scene = BL.scenes.hub;
     const cave = [...B.cavemen.values()].find((c) => c.state === "working"), bed = B.headquarters.mattresses.find((b) => !b.sleeper);
-    const canvas = document.getElementById("scene"), matrix = BL.math.mat4.create(), worldUp = { x: 0, y: 1, z: 0 }, forward = new Float64Array(3);
-    const rows = [], awakeEntries = [], failures = [], dt = 1 / 120;
+    const canvas = document.getElementById("scene"), matrix = BL.math.mat4.create(), worldUp = { x: 0, y: 1, z: 0 }, forward = new Float64Array(3), eyePoint = new Float64Array(3);
+    const rows = [], awakeEntries = [], lyingChecks = [], failures = [], dt = 1 / 120;
     let time = B.renderOpts.matrix.time, expectedShoulderOffset = null, samples = 0, previous = null, minRightDot = 1, physicalChecks = 0, phase = "setup";
     const key = (value, down) => window.dispatchEvent(new KeyboardEvent(down ? "keydown" : "keyup", { key: value }));
     const basis = () => {
@@ -7366,6 +7366,19 @@ const { sleepOrientationProbe } = (() => {
       return { direction, right, up: [matrix[1], matrix[5], matrix[9]] };
     };
     const dot = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0);
+    const lyingHead = (name) => {
+      BL.scene.updateWorld(scene.root);
+      const head = cave.parts.head, bounds = BL.scene.boundsOf(head.geometry), m = head.world, camera = B.camera, p = camera.position, t = camera.target;
+      BL.math.mat4.transformPoint(eyePoint, m, bounds.center[0], bounds.center[1], bounds.max[2] + 0.01);
+      const length = Math.hypot(t.x - p.x, t.y - p.y, t.z - p.z), rightLength = Math.hypot(m[0], m[1], m[2]), upLength = Math.hypot(m[4], m[5], m[6]), faceLength = Math.hypot(m[8], m[9], m[10]);
+      const direction = [(t.x - p.x) / length, (t.y - p.y) / length, (t.z - p.z) / length];
+      const right = (direction[0] * m[0] + direction[1] * m[1] + direction[2] * m[2]) / rightLength;
+      const up = (direction[0] * m[4] + direction[1] * m[5] + direction[2] * m[6]) / upLength;
+      const face = (direction[0] * m[8] + direction[1] * m[9] + direction[2] * m[10]) / faceLength;
+      const row = { name, pose: cave.bedTravel.pose, eyeError: Math.hypot(p.x - eyePoint[0], p.y - eyePoint[1], p.z - eyePoint[2]), face, yaw: Math.atan2(right, face), pitch: Math.atan2(-up, Math.hypot(right, face)) };
+      lyingChecks.push(row);
+      return row;
+    };
     const step = (check = true) => {
       scene.update(dt, time += dt);
       const now = basis();
@@ -7440,8 +7453,11 @@ const { sleepOrientationProbe } = (() => {
         const approach = scrollIn();
         BL.math.quat.rotateVec(forward, cave.root.quaternion, 0, 0, 1);
         const entered = basis(), entryDot = dot(entered.direction, approach.direction), entryUpDot = dot(entered.up, approach.up), approachFaceDot = dot(approach.direction, forward);
+        const entryHead = lyingHead("entry");
         const asleep = B.crew.sleeping && cave.bedTravel.pose === pose && bed.sleeper === cave;
-        B.pilot.hooks.onOrbit(180, -240); tick(0.5, false);
+        // Add a substantial head-relative look before scrolling back out.
+        B.pilot.hooks.onOrbit(10000, -10000); tick(0.5, false);
+        const limitedHead = lyingHead("limited look");
         phase = "scroll out with relative look";
         const exit = scrollOut();
         phase = "second scroll in"; previous = null; scrollIn();
@@ -7460,7 +7476,7 @@ const { sleepOrientationProbe } = (() => {
         press(" "); const afterWake = step();
         const wakeDot = dot(beforeWake.direction, afterWake.direction), awake = !B.crew.sleeping && !bed.sleeper && B.pilot.player === cave;
         tick(0.8);
-        rows.push({ pose, sleepLabel, wakeLabel, asleep, entryDot, entryUpDot, approachFaceDot, exit, released, releaseDot, awake, wakeDot });
+        rows.push({ pose, sleepLabel, wakeLabel, asleep, entryDot, entryUpDot, approachFaceDot, entryHead, limitedHead, exit, released, releaseDot, awake, wakeDot });
       }
       // The same entry contract applies to upright characters,
       // including a view approaching from the side rather than their authored forward direction.
@@ -7477,7 +7493,7 @@ const { sleepOrientationProbe } = (() => {
         phase = "awake exit"; row.exit = scrollOut(); awakeEntries.push(row);
       }
     } finally { for (const value of [" ", "Escape", "w", "a", "s", "d"]) key(value, false); }
-    return { backend: B.renderer.kind, rows, awakeEntries, samples, physicalChecks, minRightDot, failures };
+    return { backend: B.renderer.kind, rows, awakeEntries, lyingChecks, samples, physicalChecks, minRightDot, failures };
   };
   return { sleepOrientationProbe };
 })();
@@ -15687,6 +15703,37 @@ const { donationCheerProbe } = (() => {
   return { donationCheerProbe };
 })();
 
+const { axeBubblePoseProbe } = (() => {
+  // Speech can share a beat with the cheer animation, but the stone axe's
+  // settled standing grip must remain independent of that overlay gesture.
+  const axeBubblePoseProbe = () => {
+    const B = window.__ooga, BL = window.BL, scene = BL.scenes[B.scene], crew = B.crew;
+    const cave = [...B.cavemen.values()].find((actor) => actor.traits.stoneAxe), update = scene.update;
+    scene.update = () => {}; B.pilot.release(true);
+    try {
+      cave.root.visible = true; cave.state = cave.override = "chilling";
+      cave.walk = cave.build = null; cave.bedTravel.mode = ""; cave.act.kind = "idle";
+      cave.act.until = cave.yawnAt = 1e12; cave.hop = cave.hopV = cave.catchT = cave.yawn = 0;
+      cave.camp.seat = null; cave.camp.burning = cave.camp.rolling = cave.camp.panic.active = false;
+      cave.weapon.equipped = cave.weapon.primaryEquipped = cave.weapon.reloading = false;
+      cave.weapon.meleeTime = cave.weapon.meleeReadyTime = 0; cave.weapon.axeIdle = 10;
+      cave.cheer = 0; crew.poseWeapon(cave); BL.scene.updateWorld(scene.root);
+      const arm = cave.parts.armL, club = cave.parts.club;
+      const before = [arm.rotation.x, arm.rotation.y, arm.rotation.z, club.position.x, club.position.y, club.position.z, ...club.quaternion];
+      crew.idleSay(cave); cave.cheer = 1.2;
+      let maximumDelta = 0, raised = false, time = B.renderOpts?.matrix?.time || 100;
+      for (let i = 0; i < 30; i++) {
+        crew.update(1 / 60, time += 1 / 60); BL.scene.updateWorld(scene.root);
+        const after = [arm.rotation.x, arm.rotation.y, arm.rotation.z, club.position.x, club.position.y, club.position.z, ...club.quaternion];
+        for (let j = 0; j < before.length; j++) maximumDelta = Math.max(maximumDelta, Math.abs(after[j] - before[j]));
+        raised ||= cave.parts.armR.rotation.x < -2;
+      }
+      return { bubble: B.stats().bubbles > 0, cheering: cave.cheer > 0, raised, maximumDelta };
+    } finally { scene.update = update; }
+  };
+  return { axeBubblePoseProbe };
+})();
+
 // ---- gate-stair-corner.mjs ----
 const { gateStairCornerProbe } = (() => {
   // Misaligned approaches to the old gate's real voxel steps.
@@ -19081,11 +19128,29 @@ const { spareMagazineProbe } = (() => {
       }
       const threeReload = threeStarted && sawFirst && sawSecond && threeOrder && !w.reloading && !w.reloadHandoff
         && w.ammo === 30 && w.spareAmmo[0] === 30 && w.spareAmmo[1] === 30 && B.level === 96;
+
+      place(); crew.stopReload(cave, true); crew.stopBurst(cave); w.ammo = 30; w.spareAmmo[0] = 6; w.spareAmmo[1] = 24;
+      B.setPileLevel(100); step(0);
+      const directSpareStarted = crew.startReload(cave);
+      step(0);
+      const directSparePose = directSpareStarted && w.reloading && w.reloadSpare && !w.reloadHandoff && w.reloadMagazine === 1
+        && w.carry === "back" && cave.magazineModels[1].node.parent === cave.parts.armL
+        && cave.magazineModels[0].node.parent === cave.parts.torso;
+      let fullestFirst = true, fullerLoaded = false, emptierLoaded = false;
+      for (let frame = 0; frame < 600 && (w.reloading || w.reloadHandoff); frame++) {
+        const first = w.spareAmmo[0], second = w.spareAmmo[1];
+        step(1 / 60);
+        if (w.spareAmmo[1] > second) { fullerLoaded = true; fullestFirst &&= w.spareAmmo[0] === 6 && w.ammo === 30; }
+        if (w.spareAmmo[0] > first) { emptierLoaded = true; fullestFirst &&= w.spareAmmo[1] === 30 && w.ammo === 30; }
+      }
+      const rankedDirectReload = directSparePose && fullerLoaded && emptierLoaded && fullestFirst
+        && !w.reloading && !w.reloadHandoff && w.ammo === 30 && w.spareAmmo[0] === 30 && w.spareAmmo[1] === 30;
       return { initial, swaps, carryDoesNotSwap, carryButtonSwaps, unownedDoesNotSwap, equalSwaps, primaryDoesNotSwap, swapCancelsFire,
         burningBlocked, rollingBlocked, near, waitsForBite, firstBite, gunFirst, swapBlockedDuringReload, spareStartsNext, bothFull,
         partialOrdered, fullGunCanReload, fractionalFinal, movingReload, leftRange, resumeNeedsPress, resumes, emptyPile, npcCannotUseSpare, staysWithCarrier,
         noUnownedHip, leftHip, hipAmmo, releaseKeepsHip, hipStaysWithCarrier, otherCannotUseSpare, returnToCarrier,
-        secondCollected, fullestHip, fullestSelected, rankedTies, noThird, refillsLowest, ammoTopoff, independentCollection, threeReload };
+        secondCollected, fullestHip, fullestSelected, rankedTies, noThird, refillsLowest, ammoTopoff, independentCollection, threeReload,
+        directSpareStarted, directSparePose, fullerLoaded, emptierLoaded, fullestFirst, rankedDirectReload };
     } finally {
       key("a", "keyup"); key(" ", "keyup"); pilot.release(true); restorePointerLock(); scene.update = update;
     }
@@ -19811,12 +19876,19 @@ const { weaponPointerLockFixture, weaponAimProbe, weaponAimLifecycleProbe, weapo
           const rolling = cave.camp.rolling;
           const survivesRoll = slot === 1 ? cave.weapon.meleeHeld || cave.weapon.meleeTime > 0 : cave.weapon.burstRemaining > 0 || cave.weapon.recoil > 0;
           step(0.3);
-          let rollingEye = true;
+          let rollingEye = true, rollingLimited = true;
           if (firstPerson) {
             const head = cave.parts.head, bounds = BL.scene.boundsOf(head.geometry);
             BL.math.mat4.transformPoint(eye, head.world, bounds.center[0], bounds.center[1], bounds.max[2] + 0.01);
             rollingEye = Math.hypot(scene.camera.position.x - eye[0], scene.camera.position.y - eye[1], scene.camera.position.z - eye[2]) < 0.025
               && !!scene.camera.up && Math.abs(scene.camera.up.y - 1) > 0.05;
+            pilot.hooks.onOrbit(10000, 10000); step(0.05);
+            BL.scene.updateWorld(scene.root);
+            BL.math.mat4.transformPoint(eye, head.world, bounds.center[0], bounds.center[1], bounds.max[2] + 0.01);
+            const p = scene.camera.position, t = scene.camera.target, m = head.world, length = Math.hypot(t.x - p.x, t.y - p.y, t.z - p.z);
+            const faceLength = Math.hypot(m[8], m[9], m[10]);
+            const face = ((t.x - p.x) * m[8] + (t.y - p.y) * m[9] + (t.z - p.z) * m[10]) / length / faceLength;
+            rollingLimited = Math.hypot(p.x - eye[0], p.y - eye[1], p.z - eye[2]) < 0.025 && face > 0.05;
           }
           pointer("pointerup"); step(0.6);
           const beforeRollAttack = cave.weapon.shotsFired;
@@ -19827,7 +19899,7 @@ const { weaponPointerLockFixture, weaponAimProbe, weaponAimLifecycleProbe, weapo
           crew.fireView(cave, fireView);
           const fullSoot = fireView.coverage === 0 && fireView.ember === 0 && fireView.soot > 0.95;
           const selected = cave.weapon.selectedSlot === slot && (slot === 1 ? cave.weapon.primaryEquipped : cave.weapon.equipped);
-          rows.push({ firstPerson, slot, queued, ignited, continued, preserved, equipment, attacksBurning, fullEmbers, rolling, survivesRoll, rollingEye, attacksRolling, out, fullSoot, selected, ammo: cave.weapon.ammo });
+          rows.push({ firstPerson, slot, queued, ignited, continued, preserved, equipment, attacksBurning, fullEmbers, rolling, survivesRoll, rollingEye, rollingLimited, attacksRolling, out, fullSoot, selected, ammo: cave.weapon.ammo });
           step(1.5);
         }
       }
@@ -23839,6 +23911,18 @@ const entranceCeiling = (backend) => withPage(`entrance ceiling ${backend}`, hub
   record(`entrance ceiling ${backend}: every swept eye clears the rendered stones, with clear and penetrating probes at each lintel roof`, r.contacts.length === 17 && r.contacts.every((contact) => contact.standingClear && contact.overheadBlocked && contact.clear && contact.blocked) && r.violations.length === 0 && r.samples > 1000 && r.arches.visited.length === 17 && r.maxStep < 0.7 && r.maxStall < 0.5, JSON.stringify({ contacts: r.contacts, violations: r.violations, samples: r.samples, arches: r.arches, maxStep: r.maxStep, maxStall: r.maxStall }));
 });
 
+for (const backend of BACKENDS) hubTask(`matrix free camera reach ${backend}`, async (b) => {
+  const initial = await b.evaluate(`(() => { const B = window.__ooga; B.matrixCave.viewInside(false); return { y: B.camera.position.y, pressed: B.matrixGate.pressed, player: !!B.crew.player }; })()`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: " ", text: " " });
+  const down = await b.evaluate(`(() => { const B = window.__ooga; return { y: B.camera.position.y, pressed: B.matrixGate.pressed, up: B.controls.read().up }; })()`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyDown", key: " ", text: " ", autoRepeat: true });
+  const repeat = await b.evaluate(`({ pressed: window.__ooga.matrixGate.pressed, up: window.__ooga.controls.read().up })`);
+  await b.send("Input.dispatchKeyEvent", { type: "keyUp", key: " " });
+  await b.key(" ");
+  const released = await b.evaluate(`(() => { const B = window.__ooga; return { pressed: B.matrixGate.pressed, up: B.controls.read().up, direct: B.matrixGate.press() }; })()`);
+  record(`jump and jetpack ${backend}: a free camera cannot operate the Matrix control with Space or its direct action`, !initial.player && !initial.pressed && !down.pressed && down.up === 1 && Math.abs(down.y - initial.y) < 0.01 && !repeat.pressed && repeat.up === 1 && !released.pressed && released.up === 0 && !released.direct, JSON.stringify({ initial, down, repeat, released }));
+});
+
 const cloudSupport = (backend) => withPage(`cloud support ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
   const url = hubPage(src, backend === "canvas2d" ? "canvas2d=1" : "");
   for (const [i, fixture] of ["trailing", "first-person"].flatMap((mode) => [1 / 20, 1 / 120].map((dt) => ({ mode, dt }))).entries()) {
@@ -24039,12 +24123,45 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
       const filtered = B.pilot.assistedTarget;
       const restricted = filtered?.owner?.prop === "crate";
       const centered = restricted && Math.hypot(filtered.x - allowed.position.x, filtered.y - allowed.position.y, filtered.z - allowed.position.z) < 1e-5;
+      const aimMark = document.getElementById("weapon-reticle"), aimDot = aimMark.querySelector("span"), random = Math.random;
+      B.crew.selectWeapon(1, cave); cave.weapon.aiming = true; B.crew.steer(0, 0, 0, 0, 0);
+      const meleeReach = B.crew.meleeReach(cave);
+      allowed.position.x = p.x + Math.sin(heading) * (meleeReach + 3);
+      allowed.position.y = p.y + cave.traits.height * 0.45;
+      allowed.position.z = p.z + Math.cos(heading) * (meleeReach + 3);
+      window.BL.scene.updateWorld(scene.root); B.pilot.update(0.06);
+      const farMelee = { tracked: B.pilot.assistedTarget?.node === allowed, type: aimMark.dataset.target,
+        color: getComputedStyle(aimDot).backgroundColor };
+      allowed.position.x = p.x + Math.sin(heading) * meleeReach * 0.45;
+      allowed.position.z = p.z + Math.cos(heading) * meleeReach * 0.45;
+      window.BL.scene.updateWorld(scene.root); B.pilot.orbit.pitch = B.pilot.orbit.tPitch = 1.1; B.pilot.update(0.06);
+      const nearMelee = { tracked: B.pilot.assistedTarget?.node === allowed, type: aimMark.dataset.target,
+        color: getComputedStyle(aimDot).backgroundColor };
+      B.crew.swingWeapon(cave, true); B.advance(0.2, 1 / 120); B.crew.releaseSwing(cave);
+      let meleeHit = false;
+      for (let i = 0; i < 80; i++) { B.advance(1 / 120, 1 / 120); meleeHit ||= aimMark.dataset.hit === "object"; }
+      B.crew.selectWeapon(2, cave); cave.weapon.aiming = true; cave.weapon.ammo = 30;
+      allowed.position.x = p.x + Math.sin(heading) * 6;
+      allowed.position.z = p.z + Math.cos(heading) * 6;
+      const shot = pitch => {
+        B.pilot.orbit.pitch = B.pilot.orbit.tPitch = pitch; window.BL.scene.updateWorld(scene.root); B.pilot.update(0.06);
+        cave.weapon.cooldown = cave.weapon.recoil = 0; B.crew.stopBurst(cave); B.crew.poseWeapon(cave);
+        const values = [0.5, 0.25]; Math.random = () => values.length ? values.shift() : 0.5;
+        const fired = B.crew.fireWeapon(cave, null, 1), point = { ...cave.weapon.burstTarget };
+        Math.random = random; B.crew.stopBurst(cave);
+        let hit = false;
+        for (let i = 0; i < 40; i++) { B.advance(1 / 120, 1 / 120); hit ||= aimMark.dataset.hit === "object"; }
+        return { fired, point, hit };
+      };
+      const lowShot = shot(0.2), highShot = shot(1.1);
+      const cameraIndependentShot = lowShot.fired && highShot.fired && lowShot.hit && highShot.hit
+        && Math.hypot(lowShot.point.x - highShot.point.x, lowShot.point.y - highShot.point.y, lowShot.point.z - highShot.point.z) < 1e-5;
       B.input.remove(blocked); B.input.remove(allowed);
       window.BL.scene.removeChild(scene.root, blocked); window.BL.scene.removeChild(scene.root, allowed);
       for (const other of hidden) other.root.visible = true;
       window.BL.scene.updateWorld(scene.root);
       return { found: !!before, characterCenter, aimedTooltip, farRadius, kept, returnedKept, shoulderMode: B.pilot.mode === "orbit" && !!returned,
-        near: !!near, close, circleHidden, restricted, centered };
+        near: !!near, close, circleHidden, restricted, centered, farMelee, nearMelee, meleeHit, lowShot, highShot, cameraIndependentShot };
     })()`);
     const health = await b.evaluate(`(() => {
       const B = window.__ooga, cave = B.pilot.player, scene = window.BL.scenes.hub, clock = B.renderOpts.matrix.time;
@@ -24172,6 +24289,7 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
     const cycled = await b.evaluate(`(() => ({ current: document.querySelector('.detached-dot[data-current="true"]')?.dataset.detachedPreset, label: document.getElementById('detached-destination-name').textContent }))()`);
     record("mode HUD desktop: 0 toggles battle and carry independently from orbit, shoulder and first-person views", selected.player && selected.selected === "true" && selected.battle === "false" && selected.mode === "orbit" && selected.face && !selected.free && selected.jetpack && selected.width === 78 && orbitBattle.battle === "true" && orbitBattle.mode === "orbit" && orbitBattle.reticle && orbitBattle.cursorHidden && orbitCarry.battle === "false" && orbitCarry.mode === "orbit" && !orbitCarry.reticle && shoulderCarry.mode === "shoulder" && shoulderCarry.battle === "false" && !shoulderCarry.reticle && shoulderBattle.mode === "shoulder" && shoulderBattle.battle === "true" && shoulderBattle.reticle && shoulderCarryAgain.mode === "shoulder" && !shoulderCarryAgain.reticle && firstCarry.mode === "first-person" && firstCarry.battle === "false" && !firstCarry.reticle && firstBattle.mode === "first-person" && firstBattle.battle === "true" && firstBattle.reticle && firstCarryAgain.mode === "first-person" && !firstCarryAgain.reticle, JSON.stringify({ selected, orbitBattle, orbitCarry, shoulderCarry, shoulderBattle, shoulderCarryAgain, firstCarry, firstBattle, firstCarryAgain }));
     record("mode HUD desktop: orbit battle targets only eligible centers, shows aimed character health, snaps vertically, tightens adjacent hits and retains its world target through shoulder view", orbitAim.found && orbitAim.characterCenter && !orbitAim.aimedTooltip.hidden && orbitAim.aimedTooltip.name && orbitAim.aimedTooltip.health === "25" && orbitAim.restricted && orbitAim.centered && orbitAim.farRadius > 0 && orbitAim.kept && orbitAim.returnedKept && orbitAim.shoulderMode && orbitAim.near && orbitAim.close === "true" && orbitAim.circleHidden, JSON.stringify(orbitAim));
+    record("mode HUD desktop: orbit melee keeps distant props gray, turns them orange only in range, and both melee and AK assistance hit independently of camera pitch", orbitAim.farMelee.tracked && orbitAim.farMelee.type === "out-of-range" && orbitAim.farMelee.color === "rgb(143, 150, 157)" && orbitAim.nearMelee.tracked && orbitAim.nearMelee.type === "object" && orbitAim.nearMelee.color === "rgb(255, 157, 66)" && orbitAim.meleeHit && orbitAim.cameraIndependentShot, JSON.stringify(orbitAim));
     record("mode HUD desktop: a depleted Ooga freezes with limp arms and a dizzy head while bounded equipment drops spread around it, nearby Oogas claim loose gear or draw only needed AK rounds, and every unclaimed item returns", health.delayed === 24 && health.regenerated === 25 && health.stunned && health.frozen && health.birds && health.limp && health.dizzy && health.gearDropped.count >= 3 && health.gearDropped.visible && health.gearDropped.spread === health.gearDropped.count && health.gearDropped.primary && health.gearDropped.secondary && health.gearDropped.ammo === 0 && health.gearDropped.spares === 0 && health.gearDropped.jetpack && health.gearRestored && health.claimed && health.akTransfer && health.bars.visible && health.bars.mode === "20" && health.bars.tooltip === "20" && health.bars.modeFill === "scaleY(0.8)" && health.bars.tooltipFill === "scaleX(0.8)" && health.bars.tooltipWidth === 72 && health.bars.gaugeMatch && health.bars.faceCentered && health.recovered === 25 && health.released, JSON.stringify(health));
     record("mode HUD desktop: every character icon uses a centered face crop, dplusplus1024, RandyMcMillan, and bc1gui keep their head outlines, and headwear stays outside the portrait", portraits.length === 10 && portraits.every((row) => row.portrait === "face-crop" && row.opaque > 100 && row.width >= 16 && row.height >= 16 && Math.abs(row.centerX - 23.5) < 7 && row.hairOutline) && portraits.find((row) => row.name === "genXbtc")?.hiddenHeadwear >= 1, JSON.stringify(portraits));
     record("mode HUD desktop: a completed underline hold detaches, dots sit above the icon, direct dots navigate, and the compass cycles destinations", holding.holding === "true" && holding.animation === "mode-release-progress" && holding.opacity === "1" && holding.transform !== "none" && free.player === null && free.selected === "false" && free.mode === "detached" && free.free && !free.face && !free.jetpack && dotLayout.dotsBottom <= dotLayout.iconTop && direct.current === "lab" && direct.label === "Lab" && direct.showing && direct.topHidden && cycled.current === "mirror" && cycled.label === "Mirror", JSON.stringify({ holding, free, dotLayout, direct, cycled }));
@@ -26185,6 +26303,7 @@ for (const backend of BACKENDS) for (const scene of SCENES) task(`spare magazine
   record("spare magazine: ownership and the left-hip reserve stay with the collector through control changes", r.staysWithCarrier && r.noUnownedHip && r.leftHip && r.hipAmmo && r.releaseKeepsHip && r.hipStaysWithCarrier && r.otherCannotUseSpare && r.returnToCarrier, JSON.stringify(r));
   record("spare magazines: both sit separately on the left hip with the fullest forward, keep stable ties, and select the fullest for swaps without a third when full", r.secondCollected && r.fullestHip && r.fullestSelected && r.rankedTies && r.noThird && r.independentCollection, JSON.stringify(r));
   record("spare magazines: extra pickups refill the lowest load, loose ammo tops off the fullest unfinished load, and Space fills all three magazines in order", r.refillsLowest && r.ammoTopoff && r.threeReload, JSON.stringify(r));
+  record("spare magazines: a full AK goes straight onto the back while Space raises and fills the fuller spare before the emptier one", r.rankedDirectReload, JSON.stringify({ directSpareStarted: r.directSpareStarted, directSparePose: r.directSparePose, fullerLoaded: r.fullerLoaded, emptierLoaded: r.emptierLoaded, fullestFirst: r.fullestFirst }));
 }));
 for (const viewport of [{ w: 1440, h: 900, backend: "webgl2" }, { w: 320, h: 740, mobile: true, backend: "canvas2d" }]) task(`spare magazine HUD ${viewport.w}`, () => withPage(`spare magazine HUD ${viewport.w}`, hubPage(src, viewport.backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
   const r = await b.evaluate(`(${spareMagazineHudProbe.toString()})()`);
@@ -26869,7 +26988,7 @@ for (const backend of BACKENDS) hubTask(`weapon burning ${backend}`, async (b) =
   record("weapon burning: ignition and rolling preserve shoulder or first-person shooter and the crosshair for either weapon", r.rows.length === 4 && r.rows.every(row => row.ignited && row.preserved), JSON.stringify(r));
   record("weapon burning: selected and slung weapons, two spare magazines, and the worn jetpack stay attached", r.rows.every(row => row.selected && row.equipment), JSON.stringify(r));
   record("weapon burning: queued and new attacks continue while burning and during drop-and-roll", r.rows.every(row => row.queued && row.continued && row.attacksBurning && row.survivesRoll && row.attacksRolling), JSON.stringify(r));
-  record("weapon burning: first-person rolling eye follows the rendered head", r.rows.every(row => row.rollingEye), JSON.stringify(r));
+  record("weapon burning: first-person rolling eye follows the rendered head with bounded local look", r.rows.every(row => row.rollingEye && row.rollingLimited), JSON.stringify(r));
   record("weapon burning: body coverage reaches full embers and becomes full soot after extinguishing", r.rows.every(row => row.fullEmbers && row.rolling && row.out && row.fullSoot), JSON.stringify(r));
 });
 for (const backend of BACKENDS) for (const scene of SCENES) task(`banana weapon controls ${scene} ${backend}`, () => withPage(`banana weapon controls ${scene} ${backend}`, hubPage(src, `${scene === "lab" ? "scene=lab&" : ""}${backend === "canvas2d" ? "canvas2d=1" : ""}`), async (b) => {
@@ -26993,6 +27112,10 @@ for (const backend of BACKENDS) for (const scene of SCENES) {
 for (const backend of BACKENDS) for (const scene of SCENES) task(`donation cheers ${scene} ${backend}`, () => withPage(`donation cheers ${scene} ${backend}`, hubPage(src, `${scene === "lab" ? "scene=lab&" : ""}${backend === "canvas2d" ? "canvas2d=1" : ""}`), async (b) => {
   const r = await b.evaluate(`(${donationCheerProbe.toString()})(${JSON.stringify({ dt: backend === "webgl2" ? 1 / 20 : 1 / 120 })})`);
   record(`donation cheers ${scene} ${backend}: workers pause and resume their trips, shots and reloads while cheering with a free hand, rifle held and feet grounded`, r.rows.length === 2 && r.rows.every((row) => row.actors >= 3 && row.triggered && row.animated && row.paused && row.resumed && row.speech && row.settled && row.maximumGripError < 1e-6 && row.maximumHop === 0 && row.maximumVelocity === 0 && row.maximumLift < 1e-6), JSON.stringify(r));
+}));
+for (const backend of ["webgl2", "canvas2d"]) for (const scene of ["hub", "lab"]) task(`axe bubble pose ${scene} ${backend}`, () => withPage(`axe bubble pose ${scene} ${backend}`, hubPage(src, `${scene === "lab" ? "scene=lab&" : ""}${backend === "canvas2d" ? "canvas2d=1" : ""}`), async (b) => {
+  const r = await b.evaluate(`(${axeBubblePoseProbe.toString()})()`);
+  record(`axe bubble pose ${scene} ${backend}: a talking cheer leaves the settled axe arm and weapon fixed while the free arm waves`, r.bubble && r.cheering && r.raised && r.maximumDelta < 1e-9, JSON.stringify(r));
 }));
 const npcPaths = (backend) => [`NPC paths ${backend}`, async (b) => {
   const rows = await b.evaluate(`(${npcPathWalkingProbe.toString()})()`);
@@ -27461,9 +27584,10 @@ for (const backend of BACKENDS) hubTask(`sleep weapons ${backend}`, async (b) =>
 });
 for (const backend of BACKENDS) hubTask(`room sleep orientation ${backend}`, async (b) => {
   const r = await b.evaluate(`(${sleepOrientationProbe.toString()})()`);
-  record(`room sleep orientation ${backend}: awake and sleeping first-person entry preserves the actual approach direction and up vector`, r.rows.length === 4 && r.rows.every((row) => row.asleep && row.released && row.awake && row.sleepLabel === "SLEEP" && row.wakeLabel === "WAKE UP!" && row.entryDot > 0.9999 && row.entryUpDot > 0.9999 && row.releaseDot > 0.9999 && row.wakeDot > 0.95) && r.rows.some((row) => row.approachFaceDot < 0.5) && r.awakeEntries.length === 2 && r.awakeEntries.every((row) => row.entryDot > 0.9999 && row.entryUpDot > 0.9999 && row.mode === "first-person" && row.selected && !row.sleeping) && r.backend === backend, JSON.stringify(r));
+  record(`room sleep orientation ${backend}: sleeping first person follows the posed head while awake entry preserves the approach`, r.rows.length === 4 && r.rows.every((row) => row.asleep && row.released && row.awake && row.sleepLabel === "SLEEP" && row.wakeLabel === "WAKE UP!" && row.entryHead.eyeError < 1e-5 && row.entryHead.face > 0.05 && row.releaseDot > 0.9999 && row.wakeDot > 0.95) && r.rows.some((row) => row.approachFaceDot < 0.5) && r.awakeEntries.length === 2 && r.awakeEntries.every((row) => row.entryDot > 0.9999 && row.entryUpDot > 0.9999 && row.mode === "first-person" && row.selected && !row.sleeping) && r.backend === backend, JSON.stringify(r));
+  record(`room sleep orientation ${backend}: bed look stays outside the pillow and within the lying head's side, wall and feet limits`, r.lyingChecks.length === 8 && r.lyingChecks.every((row) => row.eyeError < 1e-5 && row.face > 0.05 && Math.abs(row.yaw) <= 80 * Math.PI / 180 + 1e-5 && Math.abs(row.pitch) <= 70 * Math.PI / 180 + 1e-5) && r.rows.every((row) => Math.abs(row.limitedHead.yaw) > 1.39 - 1e-5 && Math.abs(row.limitedHead.pitch) > 1.22 - 1e-5), JSON.stringify(r.lyingChecks));
   record(`room sleep orientation ${backend}: scroll, release and wake transitions keep an orthogonal continuous camera basis`, r.samples > 1000 && r.physicalChecks > 100 && r.minRightDot > 0.9 && r.failures.length === 0, JSON.stringify({ samples: r.samples, physicalChecks: r.physicalChecks, minRightDot: r.minRightDot, failures: r.failures }));
-  record(`room sleep orientation ${backend}: sleeping exits follow the existing view ray and awake exits retain that look while restoring the shoulder offset`, [...r.rows, ...r.awakeEntries].every((row) => row.exit.forwardDot > 0.9999 && row.exit.upDot > 0.9999 && row.exit.bodyMovement < 1e-5 && row.exit.mode === "trailing") && r.rows.every((row) => row.exit.rayError < 1e-5 && !row.exit.shoulder) && r.awakeEntries.every((row) => row.exit.shoulder && Math.abs(row.exit.shoulderOffset - row.exit.expectedShoulderOffset) < 1e-5 && row.exit.maximumSpeed < 40) && r.rows.some((row) => row.exit.lookY > 0.25 && row.exit.eyeDeltaY < -1) && r.rows.some((row) => row.exit.lookY < -0.25 && row.exit.eyeDeltaY > 1), JSON.stringify([...r.rows, ...r.awakeEntries].map((row) => row.exit)));
+  record(`room sleep orientation ${backend}: sleeping and awake exits retain their look without moving the body`, [...r.rows, ...r.awakeEntries].every((row) => row.exit.forwardDot > 0.9999 && row.exit.upDot > 0.9999 && row.exit.bodyMovement < 1e-5 && row.exit.mode === "shoulder" && row.exit.maximumSpeed < 40) && r.rows.every((row) => row.exit.rayError < 1e-5) && r.rows.some((row) => row.exit.lookY > 0.25 && row.exit.eyeDeltaY < -1) && r.rows.some((row) => row.exit.lookY < -0.25 && row.exit.eyeDeltaY > 1), JSON.stringify([...r.rows, ...r.awakeEntries].map((row) => row.exit)));
 });
 for (const backend of BACKENDS) hubTask(`camera release ${backend}`, async (b) => {
   const r = await b.evaluate(`(${cameraReleaseProbe.toString()})()`);

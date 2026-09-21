@@ -4152,9 +4152,11 @@ body.orbit-dragging #tooltip {
 .weapon-reticle[data-target="friendly"] { --reticle-target: #65e879; }
 .weapon-reticle[data-target="enemy"] { --reticle-target: #ff6464; }
 .weapon-reticle[data-target="object"] { --reticle-target: #ff9d42; }
+.weapon-reticle[data-target="out-of-range"] { --reticle-target: #8f969d; }
 .weapon-reticle[data-target="friendly"] > span,
 .weapon-reticle[data-target="enemy"] > span,
-.weapon-reticle[data-target="object"] > span {
+.weapon-reticle[data-target="object"] > span,
+.weapon-reticle[data-target="out-of-range"] > span {
   width: 4px;
   height: 4px;
   background: var(--reticle-target);

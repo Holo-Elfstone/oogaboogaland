@@ -3070,7 +3070,7 @@
       const gate = nearbyMatrixGate(x, y, z, reach);
       if (gate) return gate;
     }
-    if (matrixControl && matrixControlNear(x, y, z, reach)) return matrixControl;
+    if (player && matrixControl && matrixControlNear(x, y, z, reach)) return matrixControl;
     if (player && player.hop < 0.03 && player.hopV <= 0 && headquarters) {
       let nearest = null, distance = Math.min(reach, 1.5) ** 2;
       for (const seat of headquarters.benches) {
@@ -3186,7 +3186,7 @@
         hud.toast(tooltipFor(hit));
         break;
       case "matrix-button":
-        toggleMatrixControl();
+        toggleMatrixControl(true);
         break;
       case "matrix-gate": {
         const player = pilot.player;
@@ -3351,7 +3351,6 @@
       : unlocked ? "The glyph gates rise. The Matrix stays." : "The glyph gates descend while the mirror is open.");
     return true;
   };
-  const toggleMatrixControl = () => setMatrixUnlocked(!matrixCave.unlocked);
   const respawnAtPile = () => {
     setMatrixUnlocked(false, true);
     setMatrixInside(false);
@@ -3360,6 +3359,15 @@
     navigate("pile");
   };
   const matrixControlNear = (x, y, z, reach = MATRIX_BUTTON_REACH) => !!matrixControl && actionWithinReach(x, y, z, matrixControl.x, matrixCave.mouth.floorY + matrixControl.button.position.y, matrixControl.z, reach);
+  const playerNearMatrixControl = () => {
+    const player = pilot.player;
+    return !!player && matrixControlNear(player.root.position.x, player.root.position.y + 1.1 - player.baseY, player.root.position.z, MATRIX_BUTTON_USE_REACH);
+  };
+  const toggleMatrixControl = (explain = false) => {
+    if (playerNearMatrixControl()) return setMatrixUnlocked(!matrixCave.unlocked);
+    if (explain) hud.toast(pilot.player ? "Move closer to use the Matrix control." : "Select an Ooga, then move close to use the Matrix control.");
+    return false;
+  };
   const nearbyMatrixGate = (x, y, z, reach) => {
     let nearest = null, distance = reach;
     for (let i = 0; i < matrixGates.length; i++) {
