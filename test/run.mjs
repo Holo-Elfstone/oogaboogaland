@@ -19400,7 +19400,7 @@ const { treetopCameraProbe } = (() => {
 })();
 
 // ---- weapon-aim.mjs ----
-const { weaponPointerLockFixture, weaponAimProbe, weaponAimLifecycleProbe, weaponFlightProbe, weaponModesProbe, weaponBurningProbe, weaponZoomProbe } = (() => {
+const { weaponPointerLockFixture, weaponAimProbe, weaponAimLifecycleProbe, weaponFlightProbe, weaponModesProbe, weaponBurningProbe, weaponZoomProbe, shoulderPeekProbe } = (() => {
   // Exercise the shared pilot with real mouse/key events and bounded gameplay
   // steps; no wall-clock timing or renderer-specific camera implementation.
   // Headless Chrome cannot grant native capture. Keep the production capture
@@ -20072,7 +20072,51 @@ const { weaponPointerLockFixture, weaponAimProbe, weaponAimLifecycleProbe, weapo
         fartherOut, noTiltSnap, smoothTilt, tiltsDown, cameraTilts, beforeViewPitch, actualViewPitch, maximumTiltStep, remembersWeapon, interrupted, stationary, ammo: cave.weapon.ammo, selectedSlot: cave.weapon.selectedSlot };
     } finally { pointer("pointerup"); scene.update = update; restorePointerLock(); }
   };
-  return { weaponPointerLockFixture, weaponAimProbe, weaponAimLifecycleProbe, weaponFlightProbe, weaponModesProbe, weaponBurningProbe, weaponZoomProbe };
+  const shoulderPeekProbe = () => {
+    const B = window.__ooga, BL = window.BL, scene = BL.scenes[B.scene], crew = B.crew, pilot = B.pilot;
+    const actors = [...crew.cavemen.values()], cave = actors[0], update = scene.update;
+    const key = (value, type = "keydown") => window.dispatchEvent(new KeyboardEvent(type, { key: value, bubbles: true, cancelable: true }));
+    let elapsed = 100;
+    const step = (seconds) => {
+      for (let remaining = seconds; remaining > 1e-9;) {
+        const dt = Math.min(1 / 60, remaining); remaining -= dt;
+        pilot.readInput(dt); crew.update(dt, elapsed += dt); pilot.update(dt); BL.scene.updateWorld(scene.root);
+      }
+    };
+    try {
+      scene.update = () => {};
+      pilot.release(true);
+      for (const actor of actors.slice(1)) actor.root.visible = false;
+      pilot.possess(cave);
+      const floor = B.scene === "hub" ? B.island.surfaceAt(0, 8) : 0;
+      pilot.navigate({ position: { x: 0, y: floor, z: B.scene === "hub" ? 8 : 3 }, target: { x: 0, y: floor + 1, z: 0 }, yaw: 0, pitch: 0.35, dist: 6 });
+      cave.weapon.ammo = 30;
+      pilot.weaponMode(2);
+      pilot.hooks.onZoom(0.1); step(1);
+      cave.weapon.aiming = true; step(0.2);
+      const p = cave.root.position, c = scene.camera.position, h = cave.traits.height;
+      const lateral = () => (c.x - p.x) * Math.cos(pilot.orbit.yaw) - (c.z - p.z) * Math.sin(pilot.orbit.yaw);
+      const initial = lateral();
+      key("Shift"); key("Shift", "keyup"); step(1 / 60);
+      const first = lateral();
+      step(0.7);
+      const swapped = lateral(), planted = { ...p };
+      key("Shift"); key("d"); step(0.45);
+      const peekedEye = lateral();
+      const peeked = cave.peek > 0.7 && cave.parts.torso.poseLean > 0.15
+        && cave.parts.legL.poseLean === 0 && cave.parts.legR.poseLean === 0
+        && Math.hypot(p.x - planted.x, p.y - planted.y, p.z - planted.z) < 1e-8
+        && peekedEye > swapped + 0.15 * h;
+      key("d", "keyup"); key("Shift", "keyup"); step(0.45);
+      const released = Math.abs(cave.peek) < 0.01 && Math.abs(cave.parts.torso.poseLean) < 0.003
+        && lateral() < peekedEye - 0.1 * h;
+      return { battle: pilot.aiming && pilot.mode === "shoulder", initial, first, swapped, smooth: initial > 0.3 * h && swapped < -0.3 * h && first < initial && first > swapped, peeked, peekedEye, released, final: lateral() };
+    } finally {
+      key("d", "keyup"); key("a", "keyup"); key("Shift", "keyup");
+      pilot.release(true); scene.update = update;
+    }
+  };
+  return { weaponPointerLockFixture, weaponAimProbe, weaponAimLifecycleProbe, weaponFlightProbe, weaponModesProbe, weaponBurningProbe, weaponZoomProbe, shoulderPeekProbe };
 })();
 
 // ---- weapon-auto.mjs ----
@@ -20448,17 +20492,22 @@ const weaponEquipmentButtonsProbe = (pointerLockFixture) => {
     const body = cave.root.rotation.y, p = cave.root.position, camera = { ...scene.camera.position }, beforeFire = cave.weapon.shotsFired;
     secondary.click();
     const target = cave.weapon.burstTarget, dx = target.x - p.x, dz = target.z - p.z, d = Math.hypot(dx, dz);
-    const forward = Math.abs(dx / d - Math.sin(body)) < 1e-6 && Math.abs(dz / d - Math.cos(body)) < 1e-6
+    const forward = (dx * Math.sin(body) + dz * Math.cos(body)) / d > 0.995
       && !cave.weapon.burstPlayerAim && !pilot.aiming && ["x", "y", "z"].every(axis => scene.camera.position[axis] === camera[axis]);
+    const carryShot = { body, dx, dz, d, nx: dx / d, nz: dz / d, fx: Math.sin(body), fz: Math.cos(body),
+      playerAim: cave.weapon.burstPlayerAim, aiming: pilot.aiming };
     step(0.8);
     const burst = cave.weapon.shotsFired === beforeFire + 3 && cave.weapon.ammo === 27;
     const shooter = [];
     pilot.hooks.onZoom(0.1); step(1);
+    if (!pilot.aiming) { pilot.modeAction("mode-toggle"); step(0.1); }
     for (const close of [false, true]) {
       if (close) { pilot.enterClose(); step(1); }
       document.exitPointerLock(); const mode = pilot.mode, shots = cave.weapon.shotsFired;
       pointer("pointerdown"); step(1.4); pointer("pointerup"); click(); step(0.1);
       const selected = cave.weapon.primaryEquipped && quiet() && pilot.aiming && pilot.mode === mode && !document.pointerLockElement;
+      const selectionState = { primaryEquipped: cave.weapon.primaryEquipped, equipped: cave.weapon.equipped,
+        quiet: quiet(), aiming: pilot.aiming, mode: pilot.mode, expectedMode: mode, pointerLock: !!document.pointerLockElement };
       let buttonAttack;
       if (close) {
         pointer("pointerdown"); step(0.03); pointer("pointerup"); click();
@@ -20467,13 +20516,21 @@ const weaponEquipmentButtonsProbe = (pointerLockFixture) => {
         const swing = cave.weapon.meleeTime > 0 && !cave.weapon.meleePoke && cave.weapon.meleePower === 1;
         buttonAttack = poke && swing; step(0.8);
       } else {
-        primary.click(); step(0.1); buttonAttack = quiet();
+        pointer("pointerdown"); step(0.03); pointer("pointerup"); click();
+        buttonAttack = cave.weapon.meleeTime > 0 && cave.weapon.meleePoke && cave.weapon.meleePower === 0.5;
+        step(0.8);
       }
       secondary.click(); step(0.1);
       const noShotOnSelect = cave.weapon.equipped && cave.weapon.shotsFired === shots;
       secondary.click(); step(0.8);
-      shooter.push({ close, selected, buttonAttack, noShotOnSelect, shoots: cave.weapon.shotsFired === shots + 3 && pilot.mode === mode && pilot.aiming });
+      shooter.push({ close, selected, buttonAttack, noShotOnSelect, shoots: cave.weapon.shotsFired === shots + 3 && pilot.mode === mode && pilot.aiming,
+        selectionState });
     }
+    carry(1); pilot.modeAction("mode-toggle"); step(0.1);
+    const axeBattleReady = pilot.aiming && Math.abs(cave.parts.club.rotation.y - Math.PI / 2) < 1e-6;
+    pointer("pointerdown"); step(0.03); pointer("pointerup"); click();
+    const orbitBattleButton = cave.weapon.meleePoke && cave.weapon.meleePower === 0.5 && cave.weapon.meleeTime > 0;
+    step(0.8); pilot.modeAction("mode-toggle"); step(0.1);
     const icons = [], readback = document.createElement("canvas"), readContext = readback.getContext("2d", { willReadFrequently: true });
     for (const actor of [cave, actors.find(c => c.traits.anunnaki), actors.find(c => !c.traits.stoneAxe && !c.traits.anunnaki && !c.traits.newspaper && !c.traits.energyCan)]) {
       pilot.release(true); actor.root.visible = true; pilot.possess(actor); step(0.1);
@@ -20495,8 +20552,8 @@ const weaponEquipmentButtonsProbe = (pointerLockFixture) => {
     const vertical = gaugeRect.height > gaugeRect.width * 2 && Math.abs(fillRect.bottom - gaugeRect.bottom) < 0.1
       && Math.abs(fillRect.height / gaugeRect.height - 0.25) < 0.01 && Number(gauge.getAttribute("aria-valuemax")) === 200;
     const primaryBeforeSecondary = primary.getBoundingClientRect().right <= secondary.getBoundingClientRect().left;
-    return { selectsOnly, charged, lower, raised, releasesOnce, settled, tap, brief, vertical, cancellations, keyboard, accessibleClick, defaultClubSwings,
-      selectsAk, forward, burst, shooter, matchedIcons, followsSkin, iconNames: icons.map(icon => icon.name), compact, gaugeWidth, countWidth, primaryBeforeSecondary };
+    return { selectsOnly, axeBattleReady, orbitBattleButton, charged, lower, raised, releasesOnce, settled, tap, brief, vertical, cancellations, keyboard, accessibleClick, defaultClubSwings,
+      selectsAk, forward, carryShot, burst, shooter, matchedIcons, followsSkin, iconNames: icons.map(icon => icon.name), compact, gaugeWidth, countWidth, primaryBeforeSecondary };
   } finally { pointer("pointercancel"); pilot.release(true); scene.update = update; restoreLock(); }
 };
 
@@ -24074,7 +24131,7 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
     const point = await b.evaluate(`(() => { const r = document.getElementById("mode-hud").getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
     const readMode = () => b.evaluate(`(() => { const B = window.__ooga, button = document.getElementById("mode-hud"), face = document.getElementById("mode-face-icon"), free = document.getElementById("freeroam-icon"); return { player: B.pilot.player?.traits.name || null, selected: button.dataset.selected, battle: button.dataset.battle, view: button.dataset.view, mode: B.pilot.mode, reticle: !document.getElementById("weapon-reticle").hidden, cursorHidden: document.pointerLockElement === document.getElementById("scene") || document.body.classList.contains("aim-cursor-focused"), width: button.getBoundingClientRect().width, face: !face.hidden && getComputedStyle(face).display !== "none", free: !free.hidden && getComputedStyle(free).display !== "none", jetpack: !document.getElementById("jetpack-hud").hidden }; })()`);
     const selected = await readMode();
-    await b.key("0");
+    await b.key("x");
     await b.sleep(80);
     const orbitBattle = await readMode();
     const orbitAim = await b.evaluate(`(() => {
@@ -24163,6 +24220,9 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
       return { found: !!before, characterCenter, aimedTooltip, farRadius, kept, returnedKept, shoulderMode: B.pilot.mode === "orbit" && !!returned,
         near: !!near, close, circleHidden, restricted, centered, farMelee, nearMelee, meleeHit, lowShot, highShot, cameraIndependentShot };
     })()`);
+    await b.key("x");
+    await b.sleep(80);
+    const orbitCarry = await readMode();
     const health = await b.evaluate(`(() => {
       const B = window.__ooga, cave = B.pilot.player, scene = window.BL.scenes.hub, clock = B.renderOpts.matrix.time;
       const others = [...B.cavemen.values()].filter((other) => other !== cave), visibility = others.map((other) => other.root.visible);
@@ -24239,9 +24299,6 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
         looseAkAmmo, looseMagazineAmmo: looseAmmo, dropsAfter: cave.stunGear.drops.map((drop) => ({ kind: drop.kind, active: drop.active, ammo: drop.ammo })),
         bars, recovered: cave.health.value, released: !cave.health.stunned && !cave.stunBirds.visible };
     })()`);
-    await b.key("0");
-    await b.sleep(80);
-    const orbitCarry = await readMode();
     await b.evaluate(`{ const B = window.__ooga; B.pilot.hooks.onZoom(0.01, 101, innerWidth / 2, innerHeight / 2); for (let i = 0; i < 120; i++) window.BL.scenes.hub.update(1 / 60, B.renderOpts.matrix.time + i / 60); }`);
     const shoulderCarry = await readMode();
     await b.evaluate(`document.getElementById("mode-hud").click()`); await b.sleep(80);
@@ -24269,7 +24326,8 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
         const outlineNames = ["dplusplus1024", "RandyMcMillan", "bc1gui"];
         const geometry = cave.portraitHead, bounds = window.BL.scene.boundsOf(geometry);
         const hairOutline = !outlineNames.includes(cave.traits.name) || bounds.max[0] - bounds.min[0] >= cave.traits.height * 0.55;
-        rows.push({ name: cave.traits.name, portrait: document.getElementById("mode-hud").dataset.portrait, opaque, width: maxX - minX + 1, height: maxY - minY + 1, centerX: (minX + maxX) / 2, hiddenHeadwear: cave.parts.head.children.filter((child) => child.portraitHidden).length, hairOutline });
+        const skaterHat = !cave.traits.skater || bounds.max[1] >= cave.traits.height * 0.87 && bounds.min[0] <= -cave.traits.height * 0.4;
+        rows.push({ name: cave.traits.name, portrait: document.getElementById("mode-hud").dataset.portrait, opaque, width: maxX - minX + 1, height: maxY - minY + 1, centerX: (minX + maxX) / 2, hiddenHeadwear: cave.parts.head.children.filter((child) => child.portraitHidden).length, hairOutline, skaterHat });
       }
       return rows;
     })()`);
@@ -24281,18 +24339,18 @@ const jetpackHud = (mobile = false, landscape = false) => withPage(`jetpack HUD 
     await b.mouse("mouseReleased", point.x, point.y, { buttons: 0 });
     await b.sleep(80);
     const free = await readMode();
-    const dotLayout = await b.evaluate(`(() => { const dots = document.getElementById("detached-destinations").getBoundingClientRect(), icon = document.getElementById("freeroam-icon").getBoundingClientRect(); return { dotsBottom: dots.bottom, iconTop: icon.top }; })()`);
+    const dotLayout = await b.evaluate(`(() => { const button = document.getElementById("mode-hud").getBoundingClientRect(), dots = document.getElementById("detached-destinations").getBoundingClientRect(), icon = document.getElementById("freeroam-icon").getBoundingClientRect(); return { dotsTop: dots.top, iconBottom: icon.bottom, iconWidth: icon.width, centered: Math.abs((icon.left + icon.right) * 0.5 - (button.left + button.right) * 0.5) < 0.1 }; })()`);
     const labDot = await b.evaluate(`(() => { const r = document.querySelector('[data-detached-preset="lab"]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
     await b.click(labDot.x, labDot.y); await b.sleep(120);
     const direct = await b.evaluate(`(() => ({ current: document.querySelector('.detached-dot[data-current="true"]')?.dataset.detachedPreset, label: document.getElementById('detached-destination-name').textContent, showing: document.getElementById('detached-destination-name').classList.contains('show'), topHidden: document.querySelector('.hub-presets').hidden }))()`);
     await b.click(point.x, point.y); await b.sleep(120);
     const cycled = await b.evaluate(`(() => ({ current: document.querySelector('.detached-dot[data-current="true"]')?.dataset.detachedPreset, label: document.getElementById('detached-destination-name').textContent }))()`);
-    record("mode HUD desktop: 0 toggles battle and carry independently from orbit, shoulder and first-person views", selected.player && selected.selected === "true" && selected.battle === "false" && selected.mode === "orbit" && selected.face && !selected.free && selected.jetpack && selected.width === 78 && orbitBattle.battle === "true" && orbitBattle.mode === "orbit" && orbitBattle.reticle && orbitBattle.cursorHidden && orbitCarry.battle === "false" && orbitCarry.mode === "orbit" && !orbitCarry.reticle && shoulderCarry.mode === "shoulder" && shoulderCarry.battle === "false" && !shoulderCarry.reticle && shoulderBattle.mode === "shoulder" && shoulderBattle.battle === "true" && shoulderBattle.reticle && shoulderCarryAgain.mode === "shoulder" && !shoulderCarryAgain.reticle && firstCarry.mode === "first-person" && firstCarry.battle === "false" && !firstCarry.reticle && firstBattle.mode === "first-person" && firstBattle.battle === "true" && firstBattle.reticle && firstCarryAgain.mode === "first-person" && !firstCarryAgain.reticle, JSON.stringify({ selected, orbitBattle, orbitCarry, shoulderCarry, shoulderBattle, shoulderCarryAgain, firstCarry, firstBattle, firstCarryAgain }));
+    record("mode HUD desktop: X toggles battle and carry independently from orbit, shoulder and first-person views", selected.player && selected.selected === "true" && selected.battle === "false" && selected.mode === "orbit" && selected.face && !selected.free && selected.jetpack && selected.width === 78 && orbitBattle.battle === "true" && orbitBattle.mode === "orbit" && orbitBattle.reticle && orbitBattle.cursorHidden && orbitCarry.battle === "false" && orbitCarry.mode === "orbit" && !orbitCarry.reticle && shoulderCarry.mode === "shoulder" && shoulderCarry.battle === "false" && !shoulderCarry.reticle && shoulderBattle.mode === "shoulder" && shoulderBattle.battle === "true" && shoulderBattle.reticle && shoulderCarryAgain.mode === "shoulder" && !shoulderCarryAgain.reticle && firstCarry.mode === "first-person" && firstCarry.battle === "false" && !firstCarry.reticle && firstBattle.mode === "first-person" && firstBattle.battle === "true" && firstBattle.reticle && firstCarryAgain.mode === "first-person" && !firstCarryAgain.reticle, JSON.stringify({ selected, orbitBattle, orbitCarry, shoulderCarry, shoulderBattle, shoulderCarryAgain, firstCarry, firstBattle, firstCarryAgain }));
     record("mode HUD desktop: orbit battle targets only eligible centers, shows aimed character health, snaps vertically, tightens adjacent hits and retains its world target through shoulder view", orbitAim.found && orbitAim.characterCenter && !orbitAim.aimedTooltip.hidden && orbitAim.aimedTooltip.name && orbitAim.aimedTooltip.health === "25" && orbitAim.restricted && orbitAim.centered && orbitAim.farRadius > 0 && orbitAim.kept && orbitAim.returnedKept && orbitAim.shoulderMode && orbitAim.near && orbitAim.close === "true" && orbitAim.circleHidden, JSON.stringify(orbitAim));
     record("mode HUD desktop: orbit melee keeps distant props gray, turns them orange only in range, and both melee and AK assistance hit independently of camera pitch", orbitAim.farMelee.tracked && orbitAim.farMelee.type === "out-of-range" && orbitAim.farMelee.color === "rgb(143, 150, 157)" && orbitAim.nearMelee.tracked && orbitAim.nearMelee.type === "object" && orbitAim.nearMelee.color === "rgb(255, 157, 66)" && orbitAim.meleeHit && orbitAim.cameraIndependentShot, JSON.stringify(orbitAim));
     record("mode HUD desktop: a depleted Ooga freezes with limp arms and a dizzy head while bounded equipment drops spread around it, nearby Oogas claim loose gear or draw only needed AK rounds, and every unclaimed item returns", health.delayed === 24 && health.regenerated === 25 && health.stunned && health.frozen && health.birds && health.limp && health.dizzy && health.gearDropped.count >= 3 && health.gearDropped.visible && health.gearDropped.spread === health.gearDropped.count && health.gearDropped.primary && health.gearDropped.secondary && health.gearDropped.ammo === 0 && health.gearDropped.spares === 0 && health.gearDropped.jetpack && health.gearRestored && health.claimed && health.akTransfer && health.bars.visible && health.bars.mode === "20" && health.bars.tooltip === "20" && health.bars.modeFill === "scaleY(0.8)" && health.bars.tooltipFill === "scaleX(0.8)" && health.bars.tooltipWidth === 72 && health.bars.gaugeMatch && health.bars.faceCentered && health.recovered === 25 && health.released, JSON.stringify(health));
-    record("mode HUD desktop: every character icon uses a centered face crop, dplusplus1024, RandyMcMillan, and bc1gui keep their head outlines, and headwear stays outside the portrait", portraits.length === 10 && portraits.every((row) => row.portrait === "face-crop" && row.opaque > 100 && row.width >= 16 && row.height >= 16 && Math.abs(row.centerX - 23.5) < 7 && row.hairOutline) && portraits.find((row) => row.name === "genXbtc")?.hiddenHeadwear >= 1, JSON.stringify(portraits));
-    record("mode HUD desktop: a completed underline hold detaches, dots sit above the icon, direct dots navigate, and the compass cycles destinations", holding.holding === "true" && holding.animation === "mode-release-progress" && holding.opacity === "1" && holding.transform !== "none" && free.player === null && free.selected === "false" && free.mode === "detached" && free.free && !free.face && !free.jetpack && dotLayout.dotsBottom <= dotLayout.iconTop && direct.current === "lab" && direct.label === "Lab" && direct.showing && direct.topHidden && cycled.current === "mirror" && cycled.label === "Mirror", JSON.stringify({ holding, free, dotLayout, direct, cycled }));
+    record("mode HUD desktop: every character icon uses a centered face crop, bc1gui keeps his full slouched hat, the outlined faces retain their hair, and separate headwear stays outside the portrait", portraits.length === 10 && portraits.every((row) => row.portrait === "face-crop" && row.opaque > 100 && row.width >= 16 && row.height >= 16 && Math.abs(row.centerX - 23.5) < 7 && row.hairOutline && row.skaterHat) && portraits.find((row) => row.name === "genXbtc")?.hiddenHeadwear >= 1, JSON.stringify(portraits));
+    record("mode HUD desktop: a completed underline hold detaches, the smaller compass is centered above its dots, direct dots navigate, and the compass cycles destinations", holding.holding === "true" && holding.animation === "mode-release-progress" && holding.opacity === "1" && holding.transform !== "none" && free.player === null && free.selected === "false" && free.mode === "detached" && free.free && !free.face && !free.jetpack && dotLayout.iconWidth === 28 && dotLayout.centered && dotLayout.dotsTop >= dotLayout.iconBottom && direct.current === "lab" && direct.label === "Lab" && direct.showing && direct.topHidden && cycled.current === "mirror" && cycled.label === "Mirror", JSON.stringify({ holding, free, dotLayout, direct, cycled }));
     record("jetpack HUD desktop: ownership stays with its finder when control changes", ownership.hiddenForOther && ownership.visibleForOwner && ownership.owner === ownership.selected, JSON.stringify(ownership));
   }
   if (mobile) {
@@ -25060,10 +25118,10 @@ const hubProps = () => withPage("hub props", hubPage(src, "loot=1"), async (b) =
   const used = await b.evaluate(`(() => { const B = window.__ooga; return { hop: B.crew.player.hop, jumps: B.crew.player.jumps, label: document.getElementById("act").textContent, toast: document.getElementById("toast").textContent, bubbles: window.__decorativeJump }; })()`);
   record("hub props: Space jumps beside a decorative barrel without using it or shouting", near.player && used.hop > 0 && used.jumps === 1 && used.label === "JUMP!" && !used.toast.includes("Empty") && used.bubbles.before === used.bubbles.after, JSON.stringify({ ...near, ...used }));
   record("hub props: Reset View controls are absent from both scene toolbars", await b.evaluate(`document.querySelectorAll('[data-action="reset-view"]').length === 0`));
-  const beforeZero = await b.evaluate(`(() => { const B = window.__ooga; return { name: B.crew.player.traits.name, mode: B.pilot.mode, distance: B.pilot.orbit.tDist }; })()`);
+  const beforeZero = await b.evaluate(`(() => { const B = window.__ooga; return { name: B.crew.player.traits.name, mode: B.pilot.mode, battle: B.pilot.aiming, distance: B.pilot.orbit.tDist }; })()`);
   await b.key("0");
-  const afterZero = await b.evaluate(`(() => { const B = window.__ooga; return { name: B.crew.player?.traits.name, mode: B.pilot.mode, distance: B.pilot.orbit.tDist }; })()`);
-  record("hub props: the retired 0 view shortcut preserves the selected character and scroll-controlled view", afterZero.name === beforeZero.name && afterZero.mode === beforeZero.mode && afterZero.distance === beforeZero.distance, JSON.stringify({ beforeZero, afterZero }));
+  const afterZero = await b.evaluate(`(() => { const B = window.__ooga; return { name: B.crew.player?.traits.name, mode: B.pilot.mode, battle: B.pilot.aiming, distance: B.pilot.orbit.tDist }; })()`);
+  record("hub props: the retired 0 shortcut preserves the selected character, carry state and scroll-controlled view", afterZero.name === beforeZero.name && afterZero.mode === beforeZero.mode && afterZero.battle === beforeZero.battle && afterZero.distance === beforeZero.distance, JSON.stringify({ beforeZero, afterZero }));
   const altar = await b.evaluate(`(() => { const B = window.__ooga; const shellMinY = () => { const data = B.shell.instanceData, geometry = B.shell.geometry; let minY = Infinity; for (let instance = 0; instance < B.shell.instanceCount; instance++) { const offset = instance * 20; for (let i = 0; i < geometry.verts.length; i += 3) minY = Math.min(minY, data[offset + 1] * geometry.verts[i] + data[offset + 5] * geometry.verts[i + 1] + data[offset + 9] * geometry.verts[i + 2] + data[offset + 13]); } return minY; }; const sample = (level) => { B.setPileLevel(level); return { radius: B.altar.radius, platformRadius: B.altar.platformRadius, slabRadius: B.altar.slab.scale.x, height: B.altar.slab.scale.y, outerRingRadius: B.altar.outerRingRadius, outerRingInnerRadius: B.altar.outerRingInnerRadius, rings: B.altar.ringCount, blocks: B.altar.blockCount, visible: B.altar.rings.filter((r) => r.instanceCount > 0).length, nodes: B.altar.rings.length, minBananaY: shellMinY() }; }; const small = sample(300), before = sample(1000), after = sample(1100), medium = sample(10000), million = sample(1000000), radii = []; for (const ring of B.altar.rings) for (let i = 0; i < ring.instanceCount; i++) radii.push(Math.hypot(ring.instanceData[i * 20 + 12], ring.instanceData[i * 20 + 14])); const shades = new Set(B.altar.rings.map((ring) => ring.geometry.faces[0].color.join(","))).size, visibleScenery = B.props.filter((o) => o.scenery && o.active), nearestSceneryEdge = Math.min(...visibleScenery.map((o) => Math.hypot(o.x, o.z) - o.footprint)); return { small, before, after, medium, million, circularVariance: Math.max(...radii) - Math.min(...radii), shades, nearestSceneryEdge, sceneryClearance: B.scenery.clearanceRadius }; })()`);
   const altarMargin = (sample) => Math.abs(sample.platformRadius - sample.radius - 0.22) < 1e-10 && Math.abs(sample.outerRingInnerRadius - sample.radius - 0.02) < 1e-10;
   record("hub altar: its empty base grows continuously and stays one block ring beyond the bananas", altar.small.slabRadius === altar.small.outerRingInnerRadius && [altar.small, altar.before, altar.after, altar.medium, altar.million].every((sample) => altarMargin(sample) && sample.slabRadius === sample.outerRingInnerRadius) && Math.abs((altar.after.platformRadius - altar.before.platformRadius) - (altar.after.radius - altar.before.radius)) < 1e-10 && altar.million.height >= 0.3 && altar.small.minBananaY > altar.small.height && altar.medium.minBananaY > altar.medium.height && altar.million.minBananaY > altar.million.height && altar.nearestSceneryEdge >= altar.sceneryClearance - 1e-8, JSON.stringify(altar));
@@ -26482,9 +26540,10 @@ for (const backend of BACKENDS) for (const scene of SCENES) task(`weapon carry a
 for (const backend of BACKENDS) task(`weapon buttons ${backend}`, () => withPage(`weapon buttons ${backend}`, hubBackend(backend), async b => {
   const r = await b.evaluate(`(${weaponEquipmentButtonsProbe.toString()})(${weaponPointerLockFixture.toString()})`);
   record("weapon buttons: the primary button selects from AK in carry, then quick releases poke, brief presses swing and full holds deal double damage", r.selectsOnly && r.charged && r.releasesOnce && r.settled && r.tap && r.brief && r.defaultClubSwings, JSON.stringify({ selectsOnly: r.selectsOnly, charged: r.charged, lower: r.lower, raised: r.raised, releasesOnce: r.releasesOnce, settled: r.settled, tap: r.tap, brief: r.brief, defaultClubSwings: r.defaultClubSwings }));
+  record("weapon buttons: the melee button attacks in orbit battle", r.orbitBattleButton, JSON.stringify({ orbitBattleButton: r.orbitBattleButton }));
   record("weapon buttons: pointer cancellation, blur and switching weapons clear held charge; Enter, Space and accessible clicks work", r.cancellations.every(row => row.started && row.canceled) && r.keyboard.every(row => row.held && row.released) && r.accessibleClick, JSON.stringify({ cancellations: r.cancellations, keyboard: r.keyboard, accessibleClick: r.accessibleClick }));
-  record("weapon buttons: secondary selects without firing, then fires along the character heading independently of the carry camera", r.selectsAk && r.forward && r.burst, JSON.stringify({ selectsAk: r.selectsAk, forward: r.forward, burst: r.burst }));
-  record("weapon buttons: shooter selection preserves view and cursor, first-person primary clicks poke and swing, shoulder selection stays quiet, and a selected AK fires", r.shooter.length === 2 && r.shooter.every(row => row.selected && row.buttonAttack && row.noShotOnSelect && row.shoots), JSON.stringify(r.shooter));
+  record("weapon buttons: secondary selects without firing, then fires along the character's forward line of sight independently of the carry camera", r.selectsAk && r.forward && r.burst, JSON.stringify({ selectsAk: r.selectsAk, forward: r.forward, burst: r.burst, carryShot: r.carryShot }));
+  record("weapon buttons: shooter selection preserves view and cursor, primary clicks attack in shoulder and first person, and a selected AK fires", r.shooter.length === 2 && r.shooter.every(row => row.selected && row.buttonAttack && row.noShotOnSelect && row.shoots), JSON.stringify(r.shooter));
   record("weapon buttons: primary icons match axe, staff and club, follow their skin, and leave a vertical strength gauge at the half-damage tap level in a number-width readout", r.matchedIcons && r.followsSkin && r.compact && r.vertical && r.primaryBeforeSecondary, JSON.stringify({ matchedIcons: r.matchedIcons, followsSkin: r.followsSkin, icons: r.iconNames, compact: r.compact, vertical: r.vertical, gaugeWidth: r.gaugeWidth, countWidth: r.countWidth, primaryBeforeSecondary: r.primaryBeforeSecondary }));
   await b.evaluate(`(() => { const B = window.__ooga, c = [...B.crew.cavemen.values()].find(c => c.traits.stoneAxe); B.pilot.possess(c); B.pilot.weaponMode(2); B.crew.collectMagazine(c); B.crew.collectMagazine(c); B.pilot.update(0); })()`);
   const layouts = [];
@@ -26495,6 +26554,16 @@ for (const backend of BACKENDS) task(`weapon buttons ${backend}`, () => withPage
     if (process.env.CAPTURE_WEAPON_BUTTONS && backend === "webgl2") await b.screenshot(`${process.env.CAPTURE_WEAPON_BUTTONS}-${width}.png`);
   }
   record("weapon buttons: primary, expanded AK and both magazines fit desktop and narrow screens without overlap", layouts.every(row => row.visible && row.separated), JSON.stringify(layouts));
+}));
+task("axe first combat pose", () => withPage("axe first combat pose", hubPage(src, "solo=1&character=w-s-bitcoin&weapon=1"), async b => {
+  await b.key("x");
+  await untilPage(b, "B.pilot.aiming");
+  const r = await b.evaluate(`(() => { const B = window.__ooga, cave = B.pilot.player; return {
+    mode: B.pilot.mode, aiming: B.pilot.aiming, axe: cave.traits.stoneAxe,
+    faceOn: Math.abs(cave.parts.club.rotation.y - Math.PI / 2) < 1e-6,
+    selected: cave.weapon.primaryEquipped && !cave.weapon.equipped
+  }; })()`);
+  record("axe combat pose: the first X toggle presents the selected axe face-on", r.aiming && r.axe && r.faceOn && r.selected, JSON.stringify(r));
 }));
 for (const backend of BACKENDS) task(`weapon carry targets ${backend}`, () => withPage(`weapon carry targets ${backend}`, hubBackend(backend), async b => {
   const r = await b.evaluate(`(${weaponCarryTargetsProbe.toString()})()`);
@@ -26939,6 +27008,10 @@ for (const backend of BACKENDS) task(`first-person shooter ${backend}`, () => wi
     record(`first-person shooter ${backend}: sleeping keeps its resting view and waking restores the selected shooter without another gesture`, r.slept && r.sleeping.sleeping && !r.sleeping.aiming && !r.sleeping.reticle && r.sleeping.mode === "first-person" && r.sleepingPose && r.woke && shooter(r.awake) && r.awake.eyeError < 1e-5 && r.wakeStep < 0.3 && r.wakeAngle < 0.2, JSON.stringify({ sleeping: r.sleeping, awake: r.awake, wakeStep: r.wakeStep, wakeAngle: r.wakeAngle }));
     record(`first-person shooter ${backend}: seated first person retains shooter controls while attacks stay blocked`, r.sat && shooter(r.seated) && r.seatedSafe, JSON.stringify({ seated: r.seated, sat: r.sat, safe: r.seatedSafe }));
   }
+}));
+for (const backend of ["webgl2", "canvas2d"]) task(`shoulder swap and peek ${backend}`, () => withPage(`shoulder swap and peek ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
+  const r = await b.evaluate(`(${shoulderPeekProbe.toString()})()`);
+  record(`shoulder swap and peek ${backend}: Shift swaps smoothly; held Shift plus A/D plants the feet and leans only the upper body`, r.battle && r.smooth && r.peeked && r.released, JSON.stringify(r));
 }));
 for (const backend of BACKENDS) for (const scene of SCENES) task(`weapon aiming ${scene} ${backend}`, () => withPage(`weapon aiming ${scene} ${backend}`, hubPage(src, `${scene === "lab" ? "scene=lab&" : ""}${backend === "canvas2d" ? "canvas2d=1" : ""}`), async (b) => {
   const r = await b.evaluate(`(${weaponAimProbe.toString()})(${weaponPointerLockFixture.toString()})`);

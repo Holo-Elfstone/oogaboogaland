@@ -558,6 +558,7 @@
         cloudSupport: null,
         riding: { support: null, x: 0, y: 0, z: 0, vy: 0, updated: false, continuous: false },
         viewLift: 0,
+        peek: 0,
         act: { kind: "eat", until: 0, trips: 0, sayAt: 0, said: true, phase: 0, spot: { x: 0, z: 0, ry: NaN } },
         swagNodes: []
       });
@@ -909,8 +910,8 @@
       syncMagazine(cave);
       return count;
     };
-    // Shared per-frame scratch: world-space drive vector plus signed close-view intent.
-    const steer = { x: 0, z: 0, view: 0, forward: 0, strafe: 0, speed: 1 };
+    // World-space drive vector plus signed close-view intent. Reused every frame.
+    const steer = { x: 0, z: 0, view: 0, forward: 0, strafe: 0, speed: 1, peek: 0 };
     const startBedRoute = (cave, bed, toBed) => {
       const travel = cave.bedTravel;
       cave.avoidance.tx = NaN;
@@ -1715,7 +1716,7 @@
       } else {
         setVec(parts.club.position, slungClub ? -0.25 * h : 0, (slungClub ? 0.25 : raisedPrimary ? -0.625 : -0.62) * h, (slungClub ? -0.3 : raisedPrimary ? 0.15 : 0.08) * h);
         setVec(parts.club.rotation, slungClub ? cave.traits.stoneAxe ? 0 : CLUB_SLING_TILT : raisedPrimary ? 0 : cave.clubCarry.x,
-          0, slungClub ? CLUB_SLING_ANGLE : raisedPrimary ? Math.PI / 2 : cave.clubCarry.z);
+          raisedPrimary && cave.traits.stoneAxe ? Math.PI / 2 : 0, slungClub ? CLUB_SLING_ANGLE : raisedPrimary ? Math.PI / 2 : cave.clubCarry.z);
       }
       if (parts.chukTrail && !twirling) {
         for (let i = 0; i < parts.chukTrail.length; i++) parts.chukTrail[i].visible = false;
@@ -3375,6 +3376,30 @@
       parts.torso.rotation.z = -side * 0.08;
       parts.legL.rotation.z = parts.legR.rotation.z = side * 0.1;
     };
+    const setPeekPart = (node, lean, pivot) => {
+      if (!node) return;
+      node.poseLean = lean;
+      node.poseLeanY = pivot;
+    };
+    // The legs and root remain planted. Root-level gear receives the same
+    // waist transform; held children inherit it from their arm automatically.
+    const posePeek = (cave, dt) => {
+      cave.peek = damp(cave.peek, steer.peek, 14, dt);
+      if (Math.abs(cave.peek) < 1e-4 && !steer.peek) cave.peek = 0;
+      const parts = cave.parts, lean = cave.peek * 0.23, pivot = cave.traits.height * 0.46;
+      setPeekPart(parts.torso, lean, pivot);
+      setPeekPart(parts.armL, lean, pivot);
+      setPeekPart(parts.armR, lean, pivot);
+      setPeekPart(parts.head, lean, pivot);
+      setPeekPart(parts.gun, parts.gun.parent === cave.root ? lean : 0, pivot);
+      setPeekPart(parts.club, parts.club.parent === cave.root ? lean : 0, pivot);
+      if (cave.jet) setPeekPart(cave.jet.node, cave.jet.node.parent === cave.root ? lean : 0, pivot);
+      for (let i = 0; i < cave.magazineModels.length; i++) {
+        const model = cave.magazineModels[i];
+        if (model) setPeekPart(model.node, model.node.parent === cave.root ? lean : 0, pivot);
+      }
+    };
+    // Flying pose, legs trailing and arms out
     const flyPose = (cave) => {
       const parts = cave.parts;
       parts.legL.rotation.x = -0.5;
@@ -4331,7 +4356,9 @@
         cave.bedTravel.manual = false;
         player = null;
         syncMagazine();
-        steer.x = steer.z = steer.view = steer.forward = steer.strafe = 0;
+        steer.x = steer.z = steer.view = steer.forward = steer.strafe = steer.peek = 0;
+        cave.peek = 0;
+        posePeek(cave, 0);
         cave.override = cave.controlOverride;
         applyState(cave, stateOf(cave));
         return;
@@ -4339,7 +4366,9 @@
       elevatePlayer(0);
       player = null;
       syncMagazine();
-      steer.x = steer.z = steer.view = steer.forward = steer.strafe = 0;
+      steer.x = steer.z = steer.view = steer.forward = steer.strafe = steer.peek = 0;
+      cave.peek = 0;
+      posePeek(cave, 0);
       cave.leap.vx = cave.leap.vz = cave.leap.land = 0;
       if (cave.jet) {
         cave.jet.thrust = false;
@@ -4378,13 +4407,14 @@
         }
       }
     };
-    const steerPlayer = (x, z, view = 0, forward = 0, strafe = 0, speed = 1) => {
+    const steerPlayer = (x, z, view = 0, forward = 0, strafe = 0, speed = 1, peek = 0) => {
       steer.x = x;
       steer.z = z;
       steer.view = clamp(view, 0, 1);
       steer.forward = forward;
       steer.strafe = strafe;
       steer.speed = speed;
+      steer.peek = clamp(peek, -1, 1);
     };
     // Keeps possession and equipment while discarding motion at a safe arrival.
     const relocatePlayer = (position, heading) => {
@@ -4396,7 +4426,9 @@
       if (cave.camp.rolling) { cave.camp.rolling = false; cave.root.quaternion = null; }
       if (cave.bedTravel.manual) wakePlayer();
       elevatePlayer(0);
-      steer.x = steer.z = steer.view = steer.forward = steer.strafe = 0;
+      steer.x = steer.z = steer.view = steer.forward = steer.strafe = steer.peek = 0;
+      cave.peek = 0;
+      posePeek(cave, 0);
       cave.hop = cave.hopV = cave.act.phase = 0;
       cave.cloudSupport = null;
       cave.jumps = 0;
@@ -4772,6 +4804,7 @@
       poseShoulder(cave, dt);
       if (cave.parts.chuk) poseNunchaku(cave, dt);
       poseWeapon(cave);
+      if (cave === player) posePeek(cave, dt);
       if (striking && w.meleeTime > 0 && club.visible && club.parent === cave.parts.armL && !cave.bedTravel.mode) {
         // A weighted flail lands harder than a club; the charge scales on top.
         const meleePower = w.meleePower * (cave.traits.nunchaku ? NUNCHAKU_POWER : 1);

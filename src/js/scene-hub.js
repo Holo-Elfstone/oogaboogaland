@@ -4644,10 +4644,7 @@
     location.reload();
   };
   const onKey = (e) => {
-    if (e.key === "0") {
-      if (!e.repeat) pilot.modeAction("mode-toggle");
-      return;
-    }
+    if ((e.key === "x" || e.key === "X") && !e.repeat && pilot.modeAction("mode-toggle")) return;
     if ((e.key === "1" || e.key === "2") && pilot.weaponMode(Number(e.key))) return;
     if (e.key === "Escape") pilot.release();
     if (e.key === "b" || e.key === "B") addTestBananas(testBananas);

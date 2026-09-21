@@ -40,8 +40,8 @@ decorative props to interact with them. Walking into the lit lab cave enters it.
 **detached**. The first three stay focused on the selected Ooga; detached is free roaming.
 The leftmost equipment button shows only a face-on portrait while an Ooga is selected.
 Press the portrait to switch between battle and carry mode without changing the camera
-mode; **0** performs the same toggle. Hold it until the orange underline fills to detach. Detached mode shows the roaming
-compass with five dots above it for Pile, Lab, Mirror, HQ, and Basement: press the compass to cycle
+mode; **X** performs the same toggle. Hold it until the orange underline fills to detach. Detached mode shows the roaming
+compass with five dots below it for Pile, Lab, Mirror, HQ, and Basement: press the compass to cycle
 them, or press a dot to go directly there. The active dot turns orange and its destination
 name briefly appears below the button.
 Trees stay compact: you can walk through the lower half of their foliage and
@@ -85,7 +85,7 @@ while in shooting mode, and **Shift** sprints forward. **Escape** or **Tab**
 frees the mouse for UI controls and pauses mouse aiming. The next click on the island
 hides the cursor without attacking; subsequent clicks fire or swing while it is hidden.
 **1** selects the club or assigned primary melee skin; **2** selects the rifle and
-carries the primary weapon diagonally across the back. Neither key changes the camera; **0** toggles
+carries the primary weapon diagonally across the back. Neither key changes the camera; **X** toggles
 battle and carry without changing it. In battle mode the club is held outward: a quick left-click
 release pokes forward for half damage; a brief press swings for normal damage.
 Hold longer to raise the weapon and charge up to double damage, then release to strike.

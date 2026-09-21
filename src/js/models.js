@@ -672,10 +672,10 @@
     const portraitVox = makeVox();
     const portraitWide = traits.apple || traits.pumpkin;
     const portraitHairOutline = traits.slim || traits.skater || traits.bee;
-    const portraitMinX = portraitWide || portraitHairOutline ? -1 : 0;
+    const portraitMinX = traits.skater ? -3 : portraitWide || portraitHairOutline ? -1 : 0;
     const portraitMaxX = portraitWide || portraitHairOutline ? 7 : 6;
     const portraitMinY = traits.slim ? -3 : -2;
-    const portraitTop = portraitWide ? 7 : traits.slim ? 8 : 5;
+    const portraitTop = traits.skater ? 13 : portraitWide ? 7 : traits.slim ? 8 : 5;
     const portraitMinZ = portraitHairOutline ? -1 : 0;
     for (const [k, c] of headVox.map) {
       voxCoords(k, CELL);

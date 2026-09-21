@@ -17,6 +17,7 @@
   const ORBIT_CLOSE_HIT = 0.9, ORBIT_SPREAD_NEAR = 6, ORBIT_SPREAD_MAX = 2.4;
   const ORBIT_AUTO_PROPS = new Set(["crate", "barrel", "rock"]);
   const SHOULDER_PITCH = 0.42, SHOULDER_LIFT = 0.16, SHOULDER_DISTANCE = 2.85, SHOULDER_SIDE = 0.6;
+  const SHOULDER_SWAP_RATE = 10, PEEK_CAMERA = 0.34, PEEK_RATE = 14;
   // A lying head may look toward either shoulder, the wall behind it or the
   // feet, but never back through its pillow or the ground beneath its face.
   const LYING_YAW_LIMIT = 80 * Math.PI / 180, LYING_PITCH_LIMIT = 70 * Math.PI / 180;
@@ -152,7 +153,8 @@
     const cursorItem = { x: 0, y: 0, z: 0 };
     const cursorPoint = { x: 0, y: 0, z: 0 }, cursorRay = { ox: 0, oy: 0, oz: 0, dx: 0, dy: 0, dz: 0 };
     const cursorView = mat4.create(), cursorUp = { x: 0, y: 1, z: 0 };
-    let cursorAim = false, cursorOccluded = false, shoulderSide = SHOULDER_SIDE;
+    let cursorAim = false, cursorOccluded = false, shoulderSide = SHOULDER_SIDE, shoulderSideTarget = SHOULDER_SIDE;
+    let peekTarget = 0, peekMix = 0;
     let aimCave = null, aimMix = 0, aimVelocity = 0, adsMix = 0, ads = false, disposed = false;
     let aimLeftAccepted = false, aimLeftFocused = false, aimReleaseEvent = null;
     let primaryButtonCave = null;
@@ -368,7 +370,7 @@
       aimCave = cave;
       clearFeedback();
       reticle.hidden = !battle;
-      if (!cave) return;
+      if (!cave) { peekTarget = peekMix = 0; return; }
       carryExitMode = 0;
       carryFocusRemaining = 0;
       savedPitch = orbit.tPitch; savedDist = orbit.tDist; savedNear = camera.near;
@@ -379,7 +381,7 @@
       aimAtCursor = cursorAim && !aimPreserveFacing && !closeWanted;
       orbit.yaw = orbit.tYaw = Math.atan2(-dx, -dz);
       orbit.pitch = orbit.tPitch = closeWanted ? Math.atan2(-dy, Math.hypot(dx, dz)) : SHOULDER_PITCH;
-      shoulderSide = SHOULDER_SIDE;
+      shoulderSide = shoulderSideTarget = SHOULDER_SIDE;
       if (aimPreserveFacing) {
         // A wall in front of the orbit eye is an obstruction to navigation,
         // not an instruction to turn the character back toward that wall.
@@ -391,7 +393,7 @@
         // Keep a nearby target reachable by the offset camera; a target at
         // the character's feet needs less side offset than one across the island.
         const side = Math.min(SHOULDER_SIDE * h, horizontal * 0.5);
-        shoulderSide = side / h;
+        shoulderSide = shoulderSideTarget = side / h;
         if (horizontal > 1e-6) orbit.yaw = orbit.tYaw = Math.atan2(-x, -z) + Math.asin(side / horizontal);
         const forward = Math.sqrt(Math.max(0, horizontal * horizontal - side * side));
         const y = p.y - cave.baseY + cave.headOffset * 0.95 + cave.viewLift + SHOULDER_LIFT * h - cursorPoint.y;
@@ -1057,7 +1059,7 @@
           crew.selectWeapon(1, cave);
           syncAim();
         }
-        if (alreadyHeld && (!armed() || closeWanted)) {
+        if (alreadyHeld) {
           const charge = action === "weapon-primary-down";
           if (crew.swingWeapon(cave, true)) {
             if (charge) primaryButtonCave = cave;
@@ -1299,8 +1301,8 @@
       const cave = player();
       return cave ? crew.playerAction() : !!ctx.onFreeAction && ctx.onFreeAction();
     };
-    // Boost held climbs and clicked acts; chord means both mouse buttons on the canvas walk.
-    const controls = createControls({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, chord: canvas, onAction: action, pressActions: true, shooter: armed });
+    // Held it climbs, clicked it acts; both mouse buttons on the canvas walk
+    const controls = createControls({ move: document.getElementById("joy-move"), look: document.getElementById("joy-look"), boost: hud.el.act, chord: canvas, onAction: action, pressActions: true, shooter: armed, canDescend: () => !player() });
     let dragHold = 0, trailingViewInput = false, trailingZoomInput = false, stoppedZoomGesture = null;
     const zoomPitch = (cave, fromDistance) => {
       if (!weaponViewReady(cave)) return;
@@ -1439,6 +1441,11 @@
       const a = controls.read();
       const cave = player();
       const lying = syncLyingView(cave);
+      const shoulderBattle = !!cave && armed() && !closeWanted;
+      if (shoulderBattle && a.shiftTap) shoulderSideTarget = -shoulderSideTarget;
+      peekTarget = shoulderBattle && a.sprint ? a.x : 0;
+      const planted = shoulderBattle && !!a.sprint;
+      const moveX = planted ? 0 : a.x, moveY = planted ? 0 : a.y;
       if (restoredPose) {
         if (a.x || a.y || a.up || a.yaw || a.pitch) resumePose();
         else return;
@@ -1462,7 +1469,8 @@
         followTarget.z = p.z;
         orbit.target = followTarget;
         if (cave.jet) crew.thrust(a.up > 0);
-        crew.steer(fx0 * a.y + rx * a.x, fz0 * a.y + rz * a.x, armed() ? 1 : close ? closeMix : 0, a.y, a.x, armed() ? ads ? 0.65 : a.sprint && a.y > 0.05 && !cave.weapon.reloading ? 1.35 : 1 : 1);
+        crew.steer(fx0 * moveY + rx * moveX, fz0 * moveY + rz * moveX, armed() ? 1 : close ? closeMix : 0, moveY, moveX,
+          armed() ? ads ? 0.65 : !shoulderBattle && a.sprint && moveY > 0.05 && !cave.weapon.reloading ? 1.35 : 1 : 1, peekTarget);
         if (dragHold > 0) dragHold -= dt;
         else if (!armed() && !crew.sleeping && !closeWanted && a.y > 0.05 && Math.abs(a.x) > 0.05 && !a.yaw) {
           const behind = cave.root.rotation.y + Math.PI;
@@ -1567,6 +1575,10 @@
       aimVelocity = (aimVelocity - AIM_ENTRY_RATE * impulse) * entryDecay;
       if (1 - aimMix < CLOSE_SNAP && Math.abs(aimVelocity) < CLOSE_SNAP * AIM_ENTRY_RATE) { aimMix = 1; aimVelocity = 0; }
       poseAim();
+      shoulderSide = damp(shoulderSide, shoulderSideTarget, SHOULDER_SWAP_RATE, dt);
+      if (Math.abs(shoulderSide - shoulderSideTarget) < 1e-4) shoulderSide = shoulderSideTarget;
+      peekMix = damp(peekMix, peekTarget, PEEK_RATE, dt);
+      if (Math.abs(peekMix - peekTarget) < 1e-4) peekMix = peekTarget;
       adsMix = damp(adsMix, ads ? 1 : 0, CLOSE_RATE, dt);
       if (Math.abs(adsMix - (ads ? 1 : 0)) < CLOSE_SNAP) adsMix = ads ? 1 : 0;
       const h = cave.traits.height, p = cave.root.position;
@@ -1599,9 +1611,10 @@
       // Ordinary aim stays above the head. Only a steep upward look lowers
       // the boom; distance supplies the room needed to keep the feet in view.
       const boomPitch = shoulderBoomPitch(orbit.pitch), horizontal = Math.cos(boomPitch) * distance - cp * eyeForward;
-      const x = p.x + sy * horizontal + cy * side;
+      const peek = peekMix * PEEK_CAMERA * h;
+      const x = p.x + sy * horizontal + cy * (side + peek);
       const y = eyeY + Math.sin(boomPitch) * distance + SHOULDER_LIFT * h * (1 - closeMix);
-      const z = p.z + cy * horizontal - sy * side;
+      const z = p.z + cy * horizontal - sy * (side + peek);
       if (aimMix < 1 && closeMix > 0) {
         // A fresh inward scroll may arrive before shoulder entry finishes.
         // Approach the eyes directly; a polar arc flips sides as it crosses
@@ -2148,7 +2161,7 @@
       target.x = orbit.tx; target.y = orbit.ty; target.z = orbit.tz; orbit.target = target;
       headOrbit = pose.headOrbit; readVector(headOrbitOffset, pose.headOffset);
       closeMix = pose.closeMix; closeVelocity = distanceVelocity = aimVelocity = 0; aimMix = 1;
-      closeCave = cave; shoulderSide = pose.shoulderSide;
+      closeCave = cave; shoulderSide = shoulderSideTarget = pose.shoulderSide;
       ads = pose.ads > 0.5; adsMix = pose.ads;
       carryExitMode = carryFocusRemaining = 0; eyeMotionValid = false;
       trailingPitchChosen = true; zoomTilt = false;
