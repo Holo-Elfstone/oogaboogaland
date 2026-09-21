@@ -4609,10 +4609,15 @@
       addProp("jumbotron", jumbotron.node, jx, jz, 3.4);
       // Shells launch from just above the cabinet's top rail.
       jumbotronSpot = { x: jx, y: jumbotron.node.position.y + 0.7 * jScale, z: jz };
-      // Live stats land on the board; a rise in org activity earns fireworks.
+      // Live stats land on the board and on the roster: fresh last-seen
+      // times flow through contributors -> crew.refreshStates, which wakes a
+      // sleeper into a walk out of the HQ (and the 60s state interval later
+      // walks idled Oogas down to bed). A rise in org activity earns fireworks.
       oogatronUnsub = oogatronLive.subscribe((event) => {
-        if (event.type === "stats" && jumbotron) jumbotron.refreshData(event.stats);
-        else if (event.type === "contribution") launchFireworks(event.delta);
+        if (event.type === "stats") {
+          if (jumbotron) jumbotron.refreshData(event.stats);
+          contributors.applySnapshot(event.stats);
+        } else if (event.type === "contribution") launchFireworks(event.delta);
       });
     }
     scatter();

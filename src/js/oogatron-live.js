@@ -1,8 +1,8 @@
 // Live OogaBoogaX stats from the deployed oogatron worker: one poller for the
 // page life, every minute while the tab is visible. Subscribers get plain
-// events: { type: "stats", stats } for every good poll (the full /v1/stats
-// payload, schema 2), and { type: "contribution", delta, activity } when the
-// org's commits+prs+reviews rose since the previous poll — the fireworks
+// events: { type: "stats", stats } for every good poll (the full /v2/stats
+// payload, schema 3), and { type: "contribution", delta, activity } when the
+// org's commits+prs+reviews+comments rose since the previous poll — the fireworks
 // signal. The baseline is the first successful poll, never the baked
 // snapshot: a stale bake must not fire celebration on every page load.
 // Network errors are silent (counted in state); the page always keeps the
@@ -11,7 +11,7 @@
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  const ENDPOINT = "https://oogatron.sterlingbreck.workers.dev/v1/stats";
+  const ENDPOINT = "https://oogatron.sterlingbreck.workers.dev/v2/stats";
   const POLL_MS = 60000;
   const subscribers = new Set();
   const state = { enabled: false, polls: 0, failures: 0, activity: -1, contributions: 0, lastAt: 0, lastError: "" };
@@ -29,11 +29,11 @@
       const res = await fetch(ENDPOINT);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const stats = await res.json();
-      if (!stats || !stats.meta || stats.meta.schema_version !== 2 || !stats.totals) {
+      if (!stats || !stats.meta || stats.meta.schema_version !== 3 || !stats.totals) {
         throw new Error("unexpected stats shape");
       }
       const t = stats.totals;
-      const activity = (t.commits | 0) + (t.prs | 0) + (t.reviews | 0);
+      const activity = (t.commits | 0) + (t.prs | 0) + (t.reviews | 0) + (t.comments | 0);
       state.polls++;
       state.lastAt = Date.now();
       state.lastError = "";

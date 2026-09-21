@@ -12249,30 +12249,35 @@ const { jumbotronProbe } = (() => {
           && Number.isFinite(Date.parse(c.last_seen_at)));
         // The parsed model carries logins only, so there is nothing personal to leak.
         const loginOnly = parsed.contributors.every((c) => Object.keys(c).length === 1 && typeof c.login === "string");
-        const orgSums = ["commits", "prs", "reviews"].every((key) =>
+        const orgSums = ["commits", "prs", "reviews", "comments"].every((key) =>
           parsed.repos.reduce((sum, r) => sum + r.totals[key], 0) === parsed.totals[key]);
+        const recentRows = parsed.recent.length > 0 && parsed.recent.every((e) =>
+          typeof e.login === "string" && typeof e.repo === "string"
+          && ["commit", "pr", "review", "merge", "comment"].includes(e.type)
+          && Number.isFinite(Date.parse(e.occurredAt)));
+        const repoBoards = parsed.repos.every((r) =>
+          ["commits", "prs", "reviews", "comments"].every((k) => Array.isArray(r.leaderboards[k]))
+          && (r.lastActivityAt === null || Number.isFinite(Date.parse(r.lastActivityAt))));
         return { contributors: parsed.contributors.length, repos: parsed.repos.length, org: parsed.org,
-          schemaGuard: false, noPersonalMetadata, activityTimes, loginOnly, orgSums };
+          schemaGuard: false, noPersonalMetadata, activityTimes, loginOnly, orgSums, recentRows, repoBoards };
       } catch {
         return { contributors: 0, repos: 0, schemaGuard: false };
       }
     })();
-    let futureGuard = false, legacyGuard = false;
-    try {
-      BL.jumbotron.parseStats({ meta: { schema_version: 99 } });
-    } catch {
-      futureGuard = true;
-    }
-    try {
-      BL.jumbotron.parseStats({ meta: { schema_version: 1, repo: "OogaBoogaX/entropylab" }, totals: {}, leaderboards: {}, contributors: [] });
-    } catch {
-      legacyGuard = true;
-    }
-    data.schemaGuard = futureGuard && legacyGuard;
+    // Only schema 3 parses; 1, 2 and future versions are refused.
+    data.schemaGuard = [1, 2, 99].every((schema_version) => {
+      try {
+        BL.jumbotron.parseStats({ meta: { schema_version, org: "OogaBoogaX" }, totals: {}, leaderboards: {}, repos: [], recent: [], contributors: [] });
+        return false;
+      } catch {
+        return true;
+      }
+    });
     const initial = { view: j.view.name, cabinetFaces: facesOf(j.node), screenFaces: facesOf(screen), print: fingerprint(screen) };
-    j.setView("leaderboard", { type: "commits" });
+    const repoForBoard = BL.jumbotronData.repos[0] && BL.jumbotronData.repos[0].name;
+    j.setView("leaderboard", { type: "comments", repo: repoForBoard });
     await frames(3);
-    const leaderboard = { view: j.view.name, screenFaces: facesOf(screen), changed: fingerprint(screen) !== initial.print, print: fingerprint(screen) };
+    const leaderboard = { view: j.view.name, repo: j.view.params && j.view.params.repo, screenFaces: facesOf(screen), changed: fingerprint(screen) !== initial.print, print: fingerprint(screen) };
     const repoName = BL.jumbotronData.repos[0] && BL.jumbotronData.repos[0].name;
     j.setView("repo", { name: repoName });
     await frames(3);
@@ -12280,6 +12285,20 @@ const { jumbotronProbe } = (() => {
     j.setView("repo", { name: "no-such-repo-falls-back" });
     await frames(3);
     const fallback = { drew: facesOf(screen) > 50 };
+    j.setView("recent");
+    await frames(3);
+    const recentView = { view: j.view.name, drew: facesOf(screen) > 50 };
+    // A repo idle for over a week leaves the rotation entirely: with the only
+    // repo stale, the cycle collapses to recent -> totals.
+    const staleData = JSON.parse(JSON.stringify(BL.jumbotronData));
+    for (const r of staleData.repos) r.last_activity_at = "2020-01-01T00:00:00Z";
+    j.refreshData(staleData);
+    j.setView("recent");
+    j.nextView();
+    const afterFirst = j.view.name;
+    j.nextView();
+    const idleFiltered = { afterFirst, wrapped: j.view.name === "recent" };
+    j.refreshData(BL.jumbotronData);
     // Live refresh: a bumped payload repaints; garbage is refused and leaves the board alone.
     j.setView("totals");
     await frames(3);
@@ -12290,7 +12309,8 @@ const { jumbotronProbe } = (() => {
     await frames(3);
     const refreshed = { accepted: refreshAccepted === true, changed: fingerprint(screen) !== beforeRefresh };
     const goodPrint = fingerprint(screen);
-    const refused = j.refreshData({ meta: { schema_version: 3 } }) === false;
+    const refused = j.refreshData({ meta: { schema_version: 2 } }) === false
+      && j.refreshData({ meta: { schema_version: 3 } }) === false; // v3 but structurally empty
     await frames(3);
     const rejected = { refused, unchanged: fingerprint(screen) === goodPrint };
     const restored = j.refreshData(BL.jumbotronData) === true;
@@ -12298,7 +12318,7 @@ const { jumbotronProbe } = (() => {
     j.nextView();
     await frames(3);
     const advanced = { view: j.view.name, screenFaces: facesOf(screen), drew: facesOf(screen) > 50 && before > 50 };
-    return { exists: true, placement, data, initial, leaderboard, repoView, fallback, refreshed, rejected, restored, advanced };
+    return { exists: true, placement, data, initial, leaderboard, repoView, fallback, recentView, idleFiltered, refreshed, rejected, restored, advanced };
   };
   return { jumbotronProbe };
 })();
@@ -14741,8 +14761,8 @@ const { contributorActivityProbe } = (() => {
     const HOUR = 3600000, { roster, stateFor, ageLabel, applyActivity, applySnapshot, hasRecentActivity, subscribe } = contributors;
     const saved = roster.map((entry) => ({ at: entry.lastCommitAt, activity: [...entry.activity] }));
     const state = (age) => stateFor({ lastCommitAt: at - age }, at);
-    const boundaries = state(0) === "working" && state(4 * HOUR - 1) === "working" && state(4 * HOUR) === "chilling" &&
-      state(48 * HOUR - 1) === "chilling" && state(48 * HOUR) === "sleeping" && state(8 * 24 * HOUR) === "sleeping";
+    const boundaries = state(0) === "working" && state(HOUR - 1) === "working" && state(HOUR) === "chilling" &&
+      state(24 * HOUR - 1) === "chilling" && state(24 * HOUR) === "sleeping" && state(8 * 24 * HOUR) === "sleeping";
     const invalidStates = [NaN, Infinity, 0, -1, at + 1].every((lastCommitAt) => stateFor({ lastCommitAt }, at) === "sleeping");
     const labels = ageLabel({ lastCommitAt: at }, at) === "0m ago" &&
       ageLabel({ lastCommitAt: at - HOUR / 2 }, at) === "30m ago" &&
@@ -14765,7 +14785,7 @@ const { contributorActivityProbe } = (() => {
         { name: "unknown-contributor", lastCommitAt: at }, { lastCommitAt: at }
       ], at) === 0 && applyActivity(null, at) === 0 && applyActivity([], NaN) === 0 &&
         first.lastCommitAt === firstAt && notifications === 1;
-      const expires = stateFor(first, firstAt + 4 * HOUR) === "chilling" && stateFor(first, firstAt + 48 * HOUR) === "sleeping";
+      const expires = stateFor(first, firstAt + HOUR) === "chilling" && stateFor(first, firstAt + 24 * HOUR) === "sleeping";
       const snapshot = (repo, login, age) => ({ meta: { repo, schema_version: 1, generated_at: new Date(at).toISOString() },
         contributors: [{ login, last_seen_at: new Date(at - age).toISOString() }] });
       const alias = roster.find((entry) => entry.name === "bc1gui");
@@ -14779,6 +14799,9 @@ const { contributorActivityProbe } = (() => {
       const otherRepo = applySnapshot(snapshot("another-org/entropylab", first.name, 0), at) === 0;
       const orgSnapshot = (org, login, age) => ({ meta: { org, schema_version: 2, generated_at: new Date(at).toISOString() },
         contributors: [{ login, last_seen_at: new Date(at - age).toISOString() }] });
+      const orgV3 = { meta: { org: "OogaBoogaX", schema_version: 3, generated_at: new Date(at).toISOString() },
+        contributors: [{ login: second.name, last_seen_at: new Date(at - 90000).toISOString() }] };
+      const orgWideV3 = applySnapshot(orgV3, at) === 1 && second.lastCommitAt === at - 90000;
       const orgWide = applySnapshot(orgSnapshot("OogaBoogaX", second.name, 60000), at) === 1 &&
         second.lastCommitAt === at - 60000 && hasRecentActivity(second, "oogaboogax/entropylab", at) && stateFor(second, at) === "working";
       const wrongOrg = applySnapshot(orgSnapshot("SomeoneElse", second.name, 0), at) === 0;
@@ -14801,7 +14824,7 @@ const { contributorActivityProbe } = (() => {
       applyActivity(Array.from({ length: 70 }, (_, i) => ({ name: first.name, repo: `OogaBoogaX/project-${i}`, lastCommitAt: at })), at);
       const boundedProjects = first.activity.size === 64 && hasRecentActivity(first, "oogaboogax/project-62", at) &&
         !hasRecentActivity(first, "oogaboogax/project-63", at);
-      return { boundaries, invalidStates, labels, update, invalid, expires, projects, otherRepo, orgWide, wrongOrg, noSyntheticActivity, strictTimestamp,
+      return { boundaries, invalidStates, labels, update, invalid, expires, projects, otherRepo, orgWideV3, orgWide, wrongOrg, noSyntheticActivity, strictTimestamp,
         unsubscribed, debugFixture, pinnedWorks, boundedProjects, rosterUnchanged: roster.length === saved.length };
     } finally {
       unsubscribe();
@@ -24509,7 +24532,7 @@ const contributorActivityChecks = async () => {
   const context = { window: {}, URLSearchParams, location: { search: "" } };
   for (const name of CONTRIBUTOR_SOURCES) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), context);
   const r = contributorActivityProbe(context.window.BL.contributors, Date.now());
-  record("banana weapon activity: four-hour work and 48-hour chill boundaries, per-project updates, invalid data, and debug mix", Object.values(r).every(Boolean), JSON.stringify(r));
+  record("banana weapon activity: one-hour clank and 24-hour chill boundaries, per-project updates, org snapshots, invalid data, and debug mix", Object.values(r).every(Boolean), JSON.stringify(r));
   const liveContext = { window: {}, URLSearchParams, location: { search: "" } };
   for (const name of [...CONTRIBUTOR_SOURCES, "jumbotron-data"]) runInNewContext(await readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8"), liveContext);
   const live = liveContext.window.BL, generatedAt = Date.parse(live.jumbotronData.meta.generated_at), aliases = { bc1gui: "ottoz0r" };
@@ -25725,8 +25748,23 @@ for (const level of [0, 1000, 1000000, 10000000]) task(`solid pile spawn ${level
 }));
 for (const backend of BACKENDS) task(`jumbotron ${backend}`, () => withPage(`jumbotron ${backend}`, hubPage(src, backend === "canvas2d" ? "canvas2d=1" : ""), async (b) => {
   const r = await b.evaluate(`(${jumbotronProbe.toString()})()`);
-  record(`jumbotron ${backend}: the board is solid on the north rim, facing the meadow with public timestamped org stats parsed and guarded`, r.exists && r.placement.onNorthRim && r.placement.aboveGround && r.placement.facesCenter && r.placement.scale > 1 && r.placement.solid && r.data.contributors > 0 && r.data.repos > 0 && r.data.org === "OogaBoogaX" && r.data.orgSums && r.data.schemaGuard && r.data.noPersonalMetadata && r.data.activityTimes && r.data.loginOnly, JSON.stringify({ placement: r.placement, data: r.data }));
-  record(`jumbotron ${backend}: view changes rebuild the screen quads and live payloads refresh the board`, r.initial.view === "totals" && r.initial.screenFaces > 200 && r.initial.cabinetFaces === 108 && r.leaderboard.view === "leaderboard" && r.leaderboard.changed && r.repoView.view === "repo" && r.repoView.changed && r.fallback.drew && r.refreshed.accepted && r.refreshed.changed && r.rejected.refused && r.rejected.unchanged && r.restored && r.advanced.drew, JSON.stringify({ initial: r.initial, leaderboard: r.leaderboard, repoView: r.repoView, refreshed: r.refreshed, rejected: r.rejected, advanced: r.advanced }));
+  record(`jumbotron ${backend}: the board is solid on the north rim, facing the meadow with public timestamped org stats parsed and guarded`, r.exists && r.placement.onNorthRim && r.placement.aboveGround && r.placement.facesCenter && r.placement.scale > 1 && r.placement.solid && r.data.contributors > 0 && r.data.repos > 0 && r.data.org === "OogaBoogaX" && r.data.orgSums && r.data.recentRows && r.data.repoBoards && r.data.schemaGuard && r.data.noPersonalMetadata && r.data.activityTimes && r.data.loginOnly, JSON.stringify({ placement: r.placement, data: r.data }));
+  record(`jumbotron ${backend}: view changes rebuild the screen quads, idle repos leave the rotation, and live payloads refresh the board`, r.initial.view === "recent" && r.initial.screenFaces > 200 && r.initial.cabinetFaces === 108 && r.leaderboard.view === "leaderboard" && r.leaderboard.repo && r.leaderboard.changed && r.repoView.view === "repo" && r.repoView.changed && r.fallback.drew && r.recentView.view === "recent" && r.recentView.drew && r.idleFiltered.afterFirst === "totals" && r.idleFiltered.wrapped && r.refreshed.accepted && r.refreshed.changed && r.rejected.refused && r.rejected.unchanged && r.restored && r.advanced.drew, JSON.stringify({ initial: r.initial, leaderboard: r.leaderboard, repoView: r.repoView, recentView: r.recentView, idleFiltered: r.idleFiltered, refreshed: r.refreshed, rejected: r.rejected, advanced: r.advanced }));
+  // A live org snapshot wakes a sleeping Ooga: fresh last-seen flows through
+  // contributors -> crew.refreshStates -> beginWalk, so the sleeper stands and
+  // starts the walk out of the HQ.
+  const wake = await b.evaluate(`(() => {
+    const B = window.__ooga, BL = window.BL;
+    const cave = [...B.cavemen.values()].find((c) => c.state === "sleeping" && !c.contributor.maintainer && !c.isPlayer);
+    if (!cave) return { skipped: "no sleeper" };
+    const before = cave.state;
+    const accepted = BL.contributors.applySnapshot({
+      meta: { org: "OogaBoogaX", schema_version: 3, generated_at: new Date().toISOString() },
+      contributors: [{ login: cave.contributor.name, last_seen_at: new Date().toISOString() }]
+    });
+    return { before, accepted, after: cave.state, walking: cave.bedTravel.mode || null };
+  })()`);
+  record(`jumbotron ${backend}: a live snapshot wakes a sleeping Ooga into a walk out of the HQ`, wake.skipped === "no sleeper" || (wake.before === "sleeping" && wake.accepted === 1 && wake.after === "working" && !!wake.walking), JSON.stringify(wake));
   // The board stands above the default framing; walk the camera up to it
   // the way a visitor would before tapping.
   await b.evaluate(`window.__ooga.pilot.navigate({ position: { x: -7, y: 8.3, z: -27 }, target: { x: -7, y: 8.3, z: -27 }, yaw: -0.25, pitch: 0.05, dist: 14 })`);

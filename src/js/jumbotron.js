@@ -17,6 +17,7 @@
     commits: "#46ff70",
     prs: "#3fd1c5",
     reviews: "#6f9fca",
+    comments: "#f5c542",
     plank: "#a9773f",
     woodDark: "#5c4425",
     screenBezel: "#1d2326",
@@ -104,18 +105,24 @@
 
   const normalizeCounts = (counts) => ({
     commits: (counts && counts.commits || 0) | 0, prs: (counts && counts.prs || 0) | 0,
-    reviews: (counts && counts.reviews || 0) | 0
+    reviews: (counts && counts.reviews || 0) | 0, comments: (counts && counts.comments || 0) | 0
   });
   const normalizeWeekly = (weekly) => Array.isArray(weekly)
-    ? weekly.map((w) => ({ week: String(w.week), commits: w.commits | 0, prs: w.prs | 0, reviews: w.reviews | 0 })).sort((a, b) => a.week < b.week ? -1 : 1)
+    ? weekly.map((w) => ({ week: String(w.week), commits: w.commits | 0, prs: w.prs | 0, reviews: w.reviews | 0, comments: w.comments | 0 })).sort((a, b) => a.week < b.week ? -1 : 1)
     : [];
   const normalizeBoard = (b) => Array.isArray(b) ? b.map((e) => ({ login: String(e.login), count: e.count | 0 })) : [];
+  const normalizeBoards = (lb) => ({
+    commits: normalizeBoard(lb && lb.commits), prs: normalizeBoard(lb && lb.prs),
+    reviews: normalizeBoard(lb && lb.reviews), comments: normalizeBoard(lb && lb.comments)
+  });
   const displayLabel = (c) => c.login.startsWith("email:") ? "anonymous" : c.login;
 
-  // Oogatron schema 2: org-wide totals/leaderboards plus a per-repo breakdown.
+  // Oogatron schema 3 (/v2/stats): org-wide totals/leaderboards, a per-repo
+  // breakdown with its own leaderboards and last activity, plus the recent
+  // contributions feed.
   const parseStats = (json) => {
     if (typeof json !== "object" || json === null) throw new Error("stats payload is not an object");
-    if (!json.meta || json.meta.schema_version !== 2) throw new Error("unsupported stats schema_version");
+    if (!json.meta || json.meta.schema_version !== 3) throw new Error("unsupported stats schema_version");
     if (!Array.isArray(json.repos)) throw new Error("stats repos is not an array");
     if (!Array.isArray(json.contributors)) throw new Error("stats contributors is not an array");
     const contributors = json.contributors.map((c) => ({ login: String(c.login) }));
@@ -125,9 +132,14 @@
       return {
         name: String(r.name),
         totals: { contributors: (r.totals && r.totals.contributors || 0) | 0, ...normalizeCounts(r.totals) },
-        weeklyTotals: weekly.map((w) => ({ week: w.week, total: w.commits + w.prs + w.reviews }))
+        lastActivityAt: typeof r.last_activity_at === "string" ? r.last_activity_at : null,
+        leaderboards: normalizeBoards(r.leaderboards),
+        weeklyTotals: weekly.map((w) => ({ week: w.week, total: w.commits + w.prs + w.reviews + w.comments }))
       };
     });
+    const recent = (Array.isArray(json.recent) ? json.recent : []).map((e) => ({
+      login: String(e.login), repo: String(e.repo), type: String(e.type), occurredAt: String(e.occurred_at)
+    }));
     // Org-wide weekly series: the repos' weeks summed.
     const weeklyMap = new Map();
     for (const r of repos) {
@@ -140,12 +152,10 @@
     const weeklyTotals = [...weeklyMap.values()].sort((a, b) => a.week < b.week ? -1 : 1);
     return {
       org: String(json.meta.org || ""),
+      generatedAt: String(json.meta.generated_at || ""),
       totals: { contributors: json.totals.contributors | 0, ...normalizeCounts(json.totals) },
-      leaderboards: {
-        commits: normalizeBoard(json.leaderboards.commits), prs: normalizeBoard(json.leaderboards.prs),
-        reviews: normalizeBoard(json.leaderboards.reviews)
-      },
-      repos, contributors, byLogin, weeklyTotals,
+      leaderboards: normalizeBoards(json.leaderboards),
+      repos, recent, contributors, byLogin, weeklyTotals,
       latestWeek: weeklyTotals.length ? weeklyTotals[weeklyTotals.length - 1].week : null
     };
   };
@@ -173,14 +183,16 @@
       ["CONTRIBUTORS", totals.contributors, PALETTE.accent],
       ["COMMITS", totals.commits, PALETTE.commits],
       ["PRS", totals.prs, PALETTE.prs],
-      ["REVIEWS", totals.reviews, PALETTE.reviews]
+      ["REVIEWS", totals.reviews, PALETTE.reviews],
+      ["COMMENTS", totals.comments, PALETTE.comments]
     ];
-    let y = 20;
+    // Five rows: y=16 step 16 keeps the last scale-2 numeral inside the board.
+    let y = 16;
     for (const [label, value, color] of rows) {
       drawText(ctx, String(label), 6, y + 3, PALETTE.dim, 1);
       const v = String(value);
       drawText(ctx, v, BOARD_W - 66 - measureText(v, 2), y, color, 2);
-      y += 18;
+      y += 16;
     }
     const spark = weeklyTotals.slice(-14);
     if (spark.length > 0) {
@@ -212,10 +224,12 @@
 
   const renderLeaderboard = (ctx, model, params) => {
     const type = params && params.type || "commits";
-    const board = model.leaderboards[type] || [];
+    // Leaderboards are per repo; without a repo param the org boards show.
+    const repo = params && params.repo ? model.repos.find((r) => r.name === params.repo) : null;
+    const board = (repo ? repo.leaderboards : model.leaderboards)[type] || [];
     const color = PALETTE[type] || PALETTE.accent;
     clearBoard(ctx);
-    header(ctx, `TOP ${type.toUpperCase()}`, model.latestWeek || "");
+    header(ctx, `${repo ? repo.name.toUpperCase() + " " : ""}TOP ${type.toUpperCase()}`, model.latestWeek || "");
     const top = board.slice(0, 7);
     const maxV = Math.max(...top.map((e) => e.count), 1);
     let y = 16;
@@ -234,9 +248,43 @@
     return false;
   };
 
-  const VIEWS = { totals: renderTotals, repo: renderRepo, leaderboard: renderLeaderboard };
-  // Repo boards are capped so the rotation stays under ~90s if the org grows.
+  const TYPE_COLOR = { commit: "commits", pr: "prs", review: "reviews", merge: "accent", comment: "comments" };
+  // Short relative age for the recent feed, against wall-clock now.
+  const recentAge = (iso, nowMs = Date.now()) => {
+    const ms = nowMs - Date.parse(iso);
+    if (!Number.isFinite(ms) || ms < 0) return "NOW";
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 60) return `${minutes}M`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}H`;
+    return `${Math.floor(hours / 24)}D`;
+  };
+
+  // The opening board: who did what where, newest first.
+  const renderRecent = (ctx, model) => {
+    clearBoard(ctx);
+    header(ctx, "RECENT", model.latestWeek || "");
+    if (!model.recent.length) {
+      drawText(ctx, "NO ACTIVITY", 52, 48, PALETTE.dim, 1);
+      return false;
+    }
+    let y = 15;
+    for (const e of model.recent.slice(0, 11)) {
+      const color = PALETTE[TYPE_COLOR[e.type]] || PALETTE.accent;
+      drawText(ctx, fitText(e.login.toUpperCase(), 60, 1), 4, y, PALETTE.text, 1);
+      drawText(ctx, fitText(e.repo.toUpperCase(), 54, 1), 68, y, PALETTE.dim, 1);
+      drawText(ctx, fitText(e.type.toUpperCase(), 42, 1), 126, y, color, 1);
+      const age = recentAge(e.occurredAt);
+      drawText(ctx, age, BOARD_W - 4 - measureText(age, 1), y, PALETTE.dim, 1);
+      y += 8;
+    }
+    return false;
+  };
+
+  const VIEWS = { recent: renderRecent, totals: renderTotals, repo: renderRepo, leaderboard: renderLeaderboard };
+  // Active-repo boards are capped so the rotation stays bounded as the org grows.
   const MAX_REPO_BOARDS = 6;
+  const ACTIVE_WINDOW_MS = 7 * 24 * 3600 * 1000;
 
   const SW = 16 / 9, SH = 1, BORDER = 0.16, DEPTH = 0.14;
   // Wide thick frame: lit pixels keep a wood margin and sit back of the rails, so edge-on views show wood.
@@ -330,21 +378,32 @@
       model = null; // Bad data leaves model null (awaiting screen); the island must not break.
     }
 
-    let view = { name: "totals", params: undefined };
+    let view = { name: "recent", params: undefined };
     let cycleIndex = 0;
     let rotateEvery = 8;
     let lastSwitchAt = 0;
     let dirty = true;
 
-    // Rebuilt per model: live refreshes can change the repo roster.
+    // Repos idle for a week disappear from the rotation entirely; the clock
+    // reference is the payload's own generated_at so the bake is deterministic.
+    const activeRepos = () => {
+      if (!model) return [];
+      const ref = Date.parse(model.generatedAt) || Date.now();
+      return model.repos
+        .filter((r) => r.lastActivityAt && ref - Date.parse(r.lastActivityAt) <= ACTIVE_WINDOW_MS)
+        .slice(0, MAX_REPO_BOARDS);
+    };
+
+    // Rebuilt per model: recent feed, org totals, then each active repo's
+    // summary followed by its four leaderboards.
     const cycle = () => {
-      const c = [{ name: "totals" }];
-      if (model) for (const repo of model.repos.slice(0, MAX_REPO_BOARDS)) c.push({ name: "repo", params: { name: repo.name } });
-      c.push(
-        { name: "leaderboard", params: { type: "commits" } },
-        { name: "leaderboard", params: { type: "prs" } },
-        { name: "leaderboard", params: { type: "reviews" } }
-      );
+      const c = [{ name: "recent" }, { name: "totals" }];
+      for (const repo of activeRepos()) {
+        c.push({ name: "repo", params: { name: repo.name } });
+        for (const type of ["commits", "prs", "reviews", "comments"]) {
+          c.push({ name: "leaderboard", params: { type, repo: repo.name } });
+        }
+      }
       return c;
     };
 
