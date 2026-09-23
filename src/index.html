@@ -895,19 +895,15 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
       <dl class="weather-key">
         <div>
           <dt>Rain</dt>
-          <dd>The backlog. The more that is waiting to be mined, the harder it falls, and it keeps falling until the pool drains. Empty mempool, clear sky. Expensive fees make it heavier.</dd>
-        </div>
-        <div>
-          <dt>Snow</dt>
-          <dd>Cold means slow blocks. Once they start landing well past the ten minute mark the rain turns to snow. If the whole epoch has been running late, that pushes it colder too.</dd>
+          <dd>The backlog paying at least 1 sat/vB, averaged over ten minutes. Dry, drizzle, light rain, rain, heavy rain, then a downpour as it grows, and it keeps falling until the fee-paying pool clears. The cheap sub-sat pile underneath doesn't count.</dd>
         </div>
         <div>
           <dt>Wind</dt>
-          <dd>Transactions turning up. The busier it gets, the further the rain leans over and the more the snow drifts about. Rain always slants the way the wind is going, never into it.</dd>
+          <dd>Transactions turning up, in vbytes a second. The busier it gets, the further the rain leans over. Rain always slants the way the wind is going, never into it.</dd>
         </div>
         <div>
           <dt>Lightning</dt>
-          <dd>Somebody found a block. Every one of them throws a bolt over the island, whatever the weather is doing. Storms throw extra on their own.</dd>
+          <dd>Somebody found a block. Every one of them throws a bolt over the island, whatever the weather is doing. A downpour throws extra on its own.</dd>
         </div>
       </dl>
     </dialog>

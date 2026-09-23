@@ -341,6 +341,9 @@
     active.onKey(e);
   };
   const onVisibility = () => {
+    // A hidden tab holds no sockets; the chain's REST polls already skip themselves while hidden.
+    mempool.setHidden(document.hidden);
+    chain.setHidden(document.hidden);
     if (document.hidden) {
       window.cancelAnimationFrame(raf);
       raf = 0;
@@ -361,6 +364,11 @@
   // `?chain=esplora` or `?chain=https://host/api` pins the provider; otherwise mempool.space leads
   // and three consecutive failures hand the session to Esplora on its own.
   if (!params.has("nosim") && params.get("chain") !== "0") chain.start({ source: params.get("chain") });
+  // A tab opened in the background waits for its first look before it holds any socket.
+  if (document.hidden) {
+    mempool.setHidden(true);
+    chain.setHidden(true);
+  }
   const unsubscribeDonations = donations.subscribe((donation) => active.onDonation(donation), { identity: () => game.state });
   // The feed panel: the Konami code toggles a page-wide readout of the socket, its counters and its last events.
   // It subscribes and ticks only while open, and its text nodes change only with their value.
@@ -378,7 +386,7 @@
       if (logCount < FEED_LOG) logCount++;
       dirty = true;
     };
-    const describe = (e) => e.type === "tx" ? `tx     ${e.vsize} vB · ${(e.fee / e.vsize).toFixed(1)} sat/vB · fee ${e.fee}`
+    const describe = (e) => e.type === "stats" ? `stats  ${e.count} tx · ${e.vsize} vB · inflow ${e.inflow} vB/s`
       : e.type === "block" ? `block  ${e.height} · ${e.txCount} tx`
       : e.type === "fees" ? `fees   next block ${e.nextFee.toFixed(2)} sat/vB · ${e.blocks} projected`
       : `${e.type}`;
@@ -387,7 +395,7 @@
       const d = active && active.debug && active.debug.weather, w = d && d.state ? d : null, s = mempool.state, c = chain.snapshot;
       const link = !s.enabled ? "off (nosim or mempool=0)" : s.connected ? `connected · attempt ${s.attempts}` : `reconnecting · attempt ${s.attempts}`;
       const age = s.lastAt ? `${((Date.now() - s.lastAt) / 1000).toFixed(1)} s ago` : "none yet";
-      const text = `socket    ${link}\nlast msg  ${age}${s.lastKeys ? ` · ${s.lastKeys}` : ""}\nmessages  ${s.messages} · ${(s.bytes / 1024).toFixed(0)} KB\nchain     height ${s.height} · next block ${s.nextFee.toFixed(2)} sat/vB · ${s.projectedBlocks} projected\nevents    ${s.transactions} tx · ${s.blocks} blocks\npool      ${c.count} tx · ${c.deep.toFixed(1)} blocks deep · floor ${c.floor.toFixed(2)} sat/vB · via ${c.source}${c.degraded ? " (fallback)" : ""}\naxes      soak ${c.soak.toFixed(2)} · chill ${c.chill.toFixed(2)} · gale ${c.gale.toFixed(2)} · pace ${(c.pace / 60).toFixed(1)} min\nweather   ${w ? `${w.state.name} · ${w.state.drops}/${w.state.capacity} ${w.state.form} · wind ${w.state.wind.toFixed(1)} · cloud ${w.state.cloud.toFixed(2)} · ${w.state.strikes} strikes` : "no weather in this scene"}`;
+      const text = `socket    ${link}\nlast msg  ${age}${s.lastKeys ? ` · ${s.lastKeys}` : ""}\nmessages  ${s.messages} · ${(s.bytes / 1024).toFixed(0)} KB\nchain     height ${s.height} · next block ${s.nextFee.toFixed(2)} sat/vB · ${s.projectedBlocks} projected\nevents    ${s.stats} stats · ${s.blocks} blocks · inflow ${s.inflow} vB/s\npool      ${c.count} tx · ${c.deep.toFixed(1)} blocks deep · paying ${c.paying.toFixed(2)} MvB (avg ${c.payEma.toFixed(2)}) · floor ${c.floor.toFixed(2)} sat/vB · via ${c.source}${c.degraded ? " (fallback)" : ""}\nprice     ${c.priceUsd ? c.priceUsd.toFixed(2) : "-"} · via ${c.priceSource || "-"}\naxes      soak ${c.soak.toFixed(2)} · gale ${c.gale.toFixed(2)} · pace ${(c.pace / 60).toFixed(1)} min\nweather   ${w ? `${w.state.name} · ${w.state.drops}/${w.state.capacity} drops · wind ${w.state.wind.toFixed(1)} · cloud ${w.state.cloud.toFixed(2)} · ${w.state.strikes} strikes` : "no weather in this scene"}`;
       if (stateEl.textContent !== text) stateEl.textContent = text;
       if (!dirty) return;
       dirty = false;

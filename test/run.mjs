@@ -2283,8 +2283,9 @@ const characterChecks = async () => {
 };
 // The mempool.space feed parser in Node: message shapes as the socket sends them, no socket.
 const mempoolFeedChecks = async () => {
+  const source = await readFile(new URL("../src/js/mempool.js", import.meta.url), "utf8");
   const context = { window: { setTimeout() { return 1; }, clearTimeout() {} } };
-  runInNewContext(await readFile(new URL("../src/js/mempool.js", import.meta.url), "utf8"), context);
+  runInNewContext(source, context);
   const feed = context.window.BL.mempool, events = [];
   const unsubscribe = feed.subscribe((e) => events.push(e));
   feed.start();
@@ -2307,19 +2308,24 @@ const mempoolFeedChecks = async () => {
   } catch {
     malformedSafe = false;
   }
-  feed.parse(JSON.stringify({ "mempool-transactions": { sequence: 1, added: [{ txid: "a", vsize: 141, weight: 561, fee: 269 }, { vsize: 0 }, null, { txid: "b", vsize: 4000 }], removed: ["c"] } }));
-  const txs = events.slice(2);
-  const transactions = txs.length === 2 && txs.every((e) => e.type === "tx") && txs[0].vsize === 141 && txs[0].weight === 561 && txs[0].fee === 269 && txs[1].vsize === 4000 && txs[1].weight === 16000 && txs[1].fee === 0 && feed.state.transactions === 2;
+  // A real push: the socket's total_fee is BTC and leaves as sats; a push without a numeric size is skipped.
+  const fees = { fastestFee: 2, halfHourFee: 1, hourFee: 1, economyFee: 1, minimumFee: 1 }, da = { progressPercent: 29.4, difficultyChange: -2.7, remainingBlocks: 1424, remainingTime: 879990704 };
+  feed.parse(JSON.stringify({ mempoolInfo: { size: 82378, bytes: 41590000, total_fee: 0.07242375 }, vBytesPerSecond: 2250, fees, da }));
+  feed.parse(JSON.stringify({ mempoolInfo: { size: "82378", bytes: 1 }, vBytesPerSecond: 1 }));
+  feed.parse(JSON.stringify({ mempoolInfo: { size: 5, bytes: 900 }, vBytesPerSecond: -3, fees: "x" }));
+  const stats = events.slice(2);
+  const statsRead = stats.length === 2 && stats.every((e) => e.type === "stats") && stats[0].count === 82378 && stats[0].vsize === 41590000 && stats[0].totalFee === 7242375 &&
+    stats[0].inflow === 2250 && stats[0].fees.fastestFee === 2 && stats[0].da.remainingBlocks === 1424 && stats[1].inflow === 0 && stats[1].fees === null && stats[1].da === null && feed.state.stats === 2;
   feed.parse(JSON.stringify({ "mempool-blocks": [{ medianFee: 12.5, nTx: 3000 }, { medianFee: 2 }] }));
   feed.parse(JSON.stringify({ "mempool-blocks": [] }));
-  const fees = events.slice(4);
-  const projection = fees.length === 2 && fees[0].type === "fees" && fees[0].nextFee === 12.5 && fees[0].blocks === 2 && fees[1].nextFee === 0 && fees[1].blocks === 0 && feed.state.nextFee === 0 && feed.state.projectedBlocks === 0;
+  const projections = events.slice(4);
+  const projection = projections.length === 2 && projections[0].type === "fees" && projections[0].nextFee === 12.5 && projections[0].blocks === 2 && projections[1].nextFee === 0 && projections[1].blocks === 0 && feed.state.nextFee === 0 && feed.state.projectedBlocks === 0;
   unsubscribe();
-  feed.emit({ type: "tx", vsize: 1 });
+  feed.emit({ type: "block", height: 1 });
   const unsubscribed = events.length === 6;
   feed.subscribe(() => events.push("after dispose"));
   feed.dispose();
-  feed.emit({ type: "tx", vsize: 1 });
+  feed.emit({ type: "block", height: 1 });
   const disposed = events.length === 6 && !feed.state.enabled;
   let retries = 0, constructorSafe = true;
   class BlockedWebSocket {
@@ -2328,7 +2334,7 @@ const mempoolFeedChecks = async () => {
     }
   }
   const blockedContext = { WebSocket: BlockedWebSocket, window: { setTimeout() { retries++; return 1; }, clearTimeout() {} } };
-  runInNewContext(await readFile(new URL("../src/js/mempool.js", import.meta.url), "utf8"), blockedContext);
+  runInNewContext(source, blockedContext);
   try {
     blockedContext.window.BL.mempool.start();
   } catch {
@@ -2336,30 +2342,72 @@ const mempoolFeedChecks = async () => {
   }
   const backedOff = constructorSafe && blockedContext.window.BL.mempool.state.enabled && blockedContext.window.BL.mempool.state.attempts === 1 && retries === 1;
   blockedContext.window.BL.mempool.dispose();
+  // A socket that opens: what it asks for, the watchdog on a silent link, and the hidden-tab pause.
+  const sockets = [], timers = [];
+  class FakeWebSocket {
+    constructor() {
+      this.sent = [];
+      this.closed = false;
+      sockets.push(this);
+    }
+    send(text) {
+      this.sent.push(JSON.parse(text));
+    }
+    close() {
+      this.closed = true;
+    }
+  }
+  const liveContext = { WebSocket: FakeWebSocket, window: { setTimeout(fn, ms) { timers.push({ fn, ms }); return timers.length; }, clearTimeout() {} } };
+  runInNewContext(source, liveContext);
+  const live = liveContext.window.BL.mempool, liveEvents = [];
+  live.subscribe((e) => liveEvents.push(e));
+  live.start();
+  sockets[0].onopen();
+  const asked = sockets[0].sent;
+  const wants = asked.length === 1 && asked[0].action === "want" && ["blocks", "stats", "mempool-blocks"].every((k) => asked[0].data.includes(k)) && !asked.some((m) => "track-mempool" in m);
+  sockets[0].onmessage({ data: JSON.stringify({ blocks: [{ height: 900000 }] }) });
+  live.state.lastAt = Date.now() - 30000;
+  timers.filter((t) => t.ms === 10000).at(-1).fn();
+  const stalled = sockets[0].closed && !live.state.connected && timers.at(-1).ms === 2000;
+  timers.at(-1).fn();
+  sockets[1].onopen();
+  sockets[1].onmessage({ data: JSON.stringify({ blocks: [{ height: 900000 }] }) });
+  live.setHidden(true);
+  const pending = timers.length;
+  const hiddenClosed = sockets[1].closed && !live.state.connected && sockets.length === 2;
+  sockets[1].onclose && sockets[1].onclose();
+  const heldWhileHidden = timers.length === pending && sockets.length === 2;
+  live.setHidden(false);
+  sockets[2].onopen();
+  sockets[2].onmessage({ data: JSON.stringify({ blocks: [{ height: 900003 }, { height: 900002 }] }) });
+  const reseeded = sockets.length === 3 && live.state.height === 900003 && liveEvents.length === 0;
+  live.dispose();
   record("mempool feed: the tip list seeds the height silently, a taller block thunders once, duplicates and lower blocks are ignored, a taller tip list counts", offline && seeded && mined && tallerTip, JSON.stringify({ offline, seeded, mined, tallerTip, events }));
-  record("mempool feed: each accepted transaction is one event with vsize, weight and fee, malformed entries and messages are skipped, unsubscribe and dispose stop delivery", malformedSafe && transactions && unsubscribed && disposed, JSON.stringify({ malformedSafe, transactions, unsubscribed, disposed, txs }));
-  record("mempool feed: a projection is one fees event with the next block's median fee, zero for an empty mempool", projection, JSON.stringify(fees));
+  record("mempool feed: each mempoolInfo push is one stats event with the count, vsize, fees in sats and inflow, malformed pushes and messages are skipped, unsubscribe and dispose stop delivery", malformedSafe && statsRead && unsubscribed && disposed, JSON.stringify({ malformedSafe, statsRead, unsubscribed, disposed, stats }));
+  record("mempool feed: a projection is one fees event with the next block's median fee, zero for an empty mempool", projection, JSON.stringify(projections));
   record("mempool feed: a WebSocket constructor failure enters bounded retry instead of escaping startup", backedOff, JSON.stringify({ constructorSafe, enabled: blockedContext.window.BL.mempool.state.enabled, attempts: blockedContext.window.BL.mempool.state.attempts, retries }));
+  record("mempool feed: the socket wants blocks, stats and projections and never every transaction, a silent link is dropped and redialled, a hidden tab holds no socket and its return reseeds the tip without a block",
+    wants && stalled && hiddenClosed && heldWhileHidden && reseeded, JSON.stringify({ wants, stalled, hiddenClosed, heldWhileHidden, reseeded, asked, liveEvents }));
 };
 // The chain snapshot in Node: real payload shapes from both providers, one code path, no sockets.
 const chainSnapshotChecks = async () => {
+  const source = await readFile(new URL("../src/js/chain.js", import.meta.url), "utf8"), math = await readFile(new URL("../src/js/math.js", import.meta.url), "utf8");
   const context = { window: { setTimeout() { return 1; }, clearTimeout() {}, BL: { math: null } }, location: { protocol: "https:", search: "" }, document: { visibilityState: "visible" } };
-  runInNewContext(await readFile(new URL("../src/js/math.js", import.meta.url), "utf8"), context);
-  runInNewContext(await readFile(new URL("../src/js/chain.js", import.meta.url), "utf8"), context);
+  runInNewContext(math, context);
+  runInNewContext(source, context);
   const chain = context.window.BL.chain, s = chain.snapshot;
   // `/mempool` comes back byte-identical from mempool.space and from Esplora, so one reader serves both.
   const backlog = { count: 82783, vsize: 41199227, total_fee: 9242709, fee_histogram: [[6.042857, 50420], [4.227918, 53978], [2.0204725, 60149], [1.0109185, 57072], [0.3063063, 51000]] };
   chain.readBacklog(backlog);
   const ladder = Array.from(s.ladder);
-  const read = { count: s.count, deep: s.deep, totalFee: s.totalFee, floor: s.floor };
+  const read = { count: s.count, deep: s.deep, totalFee: s.totalFee, floor: s.floor, paying: s.paying };
   const descending = ladder.every((v, i, a) => i === 0 || a[i - 1] >= v - 1e-9);
   const normalized = Math.max(...ladder) === 1 && ladder.every((v) => v >= 0 && v <= 1);
   chain.readBacklog({ count: 0, vsize: 0, total_fee: 0, fee_histogram: [] });
-  const emptied = s.count === 0 && s.deep === 0 && Array.from(s.ladder).every((v) => v === 0);
+  const emptied = s.count === 0 && s.deep === 0 && s.paying === 0 && Array.from(s.ladder).every((v) => v === 0);
   chain.readBacklog(null);
   chain.readBacklog({ fee_histogram: [[NaN, 1], ["x"], null, [1]] });
   const malformedSafe = Number.isFinite(s.deep);
-  // Block pace over the tip is the temperature, and both providers serve these timestamps.
   chain.readBlocks([{ height: 967915, tx_count: 3442, weight: 3993060, size: 1615146, timestamp: 4000 }, { height: 967914, timestamp: 3000 }, { height: 967913, timestamp: 2000 }]);
   const blocks = { height: s.height, tx: s.lastTxCount, pace: s.pace };
   chain.readBlocks([]);
@@ -2374,23 +2422,55 @@ const chainSnapshotChecks = async () => {
   const emptyPool = s.nextFee;
   chain.readFees(undefined);
   const heldOnMissing = s.nextFee;
-  // The three axes: a deep pool soaks, slow blocks chill, and neither leaves 0..1.
-  chain.readBacklog(backlog);
-  chain.readFees([{ medianFee: 12.5 }]);
-  chain.readBlocks([{ height: 2, timestamp: 12000 }, { height: 1, timestamp: 0 }]);
-  chain.readDifficulty({ progressPercent: 11.66, difficultyChange: -2.08, remainingBlocks: 1781, remainingTime: 1093443169 });
+  // Soak is the paying backlog: 3 MvB at a sat or more pours, while 40 MvB all under a sat stays dry.
+  s.payAt = 0;
+  chain.readBacklog({ count: 90000, vsize: 43000000, total_fee: 9e6, fee_histogram: [[5, 3000000], [0.3, 40000000]] });
   chain.derive();
-  const busy = { soak: s.soak, chill: s.chill, gale: s.gale, progress: s.progressPercent };
-  chain.readBacklog({ count: 12, vsize: 400000, total_fee: 900, fee_histogram: [[1, 400000]] });
-  chain.readFees([{ medianFee: 0.1 }]);
-  chain.readBlocks([{ height: 4, timestamp: 400 }, { height: 3, timestamp: 0 }]);
-  // A positive retarget says the epoch ran fast, which leans the other way from the busy fixture.
-  chain.readDifficulty({ progressPercent: 90, difficultyChange: 2.4, remainingBlocks: 200, remainingTime: 1e8 });
+  const busy = { paying: s.paying, soak: s.soak };
+  s.payAt = Date.now() - 600000;
+  chain.readBacklog({ count: 80000, vsize: 40000000, total_fee: 4e6, fee_histogram: [[0.5, 40000000]] });
+  const decayed = s.payEma;
+  s.payAt = 0;
+  chain.readBacklog({ count: 80000, vsize: 40000000, total_fee: 4e6, fee_histogram: [[0.5, 40000000]] });
   chain.derive();
-  const quiet = { soak: s.soak, chill: s.chill };
-  const curves = { sunny: chain.feePressure(0.1), storm: chain.feePressure(20), under: chain.feePressure(0), one: chain.deepPressure(1), full: chain.deepPressure(60), over: chain.deepPressure(1e6) };
-  record("chain snapshot: the shared /mempool payload gives the backlog, its depth and a normalized descending fee ladder, and empty or malformed histograms leave it sane",
-    read.count === 82783 && Math.abs(read.deep - 41.199227) < 1e-6 && read.totalFee === 9242709 && Math.abs(read.floor - 0.3063063) < 1e-6 && descending && normalized && emptied && malformedSafe,
+  const quiet = { paying: s.paying, soak: s.soak, deep: s.deep };
+  const curves = { dry: chain.paySoak(chain.PAY_DRY), full: chain.paySoak(chain.PAY_FULL), none: chain.paySoak(0), over: chain.paySoak(100) };
+  // The socket's stats land in the snapshot and make it live; REST then adds only the histogram.
+  s.at = 0;
+  const staleBefore = s.live;
+  chain.ingest({ type: "stats", count: 83637, vsize: 41875886, totalFee: 8060352, inflow: 3500, fees: { fastestFee: 2, halfHourFee: 1, hourFee: 1, economyFee: 1, minimumFee: 1 }, da: { progressPercent: 29.4, difficultyChange: -2.7, remainingBlocks: 1424, remainingTime: 879990704 } });
+  chain.derive();
+  const socket = { count: s.count, totalFee: s.totalFee, fastest: s.fastestFee, epoch: s.remainingBlocks, gale: s.gale, live: s.live };
+  chain.readBacklog(backlog, true);
+  const histogramOnly = s.count === 83637 && Math.abs(s.paying - 0.221619) < 1e-6;
+  chain.ingest({ type: "stats", count: 1, vsize: 1, totalFee: 0, inflow: 2250 });
+  chain.derive();
+  const halfGale = s.gale;
+  s.socketAt = Date.now() - 100000;
+  chain.derive();
+  const staleGale = s.gale;
+  // The Coinbase ticker_batch reader: type "ticker", string numbers, other products and control messages ignored.
+  const ticker = [
+    chain.readTicker({ type: "ticker", product_id: "BTC-USD", price: "85492.7", open_24h: "86016.24" }),
+    chain.readTicker({ type: "ticker", product_id: "ETH-USD", price: "3000", open_24h: "3100" }),
+    chain.readTicker({ type: "subscriptions", channels: [{ name: "ticker_batch" }] }),
+    chain.readTicker({ type: "ticker", product_id: "BTC-USD", price: "x" })
+  ];
+  const priced = ticker.join() === "true,false,false,false" && s.priceUsd === 85492.7 && s.priceOpenUsd === 86016.24 && s.priceSource === "coinbase live";
+  // A pinned provider once threw on start (an assignment to a constant) and took the whole page down.
+  const pinnedContext = { window: { setTimeout() { return 1; }, clearTimeout() {}, BL: { math: null } }, fetch: () => new Promise(() => {}), document: { visibilityState: "visible" } };
+  runInNewContext(math, pinnedContext);
+  runInNewContext(source, pinnedContext);
+  let pinnedStarts = true;
+  try {
+    pinnedContext.window.BL.chain.start({ source: "esplora" });
+  } catch {
+    pinnedStarts = false;
+  }
+  const pinned = pinnedStarts && pinnedContext.window.BL.chain.base === chain.ESPLORA && pinnedContext.window.BL.chain.extended === false;
+  pinnedContext.window.BL.chain.dispose();
+  record("chain snapshot: the shared /mempool payload gives the backlog, its depth, the paying backlog and a normalized descending fee ladder, and empty or malformed histograms leave it sane",
+    read.count === 82783 && Math.abs(read.deep - 41.199227) < 1e-6 && read.totalFee === 9242709 && Math.abs(read.floor - 0.3063063) < 1e-6 && Math.abs(read.paying - 0.221619) < 1e-6 && descending && normalized && emptied && malformedSafe,
     JSON.stringify({ read, descending, normalized, emptied, malformedSafe, ladder: ladder.slice(0, 6) }));
   record("chain snapshot: the tip gives height, size and weight, and block pace comes from the timestamps both providers serve",
     blocks.height === 967915 && blocks.tx === 3442 && blocks.pace === 1000 && slowed === 5000,
@@ -2398,9 +2478,35 @@ const chainSnapshotChecks = async () => {
   record("chain snapshot: Esplora fee targets and mempool.space projections both land on the same readings, an empty projection reads as a free mempool and a missing one holds the last",
     Math.abs(esplora.fastest - 0.659) < 1e-9 && Math.abs(esplora.hour - 0.363) < 1e-9 && Math.abs(esplora.minimum - 0.1) < 1e-9 && Math.abs(esplora.next - 0.659) < 1e-9 && projected === 12.5 && emptyPool === 0 && heldOnMissing === 0,
     JSON.stringify({ esplora, projected, emptyPool, heldOnMissing }));
-  record("chain snapshot: a deep expensive pool with slow blocks soaks and chills, a shallow cheap one with fast blocks and a fast epoch does neither, and both curves stay inside their ends",
-    busy.soak > 0.8 && busy.chill > 0.8 && busy.gale >= 0 && busy.gale <= 1 && quiet.soak < 0.25 && quiet.chill === 0 && busy.chill > quiet.chill && curves.sunny === 0 && curves.storm === 1 && curves.under === 0 && curves.one === 0 && curves.full === 1 && curves.over === 1,
-    JSON.stringify({ busy, quiet, curves }));
+  record("chain snapshot: a paying backlog soaks and the sub-sat pile does not, its average decays by elapsed time, and the curve stays inside its ends",
+    Math.abs(busy.paying - 3) < 1e-9 && busy.soak > 0.85 && Math.abs(decayed - 3 * Math.exp(-1)) < 0.01 && quiet.paying === 0 && quiet.soak === 0 && quiet.deep === 40 && curves.dry === 0 && curves.full === 1 && curves.none === 0 && curves.over === 1,
+    JSON.stringify({ busy, decayed, quiet, curves }));
+  record("chain snapshot: socket stats fill the count, fees and epoch and make the snapshot live, REST then adds only the histogram, and the inflow gales only while the socket is fresh",
+    !staleBefore && socket.count === 83637 && socket.totalFee === 8060352 && socket.fastest === 2 && socket.epoch === 1424 && socket.gale === 1 && socket.live && histogramOnly && Math.abs(halfGale - 0.5) < 1e-9 && staleGale === 0,
+    JSON.stringify({ staleBefore, socket, histogramOnly, halfGale, staleGale }));
+  record("chain snapshot: the Coinbase ticker_batch reader takes BTC-USD's price and 24-hour open from their strings and ignores other products and control messages", priced, JSON.stringify({ ticker, price: s.priceUsd, open: s.priceOpenUsd }));
+  record("chain snapshot: a pinned provider starts on it without throwing (regression: an assignment to a constant killed the page)", pinned, JSON.stringify({ pinnedStarts, base: pinnedContext.window.BL.chain.base }));
+};
+// The six rain steps in Node: soak alone picks them, a step holds against a hover on its boundary, and
+// the amount that falls is continuous through them.
+const weatherStepChecks = async () => {
+  const context = { window: { BL: { math: null, models: { cached: (f) => f, noShadow: (g) => g, box: () => ({}), merge: () => ({}), polyline: () => ({}), particleGeometry: () => ({}) }, scene: {} } } };
+  runInNewContext(await readFile(new URL("../src/js/math.js", import.meta.url), "utf8"), context);
+  runInNewContext(await readFile(new URL("../src/js/weather.js", import.meta.url), "utf8"), context);
+  const { STEPS, stepFor, wetAt } = context.window.BL.weather;
+  const names = [0, 0.1, 0.25, 0.45, 0.65, 0.85, 1].map((k) => STEPS[stepFor(k)].name);
+  const ladder = names.join() === "dry,drizzle,light rain,rain,heavy rain,downpour,downpour";
+  const holds = stepFor(0.42, 3) === 3 && stepFor(0.39, 3) === 2 && stepFor(0.46, 2) === 3 && stepFor(0.02, 5) === 0;
+  const storms = STEPS.filter((st) => st.storm).map((st) => st.name).join() === "downpour";
+  let continuous = true, previous = 0;
+  for (let k = 0.1; k <= 1.0001; k += 0.001) {
+    const wet = wetAt(k);
+    if (wet < previous - 1e-9 || wet - previous > 0.13) continuous = false;
+    previous = wet;
+  }
+  const ends = wetAt(0) === 0 && wetAt(0.0999) === 0 && Math.abs(wetAt(0.1) - 0.12) < 1e-9 && wetAt(0.85) === 1 && wetAt(1) === 1;
+  record("weather steps: soak alone names dry through downpour, a step holds against a hover on its boundary, only the downpour storms, and the rain amount rises continuously",
+    ladder && holds && storms && continuous && ends, JSON.stringify({ names, holds, storms, continuous, ends }));
 };
 const debugActivityStatusChecks = async () => {
   const sources = await Promise.all(CONTRIBUTOR_SOURCES.map((name) => readFile(new URL(`../src/js/${name}.js`, import.meta.url), "utf8")));
@@ -3083,7 +3189,7 @@ const unitChecks = async () => {
     }
   }
   const BL = globalThis.BL;
-  await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await gameRulesChecks();
+  await characterChecks(); await contributorActivityChecks(); await mempoolFeedChecks(); await debugActivityStatusChecks(); await soloDebugChecks(); await adaptiveQualityChecks(); await chainSnapshotChecks(); await weatherStepChecks(); await gameRulesChecks();
 
   // Scene state built directly instead of booted; seed 1 matches scene-hub.js.
   // Sealed cave guides need the hub's seal nodes, so probes reading them stay in the browser tier.
