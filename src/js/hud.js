@@ -45,11 +45,13 @@
     svg.append(path);
     return svg;
   };
-  for (const el of document.querySelectorAll("[data-sign]")) {
-    const text = signText(el.textContent);
+  // Letters a sign; a scene calls it again when a sign's words change (a drop that was lost, not landed).
+  const letterSign = (el, words = el.textContent) => {
+    const text = signText(words);
     el.setAttribute("aria-label", text);
     el.replaceChildren(signLettering(text));
-  }
+  };
+  for (const el of document.querySelectorAll("[data-sign]")) letterSign(el);
   // Panel shows itself once on load (INTRO_MS), then folds away unless the visitor is using it.
   const INTRO_MS = 5000;
   let introTimer = 0;
@@ -138,6 +140,7 @@
       subtitle: $("subtitle"),
       actions: [...document.querySelectorAll("[data-action]")],
       weatherKey: document.getElementById("weather-key"),
+      jumbotron: document.getElementById("jumbotron-modal"), jumbotronScreen: $("jumbotron-screen"), jumbotronCaption: $("jumbotron-caption"), jumbotronIndex: $("jumbotron-index"),
       act: $("act"),
       mode: $("mode-hud"),
       modeFree: $("freeroam-icon"),
@@ -585,6 +588,24 @@
     const closeWeatherKey = () => {
       if (el.weatherKey && el.weatherKey.open) el.weatherKey.close();
     };
+    // The jumbotron's close-up: the hub opens it with its paging (`prev`, `next`) and paints the board
+    // into its canvas while it is open; the dialog itself only pages and closes.
+    let jumbotronPaging = null;
+    const openJumbotron = (paging) => {
+      jumbotronPaging = paging;
+      if (!el.jumbotron.open) el.jumbotron.showModal();
+    };
+    const closeJumbotron = () => {
+      jumbotronPaging = null;
+      if (el.jumbotron.open) el.jumbotron.close();
+    };
+    on(el.jumbotron, "keydown", (e) => {
+      if (e.key === "Escape") closeJumbotron();
+      else if (e.key === "ArrowLeft" && jumbotronPaging) jumbotronPaging.prev();
+      else if (e.key === "ArrowRight" && jumbotronPaging) jumbotronPaging.next();
+      else return;
+      e.preventDefault();
+    });
     const openRecipe = () => {
       if (!el.recipe.open) el.recipe.showModal();
     };
@@ -601,6 +622,26 @@
       e.preventDefault();
       closeWeatherKey();
     });
+    // Every popup closes when the visitor presses outside it, in every scene: a modal dialog on its
+    // backdrop (the press lands on the dialog itself, outside its box), a card or a pause box anywhere
+    // else on the page. The island's dialogs are registered here; a scene adds its own.
+    const outside = [];
+    const dismissOutside = (node, close) => {
+      if (node) outside.push({ node, close });
+    };
+    on(document, "pointerdown", (e) => {
+      for (const entry of outside) {
+        const node = entry.node;
+        if (node.tagName === "DIALOG" ? !node.open : node.hidden) continue;
+        const r = node.getBoundingClientRect();
+        if (node.contains(e.target) && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) continue;
+        entry.close();
+      }
+    }, true);
+    dismissOutside(el.feed, closeFeed);
+    dismissOutside(el.recipe, closeRecipe);
+    dismissOutside(el.weatherKey, closeWeatherKey);
+    dismissOutside(el.jumbotron, closeJumbotron);
     // The prompt is written to be pasted, so it leaves in one click.
     const copyRecipe = (button) => {
       const text = el.recipeText.textContent;
@@ -709,9 +750,20 @@
       else if (b.dataset.action === "feed-close") closeFeed();
       else if (b.dataset.action === "recipe-close") closeRecipe();
       else if (b.dataset.action === "weather-close") closeWeatherKey();
+      else if (b.dataset.action === "jumbotron-close") closeJumbotron();
+      else if (b.dataset.action === "jumbotron-prev") jumbotronPaging && jumbotronPaging.prev();
+      else if (b.dataset.action === "jumbotron-next") jumbotronPaging && jumbotronPaging.next();
       else if (b.dataset.action === "recipe-copy") copyRecipe(b);
+      else if (b.dataset.action === "intro-go") b.closest("[data-intro]").hidden = true;
       else if (b === el.mode && !modeSelected) actionHandler && actionHandler("mode-preset", nextDetachedView());
       else actionHandler && actionHandler(b.dataset.action);
+    });
+    // A game's side panels fold away and come back from a tab on the screen's edge: a `data-fold`
+    // button toggles the panel it names, and the stylesheet shows the tab while the panel is folded.
+    for (const b of document.querySelectorAll("[data-fold]")) on(b, "click", () => {
+      b.blur();
+      const panel = document.getElementById(b.dataset.fold);
+      panel.dataset.folded = String(panel.dataset.folded !== "true");
     });
     const toast = (text) => {
       window.clearTimeout(toastTimer);
@@ -830,6 +882,15 @@
           if (!el.hint.classList.contains("show")) el.hint.hidden = true;
         }, MESSAGE_FADE_MS);
       }, ms);
+    };
+    // Takes the hint down now: a scene whose state moved on (a race starting) does not leave garage advice up.
+    const hideHint = () => {
+      window.clearTimeout(hintTimer);
+      window.clearTimeout(hintHideTimer);
+      el.hint.classList.remove("show");
+      hintHideTimer = window.setTimeout(() => {
+        if (!el.hint.classList.contains("show")) el.hint.hidden = true;
+      }, MESSAGE_FADE_MS);
     };
     const selectTab = (name) => {
       for (const t of el.tabs) t.setAttribute("aria-selected", String(t.dataset.tab === name));
@@ -1021,8 +1082,9 @@
       closeFeed();
       closeRecipe();
       closeWeatherKey();
+      closeJumbotron();
     };
-    return { el, openFeed, closeFeed, openRecipe, closeRecipe, setRosterRow, setMeter, setStats, setAct, setMode, setDetachedView, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose, openWeatherKey, closeWeatherKey };
+    return { el, openFeed, closeFeed, openRecipe, closeRecipe, dismissOutside, openJumbotron, closeJumbotron, setRosterRow, setMeter, setStats, setAct, setMode, setDetachedView, setPrimary, setWeapon, setMagazine, setJetpack, setSubtitle, onAction, toast, tooltip, hint, hideHint, letterSign, selectTab, onPreset, onIdentityChange, setIdentity, setDonationUrl, onAssign, onUnassign, renderInventory, dispose, openWeatherKey, closeWeatherKey };
   };
   BL.hud = { create, renderIcon, signLettering, STATE_LABELS, statusFor };
 })();

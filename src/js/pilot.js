@@ -752,6 +752,14 @@
     };
     const aimKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey || e.target.closest && e.target.closest("input, textarea, dialog")) return;
+      // R swaps magazines whenever the AK is drawn, aimed or not: V fires it unaimed, so it empties unaimed.
+      // Otherwise R stays the free camera's pitch.
+      const cave = player();
+      if (e.key.toLowerCase() === "r" && !e.shiftKey && cave && cave.weapon.equipped) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        if (!e.repeat) weaponAction("magazine-swap");
+        return;
+      }
       if (!armed()) {
         if (carryCursor.active && (e.key === "Escape" || e.key === "Tab") || e.key === "Escape" && performance.now() - cursorUnlockedAt < 100) {
           e.preventDefault(); e.stopImmediatePropagation(); unlockAim();
@@ -760,9 +768,6 @@
       }
       if (e.key === "Escape" && (document.pointerLockElement === canvas || performance.now() - unlockedAt < 100) || e.key === "Tab") {
         e.preventDefault(); e.stopImmediatePropagation(); unlockAim();
-      } else if (e.key.toLowerCase() === "r" && !e.shiftKey && player().weapon.equipped) {
-        e.preventDefault(); e.stopImmediatePropagation();
-        if (!e.repeat) weaponAction("magazine-swap");
       }
     };
     const releaseAimAttack = (e) => {
