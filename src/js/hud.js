@@ -581,7 +581,7 @@
       e.preventDefault();
       closeFeed();
     });
-    // The weather key: what the rain, the snow, the wind and the strikes are reading off the chain.
+    // The weather key: what the rain, the wind and the strikes are reading off the chain.
     const openWeatherKey = () => {
       if (el.weatherKey && !el.weatherKey.open) el.weatherKey.showModal();
     };

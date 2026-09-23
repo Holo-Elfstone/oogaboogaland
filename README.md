@@ -57,11 +57,11 @@ Double-click the Agent to play it; double-click again or press **Escape** to let
 
 ## Weather
 
-The weather is the mempool and it stands over the Mempool island. **Soak** (how full the pool is) sets how hard it rains, **chill** (how slowly blocks land) turns rain to snow, **gale** (how fast transactions arrive) sets the wind: sunny, light rain, rain, thunderstorm, monsoon, flurries, snow or blizzard. Every block strikes lightning and rolls thunder. The sky stays as the clock paints it until the pool is well over half full.
+The weather is the mempool and it stands over the Mempool island. **Soak** (the backlog paying at least 1 sat/vB, averaged over ten minutes) sets how hard it rains in six steps: dry, drizzle, light rain, rain, heavy rain, downpour. **Gale** (how many vbytes a second arrive) sets the wind. Every block strikes lightning and rolls thunder, and a downpour throws extra. The sky stays as the clock paints it until the rain is falling hard.
 
 ## Debug
 
-`?scene=lab`, `race`, `drop`, `orbit` or `mine` opens that scene; `?nosim=1` silences the simulator and every feed, `?mempool=0` the socket alone, `?chain=0` the REST polling, `?oogatron=0` the stats poll; `?canvas2d=1` forces the Canvas 2D fallback; `?debug=1` exposes `window.__ooga`. **B** adds test bananas, **L** a legendary tip, **P** fills the pile, **Shift+R** resets. The Konami code opens the live feed panel. AGENTS.md lists every flag and fixture.
+`?scene=lab`, `race`, `drop`, `orbit` or `mine` opens that scene; `?nosim=1` silences the simulator and every feed, `?mempool=0` the socket alone, `?chain=0` the REST polling and the price socket, `?oogatron=0` the stats poll; `?canvas2d=1` forces the Canvas 2D fallback; `?debug=1` exposes `window.__ooga`. **B** adds test bananas, **L** a legendary tip, **P** fills the pile, **Shift+R** resets. The Konami code opens the live feed panel. AGENTS.md lists every flag and fixture.
 
 ## Test
 
@@ -83,7 +83,7 @@ To add your Ooga, add one file to `src/characters/` named after your GitHub hand
 
 ## Privacy
 
-No analytics and no personal data. Read-only requests, nothing about the visitor sent: the mempool.space websocket and REST API (falling back to blockstream.info's Esplora), Coinbase Exchange for the price and the day's open (falling back to Kraken, Coinbase spot and mempool.space), and the oogatron stats worker. The roster lists public contributor handles only; the donation handle and message stay in localStorage.
+No analytics and no personal data. Read-only requests, nothing about the visitor sent: the mempool.space websocket and REST API (falling back to blockstream.info's Esplora), Coinbase Exchange's websocket feed for the live price and the day's open (falling back to Coinbase Exchange, Kraken, Coinbase spot and mempool.space over REST), and the oogatron stats worker. The roster lists public contributor handles only; the donation handle and message stay in localStorage.
 
 ## License
 

@@ -3063,10 +3063,9 @@
     fx.burst(0, DROP_HEIGHT - 0.2, 0, 26, CONFETTI, 2.2);
     fx.showTicker(`THANKS ${donation.handle ? "@" + donation.handle.toUpperCase() : "ANON"} · ${bananas} BANANAS`, 4.5);
   };
-  // The Bitcoin feed: a transaction gusts the weather, a block strikes lightning over the island.
+  // The Bitcoin feed: a block strikes lightning over the island.
   const onMempool = (event) => {
-    if (event.type === "tx") weather.rain(event.vsize);
-    else if (event.type === "block") {
+    if (event.type === "block") {
       // Every block mined while the page is open strikes, whatever the weather is doing.
       weather.strike();
       hud.toast(`Block ${event.height} mined${event.txCount ? ` · ${event.txCount} transactions` : ""}`);
