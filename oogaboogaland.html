@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'none'; script-src 'sha256-eJCZZ7VVJfN2mhC/br8to7QZyZye40YqLwejf1A//Ww='; style-src 'sha256-/aM4kLC9dSSSCxDTsius1hVrr7C/7MJNpKdg/fYxPkQ='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
+    content="default-src 'none'; script-src 'sha256-kqsOnS6nXJ8ouRvexaOhY2pfq+aQjtWcX6r1B4bR20M='; style-src 'sha256-/aM4kLC9dSSSCxDTsius1hVrr7C/7MJNpKdg/fYxPkQ='; img-src 'self' data:; connect-src https: wss:; base-uri 'none'; form-action 'none'">
   <meta name="referrer" content="no-referrer">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0a0a0b">
@@ -6748,19 +6748,15 @@ Then run npm run build and ONLY=characters node test/run.mjs.</pre>
       <dl class="weather-key">
         <div>
           <dt>Rain</dt>
-          <dd>The backlog. The more that is waiting to be mined, the harder it falls, and it keeps falling until the pool drains. Empty mempool, clear sky. Expensive fees make it heavier.</dd>
-        </div>
-        <div>
-          <dt>Snow</dt>
-          <dd>Cold means slow blocks. Once they start landing well past the ten minute mark the rain turns to snow. If the whole epoch has been running late, that pushes it colder too.</dd>
+          <dd>The backlog paying at least 1 sat/vB, averaged over ten minutes. Dry, drizzle, light rain, rain, heavy rain, then a downpour as it grows, and it keeps falling until the fee-paying pool clears. The cheap sub-sat pile underneath doesn't count.</dd>
         </div>
         <div>
           <dt>Wind</dt>
-          <dd>Transactions turning up. The busier it gets, the further the rain leans over and the more the snow drifts about. Rain always slants the way the wind is going, never into it.</dd>
+          <dd>Transactions turning up, in vbytes a second. The busier it gets, the further the rain leans over. Rain always slants the way the wind is going, never into it.</dd>
         </div>
         <div>
           <dt>Lightning</dt>
-          <dd>Somebody found a block. Every one of them throws a bolt over the island, whatever the weather is doing. Storms throw extra on their own.</dd>
+          <dd>Somebody found a block. Every one of them throws a bolt over the island, whatever the weather is doing. A downpour throws extra on its own.</dd>
         </div>
       </dl>
     </dialog>
@@ -16856,7 +16852,7 @@ void main() {
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
-  BL.jumbotronData = {"meta":{"generated_at":"2026-09-23T01:28:20.695Z","org":"OogaBoogaX","schema_version":3},"totals":{"contributors":48,"commits":1144,"prs":435,"reviews":50,"issues":6,"comments":328},"leaderboards":{"commits":[{"login":"portlandhodl","count":391},{"login":"w-s-bitcoin","count":310},{"login":"MrHodlX","count":92},{"login":"timechainb","count":68},{"login":"2140data","count":44},{"login":"dplusplus1024","count":44},{"login":"ottoz0r","count":31},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"rules-without-rulers","count":14},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"knorrium","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"Holo-Elfstone","count":2},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"itsneski","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"YellowBrokeIt","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":86},{"login":"portlandhodl","count":83},{"login":"w-s-bitcoin","count":63},{"login":"timechainb","count":29},{"login":"2140data","count":24},{"login":"ottoz0r","count":19},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"rules-without-rulers","count":11},{"login":"Jdelg718","count":5},{"login":"knorrium","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"Holo-Elfstone","count":2},{"login":"YellowBrokeIt","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"itsneski","count":2},{"login":"pdubl22","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":23},{"login":"J25dunn","count":14},{"login":"w-s-bitcoin","count":8},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":48},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"rules-without-rulers","count":6},{"login":"timechainb","count":6},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Holo-Elfstone","count":2},{"login":"Jdelg718","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"repos":[{"name":"entropylab","totals":{"contributors":44,"commits":979,"prs":371,"reviews":44,"issues":3,"comments":320},"weekly":[{"week":"2026-W35","commits":333,"prs":134,"reviews":2,"issues":0,"comments":69},{"week":"2026-W36","commits":399,"prs":136,"reviews":16,"issues":0,"comments":130},{"week":"2026-W37","commits":82,"prs":36,"reviews":18,"issues":1,"comments":76},{"week":"2026-W38","commits":132,"prs":51,"reviews":5,"issues":1,"comments":39},{"week":"2026-W39","commits":33,"prs":14,"reviews":3,"issues":1,"comments":6}],"last_activity_at":"2026-09-23T01:20:28Z","leaderboards":{"commits":[{"login":"portlandhodl","count":391},{"login":"w-s-bitcoin","count":216},{"login":"MrHodlX","count":87},{"login":"timechainb","count":68},{"login":"dplusplus1024","count":44},{"login":"ottoz0r","count":24},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"2140data","count":9},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"rules-without-rulers","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":83},{"login":"portlandhodl","count":83},{"login":"w-s-bitcoin","count":37},{"login":"timechainb","count":29},{"login":"ottoz0r","count":18},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"2140data","count":10},{"login":"Jdelg718","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"pdubl22","count":2},{"login":"rules-without-rulers","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":23},{"login":"J25dunn","count":14},{"login":"portlandhodl","count":4},{"login":"w-s-bitcoin","count":2},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":46},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"timechainb","count":6},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Jdelg718","count":2},{"login":"rules-without-rulers","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-22T17:13:44Z"},{"login":"timechainb","last_seen_at":"2026-09-23T01:05:54Z"},{"login":"portlandhodl","last_seen_at":"2026-09-22T23:34:00Z"},{"login":"MrHodlX","last_seen_at":"2026-09-23T01:20:28Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T00:52:02Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-02T02:19:20Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"2140data","last_seen_at":"2026-08-31T04:54:04Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-12T17:11:11Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"}]},{"name":"oogaboogaland","totals":{"contributors":9,"commits":146,"prs":58,"reviews":6,"issues":3,"comments":8},"weekly":[{"week":"2026-W37","commits":45,"prs":19,"reviews":0,"issues":0,"comments":1},{"week":"2026-W38","commits":70,"prs":30,"reviews":3,"issues":0,"comments":0},{"week":"2026-W39","commits":31,"prs":9,"reviews":3,"issues":3,"comments":7}],"last_activity_at":"2026-09-22T13:36:04Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":81},{"login":"2140data","count":35},{"login":"rules-without-rulers","count":12},{"login":"knorrium","count":7},{"login":"MrHodlX","count":5},{"login":"Holo-Elfstone","count":2},{"login":"itsneski","count":2},{"login":"YellowBrokeIt","count":1},{"login":"ottoz0r","count":1}],"prs":[{"login":"w-s-bitcoin","count":20},{"login":"2140data","count":14},{"login":"rules-without-rulers","count":9},{"login":"knorrium","count":5},{"login":"MrHodlX","count":3},{"login":"Holo-Elfstone","count":2},{"login":"YellowBrokeIt","count":2},{"login":"itsneski","count":2},{"login":"ottoz0r","count":1}],"reviews":[{"login":"w-s-bitcoin","count":6}],"comments":[{"login":"rules-without-rulers","count":4},{"login":"Holo-Elfstone","count":2},{"login":"w-s-bitcoin","count":2}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-22T13:36:04Z"},{"login":"MrHodlX","last_seen_at":"2026-09-20T21:37:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"2140data","last_seen_at":"2026-09-21T15:59:54Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-22T13:22:53Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-21T20:29:14Z"}]},{"name":"bedrock","totals":{"contributors":2,"commits":19,"prs":6,"reviews":0,"issues":0,"comments":0},"weekly":[{"week":"2026-W36","commits":16,"prs":6,"reviews":0,"issues":0,"comments":0},{"week":"2026-W37","commits":3,"prs":0,"reviews":0,"issues":0,"comments":0}],"last_activity_at":"2026-09-07T05:21:02Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":13},{"login":"ottoz0r","count":6}],"prs":[{"login":"w-s-bitcoin","count":6}],"reviews":[],"comments":[]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-07T05:21:02Z"},{"login":"ottoz0r","last_seen_at":"2026-09-04T21:29:31Z"}]}],"recent":[{"login":"MrHodlX","repo":"entropylab","type":"review","occurred_at":"2026-09-23T01:20:28Z"},{"login":"timechainb","repo":"entropylab","type":"pr","occurred_at":"2026-09-23T01:05:54Z"},{"login":"portlandhodl","repo":"entropylab","type":"merge","occurred_at":"2026-09-22T23:34:00Z"},{"login":"portlandhodl","repo":"entropylab","type":"pr","occurred_at":"2026-09-22T23:29:10Z"},{"login":"portlandhodl","repo":"entropylab","type":"commit","occurred_at":"2026-09-22T23:28:55Z"},{"login":"portlandhodl","repo":"entropylab","type":"pr","occurred_at":"2026-09-22T22:19:25Z"},{"login":"timechainb","repo":"entropylab","type":"merge","occurred_at":"2026-09-22T20:28:07Z"},{"login":"timechainb","repo":"entropylab","type":"pr","occurred_at":"2026-09-22T20:06:59Z"},{"login":"timechainb","repo":"entropylab","type":"commit","occurred_at":"2026-09-22T20:04:01Z"},{"login":"w-s-bitcoin","repo":"entropylab","type":"merge","occurred_at":"2026-09-22T17:13:44Z"},{"login":"w-s-bitcoin","repo":"entropylab","type":"pr","occurred_at":"2026-09-22T17:07:10Z"},{"login":"w-s-bitcoin","repo":"entropylab","type":"commit","occurred_at":"2026-09-22T17:06:38Z"}],"contributors":[{"login":"portlandhodl","last_seen_at":"2026-09-22T23:34:00Z"},{"login":"w-s-bitcoin","last_seen_at":"2026-09-22T17:13:44Z"},{"login":"MrHodlX","last_seen_at":"2026-09-23T01:20:28Z"},{"login":"timechainb","last_seen_at":"2026-09-23T01:05:54Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"2140data","last_seen_at":"2026-09-21T15:59:54Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T12:31:24Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-22T13:22:53Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-21T20:29:14Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"}]};
+  BL.jumbotronData = {"meta":{"generated_at":"2026-09-23T13:43:01.392Z","org":"OogaBoogaX","schema_version":3},"totals":{"contributors":48,"commits":1149,"prs":436,"reviews":51,"issues":6,"comments":328},"leaderboards":{"commits":[{"login":"portlandhodl","count":391},{"login":"w-s-bitcoin","count":310},{"login":"MrHodlX","count":93},{"login":"timechainb","count":70},{"login":"2140data","count":46},{"login":"dplusplus1024","count":44},{"login":"ottoz0r","count":31},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"rules-without-rulers","count":14},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"knorrium","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"Holo-Elfstone","count":2},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"itsneski","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"YellowBrokeIt","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":86},{"login":"portlandhodl","count":83},{"login":"w-s-bitcoin","count":63},{"login":"timechainb","count":29},{"login":"2140data","count":25},{"login":"ottoz0r","count":19},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"rules-without-rulers","count":11},{"login":"Jdelg718","count":5},{"login":"knorrium","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"Holo-Elfstone","count":2},{"login":"YellowBrokeIt","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"itsneski","count":2},{"login":"pdubl22","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":24},{"login":"J25dunn","count":14},{"login":"w-s-bitcoin","count":8},{"login":"portlandhodl","count":4},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":48},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"rules-without-rulers","count":6},{"login":"timechainb","count":6},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Holo-Elfstone","count":2},{"login":"Jdelg718","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"repos":[{"name":"entropylab","totals":{"contributors":44,"commits":982,"prs":371,"reviews":45,"issues":3,"comments":320},"weekly":[{"week":"2026-W35","commits":333,"prs":134,"reviews":2,"issues":0,"comments":69},{"week":"2026-W36","commits":399,"prs":136,"reviews":16,"issues":0,"comments":130},{"week":"2026-W37","commits":82,"prs":36,"reviews":18,"issues":1,"comments":76},{"week":"2026-W38","commits":132,"prs":51,"reviews":5,"issues":1,"comments":39},{"week":"2026-W39","commits":36,"prs":14,"reviews":4,"issues":1,"comments":6}],"last_activity_at":"2026-09-23T02:03:18Z","leaderboards":{"commits":[{"login":"portlandhodl","count":391},{"login":"w-s-bitcoin","count":216},{"login":"MrHodlX","count":88},{"login":"timechainb","count":70},{"login":"dplusplus1024","count":44},{"login":"ottoz0r","count":24},{"login":"pdubl22","count":23},{"login":"Hero-Gamer","count":17},{"login":"itme-brain","count":13},{"login":"RandyMcMillan","count":11},{"login":"claude","count":11},{"login":"J25dunn","count":10},{"login":"2140data","count":9},{"login":"MHODL","count":7},{"login":"Rob1Ham","count":7},{"login":"Jdelg718","count":5},{"login":"email:0ca1dda35e422a0f","count":4},{"login":"email:bdb4923572c8ac13","count":4},{"login":"BTCMcBoatface","count":3},{"login":"codex","count":3},{"login":"email:bed3af55053c78f6","count":3},{"login":"SaniExp","count":2},{"login":"csuwildcat","count":2},{"login":"dani69654","count":2},{"login":"hotpixelgroup","count":2},{"login":"rules-without-rulers","count":2},{"login":"CypherBoxLLC","count":1},{"login":"FNBIP","count":1},{"login":"HodlDee","count":1},{"login":"doggyballs","count":1},{"login":"email:56537ddd43347582","count":1},{"login":"email:78da113009979a72","count":1},{"login":"email:93964419ae80c511","count":1},{"login":"kaloudis","count":1},{"login":"zmeyer44","count":1}],"prs":[{"login":"MrHodlX","count":83},{"login":"portlandhodl","count":83},{"login":"w-s-bitcoin","count":37},{"login":"timechainb","count":29},{"login":"ottoz0r","count":18},{"login":"J25dunn","count":16},{"login":"dplusplus1024","count":13},{"login":"Hero-Gamer","count":12},{"login":"Rob1Ham","count":11},{"login":"itme-brain","count":11},{"login":"2140data","count":10},{"login":"Jdelg718","count":5},{"login":"RandyMcMillan","count":4},{"login":"hotpixelgroup","count":4},{"login":"FNBIP","count":3},{"login":"MiguelMedeiros","count":3},{"login":"SaniExp","count":3},{"login":"dani69654","count":3},{"login":"tmmmemcee","count":3},{"login":"BTCMcBoatface","count":2},{"login":"HodlDee","count":2},{"login":"csuwildcat","count":2},{"login":"doggyballs","count":2},{"login":"pdubl22","count":2},{"login":"rules-without-rulers","count":2},{"login":"zmeyer44","count":2},{"login":"CypherBoxLLC","count":1},{"login":"Korg1970","count":1},{"login":"Shitnobi","count":1},{"login":"kaloudis","count":1},{"login":"mikeinspace","count":1},{"login":"unclejim7","count":1}],"reviews":[{"login":"MrHodlX","count":24},{"login":"J25dunn","count":14},{"login":"portlandhodl","count":4},{"login":"w-s-bitcoin","count":2},{"login":"Hero-Gamer","count":1}],"comments":[{"login":"portlandhodl","count":84},{"login":"Hero-Gamer","count":53},{"login":"w-s-bitcoin","count":46},{"login":"MrHodlX","count":27},{"login":"RandyMcMillan","count":19},{"login":"J25dunn","count":18},{"login":"BTCMcBoatface","count":14},{"login":"dplusplus1024","count":11},{"login":"itme-brain","count":9},{"login":"dani69654","count":7},{"login":"ottoz0r","count":6},{"login":"timechainb","count":6},{"login":"hotpixelgroup","count":4},{"login":"tmmmemcee","count":3},{"login":"HodlDee","count":2},{"login":"Jdelg718","count":2},{"login":"rules-without-rulers","count":2},{"login":"100megasats","count":1},{"login":"2140data","count":1},{"login":"Bitcoin-Bill","count":1},{"login":"csuwildcat","count":1},{"login":"doggyballs","count":1},{"login":"remcoros","count":1},{"login":"unclejim7","count":1}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-22T17:13:44Z"},{"login":"timechainb","last_seen_at":"2026-09-23T01:52:07Z"},{"login":"portlandhodl","last_seen_at":"2026-09-22T23:34:00Z"},{"login":"MrHodlX","last_seen_at":"2026-09-23T02:03:18Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T00:52:02Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-02T02:19:20Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"2140data","last_seen_at":"2026-08-31T04:54:04Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-12T17:11:11Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"}]},{"name":"oogaboogaland","totals":{"contributors":9,"commits":148,"prs":59,"reviews":6,"issues":3,"comments":8},"weekly":[{"week":"2026-W37","commits":45,"prs":19,"reviews":0,"issues":0,"comments":1},{"week":"2026-W38","commits":70,"prs":30,"reviews":3,"issues":0,"comments":0},{"week":"2026-W39","commits":33,"prs":10,"reviews":3,"issues":3,"comments":7}],"last_activity_at":"2026-09-23T01:28:05Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":81},{"login":"2140data","count":37},{"login":"rules-without-rulers","count":12},{"login":"knorrium","count":7},{"login":"MrHodlX","count":5},{"login":"Holo-Elfstone","count":2},{"login":"itsneski","count":2},{"login":"YellowBrokeIt","count":1},{"login":"ottoz0r","count":1}],"prs":[{"login":"w-s-bitcoin","count":20},{"login":"2140data","count":15},{"login":"rules-without-rulers","count":9},{"login":"knorrium","count":5},{"login":"MrHodlX","count":3},{"login":"Holo-Elfstone","count":2},{"login":"YellowBrokeIt","count":2},{"login":"itsneski","count":2},{"login":"ottoz0r","count":1}],"reviews":[{"login":"w-s-bitcoin","count":6}],"comments":[{"login":"rules-without-rulers","count":4},{"login":"Holo-Elfstone","count":2},{"login":"w-s-bitcoin","count":2}]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-22T13:36:04Z"},{"login":"MrHodlX","last_seen_at":"2026-09-20T21:37:43Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"2140data","last_seen_at":"2026-09-23T01:28:05Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-22T13:22:53Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-21T20:29:14Z"}]},{"name":"bedrock","totals":{"contributors":2,"commits":19,"prs":6,"reviews":0,"issues":0,"comments":0},"weekly":[{"week":"2026-W36","commits":16,"prs":6,"reviews":0,"issues":0,"comments":0},{"week":"2026-W37","commits":3,"prs":0,"reviews":0,"issues":0,"comments":0}],"last_activity_at":"2026-09-07T05:21:02Z","leaderboards":{"commits":[{"login":"w-s-bitcoin","count":13},{"login":"ottoz0r","count":6}],"prs":[{"login":"w-s-bitcoin","count":6}],"reviews":[],"comments":[]},"contributors":[{"login":"w-s-bitcoin","last_seen_at":"2026-09-07T05:21:02Z"},{"login":"ottoz0r","last_seen_at":"2026-09-04T21:29:31Z"}]}],"recent":[{"login":"MrHodlX","repo":"entropylab","type":"merge","occurred_at":"2026-09-23T02:03:18Z"},{"login":"MrHodlX","repo":"entropylab","type":"review","occurred_at":"2026-09-23T02:02:33Z"},{"login":"timechainb","repo":"entropylab","type":"commit","occurred_at":"2026-09-23T01:52:07Z"},{"login":"2140data","repo":"oogaboogaland","type":"merge","occurred_at":"2026-09-23T01:28:05Z"},{"login":"2140data","repo":"oogaboogaland","type":"pr","occurred_at":"2026-09-23T01:27:53Z"},{"login":"MrHodlX","repo":"entropylab","type":"review","occurred_at":"2026-09-23T01:20:28Z"},{"login":"2140data","repo":"oogaboogaland","type":"commit","occurred_at":"2026-09-23T01:12:24Z"},{"login":"timechainb","repo":"entropylab","type":"pr","occurred_at":"2026-09-23T01:05:54Z"},{"login":"timechainb","repo":"entropylab","type":"commit","occurred_at":"2026-09-23T00:52:09Z"},{"login":"portlandhodl","repo":"entropylab","type":"merge","occurred_at":"2026-09-22T23:34:00Z"},{"login":"portlandhodl","repo":"entropylab","type":"pr","occurred_at":"2026-09-22T23:29:10Z"},{"login":"portlandhodl","repo":"entropylab","type":"commit","occurred_at":"2026-09-22T23:28:55Z"}],"contributors":[{"login":"portlandhodl","last_seen_at":"2026-09-22T23:34:00Z"},{"login":"w-s-bitcoin","last_seen_at":"2026-09-22T17:13:44Z"},{"login":"MrHodlX","last_seen_at":"2026-09-23T02:03:18Z"},{"login":"timechainb","last_seen_at":"2026-09-23T01:52:07Z"},{"login":"Hero-Gamer","last_seen_at":"2026-09-16T23:19:21Z"},{"login":"2140data","last_seen_at":"2026-09-23T01:28:05Z"},{"login":"dplusplus1024","last_seen_at":"2026-09-04T16:46:04Z"},{"login":"J25dunn","last_seen_at":"2026-09-14T12:31:24Z"},{"login":"ottoz0r","last_seen_at":"2026-09-07T21:41:44Z"},{"login":"RandyMcMillan","last_seen_at":"2026-08-31T09:57:39Z"},{"login":"rules-without-rulers","last_seen_at":"2026-09-22T13:22:53Z"},{"login":"itme-brain","last_seen_at":"2026-09-05T00:24:12Z"},{"login":"pdubl22","last_seen_at":"2026-09-02T04:06:43Z"},{"login":"BTCMcBoatface","last_seen_at":"2026-09-12T22:51:09Z"},{"login":"Rob1Ham","last_seen_at":"2026-09-05T04:49:37Z"},{"login":"Jdelg718","last_seen_at":"2026-08-31T15:06:08Z"},{"login":"dani69654","last_seen_at":"2026-09-09T10:02:14Z"},{"login":"knorrium","last_seen_at":"2026-09-20T21:18:34Z"},{"login":"claude","last_seen_at":"2026-09-20T10:26:38Z"},{"login":"hotpixelgroup","last_seen_at":"2026-09-17T16:15:09Z"},{"login":"MHODL","last_seen_at":"2026-08-30T19:00:46Z"},{"login":"Holo-Elfstone","last_seen_at":"2026-09-21T20:29:14Z"},{"login":"tmmmemcee","last_seen_at":"2026-09-17T00:58:54Z"},{"login":"HodlDee","last_seen_at":"2026-09-02T15:19:10Z"},{"login":"SaniExp","last_seen_at":"2026-09-02T16:47:02Z"},{"login":"csuwildcat","last_seen_at":"2026-08-30T20:04:05Z"},{"login":"FNBIP","last_seen_at":"2026-09-02T00:55:23Z"},{"login":"doggyballs","last_seen_at":"2026-09-21T00:35:15Z"},{"login":"email:0ca1dda35e422a0f","last_seen_at":"2026-09-05T16:17:09Z"},{"login":"email:bdb4923572c8ac13","last_seen_at":"2026-08-29T03:53:33Z"},{"login":"itsneski","last_seen_at":"2026-09-19T00:00:58Z"},{"login":"MiguelMedeiros","last_seen_at":"2026-08-27T21:47:11Z"},{"login":"YellowBrokeIt","last_seen_at":"2026-09-20T20:45:03Z"},{"login":"codex","last_seen_at":"2026-09-21T01:04:42Z"},{"login":"email:bed3af55053c78f6","last_seen_at":"2026-09-10T22:41:09Z"},{"login":"zmeyer44","last_seen_at":"2026-08-31T14:06:04Z"},{"login":"CypherBoxLLC","last_seen_at":"2026-09-19T22:44:16Z"},{"login":"kaloudis","last_seen_at":"2026-09-11T03:10:01Z"},{"login":"unclejim7","last_seen_at":"2026-09-05T04:37:51Z"},{"login":"100megasats","last_seen_at":"2026-08-30T20:53:53Z"},{"login":"Bitcoin-Bill","last_seen_at":"2026-09-02T01:00:57Z"},{"login":"Korg1970","last_seen_at":"2026-09-12T17:42:58Z"},{"login":"Shitnobi","last_seen_at":"2026-08-26T23:09:24Z"},{"login":"email:56537ddd43347582","last_seen_at":"2026-08-25T19:35:57Z"},{"login":"email:78da113009979a72","last_seen_at":"2026-08-30T03:08:17Z"},{"login":"email:93964419ae80c511","last_seen_at":"2026-09-20T10:42:49Z"},{"login":"mikeinspace","last_seen_at":"2026-09-10T05:25:42Z"},{"login":"remcoros","last_seen_at":"2026-09-12T15:11:21Z"}]};
 })();
 
 // ---- js/jumbotron.js ----
@@ -22326,22 +22322,27 @@ void main() {
 })();
 
 // ---- js/mempool.js ----
-// Live Bitcoin feed from mempool.space: one socket for the page life, reconnecting with backoff.
-// Subscribers get plain events, { type: "tx", vsize, weight, fee } for each transaction the
-// mempool accepts, { type: "block", height, txCount } for each block mined after connect and
-// { type: "fees", nextFee, blocks } whenever the projected next block's median fee moves.
-// One of the page's two live feeds (the other polls the oogatron worker in oogatron-live.js).
+// Live Bitcoin feed from mempool.space: one socket while the tab is visible, reconnecting with backoff.
+// Subscribers get plain events, { type: "block", height, txCount } for each block mined after connect,
+// { type: "fees", nextFee, blocks } whenever the projected next block's median fee moves and
+// { type: "stats", count, vsize, totalFee, inflow, fees, da } with each mempool push (about once a
+// second): the transaction count, the backlog in vB, its fees in sats, the inflow in vB/s, the
+// recommended fee tiers and the difficulty epoch, in the shapes the REST endpoints serve them.
+// One of the page's live feeds (chain.js polls REST and the price, oogatron-live.js the org stats).
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
   const ENDPOINT = "wss://mempool.space/api/v1/ws";
   const BACKOFF_MIN = 2000, BACKOFF_MAX = 60000;
+  // The socket pushes about once a second and never goes quiet for long, even round a block; a link
+  // that has said nothing for this long is half-open and is dropped rather than trusted.
+  const STALL_MS = 20000;
   const subscribers = new Set();
-  const state = { enabled: false, connected: false, attempts: 0, transactions: 0, blocks: 0, height: 0, nextFee: 0, projectedBlocks: 0, messages: 0, bytes: 0, lastKeys: "", lastAt: 0 };
-  let socket = null, timer = 0, backoff = BACKOFF_MIN;
+  const state = { enabled: false, hidden: false, connected: false, attempts: 0, stats: 0, blocks: 0, height: 0, nextFee: 0, projectedBlocks: 0, inflow: 0, messages: 0, bytes: 0, lastKeys: "", lastAt: 0 };
+  let socket = null, timer = 0, watch = 0, backoff = BACKOFF_MIN;
 
   const emit = (event) => {
-    if (event.type === "tx") state.transactions++;
+    if (event.type === "stats") state.stats++;
     else if (event.type === "block") state.blocks++;
     for (const fn of subscribers) fn(event);
   };
@@ -22361,6 +22362,9 @@ void main() {
       return;
     }
     if (!data || typeof data !== "object" || Array.isArray(data)) return;
+    // A server that accepts and then drops the link must not be redialled every two seconds, so the
+    // backoff only resets once the socket has actually said something.
+    backoff = BACKOFF_MIN;
     state.lastKeys = Object.keys(data).join(", ");
     // The tip list arrives once per connection and only seeds the height; a later, taller one is news.
     if (Array.isArray(data.blocks)) {
@@ -22378,23 +22382,45 @@ void main() {
       state.projectedBlocks = projected.length;
       emit({ type: "fees", nextFee: state.nextFee, blocks: projected.length });
     }
-    const txs = data["mempool-transactions"];
-    if (txs && Array.isArray(txs.added)) {
-      for (const tx of txs.added) {
-        if (!tx || !(tx.vsize > 0)) continue;
-        emit({ type: "tx", vsize: tx.vsize, weight: tx.weight || tx.vsize * 4, fee: tx.fee || 0 });
-      }
+    // The socket's `total_fee` is in BTC where REST `/mempool` gives sats; `bytes` is the vsize.
+    const info = data.mempoolInfo;
+    if (info && typeof info.size === "number" && typeof info.bytes === "number") {
+      const inflow = Number(data.vBytesPerSecond);
+      state.inflow = inflow >= 0 ? inflow : 0;
+      emit({
+        type: "stats", count: info.size, vsize: info.bytes, totalFee: Math.round((Number(info.total_fee) || 0) * 1e8),
+        inflow: state.inflow, fees: data.fees && typeof data.fees === "object" ? data.fees : null, da: data.da && typeof data.da === "object" ? data.da : null
+      });
     }
   };
   const retry = () => {
-    if (state.enabled && !timer) {
+    if (state.enabled && !state.hidden && !timer) {
       timer = window.setTimeout(connect, backoff);
       backoff = Math.min(BACKOFF_MAX, backoff * 2);
     }
   };
+  // Detaches before closing, so a deliberate close never reaches onclose and its retry.
+  const drop = () => {
+    window.clearTimeout(watch);
+    watch = 0;
+    if (!socket) return;
+    const ws = socket;
+    socket = null;
+    ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+    ws.close();
+    state.connected = false;
+  };
+  const check = () => {
+    watch = 0;
+    if (!socket) return;
+    if (Date.now() - state.lastAt > STALL_MS) {
+      drop();
+      retry();
+    } else watch = window.setTimeout(check, STALL_MS / 2);
+  };
   const connect = () => {
     timer = 0;
-    if (!state.enabled || socket) return;
+    if (!state.enabled || state.hidden || socket) return;
     state.attempts++;
     let ws;
     try {
@@ -22406,13 +22432,15 @@ void main() {
     socket = ws;
     ws.onopen = () => {
       state.connected = true;
-      backoff = BACKOFF_MIN;
-      ws.send(JSON.stringify({ action: "want", data: ["blocks", "mempool-blocks"] }));
-      ws.send(JSON.stringify({ "track-mempool": true }));
+      state.lastAt = Date.now();
+      ws.send(JSON.stringify({ action: "want", data: ["blocks", "stats", "mempool-blocks"] }));
+      watch = window.setTimeout(check, STALL_MS / 2);
     };
     ws.onmessage = (e) => onMessage(e.data);
     ws.onclose = () => {
       if (socket === ws) socket = null;
+      window.clearTimeout(watch);
+      watch = 0;
       state.connected = false;
       retry();
     };
@@ -22423,6 +22451,23 @@ void main() {
     state.enabled = true;
     connect();
   };
+  // The director's visibility pause: a hidden tab holds no socket. The height is forgotten so the tip
+  // list on the way back seeds it silently; blocks mined while away are not news, and must not strike,
+  // toast or pay the mine as if they had just been found.
+  const setHidden = (hidden) => {
+    if (state.hidden === !!hidden) return;
+    state.hidden = !!hidden;
+    if (!state.enabled) return;
+    window.clearTimeout(timer);
+    timer = 0;
+    if (state.hidden) {
+      drop();
+      return;
+    }
+    state.height = 0;
+    backoff = BACKOFF_MIN;
+    connect();
+  };
   const subscribe = (fn) => {
     subscribers.add(fn);
     return () => subscribers.delete(fn);
@@ -22431,16 +22476,10 @@ void main() {
     state.enabled = false;
     window.clearTimeout(timer);
     timer = 0;
-    if (socket) {
-      const ws = socket;
-      socket = null;
-      ws.onclose = null;
-      ws.close();
-    }
-    state.connected = false;
+    drop();
     subscribers.clear();
   };
-  BL.mempool = { ENDPOINT, state, start, subscribe, dispose, emit, parse: onMessage };
+  BL.mempool = { ENDPOINT, state, start, setHidden, subscribe, dispose, emit, parse: onMessage };
 })();
 
 // ---- js/oogatron-live.js ----
@@ -22533,9 +22572,10 @@ void main() {
 
 // ---- js/chain.js ----
 // The chain snapshot: one bounded view of the Bitcoin mempool, blocks and mining, assembled from
-// whichever provider answers. The mempool.space websocket in mempool.js stays the live transport for
-// transactions and blocks; this module adds the standing numbers the socket never sends (the backlog,
-// the fee ladder, difficulty, hashrate, price) by polling REST while the tab is visible.
+// whichever source answers. The mempool.space websocket in mempool.js is the live transport for the
+// backlog, fee tiers, difficulty, inflow and blocks; this module polls REST for what the socket never
+// sends (the fee histogram behind the ladder and the rain, block pace, hashrate) and for everything
+// while the socket is down, and holds its own Coinbase socket for the price, with REST behind it.
 //
 // Two providers, one code path. `/mempool`, `/mempool/recent`, `/blocks` and `/blocks/tip/height`
 // return the same shapes from mempool.space and from any Esplora instance, so the fallback is a base
@@ -22546,7 +22586,7 @@ void main() {
 // completion, every failure widening the gap, and Retry-After obeyed when a provider sends one.
 //
 // Nothing here allocates per frame: the snapshot is one object mutated in place and the fee ladder is
-// a fixed typed array. Weather reads the three derived axes at the foot of the snapshot.
+// a fixed typed array. Weather reads the two derived axes at the foot of the snapshot.
 (() => {
   "use strict";
   const BL = window.BL = window.BL || {};
@@ -22557,10 +22597,18 @@ void main() {
   const TIMEOUT_MS = 12000, FAIL_LIMIT = 3;
   const BACKOFF_MIN = 15000, BACKOFF_MAX = 300000, EXTENDED_RETRY = 600000, PREFER_RETRY = 900000;
   const LADDER = 24, LADDER_MAX = 200;
-  const PACE_BLOCKS = 6, PACE_WARM = 540, PACE_COLD = 240, TARGET_BLOCK = 600;
-  const RATE_WINDOW = 20000, RATE_FULL = 12;
-  const SUNNY_FEE = 0.1, STORM_FEE = 20, DEEP_FULL = 60;
-  const BACKLOG_MIX = 0.6;
+  const PACE_BLOCKS = 6, TARGET_BLOCK = 600;
+  // Socket readings count as live for as long as a REST backlog poll would.
+  const FRESH_MS = BACKLOG_MS * 3;
+  // Soak is the backlog that pays: vB waiting at 1 sat/vB or more, in MvB, smoothed over ten minutes
+  // so the block-by-block sawtooth does not flick the rain between steps, on a log scale from dry to
+  // downpour. The sub-sat pool beneath it sat at ~40 MvB for months and says nothing about pressure.
+  const PAY_DRY = 0.3, PAY_FULL = 4, PAY_TAU = 600000;
+  // Gale is the socket's inflow in vB/s, calm below the first and full at the second.
+  const INFLOW_CALM = 1000, INFLOW_FULL = 3500;
+  // Coinbase Exchange pushes `ticker_batch` every five seconds while the price moves and nothing while
+  // it is flat, so only a long silence means a dead socket; the REST walk covers the gap.
+  const PRICE_WS = "wss://ws-feed.exchange.coinbase.com", PRICE_STALL = 60000, PRICE_BACKOFF_MIN = 2000, PRICE_BACKOFF_MAX = 60000;
   // Price rides its own providers, not the chain's: the Esplora fallback has no prices endpoint, and
   // tying the two would lose the ticker exactly when the chain source degraded. First one to answer wins.
   // Providers in order of measured speed, the two that carry the day's open first (`open`: Coinbase
@@ -22583,6 +22631,10 @@ void main() {
     source: "mempool.space", at: 0, polls: 0, errors: 0, degraded: false, backoff: 0,
     // Mempool backlog
     count: 0, vsize: 0, totalFee: 0, deep: 0, floor: 0, ladder, ladderRate,
+    // The paying backlog (MvB at 1 sat/vB or more) and its ten-minute average, stamped when last read
+    paying: 0, payEma: 0, payAt: 0,
+    // The socket's inflow in vB/s, and when the socket last delivered the backlog
+    inflow: 0, socketAt: 0,
     // Fees
     nextFee: 0, fastestFee: 0, halfHourFee: 0, hourFee: 0, economyFee: 0, minimumFee: 0,
     // Chain
@@ -22591,13 +22643,14 @@ void main() {
     progressPercent: 0, difficultyChange: 0, remainingBlocks: 0, remainingTime: 0,
     hashrate: 0, difficulty: 0, priceUsd: 0, priceOpenUsd: 0, priceSource: null,
     // Derived weather axes, 0..1
-    soak: 0, chill: 0, gale: 0
+    soak: 0, gale: 0
   };
-  // Read, never stored: `derive` only runs after a poll lands, so a stored flag on a feed that has
+  const socketFresh = () => snapshot.socketAt > 0 && Date.now() - snapshot.socketAt < FRESH_MS;
+  // Read, never stored: `derive` only runs after a reading lands, so a stored flag on a feed that has
   // stopped entirely would sit there claiming to be live for the rest of the visit.
   Object.defineProperty(snapshot, "live", {
     enumerable: true,
-    get: () => snapshot.at > 0 && Date.now() - snapshot.at < BACKLOG_MS * 3
+    get: () => socketFresh() || snapshot.at > 0 && Date.now() - snapshot.at < FRESH_MS
   });
 
   const subscribers = new Set();
@@ -22610,12 +22663,9 @@ void main() {
   const dropExtended = () => {
     extendedUntil = Date.now() + EXTENDED_RETRY;
   };
-  const timers = { backlog: 0, blocks: 0, price: 0, slow: 0, block: 0 };
-  let started = false;
+  const timers = { backlog: 0, blocks: 0, price: 0, slow: 0, block: 0, emit: 0, priceSocket: 0, priceWatch: 0 };
+  let started = false, hidden = false;
   let unsubscribeFeed = null;
-  // Transaction arrivals in a rolling window, as a ring of timestamps: fixed size, never grows.
-  const arrivals = new Float64Array(256);
-  let arrivalHead = 0, arrivalCount = 0;
 
   // Announces a change. It does not stamp freshness: a failover or a recovery is news, but it is not
   // data, and `snapshot.at` only ever moves when a poll actually lands (see `succeeded`).
@@ -22706,6 +22756,7 @@ void main() {
   // vsize at or above each rung, from [feerate, vsize] buckets in descending feerate order.
   const readHistogram = (histogram) => {
     ladder.fill(0);
+    snapshot.paying = 0;
     if (!Array.isArray(histogram) || !histogram.length) return;
     let lowest = Infinity, peak = 0;
     for (const bucket of histogram) {
@@ -22716,23 +22767,35 @@ void main() {
       for (let i = 0; i < LADDER; i++) if (rate >= ladderRate[i]) ladder[i] += size;
     }
     for (let i = 0; i < LADDER; i++) if (ladder[i] > peak) peak = ladder[i];
+    // The first rung is exactly 1 sat/vB, so before normalizing it holds the paying backlog.
+    snapshot.paying = ladder[0] / 1e6;
     if (peak > 0) for (let i = 0; i < LADDER; i++) ladder[i] /= peak;
     snapshot.floor = Number.isFinite(lowest) ? lowest : 0;
   };
 
-  const readBacklog = (data) => {
+  // The ten-minute average of the paying backlog, by the time actually elapsed; the first reading seeds it.
+  const smoothPaying = (now) => {
+    const k = snapshot.payAt > 0 ? 1 - Math.exp(-Math.max(0, now - snapshot.payAt) / PAY_TAU) : 1;
+    snapshot.payEma += (snapshot.paying - snapshot.payEma) * k;
+    snapshot.payAt = now;
+  };
+  // While the socket is delivering, REST (which lags it by a few seconds) only adds the histogram and
+  // leaves the count, size and fees the socket already holds.
+  const readBacklog = (data, histogramOnly = false) => {
     if (!data || typeof data !== "object") return false;
     // Shape, never value: a drained mempool really does report zero, so only a missing field is bad.
     if (typeof data.count !== "number" || typeof data.vsize !== "number") return false;
-    snapshot.count = data.count | 0;
-    snapshot.vsize = Number(data.vsize) || 0;
-    snapshot.totalFee = Number(data.total_fee) || 0;
-    snapshot.deep = snapshot.vsize / 1e6;
+    if (!histogramOnly) {
+      snapshot.count = data.count | 0;
+      snapshot.vsize = Number(data.vsize) || 0;
+      snapshot.totalFee = Number(data.total_fee) || 0;
+      snapshot.deep = snapshot.vsize / 1e6;
+    }
     readHistogram(data.fee_histogram);
+    smoothPaying(Date.now());
     return true;
   };
-  // Block pace over the recent tip, the one "temperature" both providers can answer. Poisson spacing
-  // swings this around well past the ten-minute target, which is what gives the island its seasons.
+  // Block pace over the recent tip, which both providers can answer.
   const readBlocks = (blocks) => {
     if (!Array.isArray(blocks) || !blocks.length) return false;
     const tip = blocks[0];
@@ -22818,23 +22881,12 @@ void main() {
     return priced;
   };
 
-  // Fee pressure and backlog depth both on log scales, mixed; the backlog leads because a deep pool
-  // of cheap transactions is still a storm coming.
-  const feePressure = (fee) => clamp(Math.log(Math.max(SUNNY_FEE, fee) / SUNNY_FEE) / Math.log(STORM_FEE / SUNNY_FEE), 0, 1);
-  const deepPressure = (deep) => clamp(Math.log(Math.max(1, deep)) / Math.log(DEEP_FULL), 0, 1);
-  const arrivalRate = (now) => {
-    let n = 0;
-    for (let i = 0; i < arrivalCount; i++) if (now - arrivals[i] <= RATE_WINDOW) n++;
-    return n / (RATE_WINDOW / 1000);
-  };
+  // The paying backlog in MvB on a log scale, dry at PAY_DRY and a downpour by PAY_FULL.
+  const paySoak = (pay) => clamp(Math.log(Math.max(PAY_DRY, pay) / PAY_DRY) / Math.log(PAY_FULL / PAY_DRY), 0, 1);
+  // Only the socket measures inflow, so without it the wind drops rather than holding a stale gale.
   const derive = () => {
-    const now = Date.now();
-    snapshot.soak = clamp(BACKLOG_MIX * deepPressure(snapshot.deep) + (1 - BACKLOG_MIX) * feePressure(snapshot.nextFee), 0, 1);
-    // Slow blocks are a cold snap; a negative retarget says the epoch ran slow overall and leans the same way.
-    const pace = clamp((snapshot.pace - PACE_WARM) / PACE_COLD, 0, 1);
-    const epoch = extended() ? clamp(-snapshot.difficultyChange / 8, -0.2, 0.2) : 0;
-    snapshot.chill = clamp(pace + epoch, 0, 1);
-    snapshot.gale = clamp(arrivalRate(now) / RATE_FULL, 0, 1);
+    snapshot.soak = paySoak(snapshot.payEma);
+    snapshot.gale = socketFresh() ? clamp((snapshot.inflow - INFLOW_CALM) / (INFLOW_FULL - INFLOW_CALM), 0, 1) : 0;
   };
 
   // One poll of a kind at a time. Each takes several requests in sequence and the slowest can outrun
@@ -22853,8 +22905,10 @@ void main() {
 
   const pollBacklog = guard("backlog", async () => {
     try {
-      if (!readBacklog(await get("/mempool"))) throw new Error("no backlog in the response");
-      if (extended()) {
+      // The socket already carries the count, the projection and the fee tiers; REST adds the histogram.
+      const socket = socketFresh();
+      if (!readBacklog(await get("/mempool"), socket)) throw new Error("no backlog in the response");
+      if (!socket && extended()) {
         try {
           readFees(await get("/v1/fees/mempool-blocks"));
           readRecommended(await get("/v1/fees/recommended"));
@@ -22862,7 +22916,7 @@ void main() {
           dropExtended();
         }
       }
-      if (!extended()) readEstimates(await get("/fee-estimates"));
+      if (!socket && !extended()) readEstimates(await get("/fee-estimates"));
       succeeded();
       derive();
       emit();
@@ -22884,16 +22938,16 @@ void main() {
     }
   });
   // Price is its own minute cycle, whatever the chain provider is doing, so a fallback session keeps
-  // its ticker and Ooga Mine's candles move with the real coin.
+  // its ticker and Ooga Mine's candles move with the real coin; it stands down while the socket prices.
   const pollTicker = guard("price", async () => {
-    if (!(await pollPrice())) return;
+    if (priceFresh() || !(await pollPrice())) return;
     emit();
     save();
   });
   const pollSlow = guard("slow", async () => {
     if (!extended()) return;
     try {
-      readDifficulty(await get("/v1/difficulty-adjustment"));
+      if (!socketFresh()) readDifficulty(await get("/v1/difficulty-adjustment"));
       readHashrate(await get("/v1/mining/hashrate/3d"));
       succeeded();
       derive();
@@ -22916,11 +22970,29 @@ void main() {
     timers[key] = window.setTimeout(tick, ms);
   };
 
+  // One socket message carries both the projection and the stats, so the two readings are announced
+  // once, a tick later, rather than twice in the same breath.
+  const announce = () => {
+    if (timers.emit) return;
+    timers.emit = window.setTimeout(() => {
+      timers.emit = 0;
+      derive();
+      emit();
+      save();
+    }, 0);
+  };
   const onFeedEvent = (event) => {
-    if (event.type === "tx") {
-      arrivals[arrivalHead] = Date.now();
-      arrivalHead = (arrivalHead + 1) % arrivals.length;
-      if (arrivalCount < arrivals.length) arrivalCount++;
+    if (event.type === "stats") {
+      snapshot.count = event.count | 0;
+      snapshot.vsize = Number(event.vsize) || 0;
+      snapshot.totalFee = Number(event.totalFee) || 0;
+      snapshot.deep = snapshot.vsize / 1e6;
+      snapshot.inflow = Number(event.inflow) || 0;
+      readRecommended(event.fees);
+      readDifficulty(event.da);
+      // Freshness only: the REST provider's failures, backoff and Retry-After are its own business.
+      snapshot.socketAt = Date.now();
+      announce();
       return;
     }
     if (event.type === "block") {
@@ -22944,8 +23016,7 @@ void main() {
     }
     if (event.type === "fees") {
       snapshot.nextFee = Number(event.nextFee) || 0;
-      derive();
-      emit();
+      announce();
     }
   };
 
@@ -22959,7 +23030,7 @@ void main() {
     "count", "vsize", "totalFee", "deep", "floor", "nextFee", "fastestFee", "halfHourFee", "hourFee",
     "economyFee", "minimumFee", "height", "lastTxCount", "lastWeight", "lastSize", "lastBlockAt",
     "pace", "progressPercent", "difficultyChange", "remainingBlocks", "remainingTime", "hashrate",
-    "difficulty", "priceUsd", "priceOpenUsd"
+    "difficulty", "priceUsd", "priceOpenUsd", "paying", "payEma", "payAt"
   ];
   const save = () => {
     try {
@@ -22985,13 +23056,109 @@ void main() {
     return true;
   };
 
+  // The live price: Coinbase Exchange's public `ticker_batch` on one socket while the tab is visible.
+  // It subscribes in `onopen`, since the feed drops a socket that has not subscribed within five
+  // seconds; a refused subscription leaves the socket open, so an error or an empty channel list is
+  // what closes it. Messages carry `type: "ticker"` and their numbers as strings.
+  let priceSocket = null, priceBackoff = PRICE_BACKOFF_MIN, priceAt = 0, priceHeardAt = 0;
+  const priceFresh = () => priceAt > 0 && Date.now() - priceAt < PRICE_STALL;
+  const readTicker = (data) => {
+    if (!data || data.type !== "ticker" || data.product_id !== "BTC-USD") return false;
+    const price = Number(data.price), open = Number(data.open_24h);
+    if (!(price > 0)) return false;
+    snapshot.priceUsd = price;
+    if (open > 0) snapshot.priceOpenUsd = open;
+    snapshot.priceSource = "coinbase live";
+    priceAt = Date.now();
+    return true;
+  };
+  const dropPrice = () => {
+    window.clearTimeout(timers.priceWatch);
+    timers.priceWatch = 0;
+    if (!priceSocket) return;
+    const ws = priceSocket;
+    priceSocket = null;
+    ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
+    ws.close();
+  };
+  const retryPrice = () => {
+    if (!started || hidden || timers.priceSocket) return;
+    timers.priceSocket = window.setTimeout(connectPrice, priceBackoff);
+    priceBackoff = Math.min(PRICE_BACKOFF_MAX, priceBackoff * 2);
+  };
+  const onPrice = (text) => {
+    priceHeardAt = Date.now();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return;
+    }
+    if (!data || typeof data !== "object") return;
+    if (data.type === "error" || data.type === "subscriptions" && !(Array.isArray(data.channels) && data.channels.length)) {
+      dropPrice();
+      retryPrice();
+    } else if (readTicker(data)) {
+      priceBackoff = PRICE_BACKOFF_MIN;
+      announce();
+    }
+  };
+  const watchPrice = () => {
+    timers.priceWatch = 0;
+    if (!priceSocket) return;
+    if (Date.now() - priceHeardAt > PRICE_STALL) {
+      dropPrice();
+      retryPrice();
+    } else timers.priceWatch = window.setTimeout(watchPrice, PRICE_STALL / 2);
+  };
+  const connectPrice = () => {
+    timers.priceSocket = 0;
+    if (!started || hidden || priceSocket || typeof WebSocket === "undefined") return;
+    let ws;
+    try {
+      ws = new WebSocket(PRICE_WS);
+    } catch {
+      retryPrice();
+      return;
+    }
+    priceSocket = ws;
+    ws.onopen = () => {
+      priceHeardAt = Date.now();
+      ws.send(JSON.stringify({ type: "subscribe", product_ids: ["BTC-USD"], channels: ["ticker_batch"] }));
+      timers.priceWatch = window.setTimeout(watchPrice, PRICE_STALL / 2);
+    };
+    ws.onmessage = (e) => onPrice(e.data);
+    ws.onclose = () => {
+      if (priceSocket === ws) priceSocket = null;
+      window.clearTimeout(timers.priceWatch);
+      timers.priceWatch = 0;
+      retryPrice();
+    };
+    ws.onerror = () => {};
+  };
+  // The director's visibility pause: a hidden tab holds no price socket (REST already skips its polls).
+  const setHidden = (value) => {
+    if (hidden === !!value) return;
+    hidden = !!value;
+    if (!started) return;
+    window.clearTimeout(timers.priceSocket);
+    timers.priceSocket = 0;
+    if (hidden) dropPrice();
+    else {
+      priceBackoff = PRICE_BACKOFF_MIN;
+      connectPrice();
+    }
+  };
+
   const start = (options = {}) => {
     if (started || typeof fetch === "undefined") return;
     started = true;
-    if (options.source === "esplora") { base = ESPLORA; extended = false; pinned = true; snapshot.source = "esplora"; }
-    else if (typeof options.source === "string" && options.source.startsWith("https://")) { base = options.source; extended = false; pinned = true; snapshot.source = options.source; }
+    // A pinned source is never mempool.space itself, so `extended()` already reads false for it.
+    if (options.source === "esplora") { base = ESPLORA; pinned = true; snapshot.source = "esplora"; }
+    else if (typeof options.source === "string" && options.source.startsWith("https://")) { base = options.source; pinned = true; snapshot.source = options.source; }
     if (BL.mempool) unsubscribeFeed = BL.mempool.subscribe(onFeedEvent);
     if (restore()) emit();
+    connectPrice();
     pollBacklog();
     pollBlocks();
     pollTicker();
@@ -23011,14 +23178,15 @@ void main() {
       window.clearTimeout(timers[key]);
       timers[key] = 0;
     }
+    dropPrice();
     if (unsubscribeFeed) unsubscribeFeed();
     unsubscribeFeed = null;
     subscribers.clear();
   };
 
   BL.chain = {
-    MEMPOOL, ESPLORA, LADDER, TARGET_BLOCK, snapshot, start, subscribe, dispose, derive,
-    feePressure, deepPressure, readBacklog, readBlocks, readFees, readEstimates, readDifficulty,
+    MEMPOOL, ESPLORA, LADDER, TARGET_BLOCK, PAY_DRY, PAY_FULL, snapshot, start, setHidden, subscribe, dispose, derive,
+    paySoak, readBacklog, readBlocks, readFees, readEstimates, readDifficulty, readTicker,
     get extended() { return extended(); }, get backoff() { return backoff; }, get base() { return base; }, recover,
     PRICE_SOURCES, pollPrice, ingest: onFeedEvent
   };
@@ -27735,7 +27903,7 @@ void main() {
       e.preventDefault();
       closeFeed();
     });
-    // The weather key: what the rain, the snow, the wind and the strikes are reading off the chain.
+    // The weather key: what the rain, the wind and the strikes are reading off the chain.
     const openWeatherKey = () => {
       if (el.weatherKey && !el.weatherKey.open) el.weatherKey.showModal();
     };
@@ -36620,15 +36788,14 @@ void main() {
 })();
 
 // ---- js/weather.js ----
-// The island's weather, derived from the chain snapshot rather than pinged by it. Three axes come
-// out of chain.js — soak (how full the pool is), chill (how slowly blocks are landing) and gale (how
-// fast transactions are arriving) — and they name one of eight standing states, from sunny through
-// monsoon and blizzard. Precipitation is a population held at a target, not a burst per transaction,
-// so it rains for as long as the mempool is full; a transaction gusts the rate and a block strikes.
+// The island's weather, derived from the chain snapshot rather than pinged by it. Two axes come out
+// of chain.js — soak (how much of the backlog pays a fee) and gale (how fast transactions arrive) —
+// and soak alone names one of six standing steps, dry through downpour; gale only sets the wind.
+// Precipitation is a population held at a target, not a burst per transaction, so it rains for as
+// long as the backlog stands; a block strikes.
 //
-// One fixed-capacity instanced batch carries rain or snow, never both, with the drop geometry swapped
-// between two cached builds. Bolts are eight jagged variants built once at boot and picked at random,
-// so a strike allocates nothing. The sky is written over the daylight clock's colours after it
+// One fixed-capacity instanced batch carries the rain. Bolts are eight jagged variants built once at
+// boot and picked at random, so a strike allocates nothing. The sky is written over the daylight clock's colours after it
 // samples; the clock, its sun, moon, phases and factors are never touched, and a clear sky leaves
 // every sampled value exactly as it was.
 (() => {
@@ -36661,10 +36828,11 @@ void main() {
   const CLOUD = { high: 48, medium: 36, low: 22 }, CLOUD_CANVAS = 14;
   const CLOUD_R = 26, CLOUD_LIFT = 3.2, CLOUD_DRIFT = 0.06, CLOUD_EASE = 0.7;
   const CLOUD_FLOOR = 0.62, CLOUD_TIERS = 3;
-  const DROP_MIN = 0.7, DROP_MAX = 4, DROP_BASE_VSIZE = 140;
-  const RAIN_FALL = 11, RAIN_FALL_PER_SIZE = 3, SNOW_FALL = 1.6, SNOW_FALL_SPREAD = 1.1;
-  const SPLASH_SIZE = 1.4, GUST_SECONDS = 2.5, GUST_LIFT = 0.35;
-  const WIND_MAX = 9, WIND_TURN = 0.05, SNOW_SWAY = 0.9, SNOW_SWAY_RATE = 1.7;
+  // Drops grow with the rain: fine in a drizzle, fat in a downpour.
+  const DROP_MIN = 0.7, DROP_MAX = 4, DROP_LIFT = 0.7;
+  const RAIN_FALL = 11, RAIN_FALL_PER_SIZE = 3;
+  const SPLASH_SIZE = 1.4;
+  const WIND_MAX = 9, WIND_TURN = 0.05;
   const FLASH_MAX = 0.85, FLASH_TAU = 0.12, BOLT_SHOW = 0.25, BOLT_RANGE = 18, BOLT_HEIGHT = 26, BOLT_VARIANTS = 8;
   const THUNDER_DELAY_MIN = 0.5, THUNDER_DELAY_SPREAD = 1;
   const AMBIENT_MIN = 14, AMBIENT_SPREAD = 26;
@@ -36676,29 +36844,36 @@ void main() {
   // under a clear noon sky and a quiet night stays a clear starry night.
   const CLEAR_NIGHT = 0.25, CLEAR_DAY = 0.55;
   const OVERCAST_MIX = 0.7, OVERCAST_DARKEN = 0.22, OVERCAST_DIM = 0.45;
-  const OVERCAST_TINT = [0.9, 0.93, 1], SNOW_TINT = [0.97, 0.98, 1];
+  const OVERCAST_TINT = [0.9, 0.93, 1];
   const FOG_NEAR = 40, FOG_FAR = 150, FOG_OFF_NEAR = 400, FOG_OFF_FAR = 600;
-  const WHITEOUT_NEAR = 8, WHITEOUT_FAR = 42;
-  const COLD = 0.5, WET = 0.1, FAIR = 0.3, HEAVY = 0.6, WINDY = 0.6;
 
-  // Eight standing states. `wet` is how much falls, `snow` its form, `storm` whether it thunders.
-  const STATES = {
-    sunny: { name: "sunny", wet: 0, snow: false, storm: false },
-    "light rain": { name: "light rain", wet: 0.28, snow: false, storm: false },
-    rain: { name: "rain", wet: 0.6, snow: false, storm: false },
-    thunderstorm: { name: "thunderstorm", wet: 1, snow: false, storm: true },
-    monsoon: { name: "monsoon", wet: 1, snow: false, storm: true },
-    flurries: { name: "flurries", wet: 0.22, snow: true, storm: false },
-    snow: { name: "snow", wet: 0.55, snow: true, storm: false },
-    blizzard: { name: "blizzard", wet: 1, snow: true, storm: false }
+  // Six standing steps on soak. `from` is where a step begins, `wet` how much falls there, `storm`
+  // whether it thunders on its own as well as on every block.
+  const STEPS = [
+    { name: "dry", from: 0, wet: 0, storm: false },
+    { name: "drizzle", from: 0.1, wet: 0.12, storm: false },
+    { name: "light rain", from: 0.25, wet: 0.3, storm: false },
+    { name: "rain", from: 0.45, wet: 0.5, storm: false },
+    { name: "heavy rain", from: 0.65, wet: 0.75, storm: false },
+    { name: "downpour", from: 0.85, wet: 1, storm: true }
+  ];
+  // A step is climbed as soon as soak reaches it and left only once soak falls HYSTERESIS below it,
+  // so a backlog hovering on a boundary holds its step instead of flicking between two.
+  const HYSTERESIS = 0.05;
+  const stepFor = (soak, prev = 0) => {
+    let i = prev;
+    while (i < STEPS.length - 1 && soak >= STEPS[i + 1].from) i++;
+    while (i > 0 && soak < STEPS[i].from - HYSTERESIS) i--;
+    return i;
   };
-  const stateFor = (soak, chill, gale) => {
-    const cold = chill >= COLD;
-    if (soak < WET) return STATES.sunny;
-    if (cold) return soak < FAIR ? STATES.flurries : soak < HEAVY ? STATES.snow : gale >= WINDY ? STATES.blizzard : STATES.snow;
-    if (soak < FAIR) return STATES["light rain"];
-    if (soak < HEAVY) return STATES.rain;
-    return gale >= WINDY ? STATES.monsoon : STATES.thunderstorm;
+  // How much falls, continuous through the steps' own points: a step names the weather and decides
+  // the storm, while the rain itself only ever eases. Nothing below drizzle, all of it at downpour.
+  const wetAt = (soak) => {
+    if (soak < STEPS[1].from) return 0;
+    let i = 1;
+    while (i < STEPS.length - 1 && soak >= STEPS[i + 1].from) i++;
+    if (i === STEPS.length - 1) return 1;
+    return lerp(STEPS[i].wet, STEPS[i + 1].wet, (soak - STEPS[i].from) / (STEPS[i + 1].from - STEPS[i].from));
   };
   const cloudFor = (overcast, day) => {
     const band = lerp(CLEAR_NIGHT, CLEAR_DAY, clamp(day, 0, 1));
@@ -36718,22 +36893,10 @@ void main() {
     c[1] += (1 - c[1]) * k;
     c[2] += (1 - c[2]) * k;
   };
-  // A whiteout lifts everything toward a flat bright grey instead of darkening it.
-  const whiten = (c, k) => {
-    if (!c) return;
-    c[0] += (0.88 - c[0]) * k;
-    c[1] += (0.9 - c[1]) * k;
-    c[2] += (0.94 - c[2]) * k;
-  };
 
   // A drop is a streak, not a bar: the per-drop size scales this cross-section, so a fat one at
   // DROP_MAX is still thin enough to read as rain rather than as a falling block.
   const rainDrop = models.cached(() => models.noShadow(models.box({ w: 0.024, h: 0.6, d: 0.024, color: "#c6dbee", emissive: 0.45 })));
-  const snowFlake = models.cached(() => models.noShadow(models.merge(
-    models.box({ w: 0.11, h: 0.04, d: 0.04, color: "#f4f9ff", emissive: 0.55 }),
-    models.box({ w: 0.04, h: 0.04, d: 0.11, color: "#f4f9ff", emissive: 0.55 }),
-    models.box({ w: 0.04, h: 0.11, d: 0.04, color: "#eaf3ff", emissive: 0.55 })
-  )));
   const SPLASH = [models.particleGeometry("#d8e8f4", 0.07, 0.6)];
   // Two builds of the same puff: fair weather and a bruised storm deck. Swapping the geometry on every
   // cloud node recolours the whole sky over the island without touching a vertex.
@@ -36749,7 +36912,6 @@ void main() {
   });
   const CLOUD_FAIR = puff(3301, ["#f2f5f8", "#dfe6ee", 0.12]);
   const CLOUD_GREY = puff(3301, ["#6d737c", "#565c66", 0.05]);
-  const CLOUD_SNOW = puff(3301, ["#b9c2cc", "#98a3b0", 0.08]);
 
   // Eight forked bolts, unit height, each from its own seed: a jagged trunk with three branches that
   // fork again. Built once at boot and picked at random with a random turn, scale and mirror, so a
@@ -36793,13 +36955,13 @@ void main() {
     const cap = canvas2d ? CAP_CANVAS : (CAP[renderer.quality] || CAP.medium);
     const node = createNode({ geometry: rainDrop(), instanceData: new Float32Array(cap * 20), instanceCount: 0, drawInstanceCount: 0, instanceVersion: 0, fixedInstanceCapacity: true });
     const x = new Float32Array(cap), y = new Float32Array(cap), z = new Float32Array(cap);
-    const w = new Float32Array(cap), h = new Float32Array(cap), vy = new Float32Array(cap), phase = new Float32Array(cap);
-    let count = 0, form = "rain";
-    let flash = 0, flashT = -1, boltT = -1, thunderAt = -1, ambientAt = -1, strikes = 0, transactions = 0, boltVariant = -1;
+    const w = new Float32Array(cap), h = new Float32Array(cap), vy = new Float32Array(cap);
+    let count = 0;
+    let flash = 0, flashT = -1, boltT = -1, thunderAt = -1, ambientAt = -1, strikes = 0, boltVariant = -1;
     // Everything the feed sets is a target; the live value walks there so nothing snaps.
-    let soak = 0, soakTarget = 0, chill = 0, chillTarget = 0, gale = 0, galeTarget = 0;
-    let gust = 0, cloud = 0, near = 0, heard = 0, windAngle = Math.random() * Math.PI * 2, windX = 0, windZ = 0, swayT = 0;
-    let state = STATES.sunny, applied = false;
+    let soak = 0, soakTarget = 0, gale = 0, galeTarget = 0, wet = 0;
+    let cloud = 0, near = 0, heard = 0, windAngle = Math.random() * Math.PI * 2, windX = 0, windZ = 0;
+    let stepAt = 0, state = STEPS[0], applied = false;
     const fog = new Float32Array(3);
     const variants = bolts();
     const boltNode = createNode({ geometry: variants[0], visible: false });
@@ -36854,7 +37016,7 @@ void main() {
       noise.connect(hiss);
       hiss.connect(rainGain);
       rainGain.connect(master);
-      // The gale rides the same loop through a low band, so a blizzard howls without a second buffer.
+      // The gale rides the same loop through a low band, so the wind howls without a second buffer.
       const howl = ctx.createBiquadFilter();
       howl.type = "bandpass";
       howl.frequency.value = 420;
@@ -36908,44 +37070,21 @@ void main() {
       x[i] = t.x + Math.cos(a) * r;
       z[i] = t.z + Math.sin(a) * r;
       y[i] = fromTop ? t.y + FIELD_TOP + Math.random() * FIELD_SPREAD : t.y + Math.random() * (FIELD_TOP + FIELD_SPREAD) - RECYCLE_BELOW;
-      phase[i] = Math.random() * Math.PI * 2;
-      if (state.snow) {
-        w[i] = 0.6 + Math.random() * 0.8;
-        h[i] = 1;
-        vy[i] = SNOW_FALL + Math.random() * SNOW_FALL_SPREAD;
-      } else {
-        const size = clamp(DROP_MIN + Math.random() * 1.1 + gust * GUST_LIFT, DROP_MIN, DROP_MAX);
-        w[i] = size;
-        h[i] = 0.8 + size * 0.35;
-        vy[i] = RAIN_FALL + RAIN_FALL_PER_SIZE * size;
-      }
+      const size = clamp(DROP_MIN + Math.random() * 1.1 + wet * DROP_LIFT, DROP_MIN, DROP_MAX);
+      w[i] = size;
+      h[i] = 0.8 + size * 0.35;
+      vy[i] = RAIN_FALL + RAIN_FALL_PER_SIZE * size;
     };
-    const setForm = (snow) => {
-      const next = snow ? "snow" : "rain";
-      if (next === form) return;
-      form = next;
-      node.geometry = snow ? snowFlake() : rainDrop();
-      // Re-seed in place: the population is the same, only its shape and fall rate change.
-      for (let i = 0; i < count; i++) seed(i, false);
-    };
-
     // The feed's standing view of the chain. Targets only; `update` walks the live values there.
     const apply = (snapshot) => {
       if (!snapshot) return;
       soakTarget = clamp(snapshot.soak, 0, 1);
-      chillTarget = clamp(snapshot.chill, 0, 1);
       galeTarget = clamp(snapshot.gale, 0, 1);
       if (!applied) {
         applied = true;
         soak = soakTarget;
-        chill = chillTarget;
         gale = galeTarget;
       }
-    };
-    // A transaction no longer is the rain; it gusts it. Bigger transactions gust harder.
-    const rain = (vsize) => {
-      transactions++;
-      gust = Math.min(1, gust + clamp(Math.log2(Math.max(1, vsize / DROP_BASE_VSIZE)) * 0.12 + 0.08, 0.05, 0.4));
     };
     const strike = () => {
       strikes++;
@@ -36984,26 +37123,23 @@ void main() {
       const reach = clamp((HEARD_NONE - away) / (HEARD_NONE - HEARD_FULL), 0, 1);
       heard = reach * reach;
       if (Math.abs(soak - soakTarget) > DEAD_BAND) soak = walk(soak, soakTarget, step); else soak = soakTarget;
-      if (Math.abs(chill - chillTarget) > DEAD_BAND) chill = walk(chill, chillTarget, step); else chill = chillTarget;
       if (Math.abs(gale - galeTarget) > DEAD_BAND) gale = walk(gale, galeTarget, step); else gale = galeTarget;
-      gust = Math.max(0, gust - dt / GUST_SECONDS);
-      state = stateFor(soak, chill, gale);
-      setForm(state.snow);
+      state = STEPS[stepAt = stepFor(soak, stepAt)];
+      wet = wetAt(soak);
 
-      // Wind turns slowly and never snaps; the gale sets its strength, a gust leans on it.
+      // Wind turns slowly and never snaps; the gale sets its strength.
       windAngle += WIND_TURN * dt;
-      const windSpeed = WIND_MAX * gale * (state.snow ? 1 : 0.7) * (0.6 + 0.4 * state.wet);
+      const windSpeed = WIND_MAX * gale * 0.7 * (0.6 + 0.4 * wet);
       windX = Math.cos(windAngle) * windSpeed;
       windZ = Math.sin(windAngle) * windSpeed;
-      swayT += dt * SNOW_SWAY_RATE;
 
       // The deck above: how much of it is there, what colour, and how hard it is lit from below.
-      const wantCover = clamp(state.wet * 0.55 + soak * 0.45, 0, 1);
+      const wantCover = clamp(wet * 0.55 + soak * 0.45, 0, 1);
       cloudCover += (wantCover - cloudCover) * Math.min(1, dt / CLOUD_EASE);
-      const wantForm = cloudCover < 0.18 ? "fair" : state.snow ? "snow" : "grey";
+      const wantForm = cloudCover < 0.18 ? "fair" : "grey";
       if (wantForm !== cloudForm) {
         cloudForm = wantForm;
-        const geometry = wantForm === "fair" ? CLOUD_FAIR() : wantForm === "snow" ? CLOUD_SNOW() : CLOUD_GREY();
+        const geometry = wantForm === "fair" ? CLOUD_FAIR() : CLOUD_GREY();
         for (let i = 0; i < cloudN; i++) clouds[i].geometry = geometry;
       }
       const shown = Math.round(cloudN * clamp(CLOUD_FLOOR + cloudCover * (1 - CLOUD_FLOOR), 0, 1));
@@ -37032,34 +37168,28 @@ void main() {
       }
 
       // The population is the weather: hold `target` particles alive and the rain lasts as long as
-      // the pool is full, instead of stopping the moment a transaction stops arriving.
-      const target = Math.min(cap, Math.round(cap * clamp(state.wet * (0.65 + 0.35 * soak) + gust * 0.15, 0, 1)));
+      // the backlog stands, instead of stopping the moment a transaction stops arriving.
+      const target = Math.min(cap, Math.round(cap * clamp(wet * (0.65 + 0.35 * soak), 0, 1)));
       if (count < target) {
-        // Fill over about a second so a state change eases in rather than popping a full field.
+        // Fill over about a second so a change eases in rather than popping a full field.
         const room = Math.min(target - count, Math.max(1, Math.ceil(cap * dt)));
         for (let n = 0; n < room; n++, count++) seed(count, !applied || previousCount > 0);
       }
 
       const t = centre, data = node.instanceData;
-      const snow = state.snow, floorY = t.y - RECYCLE_BELOW;
+      const floorY = t.y - RECYCLE_BELOW;
       for (let i = 0; i < count; i++) {
         y[i] -= vy[i] * dt;
-        let dx = windX, dz = windZ;
-        if (snow) {
-          // Flakes sway across the wind instead of tracking it exactly.
-          dx += Math.cos(swayT + phase[i]) * SNOW_SWAY;
-          dz += Math.sin(swayT * 0.8 + phase[i]) * SNOW_SWAY;
-        }
-        x[i] += dx * dt;
-        z[i] += dz * dt;
+        x[i] += windX * dt;
+        z[i] += windZ * dt;
         const ground = heightAt(x[i], z[i]);
         if (y[i] <= ground || y[i] < floorY) {
-          if (!snow && fx && w[i] >= SPLASH_SIZE && y[i] <= ground) fx.burst(x[i], y[i] + 0.05, z[i], 2, SPLASH, 0.9);
+          if (fx && w[i] >= SPLASH_SIZE && y[i] <= ground) fx.burst(x[i], y[i] + 0.05, z[i], 2, SPLASH, 0.9);
           // Over target the population shrinks by retiring on landing; otherwise it recycles to the top.
           if (count > target) {
             count--;
             x[i] = x[count]; y[i] = y[count]; z[i] = z[count];
-            w[i] = w[count]; h[i] = h[count]; vy[i] = vy[count]; phase[i] = phase[count];
+            w[i] = w[count]; h[i] = h[count]; vy[i] = vy[count];
             i--;
             continue;
           }
@@ -37069,14 +37199,14 @@ void main() {
         const ox = x[i] - t.x, oz = z[i] - t.z;
         if (ox * ox + oz * oz > FIELD_R * FIELD_R * 2.25) seed(i, true);
 
-        const o = i * 20, s = snow ? w[i] : w[i] * 0.5 + 0.5, hy = h[i];
+        const o = i * 20, s = w[i] * 0.5 + 0.5, hy = h[i];
         // A streak lies along the drop's own velocity: down at vy, carried sideways at the wind's speed.
         // Bottom to top is the reverse of that travel, so the head of the streak is upwind of its tail
         // and the rain leans the way the wind is going. The ratio is wind over fall speed, so a heavy
         // drop falls straighter through the same gale than a light one, and the lean is capped so a
         // squall never lays the rain flat.
-        const tiltX = snow ? 0 : clamp(-windX / (vy[i] || 1), -0.8, 0.8);
-        const tiltZ = snow ? 0 : clamp(-windZ / (vy[i] || 1), -0.8, 0.8);
+        const tiltX = clamp(-windX / (vy[i] || 1), -0.8, 0.8);
+        const tiltZ = clamp(-windZ / (vy[i] || 1), -0.8, 0.8);
         data[o] = s; data[o + 1] = 0; data[o + 2] = 0; data[o + 3] = 0;
         data[o + 4] = tiltX * hy; data[o + 5] = hy; data[o + 6] = tiltZ * hy; data[o + 7] = 0;
         data[o + 8] = 0; data[o + 9] = 0; data[o + 10] = s; data[o + 11] = 0;
@@ -37086,8 +37216,8 @@ void main() {
       node.instanceCount = node.drawInstanceCount = count;
       if (count || previousCount) node.instanceVersion++;
       if (rainGain) {
-        rainGain.gain.setTargetAtTime(Math.min(1, count / (cap * 0.6)) * (snow ? 0.035 : 0.09) * heard, ctx.currentTime, 0.25);
-        windGain.gain.setTargetAtTime(gale * (state.wet > 0 ? 0.07 : 0.02) * heard, ctx.currentTime, 0.4);
+        rainGain.gain.setTargetAtTime(Math.min(1, count / (cap * 0.6)) * 0.09 * heard, ctx.currentTime, 0.25);
+        windGain.gain.setTargetAtTime(gale * (wet > 0 ? 0.07 : 0.02) * heard, ctx.currentTime, 0.4);
       }
 
       // A storm strikes on its own as well as on every block; ten minutes between blocks is no storm.
@@ -37127,24 +37257,18 @@ void main() {
       // The storm is a place, so standing on the far side of the world leaves your own sky exactly as
       // the clock painted it while you watch it rain over there.
       if (opts) {
-        // A clear sky leaves the clock's colours, light and fog exactly as sampled.
-        cloud = cloudFor(soak, opts.day) * near;
-        const white = snow ? cloud * clamp((state.wet - FAIR) / (1 - FAIR), 0, 1) : 0;
+        // A clear sky leaves the clock's colours, light and fog exactly as sampled. The sky greys with
+        // how hard it is raining, so a drizzle falls under the clock's own sky.
+        cloud = cloudFor(wet, opts.day) * near;
         if (cloud > 0.02) {
           const k = cloud * OVERCAST_MIX;
-          const tint = snow ? SNOW_TINT : OVERCAST_TINT;
-          greyen(opts.clear, k, tint); greyen(opts.horizon, k, tint); greyen(opts.zenith, k, tint);
-          greyen(opts.sky, k, tint); greyen(opts.ground, k, tint); greyen(opts.direct, k, tint);
+          greyen(opts.clear, k, OVERCAST_TINT); greyen(opts.horizon, k, OVERCAST_TINT); greyen(opts.zenith, k, OVERCAST_TINT);
+          greyen(opts.sky, k, OVERCAST_TINT); greyen(opts.ground, k, OVERCAST_TINT); greyen(opts.direct, k, OVERCAST_TINT);
           opts.directStrength *= 1 - cloud * (1 - OVERCAST_DIM);
-          if (white > 0.02) {
-            whiten(opts.clear, white); whiten(opts.horizon, white); whiten(opts.zenith, white);
-            whiten(opts.sky, white); whiten(opts.ground, white);
-            opts.ambientFloor = lerp(opts.ambientFloor, 0.6, white);
-          }
           fog[0] = opts.horizon[0]; fog[1] = opts.horizon[1]; fog[2] = opts.horizon[2];
           opts.fog = fog;
-          opts.fogNear = lerp(lerp(FOG_OFF_NEAR, FOG_NEAR, cloud), WHITEOUT_NEAR, white);
-          opts.fogFar = lerp(lerp(FOG_OFF_FAR, FOG_FAR, cloud), WHITEOUT_FAR, white);
+          opts.fogNear = lerp(FOG_OFF_NEAR, FOG_NEAR, cloud);
+          opts.fogFar = lerp(FOG_OFF_FAR, FOG_FAR, cloud);
         } else opts.fog = null;
       }
       if (flash > 0 && opts) {
@@ -37174,7 +37298,6 @@ void main() {
       get name() { return state.name; },
       get drops() { return count; },
       get capacity() { return cap; },
-      get form() { return form; },
       get flash() { return flash; },
       get bolt() { return boltT >= 0; },
       get boltVariant() { return boltVariant; },
@@ -37182,9 +37305,9 @@ void main() {
       get thunderPending() { return thunderAt >= 0; },
       get strikes() { return strikes; },
       get soak() { return soak; },
-      get chill() { return chill; },
+      get wet() { return wet; },
+      get step() { return stepAt; },
       get gale() { return gale; },
-      get gust() { return gust; },
       get cloud() { return cloud; },
       get deck() { return cloudCover; },
       get deckForm() { return cloudForm; },
@@ -37207,20 +37330,19 @@ void main() {
         const o = i * 20, d = node.instanceData;
         return { x: d[o + 4], y: d[o + 5], z: d[o + 6] };
       },
-      get transactions() { return transactions; },
       get applied() { return applied; },
       get audio() { return !!ctx; },
       get muted() { return muted; },
       drop: (i) => i < count ? { x: x[i], y: y[i], z: z[i], size: w[i], fall: vy[i] } : null
     };
     return {
-      apply, rain, strike, update, setMuted, dispose, state: state_,
+      apply, strike, update, setMuted, dispose, state: state_,
       get active() { return count > 0 || flashT >= 0 || boltT >= 0 || thunderAt >= 0; },
       stats: () => ({ rainDrops: count, strikes })
     };
   };
 
-  BL.weather = { STATES, CLEAR_NIGHT, CLEAR_DAY, COLD, WET, FAIR, HEAVY, WINDY, stateFor, cloudFor, create };
+  BL.weather = { STEPS, CLEAR_NIGHT, CLEAR_DAY, stepFor, wetAt, cloudFor, create };
 })();
 
 // ---- js/race-models.js ----
@@ -43314,10 +43436,9 @@ void main() {
     fx.burst(0, DROP_HEIGHT - 0.2, 0, 26, CONFETTI, 2.2);
     fx.showTicker(`THANKS ${donation.handle ? "@" + donation.handle.toUpperCase() : "ANON"} · ${bananas} BANANAS`, 4.5);
   };
-  // The Bitcoin feed: a transaction gusts the weather, a block strikes lightning over the island.
+  // The Bitcoin feed: a block strikes lightning over the island.
   const onMempool = (event) => {
-    if (event.type === "tx") weather.rain(event.vsize);
-    else if (event.type === "block") {
+    if (event.type === "block") {
       // Every block mined while the page is open strikes, whatever the weather is doing.
       weather.strike();
       hud.toast(`Block ${event.height} mined${event.txCount ? ` · ${event.txCount} transactions` : ""}`);
@@ -61505,6 +61626,9 @@ void main() {
     active.onKey(e);
   };
   const onVisibility = () => {
+    // A hidden tab holds no sockets; the chain's REST polls already skip themselves while hidden.
+    mempool.setHidden(document.hidden);
+    chain.setHidden(document.hidden);
     if (document.hidden) {
       window.cancelAnimationFrame(raf);
       raf = 0;
@@ -61525,6 +61649,11 @@ void main() {
   // `?chain=esplora` or `?chain=https://host/api` pins the provider; otherwise mempool.space leads
   // and three consecutive failures hand the session to Esplora on its own.
   if (!params.has("nosim") && params.get("chain") !== "0") chain.start({ source: params.get("chain") });
+  // A tab opened in the background waits for its first look before it holds any socket.
+  if (document.hidden) {
+    mempool.setHidden(true);
+    chain.setHidden(true);
+  }
   const unsubscribeDonations = donations.subscribe((donation) => active.onDonation(donation), { identity: () => game.state });
   // The feed panel: the Konami code toggles a page-wide readout of the socket, its counters and its last events.
   // It subscribes and ticks only while open, and its text nodes change only with their value.
@@ -61542,7 +61671,7 @@ void main() {
       if (logCount < FEED_LOG) logCount++;
       dirty = true;
     };
-    const describe = (e) => e.type === "tx" ? `tx     ${e.vsize} vB · ${(e.fee / e.vsize).toFixed(1)} sat/vB · fee ${e.fee}`
+    const describe = (e) => e.type === "stats" ? `stats  ${e.count} tx · ${e.vsize} vB · inflow ${e.inflow} vB/s`
       : e.type === "block" ? `block  ${e.height} · ${e.txCount} tx`
       : e.type === "fees" ? `fees   next block ${e.nextFee.toFixed(2)} sat/vB · ${e.blocks} projected`
       : `${e.type}`;
@@ -61551,7 +61680,7 @@ void main() {
       const d = active && active.debug && active.debug.weather, w = d && d.state ? d : null, s = mempool.state, c = chain.snapshot;
       const link = !s.enabled ? "off (nosim or mempool=0)" : s.connected ? `connected · attempt ${s.attempts}` : `reconnecting · attempt ${s.attempts}`;
       const age = s.lastAt ? `${((Date.now() - s.lastAt) / 1000).toFixed(1)} s ago` : "none yet";
-      const text = `socket    ${link}\nlast msg  ${age}${s.lastKeys ? ` · ${s.lastKeys}` : ""}\nmessages  ${s.messages} · ${(s.bytes / 1024).toFixed(0)} KB\nchain     height ${s.height} · next block ${s.nextFee.toFixed(2)} sat/vB · ${s.projectedBlocks} projected\nevents    ${s.transactions} tx · ${s.blocks} blocks\npool      ${c.count} tx · ${c.deep.toFixed(1)} blocks deep · floor ${c.floor.toFixed(2)} sat/vB · via ${c.source}${c.degraded ? " (fallback)" : ""}\naxes      soak ${c.soak.toFixed(2)} · chill ${c.chill.toFixed(2)} · gale ${c.gale.toFixed(2)} · pace ${(c.pace / 60).toFixed(1)} min\nweather   ${w ? `${w.state.name} · ${w.state.drops}/${w.state.capacity} ${w.state.form} · wind ${w.state.wind.toFixed(1)} · cloud ${w.state.cloud.toFixed(2)} · ${w.state.strikes} strikes` : "no weather in this scene"}`;
+      const text = `socket    ${link}\nlast msg  ${age}${s.lastKeys ? ` · ${s.lastKeys}` : ""}\nmessages  ${s.messages} · ${(s.bytes / 1024).toFixed(0)} KB\nchain     height ${s.height} · next block ${s.nextFee.toFixed(2)} sat/vB · ${s.projectedBlocks} projected\nevents    ${s.stats} stats · ${s.blocks} blocks · inflow ${s.inflow} vB/s\npool      ${c.count} tx · ${c.deep.toFixed(1)} blocks deep · paying ${c.paying.toFixed(2)} MvB (avg ${c.payEma.toFixed(2)}) · floor ${c.floor.toFixed(2)} sat/vB · via ${c.source}${c.degraded ? " (fallback)" : ""}\nprice     ${c.priceUsd ? c.priceUsd.toFixed(2) : "-"} · via ${c.priceSource || "-"}\naxes      soak ${c.soak.toFixed(2)} · gale ${c.gale.toFixed(2)} · pace ${(c.pace / 60).toFixed(1)} min\nweather   ${w ? `${w.state.name} · ${w.state.drops}/${w.state.capacity} drops · wind ${w.state.wind.toFixed(1)} · cloud ${w.state.cloud.toFixed(2)} · ${w.state.strikes} strikes` : "no weather in this scene"}`;
       if (stateEl.textContent !== text) stateEl.textContent = text;
       if (!dirty) return;
       dirty = false;
