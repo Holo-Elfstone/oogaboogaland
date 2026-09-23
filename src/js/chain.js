@@ -19,7 +19,7 @@
   const { clamp } = BL.math;
   const MEMPOOL = "https://mempool.space/api", ESPLORA = "https://blockstream.info/api";
   // The backlog drives the weather, so it is polled hardest; the epoch numbers move once a block at most.
-  const BACKLOG_MS = 30000, BLOCKS_MS = 60000, SLOW_MS = 600000;
+  const BACKLOG_MS = 30000, BLOCKS_MS = 60000, PRICE_MS = 60000, SLOW_MS = 600000;
   const TIMEOUT_MS = 12000, FAIL_LIMIT = 3;
   const BACKOFF_MIN = 15000, BACKOFF_MAX = 300000, EXTENDED_RETRY = 600000, PREFER_RETRY = 900000;
   const LADDER = 24, LADDER_MAX = 200;
@@ -29,9 +29,13 @@
   const BACKLOG_MIX = 0.6;
   // Price rides its own providers, not the chain's: the Esplora fallback has no prices endpoint, and
   // tying the two would lose the ticker exactly when the chain source degraded. First one to answer wins.
+  // Providers in order of measured speed, the two that carry the day's open first (`open`: Coinbase
+  // Exchange's is a rolling 24-hour open, Kraken's `o` today's UTC open), so the up-or-down-today reading
+  // normally costs one request; the price-only tickers are the fallbacks.
   const PRICE_SOURCES = [
-    { name: "coinbase", url: "https://api.coinbase.com/v2/prices/BTC-USD/spot", read: (d) => Number(d && d.data && d.data.amount) },
-    { name: "kraken", url: "https://api.kraken.com/0/public/Ticker?pair=XBTUSD", read: (d) => Number(d && d.result && d.result.XXBTZUSD && d.result.XXBTZUSD.c && d.result.XXBTZUSD.c[0]) },
+    { name: "coinbase", url: "https://api.exchange.coinbase.com/products/BTC-USD/stats", read: (d) => Number(d && d.last), open: (d) => Number(d && d.open) },
+    { name: "kraken", url: "https://api.kraken.com/0/public/Ticker?pair=XBTUSD", read: (d) => Number(d && d.result && d.result.XXBTZUSD && d.result.XXBTZUSD.c && d.result.XXBTZUSD.c[0]), open: (d) => Number(d && d.result && d.result.XXBTZUSD && d.result.XXBTZUSD.o) },
+    { name: "coinbase spot", url: "https://api.coinbase.com/v2/prices/BTC-USD/spot", read: (d) => Number(d && d.data && d.data.amount) },
     { name: "mempool.space", url: "https://mempool.space/api/v1/prices", read: (d) => Number(d && d.USD) }
   ];
 
@@ -51,7 +55,7 @@
     height: 0, lastTxCount: 0, lastWeight: 0, lastSize: 0, lastBlockAt: 0, pace: TARGET_BLOCK,
     // Mining and market
     progressPercent: 0, difficultyChange: 0, remainingBlocks: 0, remainingTime: 0,
-    hashrate: 0, difficulty: 0, priceUsd: 0, priceSource: null,
+    hashrate: 0, difficulty: 0, priceUsd: 0, priceOpenUsd: 0, priceSource: null,
     // Derived weather axes, 0..1
     soak: 0, chill: 0, gale: 0
   };
@@ -72,7 +76,7 @@
   const dropExtended = () => {
     extendedUntil = Date.now() + EXTENDED_RETRY;
   };
-  const timers = { backlog: 0, blocks: 0, slow: 0, block: 0 };
+  const timers = { backlog: 0, blocks: 0, price: 0, slow: 0, block: 0 };
   let started = false;
   let unsubscribeFeed = null;
   // Transaction arrivals in a rolling window, as a ring of timestamps: fixed size, never grows.
@@ -251,19 +255,33 @@
   };
   // Walk the price providers in order and keep the first sane answer; a total outage holds the last
   // price rather than blanking the tablet, and nothing about the visitor is ever sent.
+  // The day's open comes from the first provider that carries one, so the walk goes on past a price
+  // already found until the open is known too.
   const pollPrice = async () => {
+    let priced = false, opened = false;
     for (const source of PRICE_SOURCES) {
+      if (priced && (opened || !source.open)) continue;
       try {
-        const value = source.read(await getUrl(source.url));
-        if (!(value > 0)) continue;
-        snapshot.priceUsd = value;
-        snapshot.priceSource = source.name;
-        return true;
+        const data = await getUrl(source.url);
+        const value = source.read(data);
+        if (!priced && value > 0) {
+          snapshot.priceUsd = value;
+          snapshot.priceSource = source.name;
+          priced = true;
+        }
+        if (source.open) {
+          const open = source.open(data);
+          if (open > 0) {
+            snapshot.priceOpenUsd = open;
+            opened = true;
+          }
+        }
+        if (priced && opened) return true;
       } catch {
         // Try the next one; a dead ticker must never take the chain poll down with it.
       }
     }
-    return false;
+    return priced;
   };
 
   // Fee pressure and backlog depth both on log scales, mixed; the backlog leads because a deep pool
@@ -288,7 +306,7 @@
   // One poll of a kind at a time. Each takes several requests in sequence and the slowest can outrun
   // its own interval, so without this a slow provider would have requests stacked on it exactly when
   // it is least able to answer them — the shape that gets a client rate limited.
-  const busy = { backlog: false, blocks: false, slow: false };
+  const busy = { backlog: false, blocks: false, price: false, slow: false };
   const guard = (key, body) => async () => {
     if (busy[key]) return;
     busy[key] = true;
@@ -331,16 +349,15 @@
       failed(error);
     }
   });
+  // Price is its own minute cycle, whatever the chain provider is doing, so a fallback session keeps
+  // its ticker and Ooga Mine's candles move with the real coin.
+  const pollTicker = guard("price", async () => {
+    if (!(await pollPrice())) return;
+    emit();
+    save();
+  });
   const pollSlow = guard("slow", async () => {
-    // Price is polled whatever the chain provider is doing, so a fallback session keeps its ticker.
-    const priced = await pollPrice();
-    if (!extended()) {
-      if (priced) {
-        emit();
-        save();
-      }
-      return;
-    }
+    if (!extended()) return;
     try {
       readDifficulty(await get("/v1/difficulty-adjustment"));
       readHashrate(await get("/v1/mining/hashrate/3d"));
@@ -350,7 +367,6 @@
       save();
     } catch {
       dropExtended();
-      if (priced) emit();
     }
   });
 
@@ -409,7 +425,7 @@
     "count", "vsize", "totalFee", "deep", "floor", "nextFee", "fastestFee", "halfHourFee", "hourFee",
     "economyFee", "minimumFee", "height", "lastTxCount", "lastWeight", "lastSize", "lastBlockAt",
     "pace", "progressPercent", "difficultyChange", "remainingBlocks", "remainingTime", "hashrate",
-    "difficulty", "priceUsd"
+    "difficulty", "priceUsd", "priceOpenUsd"
   ];
   const save = () => {
     try {
@@ -444,9 +460,11 @@
     if (restore()) emit();
     pollBacklog();
     pollBlocks();
+    pollTicker();
     pollSlow();
     cycle("backlog", pollBacklog, BACKLOG_MS);
     cycle("blocks", pollBlocks, BLOCKS_MS);
+    cycle("price", pollTicker, PRICE_MS);
     cycle("slow", pollSlow, SLOW_MS);
   };
   const subscribe = (fn) => {
